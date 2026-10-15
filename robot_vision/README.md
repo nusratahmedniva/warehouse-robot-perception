@@ -1274,12 +1274,14 @@ cd robot_vision
 `outputs/gesture_smoke_<N>img_<date>_<time>/` with `annotated/full_frame/`, `annotated/person_crop/`,
 `detections.jsonl`, `run_info.json` and `config_used/`.
 
-Run `outputs/gesture_smoke_4img_20261015_231147`: MediaPipe's four public sample images (`thumbs_up`, `victory`,
-`pointing_up`, `thumbs_down`; close-up single hands, not robot views). Both modes give MOVE for the first three
-(raw scores 0.73–0.91) and NONE (`Thumb_Down`, 0.57–0.77) for the fourth. On `thumbs_down` the detector found two
-overlapping person boxes: in `full_frame` the wrist was in both (`ambiguous`, track null); in `person_crop` the
-same hand appears in both crops. The run used this commit's adapter code before it was committed
-(`uncommitted_changes: true` in `run_info.json`).
+Run `outputs/gesture_smoke_4img_20261015_233032` (commit `f87a035`, clean tree): MediaPipe's four public sample
+images (`thumbs_up`, `victory`, `pointing_up`, `thumbs_down`; close-up single hands, not robot views). Both modes
+give MOVE for the first three (raw scores 0.73–0.91, owner by the wrist rule) and NONE (`Thumb_Down`, 0.77) for
+the fourth. On `thumbs_down` the detector found two overlapping person boxes and no depth is available: in
+`person_crop` the hand found in both crops is reported once (the 0.57 copy from `det1` is listed under
+`duplicates`) and stays unowned (`ambiguous`, wrist in both boxes), so both persons get `no_owned_hand`; in
+`full_frame` the same hand is `ambiguous`. Superseded: `…_231147` (before deduplication, uncommitted code; it
+reported that hand for both persons).
 
 **Evaluation hook (`gesture_eval.py`): not_evaluated.** It will report, per mode and distance bin (1, 2, 3, 4, 5 m
 ± 0.5 m; others in `outside_bins`), accuracy raw and at `decision.json` `gesture_min_confidence`, each with its
