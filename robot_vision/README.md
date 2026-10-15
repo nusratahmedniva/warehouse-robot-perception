@@ -4,8 +4,9 @@ First stage of the indoor service-robot vision system:
 **THUD dataset loading → pretrained semantic segmentation → visualisations → evaluation.**
 
 Depth, tracking, passage fitting, gestures and Unity integration are *not* part of this stage.
-The teammate's gesture code lives in a separate repository
-(https://github.com/anisha274/media_pipe_gesture) and is not used here.
+The teammate's gesture module (anisha274, https://github.com/anisha274/media_pipe_gesture, MIT licence) is a git
+submodule at `../external/media_pipe_gesture` and is connected only through `gesture_adapter.py` (see
+[Gesture adapter](#gesture-adapter)).
 
 ## Files
 
@@ -58,6 +59,12 @@ The teammate's gesture code lives in a separate repository
 | `person_box_depth.py` | Lower-bound distance (5th percentile of valid box depths) of tracked people, for Step 9 people without a position. |
 | `configs/replay_script_office_capture2.json` | Placeholder passage and scripted gestures for the Capture_2 replay demo. |
 | `tests/test_decision.py`, `tests/scenarios/*.json` | Step 9 tests; scenarios are plain JSON so they can be replayed in Unity. |
+| `../external/media_pipe_gesture` | Git submodule: the teammate's gesture module (MediaPipe model + `gesture_heuristics.py`), pinned at `180e2796`. Not modified. |
+| `configs/gesture.json` | Gesture adapter: source and commit, model hash, her category mapping, recognizer settings, the two modes, smoke and evaluation settings. |
+| `gesture_adapter.py` | Gesture adapter: MediaPipe IMAGE mode, `full_frame` and `person_crop` modes, raw detections, `to_gesture_events` → `decision.GestureEvent`. |
+| `gesture_smoke.py` | Optional smoke test: both modes on sample images (git-ignored `sample_images/gesture`), annotated copies. |
+| `gesture_eval.py` | Evaluation hook: accuracy by distance bin and mode, confusion matrices, from Unity labels; `not_evaluated` until they exist. |
+| `tests/test_gesture_adapter.py` | Mapping, crop geometry, wrist-to-track assignment, NONE handling, no adapter threshold, evaluation hook. |
 
 ## Setup
 
@@ -91,7 +98,7 @@ Use `--device mps` (fails if MPS is missing) or `--device auto`.
 
 torch 2.14.1+cu130, torchvision 0.29.1+cu130, transformers 5.19.0, huggingface_hub 2.2.0,
 numpy 2.5.2, pillow 12.3.0, matplotlib 3.11.2; stage 2 adds ultralytics 8.4.175, lap 0.5.13, scipy 1.18.1,
-opencv-python 5.0.0.93. Every run records the versions it used in
+opencv-python 5.0.0.93; the gesture adapter adds mediapipe 1.1.1 (with opencv-contrib-python 5.0.0.93). Every run records the versions it used in
 `evaluation_report.json`.
 
 ## Running (Windows PowerShell)
@@ -1149,6 +1156,102 @@ What changed in the second review:
 None of this is a correctness measurement: there is no decision ground truth, and the passage and gestures are
 scripted.
 
+## Gesture adapter
+
+**Credit.** The gesture module is by anisha274 (https://github.com/anisha274/media_pipe_gesture), distributed
+under the MIT licence as stated in its README (the repository has no separate LICENSE file at the pinned commit).
+It is a git submodule at `external/media_pipe_gesture`, pinned at commit
+`180e27962117611cc3e0ec0433a3202765cefd0f` (2026-10-08). Its code and model are not modified; the adapter uses
+the same model file (`gesture_recognizer.task`, sha256 `97952348…0482`, checked when the recognizer is created) and
+the same mapping as her `gesture_heuristics.py`.
+
+After cloning this repository: `git submodule update --init` (from the repository root).
+
+**MediaPipe.** `mediapipe==1.1.1` is in `requirements.txt` and installs into our Python 3.12.14 venv next to
+numpy 2.5.2 (unchanged). Its wheels are tagged `py3-none` with no `requires_python`, so the package does not
+restrict the Python version; wheels exist for Windows x64/arm64, macOS arm64 and Linux x64/arm64, not Intel macOS.
+It pulls in `opencv-contrib-python`, which also provides `cv2`; it is pinned to the same version as
+`opencv-python` (5.0.0.93).
+
+**Mapping** (`configs/gesture.json` → `mapping`, citing her file and commit):
+
+| MediaPipe category (top category of each hand) | Gesture |
+|---|---|
+| `Open_Palm`, `Closed_Fist` | STOP |
+| `Pointing_Up`, `Victory`, `Thumb_Up` | MOVE |
+| `Thumb_Down`, `ILoveYou`, `None`, any other; no hand | NONE |
+
+**Recognizer.** IMAGE running mode (her code: LIVE_STREAM), frames never mirrored (her code mirrors the webcam).
+`min_hand_detection_confidence` and `min_hand_presence_confidence` stay at her 0.5: they are MediaPipe's hand
+detector settings, not a gesture threshold. The canned classifier's `score_threshold` stays unset.
+
+**Modes** (`configs/gesture.json` → `modes`, declared before any gesture run):
+- `full_frame` (her approach, baseline): the whole frame, `num_hands` 1 as in her code. A hand gets the track_id of
+  the person box containing its wrist landmark; no box or several boxes → `track_id` null (`no_containing_box` /
+  `ambiguous`).
+- `person_crop`: per tracked person, the upper 0.6 of the box plus a margin of 0.1 × box height on every side,
+  clipped to the image, resized so the longer side is 256 px (aspect kept); `num_hands` 2. The hand gets that
+  person's track_id. Reasons for each value are in the config (`why`).
+
+**Output.** Every hand is a `GestureDetection`: timestamp, frame_id, mode, track_id, gesture, raw_category, raw
+confidence (category score), hand box and wrist in full-image pixels, handedness, assignment, crop box. A frame
+(`full_frame`) or person (`person_crop`) without a hand gives one NONE detection with confidence null. **No
+confidence threshold is applied in the adapter**; `gesture_min_confidence` lives only in `decision.json`.
+`to_gesture_events()` gives one `decision.GestureEvent` (reused, not redefined) per track_id per frame: STOP if any
+detection of that track is STOP, else MOVE, else NONE, with the highest raw score of the chosen gesture. This is
+needed because the decision's gesture filter keeps one state per track; preferring STOP keeps the safe direction.
+
+**Tests** (`tests/test_gesture_adapter.py`, no dataset): the mapping table, and the mapping equals the lists in
+her file (when the submodule is checked out; CI checks it out); crop geometry box → crop → image coordinates,
+including clipping and resize invariance; wrist-to-track assignment (inside, edge, none, ambiguous); NONE
+handling (no hand, `None` / `Thumb_Down` categories keep their raw score); one event per track with STOP first;
+no adapter file defines a confidence threshold and `gesture.json` has no gesture threshold key; the adapter
+imports no reference loader and no evaluation code; the model hash; a blank frame gives NONE in both modes.
+
+Windows PowerShell:
+
+```powershell
+cd E:\RobotVisionWorkspace
+git submodule update --init
+cd robot_vision
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m unittest tests.test_gesture_adapter -v
+.\.venv\Scripts\python.exe gesture_smoke.py
+.\.venv\Scripts\python.exe gesture_eval.py
+```
+
+macOS Terminal:
+
+```bash
+cd /path/to/RobotVisionWorkspace
+git submodule update --init
+cd robot_vision
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m unittest tests.test_gesture_adapter -v
+.venv/bin/python gesture_smoke.py
+.venv/bin/python gesture_eval.py
+```
+
+**Smoke test (not an evaluation).** `gesture_smoke.py` runs both modes on the images in `sample_images/gesture`
+(git-ignored; `--image-dir` overrides it). Person boxes come from the Stage 2 detector settings
+(`configs/tracking_office.json`), image by image, without tracking (`det<k>`). Output:
+`outputs/gesture_smoke_<N>img_<date>_<time>/` with `annotated/full_frame/`, `annotated/person_crop/`,
+`detections.jsonl`, `run_info.json` and `config_used/`.
+
+Run `outputs/gesture_smoke_4img_20261015_231147`: MediaPipe's four public sample images (`thumbs_up`, `victory`,
+`pointing_up`, `thumbs_down`; close-up single hands, not robot views). Both modes give MOVE for the first three
+(raw scores 0.73–0.91) and NONE (`Thumb_Down`, 0.57–0.77) for the fourth. On `thumbs_down` the detector found two
+overlapping person boxes: in `full_frame` the wrist was in both (`ambiguous`, track null); in `person_crop` the
+same hand appears in both crops. The run used this commit's adapter code before it was committed
+(`uncommitted_changes: true` in `run_info.json`).
+
+**Evaluation hook (`gesture_eval.py`): not_evaluated.** It will report, per mode and distance bin (1, 2, 3, 4, 5 m
+± 0.5 m; others in `outside_bins`), accuracy raw and at `decision.json` `gesture_min_confidence`, each with its
+coverage (labelled people whose track received a hand detection), plus confusion matrices. Input: Unity labels
+(CSV `frame_id, track_id, gesture_true, distance_m`) and an adapter run's `detections.jsonl`, set in
+`configs/gesture.json` → `evaluation`. Until Unity recordings exist both are null and the script prints
+`not_evaluated` and writes nothing. It is the only gesture file that reads labels.
+
 ## Known limitations
 
 - Depth decoding is validated only for the THUD **synthetic** captures above. Real-scene depth and any
@@ -1165,7 +1268,13 @@ scripted.
 - No passage width, clearance or occupancy map is computed yet (Step 6). Step 9 decisions run on scenario files
   and a replay with a placeholder passage and scripted gestures; they have not been evaluated. `camera_proxy` is
   not the robot position.
-- The load size is configured, not measured. The gesture module is not connected (no adapter yet).
+- The load size is configured, not measured.
+- Gestures have not been evaluated: there are no robot-view images with gesture labels yet (Unity). The smoke
+  test uses four close-up sample photos. `gesture_min_confidence` (0.6) has not been checked against the
+  module's scores.
+- `person_crop` crops of overlapping people can contain the same hand, which is then reported for both tracks;
+  `full_frame` reports such a wrist as `ambiguous` (track null).
+- `person_crop` needs person boxes; in the smoke test they are per-image detections without tracking.
 - The unlocated-person lower bound is a box depth percentile (reference-depth baseline in THUD). The Unity
   adapter must supply its own.
 - Code is kept macOS-compatible and checked by CI on macos-latest.

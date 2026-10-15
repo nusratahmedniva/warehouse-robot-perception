@@ -54,6 +54,8 @@
   x-z is the ground plane.
 - Device selection: CUDA, then MPS, then CPU
   (check_environment.select_device).
+- Lower-bound person distance assumes a level camera (pitch = roll = 0);
+  the Unity robot camera must stay level.
 
 ## Project status
 - Done: segmentation baseline, YOLO + ByteTrack, Step 4 fusion,
@@ -89,8 +91,12 @@
   - Step 6 (not yet implemented): a map cell is free only if labelled
     floor AND within a height tolerance of the fitted floor plane;
     unseen cells count as blocked.
-  - Gesture module: git submodule at external/media_pipe_gesture,
-    connected only through an adapter that outputs GestureEvent.
-- Next, in order: gesture adapter; Step 6 passage width; slimmed
-  evaluation harness; one final THUD++ evaluation. Unity warehouse
+  - Gesture module (implemented): git submodule at
+    external/media_pipe_gesture, pinned 180e2796; adapter
+    robot_vision/gesture_adapter.py (configs/gesture.json), modes
+    full_frame (her baseline) and person_crop, raw scores, no threshold
+    in the adapter; to_gesture_events -> decision.GestureEvent. Gesture
+    evaluation: not_evaluated until Unity recordings with labels exist.
+- Next, in order: Step 6 passage width; slimmed evaluation harness; one
+  final THUD++ evaluation. Unity warehouse
   scene is built by me in parallel.

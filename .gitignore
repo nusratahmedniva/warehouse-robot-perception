@@ -47,3 +47,6 @@ logs/
 .vscode/
 .idea/
 CLAUDE.local.md
+
+# Gesture smoke-test sample images
+sample_images/
