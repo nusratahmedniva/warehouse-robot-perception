@@ -64,7 +64,8 @@ submodule at `../external/media_pipe_gesture` and is connected only through `ges
 | `gesture_adapter.py` | Gesture adapter: MediaPipe IMAGE mode, `full_frame` and `person_crop` modes, raw detections, `to_gesture_events` → `decision.GestureEvent`. |
 | `gesture_smoke.py` | Optional smoke test: both modes on sample images (git-ignored `sample_images/gesture`), annotated copies. |
 | `gesture_eval.py` | Evaluation hook: accuracy by distance bin and mode, confusion matrices, from Unity labels; `not_evaluated` until they exist. |
-| `tests/test_gesture_adapter.py` | Mapping, crop geometry, wrist-to-track assignment, NONE handling, no adapter threshold, evaluation hook. |
+| `tests/test_gesture_adapter.py` | Mapping, crop geometry, duplicate hands and one owner per hand, NONE handling, no adapter threshold, lazy MediaPipe import, evaluation hook. |
+| `tests/test_opencv.py` | `opencv-python` and `opencv-contrib-python` pinned to one version; `cv2` version and every `cv2` name the pipeline uses. |
 
 ## Setup
 
@@ -1170,8 +1171,19 @@ After cloning this repository: `git submodule update --init` (from the repositor
 **MediaPipe.** `mediapipe==1.1.1` is in `requirements.txt` and installs into our Python 3.12.14 venv next to
 numpy 2.5.2 (unchanged). Its wheels are tagged `py3-none` with no `requires_python`, so the package does not
 restrict the Python version; wheels exist for Windows x64/arm64, macOS arm64 and Linux x64/arm64, not Intel macOS.
-It pulls in `opencv-contrib-python`, which also provides `cv2`; it is pinned to the same version as
-`opencv-python` (5.0.0.93).
+On Intel macOS the requirement is skipped by an environment marker.
+
+**MediaPipe is optional for the rest of the pipeline.** It is imported only inside
+`gesture_adapter.GestureRecognizerAdapter` (and nowhere else), so every other module, including the adapter's
+geometry, mapping and ownership functions, imports and runs without it. Creating the recognizer without MediaPipe
+raises an ImportError that says so. `tests/test_gesture_adapter.py` checks both: no other file imports mediapipe,
+and every module imports with mediapipe blocked.
+
+**OpenCV: two packages, one `cv2`.** ultralytics 8.4.175 requires `opencv-python` and mediapipe 1.1.1 requires
+`opencv-contrib-python`; both install the same `cv2` module, so neither can be dropped (pip would reinstall it).
+Both are pinned to 5.0.0.93. **Never upgrade one without the other.** `tests/test_opencv.py` checks that the two
+pins are equal, that the installed packages and `cv2.__version__` match them, that every `cv2` name used in
+`robot_vision/*.py` exists, and that those functions work.
 
 **Mapping** (`configs/gesture.json` → `mapping`, citing her file and commit):
 
@@ -1186,16 +1198,37 @@ It pulls in `opencv-contrib-python`, which also provides `cv2`; it is pinned to 
 detector settings, not a gesture threshold. The canned classifier's `score_threshold` stays unset.
 
 **Modes** (`configs/gesture.json` → `modes`, declared before any gesture run):
-- `full_frame` (her approach, baseline): the whole frame, `num_hands` 1 as in her code. A hand gets the track_id of
-  the person box containing its wrist landmark; no box or several boxes → `track_id` null (`no_containing_box` /
-  `ambiguous`).
+- `full_frame` (her approach, baseline): the whole frame, `num_hands` 1 as in her code.
 - `person_crop`: per tracked person, the upper 0.6 of the box plus a margin of 0.1 × box height on every side,
-  clipped to the image, resized so the longer side is 256 px (aspect kept); `num_hands` 2. The hand gets that
-  person's track_id. Reasons for each value are in the config (`why`).
+  clipped to the image, resized so the longer side is 256 px (aspect kept); `num_hands` 2. Reasons for each value
+  are in the config (`why`).
+
+**One owner per hand** (`configs/gesture.json` → `assignment`, same rule in both modes). Added after the first
+smoke run, before any evaluation (disclosed in the config):
+1. **Duplicates.** Overlapping crops can find the same hand. Hands whose boxes, in full-image pixels, overlap with
+   IoU ≥ `duplicate_hand_iou_threshold` (0.5) are one hand; the highest-scoring copy is kept and the others are
+   listed in its `duplicates` field.
+2. **Candidates.** The persons whose crop region contains the wrist, plus the persons whose crop found the hand.
+3. **Depth.** The candidate whose `depth_m` best matches the depth at the wrist (median of valid depths in a 5 × 5
+   window) owns the hand, if that gap is ≤ `depth_match_max_m` (0.8 m) and the next candidate's gap is larger by
+   ≥ `depth_margin_m` (0.3 m). The caller supplies the depth image and person depths (THUD: planar reference depth
+   and Step 4 person depth, a reference-depth baseline; Unity: the scene adapter).
+4. **Fallback.** Otherwise the person whose box contains the wrist, if exactly one box does; otherwise none
+   (`track_id` null, `ambiguous` or `no_containing_box`).
+
+In `person_crop`, a cropped person who owns no hand gets one NONE detection (`no_hand`, or `no_owned_hand` when
+their crop's hands went to someone else or to nobody).
+
+**Effect on decisions.** The current decision rules are unaffected by who owns a hand: rule 3 stops for an
+accepted STOP from any track (including null), and any current STOP cancels every MOVE. Ownership enters only
+through the per-track hold timing: a hand whose owner changes between frames restarts its hold, which can delay
+acceptance but never makes it earlier. **Evaluation needs one owner per hand**: the per-person accuracy in
+`gesture_eval.py` would count a duplicated hand once for each person.
 
 **Output.** Every hand is a `GestureDetection`: timestamp, frame_id, mode, track_id, gesture, raw_category, raw
-confidence (category score), hand box and wrist in full-image pixels, handedness, assignment, crop box. A frame
-(`full_frame`) or person (`person_crop`) without a hand gives one NONE detection with confidence null. **No
+confidence (category score), hand box and wrist in full-image pixels, handedness, assignment (`depth`,
+`wrist_in_single_box`, `ambiguous`, `no_containing_box`), crop box, wrist depth, candidates and merged duplicates.
+A frame without a hand (`full_frame`) gives one NONE detection with confidence null. **No
 confidence threshold is applied in the adapter**; `gesture_min_confidence` lives only in `decision.json`.
 `to_gesture_events()` gives one `decision.GestureEvent` (reused, not redefined) per track_id per frame: STOP if any
 detection of that track is STOP, else MOVE, else NONE, with the highest raw score of the chosen gesture. This is
@@ -1203,7 +1236,10 @@ needed because the decision's gesture filter keeps one state per track; preferri
 
 **Tests** (`tests/test_gesture_adapter.py`, no dataset): the mapping table, and the mapping equals the lists in
 her file (when the submodule is checked out; CI checks it out); crop geometry box → crop → image coordinates,
-including clipping and resize invariance; wrist-to-track assignment (inside, edge, none, ambiguous); NONE
+including clipping and resize invariance; the wrist rule (inside, edge, none, ambiguous); duplicates and owners
+(box IoU, one hand from two crops kept once and owned by depth, the farther person chosen by depth, a depth tie
+or too-large gap falling back to the wrist rule, a person without depth, two different hands kept, the depth
+window); MediaPipe imported only lazily and the pipeline importing without it; NONE
 handling (no hand, `None` / `Thumb_Down` categories keep their raw score); one event per track with STOP first;
 no adapter file defines a confidence threshold and `gesture.json` has no gesture threshold key; the adapter
 imports no reference loader and no evaluation code; the model hash; a blank frame gives NONE in both modes.
@@ -1272,8 +1308,9 @@ coverage (labelled people whose track received a hand detection), plus confusion
 - Gestures have not been evaluated: there are no robot-view images with gesture labels yet (Unity). The smoke
   test uses four close-up sample photos. `gesture_min_confidence` (0.6) has not been checked against the
   module's scores.
-- `person_crop` crops of overlapping people can contain the same hand, which is then reported for both tracks;
-  `full_frame` reports such a wrist as `ambiguous` (track null).
+- Hand ownership by depth is tested only on constructed cases. Without depth (as in the smoke test) a hand whose
+  wrist lies in two overlapping boxes stays unowned (`ambiguous`); the depth rule cannot separate two people at
+  nearly the same depth.
 - `person_crop` needs person boxes; in the smoke test they are per-image detections without tracking.
 - The unlocated-person lower bound is a box depth percentile (reference-depth baseline in THUD). The Unity
   adapter must supply its own.

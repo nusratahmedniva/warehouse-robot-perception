@@ -26,6 +26,7 @@ import argparse
 import csv
 import json
 from collections import defaultdict
+from pathlib import Path
 
 import decision_io as dio
 import gesture_adapter as ga
@@ -46,11 +47,13 @@ def read_labels(path) -> list[dict]:
 
 def read_detections(path) -> list[ga.GestureDetection]:
     out = []
-    for line in open(path, encoding="utf-8"):
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
         if line.strip():
             d = json.loads(line)
             for k in ("hand_box_xyxy", "wrist_xy", "crop_box_xyxy"):
                 d[k] = tuple(d[k]) if d.get(k) is not None else None
+            d["candidates"] = tuple(d.get("candidates", ()))
+            d["duplicates"] = tuple(tuple(x) for x in d.get("duplicates", ()))
             out.append(ga.GestureDetection(**d))
     return out
 

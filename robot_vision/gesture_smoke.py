@@ -8,7 +8,8 @@ git-ignored) and writes, in a new run folder:
     detections.jsonl    every GestureDetection (both modes), frame_id = image file name
     run_info.json, config_used/
 Person boxes come from the Stage 2 detector (weights and detector confidence from the tracking config), image by
-image without tracking: track_id = det<k>. No confidence threshold is applied to gestures.
+image without tracking: track_id = det<k>. No depth is available, so hand owners come from the wrist rule.
+No confidence threshold is applied to gestures.
 
 Usage (from robot_vision/):
     python gesture_smoke.py [--image-dir DIR] [--device auto]
@@ -21,6 +22,7 @@ import json
 import platform
 import sys
 from datetime import datetime
+from importlib.metadata import version
 from pathlib import Path
 
 import cv2
@@ -67,7 +69,7 @@ def annotate(rgb: np.ndarray, persons, dets, mode: str) -> np.ndarray:
             cv2.putText(img, f"{d.gesture} {d.confidence:.2f}", (x0, max(12, y0 - 4)), cv2.FONT_HERSHEY_SIMPLEX,
                         0.45, col, 1, cv2.LINE_AA)
         conf = "-" if d.confidence is None else f"{d.confidence:.2f}"
-        lines.append((f"{d.track_id}: {d.gesture} ({d.raw_category or 'no hand'}) conf {conf}", col))
+        lines.append((f"{d.track_id}: {d.gesture} ({d.raw_category or 'no hand'}) conf {conf} [{d.assignment}]", col))
     lines.insert(0, (f"mode: {mode}", (255, 255, 255)))
     for i, (t, col) in enumerate(lines):
         cv2.putText(img, t, (8, 18 + 16 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3, cv2.LINE_AA)
@@ -119,14 +121,13 @@ def main() -> None:
     for ad in adapters.values():
         ad.close()
 
-    import mediapipe
     hashes = dio.copy_configs(out, [cfg_path, track_path])
     dio.write_json(out / "run_info.json", {
         "label": "gesture adapter smoke test (sample images; not an evaluation)",
         "created": datetime.now().isoformat(timespec="seconds"),
         "command": " ".join([Path(sys.executable).name] + sys.argv), "git": dio.git_info(),
         "python": platform.python_version(), "platform": platform.platform(),
-        "mediapipe": mediapipe.__version__, "config_sha256": hashes,
+        "mediapipe": version("mediapipe"), "config_sha256": hashes,
         "model": cfg["model"]["path"], "model_sha256": cfg["model"]["sha256"],
         "source_commit": cfg["source"]["commit"], "image_dir": a.image_dir or sm["image_dir"],
         "images": [im.name for im in images], "person_boxes": n_persons, "person_detector_device": str(device),

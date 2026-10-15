@@ -11,7 +11,9 @@ ultralytics==8.4.175
 lap==0.5.13
 scipy==1.18.1
 opencv-python==5.0.0.93
-# Gesture adapter (gesture_adapter.py). mediapipe pulls in opencv-contrib-python, which also provides cv2;
-# keep it at the same version as opencv-python. Wheels: Windows x64/arm64, macOS arm64, Linux (no Intel macOS).
-mediapipe==1.1.1
+# cv2 comes from two packages that install the same module: opencv-python (required by ultralytics) and
+# opencv-contrib-python (required by mediapipe). Keep both at the same version: never upgrade one without the
+# other (tests/test_opencv.py checks this).
 opencv-contrib-python==5.0.0.93
+# Gesture adapter only (imported lazily in gesture_adapter.py). No wheel for Intel macOS, where it is skipped.
+mediapipe==1.1.1; sys_platform != "darwin" or platform_machine == "arm64"
