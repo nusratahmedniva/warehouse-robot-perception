@@ -106,8 +106,29 @@ def label_box(img: np.ndarray, text: str, org: tuple[int, int], scale: float, th
     (w, h), base = cv2.getTextSize(text, FONT, scale, thick)
     x, y = org
     pad = max(2, thick * 2)
-    cv2.rectangle(img, (x - pad, y - h - pad), (x + w + pad, y + base + pad // 2), bg, -1)
+    cv2.rectangle(img, (x - pad, y - h - pad), (x + w + pad, y + base + pad), bg, -1)
     cv2.putText(img, text, (x, y), FONT, scale, fg, thick, cv2.LINE_AA)
+
+
+def place_label(size_wh: tuple[int, int], box: tuple[int, int, int, int], frame_wh: tuple[int, int],
+                placed: list[tuple[int, int, int, int]], gap: int) -> tuple[int, int, int, int]:
+    """Rectangle (x1, y1, x2, y2) for a box's label: above the box (inside it at the top edge of the frame),
+    shifted to stay inside the frame and stacked upwards (then downwards) away from labels already placed."""
+    w, h = size_wh
+    W, H = frame_wh
+    x = min(max(0, box[0]), max(0, W - w))
+    y0 = box[1] - h - gap if box[1] - h - gap >= 0 else box[1] + gap
+
+    def free(y):
+        return all(x + w <= a[0] or a[2] <= x or y + h <= a[1] or a[3] <= y for a in placed)
+
+    for step in (-1, 1):
+        y = y0
+        while 0 <= y <= H - h:
+            if free(y):
+                return x, y, x + w, y + h
+            y += step * (h + gap)
+    return x, y0, x + w, y0 + h  # nowhere free: overlap rather than leave the frame
 
 
 def person_text(p: dict) -> str:
@@ -157,16 +178,20 @@ def render(rgb: np.ndarray, d: dict, boxes: dict, index: int, n_frames: int, str
     t1, t2 = max(1, round(s)), max(2, round(1.5 * s))
 
     # people observed in this frame: tracker box + decision snapshot values
+    scale = 0.42 * s
+    pad = max(2, t1 * 2)
+    placed: list[tuple[int, int, int, int]] = []
     for p in d["snapshot"]["persons"]:
         if not p["observed"] or p["track_id"] not in boxes:
             continue
         x1, y1, x2, y2 = (round(v * s) for v in boxes[p["track_id"]])
         c = box_colour(p, colors)
         cv2.rectangle(frame, (x1, y1), (x2, y2), c, t2 + (t1 if p["track_id"] in d["track_ids"] else 0))
-        scale = 0.42 * s
-        (_, th), _ = cv2.getTextSize("ID", FONT, scale, t1)
-        y = y1 - 3 * t1 if y1 - th - 4 * t1 > 0 else y1 + th + 3 * t1
-        label_box(frame, person_text(p), (max(2 * t1, x1), y), scale, t1, (0, 0, 0), c)
+        text = person_text(p)
+        (tw, th), base = cv2.getTextSize(text, FONT, scale, t1)
+        r = place_label((tw + 2 * pad, th + base + 2 * pad), (x1, y1, x2, y2), (W, frame.shape[0]), placed, t1)
+        placed.append(r)
+        label_box(frame, text, (r[0] + pad, r[3] - base - pad), scale, t1, (0, 0, 0), c)
 
     label_box(frame, cfg["corner_label"], (round(6 * s), frame.shape[0] - round(6 * s)), 0.36 * s, t1,
               (255, 255, 255), (40, 40, 40))

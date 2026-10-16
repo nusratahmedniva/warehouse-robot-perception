@@ -72,6 +72,19 @@ class LabelTests(unittest.TestCase):
         self.assertEqual(mdv.box_colour(person(1, in_caution_zone=True), c), tuple(c["box_caution"]))
         self.assertEqual(mdv.box_colour(person(1), c), tuple(c["box_other"]))
 
+    def test_label_stays_inside_the_frame(self):
+        self.assertEqual(mdv.place_label((100, 20), (950, 300, 990, 500), (1000, 800), [], 2), (900, 278, 1000, 298))
+        self.assertEqual(mdv.place_label((100, 20), (-5, 5, 40, 500), (1000, 800), [], 2), (0, 7, 100, 27))
+
+    def test_labels_never_overlap(self):
+        placed = []
+        for box in [(500, 300, 540, 400), (480, 310, 520, 420), (510, 305, 560, 410)]:
+            placed.append(mdv.place_label((120, 20), box, (1000, 800), placed, 2))
+        for i, a in enumerate(placed):
+            for b in placed[i + 1:]:
+                self.assertTrue(a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1], (a, b))
+            self.assertTrue(0 <= a[0] and a[2] <= 1000 and 0 <= a[1] and a[3] <= 800)
+
     def test_wrap_keeps_every_word(self):
         text = "person entering stop zone: track 382 predicted to enter in 0.10 s (within 3.0 s), 0.02 m away"
         lines = mdv.wrap(text, 200, 0.5, 1)
