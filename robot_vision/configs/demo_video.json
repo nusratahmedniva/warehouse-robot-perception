@@ -17,5 +17,6 @@
     "box_caution": [0, 176, 255],
     "box_other": [235, 235, 235]
   },
-  "stills": "one per decision (STOP, MOVE, WAIT): the middle frame of that decision's longest contiguous run, unless --still DECISION=FRAME_INDEX is given"
+  "stills": "one per decision (STOP, MOVE, WAIT): the middle frame of that decision's longest contiguous run of frames with a person visible (else of its longest run), unless --still DECISION=FRAME_INDEX is given",
+  "stills_rule_change": "2026-10-17, presentation only: the first render (outputs/demo_video_1388f_20261017_000506) used the middle of the longest run, which gave MOVE and WAIT stills without any person; the person-visible preference was added after seeing them"
 }

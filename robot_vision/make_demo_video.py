@@ -199,21 +199,30 @@ def render(rgb: np.ndarray, d: dict, boxes: dict, index: int, n_frames: int, str
 
 # ---------------------------------------------------------------- stills and video
 
-def longest_runs(decisions: list[dict]) -> dict[str, tuple[int, int]]:
-    """Per decision, the (start, end) indices (end exclusive) of its longest contiguous run; first one on ties."""
+def longest_runs(decisions: list[dict], keep=lambda d: True) -> dict[str, tuple[int, int]]:
+    """Per decision, the (start, end) indices (end exclusive) of its longest contiguous run of frames for which
+    keep(frame) holds; first one on ties."""
     best: dict[str, tuple[int, int]] = {}
-    start = 0
-    for i in range(1, len(decisions) + 1):
-        if i == len(decisions) or decisions[i]["decision"] != decisions[start]["decision"]:
+    start = None
+    for i in range(len(decisions) + 1):
+        if start is not None and (i == len(decisions) or not keep(decisions[i])
+                                  or decisions[i]["decision"] != decisions[start]["decision"]):
             name = decisions[start]["decision"]
             if name not in best or i - start > best[name][1] - best[name][0]:
                 best[name] = (start, i)
+            start = None
+        if start is None and i < len(decisions) and keep(decisions[i]):
             start = i
     return best
 
 
+def person_visible(d: dict) -> bool:
+    return any(p["observed"] for p in d["snapshot"]["persons"])
+
+
 def pick_stills(decisions: list[dict], overrides: dict[str, int]) -> dict[str, dict]:
-    runs = longest_runs(decisions)
+    """One still per decision: the middle frame of its longest run with a person visible, else of its longest run."""
+    with_person, any_frame = longest_runs(decisions, person_visible), longest_runs(decisions)
     out = {}
     for name in DECISIONS:
         if name in overrides:
@@ -221,9 +230,10 @@ def pick_stills(decisions: list[dict], overrides: dict[str, int]) -> dict[str, d
             if decisions[i]["decision"] != name:
                 raise SystemExit(f"--still {name}={i}: that frame's decision is {decisions[i]['decision']}")
             out[name] = {"index": i, "chosen_by": "--still"}
-        elif name in runs:
-            a, b = runs[name]
-            out[name] = {"index": (a + b - 1) // 2, "chosen_by": f"middle of longest run, frames {a}-{b - 1}"}
+        elif name in with_person or name in any_frame:
+            a, b = with_person.get(name) or any_frame[name]
+            what = "with a person visible" if name in with_person else "(no frame of it shows a person)"
+            out[name] = {"index": (a + b - 1) // 2, "chosen_by": f"middle of longest run {what}, frames {a}-{b - 1}"}
     return out
 
 
@@ -297,7 +307,10 @@ def main() -> None:
 
     out = dio.new_run_dir(cfg, f"demo_video_{n}f")
     rp.set_active_roots(rts)
-    hashes = dio.copy_configs(out, [cfg_path, data_cfg_path])
+    hashes = dio.copy_configs(out, [cfg_path])
+    # the dataset config holds this machine's dataset root: stored with paths as root tokens (hash of the original)
+    dio.write_json(out / "config_used" / data_cfg_path.name, dio.read_json(data_cfg_path))
+    hashes[data_cfg_path.name] = dio.sha256(data_cfg_path)
     by_index = {v["index"]: k for k, v in stills.items()}
     width = round(read_rgb(rp.resolve(inp["track_frames"][frames[0]["step"]]["rgb_path"], rts)).shape[1]
                   * float(cfg["scale"]))

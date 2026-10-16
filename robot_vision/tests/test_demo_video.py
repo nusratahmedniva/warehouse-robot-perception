@@ -37,6 +37,15 @@ class StillTests(unittest.TestCase):
         st = mdv.pick_stills(self.seq, {})
         self.assertEqual({k: v["index"] for k, v in st.items()}, {"STOP": 4, "MOVE": 7, "WAIT": 0})
 
+    def test_stills_prefer_frames_with_a_person(self):
+        seen = [person(1)]
+        seq = [dec("MOVE"), dec("MOVE"), dec("MOVE"), dec("MOVE", persons=seen), dec("STOP"),
+               dec("MOVE", persons=seen), dec("MOVE", persons=seen), dec("MOVE", persons=[person(2, observed=False)])]
+        self.assertEqual(mdv.longest_runs(seq, mdv.person_visible), {"MOVE": (5, 7)})
+        st = mdv.pick_stills(seq, {})
+        self.assertEqual((st["MOVE"]["index"], st["STOP"]["index"]), (5, 4))
+        self.assertIn("no frame of it shows a person", st["STOP"]["chosen_by"])
+
     def test_override_must_match_the_decision(self):
         self.assertEqual(mdv.pick_stills(self.seq, {"WAIT": 10})["WAIT"]["index"], 10)
         with self.assertRaises(SystemExit):
