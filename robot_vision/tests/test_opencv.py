@@ -18,7 +18,8 @@ import cv2  # noqa: E402
 # every cv2 name the pipeline uses (grep "cv2\." over robot_vision/*.py)
 USED = ["imdecode", "imencode", "cvtColor", "resize", "rectangle", "putText", "getTextSize", "VideoWriter",
         "VideoWriter_fourcc", "VideoCapture", "FONT_HERSHEY_SIMPLEX", "LINE_AA", "INTER_LINEAR", "INTER_AREA",
-        "IMREAD_COLOR", "COLOR_BGR2RGB", "CAP_PROP_FRAME_WIDTH", "CAP_PROP_FRAME_HEIGHT", "CAP_PROP_FRAME_COUNT"]
+        "IMREAD_COLOR", "COLOR_BGR2RGB", "CAP_PROP_FRAME_WIDTH", "CAP_PROP_FRAME_HEIGHT", "CAP_PROP_FRAME_COUNT",
+        "CAP_PROP_FOURCC", "CAP_PROP_FPS"]
 
 
 def pins() -> dict[str, str]:
