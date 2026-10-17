@@ -29,11 +29,14 @@
   "reference-camera-pose baseline", "camera_proxy", "proxy_route".
 - Save the exact config and git commit hash in every output folder.
 - Commit locally at checkpoints. Never push.
+- Always run Python from the project venv, never the system Python:
+  Windows robot_vision\.venv\Scripts\python.exe,
+  macOS robot_vision/.venv/bin/python.
 - Commit only after the full test suite passes, and check the exit
   status before committing. Windows PowerShell 5.1 has no '&&' and
-  continues after ';', so use e.g.
-  `python -m unittest discover -s tests; if ($LASTEXITCODE -eq 0) { git commit ... }`
-  (bash: `python -m unittest discover -s tests && git commit ...`;
+  continues after ';', so use e.g. (from robot_vision/)
+  `.\.venv\Scripts\python.exe -m unittest discover -s tests; if ($LASTEXITCODE -eq 0) { git commit ... }`
+  (macOS/bash: `.venv/bin/python -m unittest discover -s tests && git commit ...`;
   never pipe the test output through tail/grep before the check).
 - Code must stay macOS-compatible (checked by CI on macos-latest).
   Manual macOS runs are not required; do not list them as a

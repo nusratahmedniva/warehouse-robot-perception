@@ -44,6 +44,13 @@ def _pure(p: str | PurePath) -> PurePath:
     return PureWindowsPath(s) if re.match(r"^[A-Za-z]:[\\/]", s) or "\\" in s else PurePosixPath(s)
 
 
+def _win_abs(s: str) -> PureWindowsPath | None:
+    """The path if s is a Windows absolute path (drive or UNC), on any OS; else None.
+    On macOS/Linux a Windows path is a relative one-component name, so Path.is_absolute() cannot be used."""
+    p = _pure(s)
+    return p if isinstance(p, PureWindowsPath) and p.is_absolute() else None
+
+
 def relative_token(path: str | PurePath, rts: dict) -> str | None:
     """Token form of an absolute path under one of the roots, else None. Works for Windows paths on any OS."""
     p = _pure(path)
@@ -67,7 +74,7 @@ def store(path: str | Path, rts: dict, external_ok: bool = False) -> str:
     s = str(path)
     if TOKEN_RE.match(s):
         return s
-    p = Path(s) if Path(s).is_absolute() else Path(s).absolute()
+    p = _win_abs(s) or (Path(s) if Path(s).is_absolute() else Path(s).absolute())
     tok = relative_token(p, rts)
     if tok is not None:
         return tok
@@ -85,9 +92,9 @@ def resolve(value: str, rts: dict) -> Path:
             raise KeyError(f"Root {{{name}}} is not configured (needed for {value})")
         return rts[name] / rest if rest else rts[name]
     p = Path(value)
-    if not p.is_absolute():
+    if not (p.is_absolute() or _win_abs(value)):
         return rts["project_root"] / p
-    if p.exists():
+    if p.is_absolute() and p.exists():  # a Windows absolute path is never absolute (or present) on macOS
         return p
     raise FileNotFoundError(f"Legacy absolute path not found on this machine: {value}. "
                             f"Run migrate_run_paths.py on the run folder.")
