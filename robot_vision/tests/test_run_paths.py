@@ -36,6 +36,13 @@ class StoreResolveTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 rp.resolve(r"Q:\missing\file.png", rts)
 
+    def test_store_windows_paths_on_any_os(self):
+        rts = {k: v for k, v in OLD.items()}
+        self.assertEqual(rp.store(r"D:\OldData\RGB-D\x.png", rts), "{dataset_root}/x.png")
+        self.assertEqual(rp.store(r"C:\Users\n\m.bin", rts, external_ok=True), "<outside configured roots>/m.bin")
+        with self.assertRaises(ValueError):
+            rp.store(r"C:\Users\n\m.bin", rts)
+
     def test_writer_never_emits_absolute_paths(self):
         rts = {k: v for k, v in OLD.items()}
         out = rp.portable({"a": r"D:\OldData\RGB-D\x.png", "b": r"C:\Users\n\.cache\m.bin", "c": "https://x.org/y",

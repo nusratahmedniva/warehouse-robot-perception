@@ -20,11 +20,11 @@ jobs:
       run:
         working-directory: robot_vision
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true  # gesture module: the mapping and model checks compare against it
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
