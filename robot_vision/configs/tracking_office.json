@@ -1,0 +1,13 @@
+{
+  "detector": {
+    "weights": "models/yolo11n.pt",
+    "confidence": 0.10,
+    "nms_iou": 0.70,
+    "image_size": 640,
+    "batch_size": 1,
+    "classes": null
+  },
+  "tracker": "bytetrack.yaml",
+  "overlay_steps": [0, 150, 299],
+  "output_root": "outputs"
+}

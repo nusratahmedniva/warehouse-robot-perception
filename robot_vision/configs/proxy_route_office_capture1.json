@@ -1,0 +1,88 @@
+{
+  "label": "proxy_route",
+  "description": "Corridor around the recorded reference camera path; a THUD test fixture, not a planned robot route.",
+  "source": {
+    "fusion_run": "fuse_300f_20261011_042733",
+    "capture": "Office/dynamic/Capture_1",
+    "steps": [
+      0,
+      299
+    ],
+    "poses": "reference camera poses (controlled baseline)"
+  },
+  "plane_axes": [
+    "world_x",
+    "world_z"
+  ],
+  "centreline_xz_m": [
+    [
+      -41.6868,
+      1.0082
+    ],
+    [
+      -41.4493,
+      1.0823
+    ],
+    [
+      -41.2294,
+      1.201
+    ],
+    [
+      -41.0178,
+      1.334
+    ],
+    [
+      -40.8105,
+      1.4738
+    ],
+    [
+      -40.6059,
+      1.6174
+    ],
+    [
+      -40.4028,
+      1.7633
+    ],
+    [
+      -40.2007,
+      1.9104
+    ],
+    [
+      -39.9991,
+      2.0583
+    ],
+    [
+      -39.7968,
+      2.2051
+    ],
+    [
+      -39.5937,
+      2.3508
+    ],
+    [
+      -39.3932,
+      2.5002
+    ],
+    [
+      -39.2008,
+      2.6593
+    ],
+    [
+      -39.0727,
+      2.8721
+    ],
+    [
+      -38.9881,
+      3.1074
+    ],
+    [
+      -38.9118,
+      3.2965
+    ]
+  ],
+  "centreline_length_m": 3.7006,
+  "width_m": 1.0,
+  "width_rule": "footprint.required_width: (furthest right - furthest left extent of robot and load) + 2 * safety_margin_per_side_m",
+  "width_note": "robot and load footprint (load: configured, not measured)",
+  "resample_spacing_m": 0.25
+}

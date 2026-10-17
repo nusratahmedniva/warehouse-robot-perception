@@ -1,0 +1,15 @@
+{
+  "config": "configs/motion_office.json",
+  "sha256": "15821ff9ad4ebf4c5c9eda5f33d36ffa4d2faf08a6c4418df92019ec52661625",
+  "frozen_at": "2026-10-13T22:35:57",
+  "developed_on": "Synthetic_Scenes/Office/dynamic/Capture_2 (adjustment split; one full inference run, 1388 frames)",
+  "uncertainty_k": 0.0,
+  "decisions": [
+    "Class vote (1.0 s) replaces reset-on-class-change; resets only on gaps and jumps.",
+    "Mask-coverage-change rule (ratio 2.0 within 0.25 s) kept at its declared values; not tuned.",
+    "uncertainty_k: k = 2 did not lower the static-verified false-motion rate on Capture_2 (0% at k = 0 and k = 2), so by the declared rule k stays 0.",
+    "Ground-plane check: robust frame-fraction rule (>= 90% of frames within 2 cm) after desk tops segmented as floor failed the v1 all-frames rule on Capture_2."
+  ],
+  "use": "estimate_motion.py --final-evaluation refuses any motion config whose sha256 differs from this one.",
+  "not_used_yet": "Office/dynamic Capture_3, Capture_4 and Gym/dynamic have not been touched."
+}

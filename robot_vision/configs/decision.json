@@ -1,0 +1,89 @@
+{
+  "label": "Step 9 decision rules",
+  "declared": "2026-10-15, before any decision run or evaluation. Values chosen from physical reasoning (below), not from results; to be reviewed by the project owner. Any later change must be disclosed in the README.",
+
+  "changes_after_replay_demo": [
+    "2026-10-15, after the Capture_2 replay demo and before any evaluation; design decisions by the project owner, not tuning:",
+    "look_ahead added: rule 1 applies only inside the stop zone (corridor within look_ahead_m ahead); rule 2 predicts entry into the stop zone. Before: rule 1 used the whole corridor ahead.",
+    "load changed from a 0.70 m tray to a centred Euro pallet (0.80 m across travel): required width 0.90 -> 1.00 m.",
+    "one required width (footprint.load_footprint from robot.json and the load file it names); paths.load_config removed; the corridor width must equal it.",
+    "2026-10-15, second review after the replay demo, before any evaluation; design decisions by the project owner, not tuning:",
+    "caution_ahead_m derived: robot stopping distance + person_speed_mps * robot stopping time = 1.5 + 1.4 * 2.5 = 5.0 m (was a declared 3.0 m, equal to the look-ahead, which left no caution band in the corridor beyond the stop zone).",
+    "unlocated person: the exception uses distance_lower_bound_m, the 5th percentile of valid depths in the person's box (person_box_depth.py), instead of distance_m (a median); no valid depth -> no exception.",
+    "stop_hold_frames (3 frames) replaced by stop_hold_s = 0.2 s (frame-rate independent)."
+  ],
+
+  "paths": {
+    "robot_config": "configs/robot.json",
+    "output_root": "outputs"
+  },
+
+  "look_ahead": {
+    "formula": "look_ahead_m = v * reaction_s + v^2 / (2 * decel) + buffer_m",
+    "v": "robot.json max_speed_mps",
+    "decel": "robot.json decel_mps2",
+    "inputs_at_declaration": {"max_speed_mps": 1.0, "decel_mps2": 0.5},
+    "reaction_s": 0.5,
+    "buffer_m": 1.5,
+    "look_ahead_m": 3.0,
+    "check": "footprint.look_ahead recomputes look_ahead_m from robot.json and these inputs and refuses a mismatch; loading and the engine refuse caution_ahead_m < look_ahead_m."
+  },
+
+  "caution_ahead": {
+    "formula": "caution_ahead_m = stopping_distance + person_speed_mps * stopping_time; stopping_distance = v * reaction_s + v^2 / (2 * decel); stopping_time = reaction_s + v / decel",
+    "v": "robot.json max_speed_mps",
+    "decel": "robot.json decel_mps2",
+    "reaction_s": "look_ahead.reaction_s",
+    "inputs_at_declaration": {"max_speed_mps": 1.0, "decel_mps2": 0.5, "reaction_s": 0.5},
+    "person_speed_mps": 1.4,
+    "stopping_distance_m": 1.5,
+    "stopping_time_s": 2.5,
+    "caution_ahead_m": 5.0,
+    "check": "footprint.caution_ahead recomputes caution_ahead_m and refuses a mismatch; the loader sets the top-level caution_ahead_m from it."
+  },
+
+  "unlocated_distance": {
+    "source": "person_box_depth.py: percentile of the valid planar depths inside the person's detection box (reference-depth baseline in THUD; the Unity adapter must supply its own lower bound)",
+    "box_depth_percentile": 5
+  },
+
+  "motion_range_m": 6.0,
+  "entry_horizon_s": 3.0,
+  "entry_time_step_s": 0.05,
+  "caution_lateral_m": 1.0,
+  "person_memory_s": 1.0,
+  "unlocated_person_in_caution_zone": true,
+
+  "gesture_min_confidence": 0.6,
+  "stop_hold_s": 0.2,
+  "move_hold_s": 0.5,
+  "gesture_timeout_s": 0.5,
+  "resume_hold_s": 1.0,
+
+  "why": {
+    "look_ahead": "Owner's decision: reaction distance (1.0 m/s * 0.5 s = 0.5 m) + braking distance (1.0^2 / (2 * 0.5) = 1.0 m) + 1.5 m buffer = 3.0 m. A person beyond it is far enough for the robot to stop after detecting them inside it.",
+    "motion_range_m": "Decided before Step 9: the motion operating range. Step 8 was evaluated in the 0-3 m and 3-6 m bins; beyond 6 m motion counts as unknown.",
+    "entry_horizon_s": "A walking person (1.4 m/s) covers about 4 m in 3 s, more than the 3 m caution distance, so a crossing person is stopped for before reaching the stop zone. Shorter than the Step 8 route horizon (5 s), because constant-velocity prediction degrades with look-ahead.",
+    "entry_time_step_s": "0.05 s at 1.4 m/s is 7 cm per step, well under the corridor half-width.",
+    "caution_lateral_m": "One arm's length plus a step beside the corridor edge: a person this close can enter the corridor in under 1 s.",
+    "caution_ahead": "Owner's decision: how far a person walking at 1.4 m/s can come while the robot stops. Stopping distance 0.5 + 1.0 = 1.5 m, stopping time 0.5 + 1.0 / 0.5 = 2.5 s, so 1.5 + 1.4 * 2.5 = 5.0 m. Must be >= look_ahead_m (3.0 m); the 2 m beyond it is a caution band inside the corridor.",
+    "person_memory_s": "A tracked person whose position drops out (occlusion, invalid depth) keeps its latest valid position for 1 s. This equals resume_hold_s (1 s), so after a dropout nothing is released for at least memory + resume hold = 2 s.",
+    "unlocated_person_in_caution_zone": "A person detected without a usable position counts as in the caution zone unless distance_lower_bound_m is beyond caution_ahead_m. In THUD the lower bound is the 5th percentile of valid planar depths in the person's box: background pixels can only raise percentiles above the person's own depth, so errors go in the safe direction; with camera pitch 0 the ground distance is at least the planar depth. No valid depth -> no lower bound -> caution zone.",
+    "gesture_min_confidence": "Gesture-module outputs below this count as NONE. To be checked against the gesture module's own operating point when the adapter exists.",
+    "stop_hold_s": "Owner's decision: 0.2 s, frame-rate independent (3 frames meant acceptance on the 3rd event: 0.03 s at 60 Hz but 0.2 s at 10 Hz). Rejects flicker; much shorter than move_hold_s.",
+    "move_hold_s": "MOVE needs a deliberate gesture: longer than STOP because releasing the robot is the riskier direction.",
+    "gesture_timeout_s": "A gesture not refreshed for 0.5 s is no longer being shown.",
+    "resume_hold_s": "Asymmetric timing: STOP is immediate; MOVE (from any non-MOVE state, including the first start) needs the rule-7 conditions to hold continuously for 1 s."
+  },
+
+  "conventions": [
+    "Corridor: centreline in travel order, width = required_width_m (footprint.load_footprint); only the part from the robot's projected position onwards counts (robot_xz unknown -> from the start of the line).",
+    "Stop zone: the corridor from the robot's projected position to look_ahead_m ahead, flat at the far end.",
+    "Caution zone: outside the stop zone, within caution_lateral_m of the corridor edge, up to caution_ahead_m ahead (flat far end). It includes the corridor between look_ahead_m (3.0 m) and caution_ahead_m (5.0 m).",
+    "Rule 2 prediction: constant person velocity against the current stop zone; robot motion is covered by look_ahead_m. Covers sideways entry and head-on approach; the reason reports the gap and the closing speed (gap / time to entry).",
+    "Trusted motion: motion_trusted, a motion label other than unknown / insufficient_history, a velocity, a current position and distance_m <= motion_range_m. Otherwise motion counts as unknown.",
+    "Any current STOP gesture (accepted or not yet) cancels every MOVE gesture, so a STOP from one person always overrides a MOVE from another.",
+    "Passage: a 'clear' status without a width, or with a width below required_width_m, is treated as unknown / too_narrow; a passage evaluated for a different required width is treated as unknown.",
+    "Step 8 route fields (route_label, route_status, dist_to_route_centreline_m, time_to_route_*, p_enter_route_within_horizon) and the proxy_route width_m are proxies and are not read by decisions; decisions read only the proxy_route centreline."
+  ]
+}

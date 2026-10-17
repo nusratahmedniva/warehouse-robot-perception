@@ -1,0 +1,43 @@
+{
+  "tracking_run": "outputs/track_300f_20261011_020550",
+  "office_config": "configs/office.json",
+  "depth_config": "configs/depth_thud_synthetic.json",
+  "depth_source": "thud_reference_depth",
+  "depth_source_note": "THUD synthetic reference depth (Unity render). Results are a reference-depth fusion baseline; they do not measure any RGB-only depth model.",
+
+  "check_steps": [0, 150, 299],
+  "overlay_steps": [0, 150, 299],
+
+  "pixel_selection": {
+    "detector_to_seg_class": {"person": "person", "chair": "chair", "couch": "sofa"},
+    "background_seg_classes": ["wall", "floor", "ceiling"],
+    "min_selected_pixels": 50,
+    "min_valid_depth_fraction": 0.5
+  },
+
+  "floor_context": {
+    "strip_half_height_px": 8,
+    "min_floor_fraction": 0.3,
+    "floor_sample_pixels": 4000
+  },
+
+  "evaluation": {
+    "association_min_iou": 0.5,
+    "compatible_reference_labels": {
+      "person": ["people"],
+      "chair": ["Chair"],
+      "couch": ["Sofa"],
+      "tv": ["Computer"],
+      "laptop": ["laptop", "Computer"],
+      "keyboard": ["Computer"],
+      "potted plant": ["Plants", "Pot"],
+      "book": ["Book", "Folder"],
+      "bottle": ["cup"],
+      "cup": ["cup"],
+      "suitcase": ["Bag", "Box"],
+      "bench": ["Sofa", "Chair"],
+      "dining table": ["Desk", "Table"]
+    },
+    "box_margin_m": 0.05
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "note": "Provisional values chosen by the project owner. The load is configured in load_config (configured, not measured); its dimensions are to be measured later in Unity.",
+  "robot_width_m": 0.60,
+  "safety_margin_per_side_m": 0.10,
+  "max_speed_mps": 1.0,
+  "decel_mps2": 0.5,
+  "speed_note": "Added 2026-10-15 after the Step 9 replay demo (design decision, not tuning): inputs of the decision look-ahead (decision.json -> look_ahead).",
+  "load_config": "configs/load.json",
+  "required_passage_width_rule": "(furthest right - furthest left extent of robot and load from the robot centre line) + 2 * safety_margin_per_side_m; computed only by footprint.required_width / footprint.load_footprint"
+}

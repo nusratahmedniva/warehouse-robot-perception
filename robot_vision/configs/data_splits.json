@@ -1,0 +1,35 @@
+{
+  "captures": {
+    "Synthetic_Scenes/Office/dynamic/Capture_1": "development",
+    "Synthetic_Scenes/Office/dynamic/Capture_2": "adjustment",
+    "Synthetic_Scenes/Office/dynamic/Capture_3": "final_evaluation",
+    "Synthetic_Scenes/Office/dynamic/Capture_4": "final_evaluation",
+    "Synthetic_Scenes/Gym/dynamic/*": "cross_scene_final_evaluation",
+    "Synthetic_Scenes/Gym/dynamic/Capture_1": "excluded"
+  },
+  "final_evaluation_splits": ["final_evaluation", "cross_scene_final_evaluation"],
+  "excluded_splits": ["excluded"],
+  "rules": [
+    "development (Office/dynamic/Capture_1): existing Stage 1-4 and Step 8 outputs; code is developed and checked here.",
+    "adjustment (Office/dynamic/Capture_2): the only capture on which any parameter may be adjusted.",
+    "final_evaluation (Office/dynamic/Capture_3, Capture_4): untouched until one final evaluation with a frozen config.",
+    "cross_scene_final_evaluation (Gym/dynamic Captures 2-6): untouched cross-scene test, final evaluation only.",
+    "excluded (Gym/dynamic/Capture_1): prior use in the Stage 3 depth test, so it is not an untouched test capture; excluded from every evaluation split.",
+    "Scripts refuse captures in final_evaluation_splits unless --final-evaluation is passed, and always refuse captures in excluded_splits, even with --final-evaluation (data_splits.guard).",
+    "Exclusions take precedence over every other entry regardless of their order in captures (data_splits.split_of)."
+  ],
+  "recorded": {
+    "Office/dynamic split": "2026-10-13, before Step 8",
+    "Gym/dynamic cross-scene split": "2026-10-13, before any Capture_2 use and before the motion config was frozen",
+    "Gym/dynamic/Capture_1 exclusion": "2026-10-15, before any final evaluation (final_evaluation_done false)"
+  },
+  "prior_use": {
+    "Synthetic_Scenes/Office/dynamic/Capture_1": "Stage 1-4 and Step 8 development runs; Stage 3 fit of depth far plane and vertical FOV against reference 3D boxes.",
+    "Synthetic_Scenes/Office/dynamic/Capture_2": "Stage 3 held-out depth/intrinsics test.",
+    "Synthetic_Scenes/Office/dynamic/Capture_3": "not used",
+    "Synthetic_Scenes/Office/dynamic/Capture_4": "not used",
+    "Synthetic_Scenes/Gym/dynamic/Capture_1": "Stage 3 held-out depth/intrinsics test only (validate_depth.py: reference instance masks vs reference 3D boxes). No model, fusion or motion output was produced and nothing was fitted on it. Its RGB frames and people were never processed.",
+    "Synthetic_Scenes/Gym/dynamic/Capture_2-6": "not used"
+  },
+  "final_evaluation_done": false
+}

@@ -1,0 +1,124 @@
+{
+  "label": "Gesture adapter (MediaPipe gesture recognizer from the teammate's module)",
+  "declared": "2026-10-15, before any gesture run or evaluation. Crop values chosen from geometry (see why), not from results. Any later change must be disclosed in the README.",
+  "changes_after_first_smoke_run": [
+    "2026-10-15, after the smoke run gesture_smoke_4img_20261015_231147 and before any evaluation; owner's design decision, not tuning:",
+    "duplicate hands across overlapping crops are merged (assignment.duplicate_hand_iou_threshold) and each hand gets one owner by depth, then by the wrist inside exactly one box, else none. Before: person_crop gave the hand to every person whose crop found it; full_frame used the wrist-in-one-box rule only.",
+    "duplicate_hand_iou_threshold (0.5) was declared from reasoning (below) after the smoke run had shown one duplicated hand with box IoU 0.76; no labelled data was used."
+  ],
+  "source": {
+    "repository": "https://github.com/anisha274/media_pipe_gesture",
+    "submodule_path": "external/media_pipe_gesture",
+    "commit": "180e27962117611cc3e0ec0433a3202765cefd0f",
+    "file": "gesture_heuristics.py",
+    "author": "anisha274",
+    "licence": "MIT, as stated in the module's README (the repository has no LICENSE file at this commit)"
+  },
+  "model": {
+    "path": "../external/media_pipe_gesture/gesture_recognizer.task",
+    "path_relative_to": "the robot_vision folder",
+    "sha256": "97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482",
+    "categories": [
+      "None",
+      "Closed_Fist",
+      "Open_Palm",
+      "Pointing_Up",
+      "Thumb_Down",
+      "Thumb_Up",
+      "Victory",
+      "ILoveYou"
+    ]
+  },
+  "mapping": {
+    "STOP": [
+      "Open_Palm",
+      "Closed_Fist"
+    ],
+    "MOVE": [
+      "Pointing_Up",
+      "Victory",
+      "Thumb_Up"
+    ],
+    "other_categories_and_no_hand": "NONE",
+    "source": "gesture_heuristics.py at commit 180e2796, result_callback: Open_Palm / Closed_Fist -> STOP; Pointing_Up / Victory / Thumb_Up -> MOVE; any other category -> 'GESTURE: <name>' (no command); no hand -> 'SEARCHING...' (no command). Only the top category of each hand is used, as in her code."
+  },
+  "recognizer": {
+    "running_mode": "IMAGE",
+    "mirror_frames": false,
+    "min_hand_detection_confidence": 0.5,
+    "min_hand_presence_confidence": 0.5,
+    "note": "The two values are MediaPipe's internal hand-detector settings, copied unchanged from gesture_heuristics.py; they decide whether a hand is found, not whether a gesture is accepted. No gesture-score threshold is set (MediaPipe's canned classifier score_threshold stays None). The decision threshold gesture_min_confidence lives only in decision.json. Her code uses LIVE_STREAM on mirrored webcam frames; the adapter uses IMAGE mode on unmirrored robot frames."
+  },
+  "modes": {
+    "full_frame": {
+      "description": "Her original approach (baseline): the whole frame goes to the recognizer. Owner per hand: see assignment.",
+      "num_hands": 1
+    },
+    "person_crop": {
+      "description": "One recognizer call per tracked person: the upper part of the person box, with a margin, resized so its longer side is resize_long_side_px (aspect ratio kept). Copies of one hand from overlapping crops are merged; owner per hand: see assignment.",
+      "num_hands": 2,
+      "upper_fraction": 0.6,
+      "margin_fraction_of_box_height": 0.1,
+      "resize_long_side_px": 256
+    }
+  },
+  "assignment": {
+    "duplicate_hand_iou_threshold": 0.5,
+    "wrist_depth_half_window_px": 2,
+    "depth_match_max_m": 0.8,
+    "depth_margin_m": 0.3,
+    "candidates": "persons whose person_crop region (upper part of the box plus margin) contains the wrist, plus the persons whose crop found the hand (both modes)",
+    "rule": "1. Hands with box IoU >= duplicate_hand_iou_threshold are one hand; the highest-scoring copy is kept, the others are recorded in 'duplicates'. 2. Owner: the candidate whose depth_m best matches the median valid depth in a (2 * wrist_depth_half_window_px + 1)^2 window at the wrist, if that gap <= depth_match_max_m and the next candidate's gap is larger by >= depth_margin_m; otherwise the person whose box contains the wrist, if exactly one box does; otherwise none (track_id null: ambiguous / no_containing_box).",
+    "depth_inputs": "Supplied by the caller: an (H, W) depth image in metres and PersonBox.depth_m on the same scale (THUD: planar reference depth and the Step 4 person depth, a reference-depth baseline; Unity: the scene adapter). Without them, step 2 falls back to the wrist rule.",
+    "why": {
+      "duplicate_hand_iou_threshold": "Copies of one hand from two crops have nearly the same landmarks in full-image pixels; two different hands overlap by IoU 0.5 only if one hand covers the other, so the copies are merged and distinct hands are not. The usual overlap level for treating two boxes as one object (as in non-maximum suppression).",
+      "wrist_depth_half_window_px": "5 x 5 pixels: tolerates a few invalid or edge pixels at the wrist while staying inside a wrist that is about 10 px wide at 5 m.",
+      "depth_match_max_m": "A hand can be up to an arm's length (about 0.7 m) in front of the person's body depth, plus 0.1 m for depth and landmark error. A larger gap means the hand is not that person's.",
+      "depth_margin_m": "About one body thickness: two candidates whose depth gaps differ by less than this cannot be told apart by depth, so the wrist rule decides."
+    }
+  },
+  "events": {
+    "rule": "to_gesture_events() turns one frame's detections into one GestureEvent per track_id (null included): STOP if any detection of that track is STOP, else MOVE if any is MOVE, else NONE; confidence = the highest raw score among the detections of the chosen gesture (0.0 when no hand). Raw scores are passed on unfiltered.",
+    "why": "A person may show two hands (person_crop, num_hands 2), and unassigned hands share track_id null; the decision's gesture filter keeps only the latest event per track. Preferring STOP keeps the safe direction."
+  },
+  "why": {
+    "full_frame.num_hands": "1, as in her code: the baseline is her approach unchanged.",
+    "person_crop.num_hands": "2: a crop holds one person, who may gesture with either hand.",
+    "upper_fraction": "Command gestures (raised palm, fist, pointing up, thumb up, victory) are shown between hip and above the head. In a standing person's box the hip is near 0.5 of the height from the top; 0.6 keeps the hands of a lowered arm and drops the legs.",
+    "margin_fraction_of_box_height": "0.1 of the person's height (about 17 cm for 1.7 m) on every side, so a hand at the edge of a loose or clipped detection box is not cut off. Box height is used because it scales with distance; box width changes with pose.",
+    "resize_long_side_px": "At 5 m a 1.7 m person is about 160 px tall in a 530 px THUD frame (fy 459), so the crop is about 130 px and a hand about 16 px. The full frame is shrunk to the palm detector's input (192 px), which leaves the hand about 4 px; the crop is enlarged instead. 256 px is above the detector input, so the crop is never shrunk below it."
+  },
+  "smoke": {
+    "image_dir": "sample_images/gesture",
+    "image_suffixes": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".bmp"
+    ],
+    "person_detector_config": "configs/tracking_office.json",
+    "person_class": "person",
+    "note": "Sample images are git-ignored. Person boxes for person_crop come from the Stage 2 detector (weights and detector confidence from the tracking config), one image at a time, no tracking: track_id = det<k>. A smoke test, not an evaluation."
+  },
+  "evaluation": {
+    "status": "not_evaluated",
+    "status_note": "not_evaluated until Unity recordings with ground-truth gesture labels exist.",
+    "unity_labels": null,
+    "predictions": null,
+    "labels_format": "CSV with columns frame_id, track_id, gesture_true (STOP / MOVE / NONE), distance_m: one row per person and frame, written by the Unity scene. Read only by gesture_eval.py.",
+    "predictions_format": "detections.jsonl of an adapter run (GestureDetection records with frame_id), both modes.",
+    "distance_bins_m": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "bin_half_width_m": 0.5,
+    "decision_config": "configs/decision.json",
+    "note": "Accuracy is reported per mode and distance bin, raw (no threshold) and at decision.json gesture_min_confidence (below it -> NONE, as the decision does). Coverage = labelled persons whose track received a hand detection in that mode."
+  },
+  "paths": {
+    "output_root": "outputs"
+  }
+}

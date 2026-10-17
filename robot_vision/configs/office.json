@@ -1,0 +1,38 @@
+{
+  "dataset_root": "D:/RGB-D",
+  "capture": "Synthetic_Scenes/Office/dynamic/Capture_1",
+  "rgb_dir": "RGB",
+  "semantic_dir": "Label/Semantic",
+  "label_dir": "Label",
+  "annotation_definitions": "Label/annotation_info/annotation_definitions.json",
+  "rgb_sensor_id": "camera_0",
+  "semantic_annotation_id": "semantic segmentation",
+  "palette_tolerance": 1,
+  "output_root": "outputs",
+
+  "model": {
+    "id": "nvidia/segformer-b0-finetuned-ade-512-512",
+    "revision": "489d5cd81a0b59fab9b7ea758d3548ebe99677da"
+  },
+
+  "project_classes": ["other", "wall", "floor", "ceiling", "person", "chair", "sofa"],
+  "mean_iou_classes": ["wall", "floor", "ceiling", "person", "chair", "sofa"],
+
+  "prediction_mapping": {
+    "wall": ["wall"],
+    "floor": ["floor"],
+    "ceiling": ["ceiling"],
+    "person": ["person"],
+    "chair": ["chair", "armchair", "swivel chair"],
+    "sofa": ["sofa"]
+  },
+
+  "reference_mapping": {
+    "wall": ["wall"],
+    "floor": ["Floor"],
+    "ceiling": ["Ceiling"],
+    "person": ["people"],
+    "chair": ["Chair"],
+    "sofa": ["Sofa"]
+  }
+}

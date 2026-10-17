@@ -1,0 +1,107 @@
+{
+ "name": "rule5_passage_not_confirmed",
+ "description": "MOVE held, but the passage is blocked, unknown, not_evaluated, or 'clear' without a width: WAIT.",
+ "config_assumptions": {
+  "move_hold_s": 0.5,
+  "resume_hold_s": 1.0,
+  "gesture_timeout_s": 0.5,
+  "stop_hold_s": 0.2,
+  "gesture_min_confidence": 0.6,
+  "required_width_m": 1.0,
+  "look_ahead_m": 3.0,
+  "caution_lateral_m": 1.0,
+  "caution_ahead_m": 5.0,
+  "entry_horizon_s": 3.0,
+  "motion_range_m": 6.0,
+  "person_memory_s": 1.0
+ },
+ "corridor": {
+  "label": "scenario_corridor",
+  "centreline_xz_m": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    20.0
+   ]
+  ],
+  "width_m": "required"
+ },
+ "time": {
+  "start_s": 0.0,
+  "end_s": 8.0,
+  "dt_s": 0.1
+ },
+ "robot_xz": [
+  0.0,
+  0.0
+ ],
+ "persons": [],
+ "passage": [
+  {
+   "from_t": 0,
+   "to_t": 2,
+   "status": "blocked",
+   "available_width_m": null
+  },
+  {
+   "from_t": 2,
+   "to_t": 4,
+   "status": "unknown",
+   "available_width_m": null
+  },
+  {
+   "from_t": 4,
+   "to_t": 6,
+   "status": "not_evaluated",
+   "available_width_m": null
+  },
+  {
+   "from_t": 6,
+   "to_t": 99,
+   "status": "clear",
+   "available_width_m": null
+  }
+ ],
+ "gestures": [
+  {
+   "from_t": 0,
+   "to_t": 99,
+   "track_id": "operator",
+   "gesture": "MOVE",
+   "confidence": 0.9
+  }
+ ],
+ "expect": [
+  {
+   "from_t": 0,
+   "to_t": 2,
+   "decision": "WAIT",
+   "rule": 5,
+   "reason_contains": "status blocked"
+  },
+  {
+   "from_t": 2,
+   "to_t": 4,
+   "decision": "WAIT",
+   "rule": 5,
+   "reason_contains": "status unknown"
+  },
+  {
+   "from_t": 4,
+   "to_t": 6,
+   "decision": "WAIT",
+   "rule": 5,
+   "reason_contains": "status not_evaluated"
+  },
+  {
+   "from_t": 6,
+   "to_t": 99,
+   "decision": "WAIT",
+   "rule": 5,
+   "reason_contains": "clear without a measured width"
+  }
+ ]
+}

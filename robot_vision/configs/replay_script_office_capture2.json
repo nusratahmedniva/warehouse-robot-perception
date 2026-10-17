@@ -1,0 +1,14 @@
+{
+  "label": "replay with placeholder passage and gestures",
+  "declared": "2026-10-15, before the replay was run; scripted inputs, not tuned on any result",
+  "note": "Demo only, not an evaluation. People come from the frozen Step 8 motion run on Office/dynamic/Capture_2 (adjustment split). The passage and the gestures are scripted placeholders: Step 6 and the gesture adapter do not exist yet.",
+  "passage_note": "placeholder passage: status clear, 1.50 m is a scripted value, not a measurement",
+  "passage": [
+    {"from_t": 0.0, "to_t": 99.0, "status": "clear", "available_width_m": 1.50}
+  ],
+  "gestures_note": "scripted gestures from people who are not in the THUD scene: a MOVE shown from 0.5 s to the end, and a STOP from a second gesturer between 12.0 s and 13.0 s",
+  "gestures": [
+    {"from_t": 0.5, "to_t": 99.0, "track_id": "scripted_operator", "gesture": "MOVE", "confidence": 1.0},
+    {"from_t": 12.0, "to_t": 13.0, "track_id": "scripted_second_person", "gesture": "STOP", "confidence": 1.0}
+  ]
+}

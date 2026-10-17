@@ -1,0 +1,15 @@
+{
+  "label": "configured, not measured",
+  "load_type": "Euro pallet (EPAL), 1.20 x 0.80 m",
+  "orientation": "0.80 m side across the direction of travel, 1.20 m side along it",
+  "width_m": 0.80,
+  "length_m": 1.20,
+  "lateral_offset_m": 0.0,
+  "lateral_offset_convention": "load centre minus robot centre line, across the direction of travel; positive = to the robot's right",
+  "length_note": "length_m is recorded but not used by any rule yet",
+  "note": "Not measured: to be replaced by a measurement from the Unity warehouse scene.",
+  "history": [
+    "2026-10-15: first declared as a 0.70 m tray (Step 9, before any decision run).",
+    "2026-10-15: changed to a centred Euro pallet after the Step 9 replay demo. Design decision by the project owner, not tuning; no evaluation has run."
+  ]
+}

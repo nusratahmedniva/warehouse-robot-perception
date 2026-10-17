@@ -1,0 +1,22 @@
+{
+  "label": "Demo video renderer (presentation only: draws an existing replay run; no inference, no reference data, no thresholds)",
+  "paths": {
+    "output_root": "outputs",
+    "dataset_config": "configs/office.json"
+  },
+  "corner_label": "THUD++ replay: reference depth, placeholder passage and gestures",
+  "scale": 2,
+  "codec_preference": ["avc1", "mp4v"],
+  "codec_note": "avc1 = H.264 in MP4 (plays in Windows Media Player / Films & TV, macOS QuickTime, PowerPoint, browsers); OpenCV writes it through Media Foundation on Windows and AVFoundation on macOS. mp4v (MPEG-4 Part 2) is a fallback that QuickTime may refuse; the codec actually written is read back and recorded in run_info.json.",
+  "playback": "real time: fps = (frames - 1) / (last timestamp - first timestamp) of the replay run",
+  "colors_bgr": {
+    "MOVE": [60, 180, 75],
+    "STOP": [40, 40, 220],
+    "WAIT": [0, 176, 255],
+    "box_stop_zone": [40, 40, 220],
+    "box_caution": [0, 176, 255],
+    "box_other": [235, 235, 235]
+  },
+  "stills": "one per decision (STOP, MOVE, WAIT): the middle frame of that decision's longest contiguous run of frames with a person visible (else of its longest run), unless --still DECISION=FRAME_INDEX is given",
+  "stills_rule_change": "2026-10-17, presentation only: the first render (outputs/demo_video_1388f_20261017_000506) used the middle of the longest run, which gave MOVE and WAIT stills without any person; the person-visible preference was added after seeing them"
+}

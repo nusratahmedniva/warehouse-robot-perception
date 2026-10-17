@@ -1,0 +1,19 @@
+# Common dependencies (all platforms). Versions are the ones tested on Windows / Python 3.12.14.
+# PyTorch is NOT listed here: install the platform-specific build first (see README.md).
+transformers==5.19.0
+huggingface_hub==2.2.0
+numpy==2.5.2
+pillow==12.3.0
+matplotlib==3.11.2
+# Stage 2: detection and tracking. Ultralytics does not replace an installed PyTorch;
+# lap and scipy are listed so ByteTrack does not try to install them at runtime.
+ultralytics==8.4.175
+lap==0.5.13
+scipy==1.18.1
+opencv-python==5.0.0.93
+# cv2 comes from two packages that install the same module: opencv-python (required by ultralytics) and
+# opencv-contrib-python (required by mediapipe). Keep both at the same version: never upgrade one without the
+# other (tests/test_opencv.py checks this).
+opencv-contrib-python==5.0.0.93
+# Gesture adapter only (imported lazily in gesture_adapter.py). No wheel for Intel macOS, where it is skipped.
+mediapipe==1.1.1; sys_platform != "darwin" or platform_machine == "arm64"

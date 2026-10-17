@@ -1,0 +1,31 @@
+{
+  "applies_to": "THUD Synthetic_Scenes (Unity), 730x530 Depth/depth_N.png, checked on Office and Gym captures",
+  "encoding": "linear_planar_z",
+  "far_m": 10.0,
+  "saturated_raw_value": 65535,
+  "saturated_meaning": "at or beyond far_m; true distance unknown, treated as invalid",
+  "intrinsics": {
+    "model": "square-pixel pinhole from vertical field of view, principal point at image centre",
+    "vertical_fov_deg": 60.0,
+    "pixel_centre_convention": "index + 0.5",
+    "camera_axes": "x right, y up, z forward (Unity)",
+    "recorded_camera_intrinsic_in_metadata": "NOT pixel units; do not use (fx 1013.89, fy 1520.83)"
+  },
+  "validation": {
+    "script": "validate_depth.py",
+    "fit_capture": "Synthetic_Scenes/Office/dynamic/Capture_1",
+    "test_captures": [
+      "Synthetic_Scenes/Office/dynamic/Capture_2",
+      "Synthetic_Scenes/Office/static/Capture_1",
+      "Synthetic_Scenes/Gym/dynamic/Capture_1",
+      "Synthetic_Scenes/Gym/static/Capture_1"
+    ],
+    "summary": "Back-projected instance-mask pixels lie inside the dataset 3D boxes: chairs 100% at 0 cm tolerance, desks 100% within 0.5 cm, all Gym classes >= 99.6% within 1 cm and 100% within 2 cm. Office sofa boxes do not enclose the whole sofa (consistent one-sided overhang), so sofa is excluded from the error estimate. Rejected: millimetres (0%), ray distance (25-42%), recorded intrinsics (6-16%).",
+    "error_estimate": "Combined depth + intrinsics error within about 2 cm over roughly 0.5-10 m on synthetic scenes, measured against Unity 3D boxes (which may themselves be slightly loose)."
+  },
+  "not_validated": [
+    "Real_Scenes captures (different sensor and format)",
+    "Synthetic captures with other image sizes or camera settings",
+    "Any monocular or relative depth model output"
+  ]
+}

@@ -1,0 +1,47 @@
+name: unit-tests
+
+# Runs the robot_vision unit tests on Windows and macOS. No THUD data or run outputs exist on the runners:
+# dataset tests skip because the configured dataset root is missing (THUD_DATASET_ROOT is not set), and the
+# run-folder checks skip because outputs/ is not in Git.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: robot_vision
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true  # gesture module: the mapping and model checks compare against it
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: robot_vision/requirements.txt
+
+      - name: Install PyTorch (CPU build on Windows, default build on macOS)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          else
+            python -m pip install torch torchvision
+          fi
+
+      - name: Install project requirements
+        run: python -m pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v

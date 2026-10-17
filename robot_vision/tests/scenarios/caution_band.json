@@ -1,0 +1,129 @@
+{
+ "name": "caution_band",
+ "description": "Caution band in the corridor between look_ahead_m (3 m) and caution_ahead_m (5 m). Trusted stationary person at 4.5 m: no STOP. Untrusted person standing at 4.5 m: STOP rule 4. Untrusted person at 5.5 m: no STOP.",
+ "config_assumptions": {
+  "move_hold_s": 0.5,
+  "resume_hold_s": 1.0,
+  "gesture_timeout_s": 0.5,
+  "stop_hold_s": 0.2,
+  "gesture_min_confidence": 0.6,
+  "required_width_m": 1.0,
+  "look_ahead_m": 3.0,
+  "caution_lateral_m": 1.0,
+  "caution_ahead_m": 5.0,
+  "entry_horizon_s": 3.0,
+  "motion_range_m": 6.0,
+  "person_memory_s": 1.0
+ },
+ "corridor": {
+  "label": "scenario_corridor",
+  "centreline_xz_m": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    20.0
+   ]
+  ],
+  "width_m": "required"
+ },
+ "time": {
+  "start_s": 0.0,
+  "end_s": 5.0,
+  "dt_s": 0.1
+ },
+ "robot_xz": [
+  0.0,
+  0.0
+ ],
+ "persons": [
+  {
+   "track_id": 30,
+   "from_t": 0,
+   "to_t": 2.0,
+   "position_xz": [
+    0.0,
+    4.5
+   ],
+   "velocity_xz": [
+    0.0,
+    0.0
+   ],
+   "motion_label": "stationary",
+   "motion_trusted": true
+  },
+  {
+   "track_id": 30,
+   "from_t": 2.0,
+   "to_t": 3.0,
+   "position_xz": [
+    0.0,
+    4.5
+   ],
+   "velocity_xz": null,
+   "motion_label": "unknown",
+   "motion_trusted": false
+  },
+  {
+   "track_id": 30,
+   "from_t": 3.0,
+   "to_t": 99,
+   "position_xz": [
+    0.0,
+    5.5
+   ],
+   "velocity_xz": null,
+   "motion_label": "unknown",
+   "motion_trusted": false
+  }
+ ],
+ "passage": [
+  {
+   "from_t": 0,
+   "to_t": 99,
+   "status": "clear",
+   "available_width_m": 1.5
+  }
+ ],
+ "gestures": [
+  {
+   "from_t": 0,
+   "to_t": 99,
+   "track_id": "operator",
+   "gesture": "MOVE",
+   "confidence": 0.9
+  }
+ ],
+ "expect": [
+  {
+   "from_t": 1.5,
+   "to_t": 2.0,
+   "decision": "MOVE",
+   "rule": 7
+  },
+  {
+   "from_t": 2.0,
+   "to_t": 3.0,
+   "decision": "STOP",
+   "rule": 4,
+   "track_ids": [
+    30
+   ],
+   "reason_contains": "inside the corridor beyond the stop zone, 4.50 m ahead"
+  },
+  {
+   "from_t": 3.0,
+   "to_t": 4.0,
+   "decision": "WAIT",
+   "rule": 8
+  },
+  {
+   "from_t": 4.0,
+   "to_t": 99,
+   "decision": "MOVE",
+   "rule": 7
+  }
+ ]
+}
