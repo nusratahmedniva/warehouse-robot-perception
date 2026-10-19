@@ -21,8 +21,8 @@ Specification: docs/project_flow.md
   outputs store paths relative to configured roots.
 - Never copy datasets into the repo. Datasets, model weights, outputs
   and CLAUDE.local.md stay git-ignored.
-- Do not modify my friend's gesture module (git submodule at
-  external/media_pipe_gesture). Connect to it only through an adapter.
+- Do not modify Anisha's (GitHub: anisha274) gesture module (git
+  submodule at external/media_pipe_gesture). Connect to it only through an adapter.
 - Do not rerun successful inference. Never overwrite existing output
   folders; each run writes a new timestamped folder under outputs/.
 - Reference (ground-truth) data is read only by evaluation code.
