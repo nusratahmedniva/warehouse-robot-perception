@@ -63,7 +63,10 @@ Specification: docs/project_flow.md
   60.0 deg, Unity default). Recorded camera_intrinsic is not in pixel
   units and is not used.
 - Depth: planar (forward-axis); fitted far plane 9.966 m (~10 m);
-  saturated pixels are invalid.
+  saturated pixels are invalid. This 10 m far plane applies to the
+  THUD++ data only. The Unity cameras use no rendered depth (v3 takes
+  distance from flat-floor geometry); their far clip is 100 m
+  (robot_unity.json), checked at Play against the scene diagonal.
 - Pose: quaternion [x, y, z, w]; world = R * p_cam + t; y is up,
   x-z is the ground plane.
 - Device selection: CUDA, then MPS, then CPU

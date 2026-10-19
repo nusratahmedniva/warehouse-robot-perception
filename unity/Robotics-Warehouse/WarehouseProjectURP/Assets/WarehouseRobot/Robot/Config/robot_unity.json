@@ -1,0 +1,43 @@
+{
+  "note": "Step 1 Unity robot (2026-10-19). Body size and drive limits come from the shared robot.json named in paths; this file holds only the Unity-side details. Provisional simulation values, not measured, not tuned. After changing anything here or in robot.json, run the menu Warehouse Robot > Build Robot Prefab again.",
+  "conventions": "Robot frame: +Z forward, +Y up (Unity, left-handed). v > 0 drives forward. omega > 0 turns left (counter-clockwise seen from above, REP-103 sign); Unity angularVelocity.y = -omega. pan_deg > 0 turns the pan camera left; pan 0 looks along the robot's forward axis. tilt_deg must be 0 (level camera, required by the lower-bound person distance). The 360 equirectangular image is world-aligned (RenderToCubemap renders world-axis faces): it does not rotate when the robot turns.",
+  "far_clip_note": "far_m is a render distance only: v3 takes person distance from flat-floor geometry, not from rendered depth, so far_m must reach the whole warehouse (otherwise distant walls and the ceiling render as skybox). Checked at Play against the scene diagonal (RobotRig). Changed 2026-10-19 after the first Unity test: pan-tilt 10 -> 100 m, 360 50 -> 100 m. The 10 m far plane belongs to the THUD++ data only.",
+  "paths": {
+    "repo_root_relative_to_unity_project": "../../..",
+    "robot_config": "robot_vision/configs/robot.json"
+  },
+  "body": {
+    "ground_clearance_m": 0.05,
+    "collider_bottom_m": 0.02,
+    "wheel_radius_m": 0.10,
+    "wheel_width_m": 0.06,
+    "mass_kg": 60.0
+  },
+  "mast": {
+    "radius_m": 0.025,
+    "forward_offset_m": 0.0
+  },
+  "camera_360": {
+    "height_m": 1.60,
+    "face_size_px": 1024,
+    "width_px": 2048,
+    "height_px": 1024,
+    "frame_rate_hz": 10.0,
+    "near_m": 0.05,
+    "far_m": 100.0
+  },
+  "pan_tilt_camera": {
+    "height_m": 1.20,
+    "width_px": 730,
+    "height_px": 530,
+    "vertical_fov_deg": 60.0,
+    "tilt_deg": 0.0,
+    "near_m": 0.1,
+    "far_m": 100.0,
+    "pan_min_deg": -180.0,
+    "pan_max_deg": 180.0
+  },
+  "debug": {
+    "keyboard_pan_speed_dps": 60.0
+  }
+}
