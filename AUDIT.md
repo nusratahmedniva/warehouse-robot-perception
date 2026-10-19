@@ -13,6 +13,34 @@ evidence either way; nothing is guessed).
 
 ---
 
+## Update 2026-10-20 (2): Step 0 message format and Step 3 TCP link + watchdog
+
+| Step | Status | Evidence | Still missing |
+|---|---|---|---|
+| **0** Message format | **done** | `docs/protocol.md` (framing, message types, units, camera intrinsics, panorama axis); `hri_protocol.py` and `HriProtocol.cs`; golden frame `robot_vision/tests/fixtures/hri_frame_v1.frame` checked byte-for-byte in Python and Unity | `command` message (v, w from Python) is reserved, used in Step 5 |
+| **3** TCP link + watchdog | **done (shadow mode)** | `hri_bridge_server.py` (+ `configs/bridge.json`), `HriBridgeClient.cs`, `PythonLinkWatchdog.cs`; `RttTracker` | Python perception is a stub until Step 4; decisions still use the scripted sources |
+
+Per-run metrics added: Unity-Python round-trip delay (mean/max per run, latest per 0.1 s row) and Python-side
+inference time (mean/max, per model when Step 4 reports models). With the stub, "inference" is only the JPEG
+check, so it is not a model timing.
+
+Verification (macOS, batch mode; the Python server ran as a separate process):
+- Unity EditMode tests on the real project: 37/37 (adds golden frame decode/re-encode, round trip, invalid
+  frames, perception parsing, RttTracker, SHA-256). Python: protocol, server end-to-end (hello, observations
+  with real JPEGs, ack_seq, heartbeat gaps < 0.3 s, bad image flagged, protocol error then reconnect), panorama
+  bearing.
+- One full Task 2 trial with `link_required` true: SUCCESS; 627 observations, 0 bad images, round trip mean
+  3.0 ms / max 58 ms (localhost), max gap between observations 0.17 s, `bye` received on exit.
+- Watchdog: Python killed while the robot drove at 0.5 m/s: watchdog stop logged 0.3-0.4 s after the link
+  dropped (0.1 s telemetry rows), robot at 0 m/s 0.4 s later (emergency deceleration), stayed stopped.
+- Panorama axis measured: centre column = world +z, world +x at column 1535/2048, so world yaw grows to the right.
+- An image received by Python was checked by eye (730 x 530, upright, worker visible).
+
+Found while verifying: scenes built before this step have no HriBridgeClient; with `link_required` true the
+robot never moved. TrialManager now refuses to start in that case and says to run Build Guided Scene again.
+
+---
+
 ## Update 2026-10-20: Steps 1, 2 and the Unity part of Step 6
 
 Sections 1-5 below are the original audit; this update supersedes them for the rows listed here.

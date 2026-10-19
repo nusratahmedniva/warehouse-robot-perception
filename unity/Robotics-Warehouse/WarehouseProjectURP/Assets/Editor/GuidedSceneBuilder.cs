@@ -156,6 +156,7 @@ namespace WarehouseHRI.EditorTools
             tm.robot = robot.GetComponent<DiffDriveRobot>();
             tm.brain = robot.GetComponent<RobotBrain>();
             tm.telemetry = robot.GetComponent<RobotTelemetry>();
+            tm.bridge = robot.GetComponent<HriBridgeClient>();
             tm.worker = worker;
             tm.startNode = a;
             tm.endpoints = new List<RoadNode> { e1, e2, e3, e4 };
@@ -393,6 +394,14 @@ namespace WarehouseHRI.EditorTools
             hud.panTilt = pan;
             hud.cam360 = cam360;
             hud.robotDisplay = text;
+            var bridge = GetOrAdd<HriBridgeClient>(robot);
+            bridge.watchdog = watchdog;
+            bridge.robot = drive;
+            bridge.brain = brain;
+            bridge.panTilt = pan;
+            bridge.cam360 = cam360;
+            telemetry.bridge = bridge;
+            hud.bridge = bridge;
             GetOrAdd<NavMeshModifier>(robot).ignoreFromBuild = true;
 
             foreach (var comp in robot.GetComponents<Component>()) EditorUtility.SetDirty(comp);

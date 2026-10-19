@@ -7,13 +7,17 @@ namespace WarehouseHRI
     /// 360 deg camera on top of the mast. Every captureIntervalS it renders a cubemap and converts it to an
     /// equirectangular RenderTexture (width = 2 x height). The cubemap faces are world-aligned (Unity renders
     /// RenderToCubemap along the world axes, not the camera's rotation), so the panorama is world-aligned and the
-    /// robot heading must be applied by whoever reads it (Step 3 sends the heading with every frame). The exact
-    /// column of world +z in the panorama is not verified yet; check it in the Editor before Step 4 relies on it.
+    /// robot heading must be applied by whoever reads it (Step 3 sends the heading with every frame).
+    /// Measured 2026-10-20 (red marker at world +x): the centre column looks along world +z and world yaw grows
+    /// to the right (+x at 3/4 of the width), i.e. world yaw = (u / width - 0.5) * 360 deg, Unity yaw convention.
     /// The camera component itself stays disabled; it only renders on capture.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class Camera360 : MonoBehaviour
     {
+        /// <summary>Where world +x appears in the panorama relative to the centre column (world +z); measured in Step 3.</summary>
+        public const string PlusXColumn = "right_of_centre (world yaw = (u / width - 0.5) * 360 deg)";
+
         public bool useConfigFile = true;
         public float captureIntervalS = 0.1f;
         public int cubeFaceSize = 512;

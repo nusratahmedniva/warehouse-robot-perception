@@ -2,8 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 using UnityEngine;
 
 namespace WarehouseHRI
@@ -37,8 +35,13 @@ namespace WarehouseHRI
         public string collided_with = "";
         public float closest_human_m;
         public string closest_human_note = "horizontal distance from the robot collider to the worker's centre axis; true positions (scoring only)";
-        public string inference_ms = "not_evaluated (stub until Step 4)";
-        public string round_trip_ms = "not_evaluated (stub until Step 3)";
+        public string link_status = "disabled";
+        public string link_perception = "";
+        public string link_metrics_note = "-1 = no samples (link disabled or no replies). Round trip: observation written -> its perception reply read, Unity clock. Inference: Python-side time per observation (decode + models).";
+        public int link_replies;
+        public float round_trip_mean_ms = -1f, round_trip_max_ms = -1f;
+        public float inference_mean_ms = -1f, inference_max_ms = -1f;
+        public string inference_per_model_ms = "";
         public string abort_reason;
         public string telemetry_file;
     }
@@ -57,11 +60,13 @@ namespace WarehouseHRI
             "a_x,a_z,b_name,b_x,b_z,straight_line_m,travelled_m,total_s,navigate_s,scan_s,approach_s,ask_s," +
             "gesture_s,execute_s,safety_stop_s,avg_speed_mps,max_speed_mps,avg_turn_dps,max_turn_dps," +
             "final_distance_to_b_m,junctions_shown_vs_read,collisions,human_collisions,closest_human_m," +
-            "inference_ms,round_trip_ms";
+            "inference_mean_ms,round_trip_mean_ms";
 
         [Header("Scene references")]
         public DiffDriveRobot robot;
         public RobotBrain brain;
+        [Tooltip("Optional: the Python bridge (Step 3).")]
+        public HriBridgeClient bridge;
         public RobotTelemetry telemetry;
         public GestureWorker worker;
         public RoadNode startNode;
@@ -124,7 +129,9 @@ namespace WarehouseHRI
             error = null;
             if (robot == null || brain == null || worker == null || startNode == null) error = "robot, brain, worker and startNode must be assigned";
             else if (m_Cfg.trials.dev_seed == m_Cfg.trials.final_seed) error = "dev_seed and final_seed must differ";
-            else if (m_Cfg.IsFinal && !m_Cfg.frozen) error = "final mode requires \"frozen\": true in hri_config.json (freeze thresholds after the development trials)";
+            else if (m_Cfg.link.enabled && m_Cfg.link.link_required && (bridge == null || !bridge.linkEnabled))
+                error = "link_required is true but no HriBridgeClient is wired to the TrialManager; run Tools > Warehouse HRI > Build Guided Scene again";
+            else if (m_Cfg.IsFinal && !m_Cfg.frozen) error ="final mode requires \"frozen\": true in hri_config.json (freeze thresholds after the development trials)";
             return error == null;
         }
 
@@ -157,7 +164,7 @@ namespace WarehouseHRI
             }
 
             string configText = HriConfig.SourceText ?? JsonUtility.ToJson(m_Cfg, true);
-            m_ConfigSha = Sha256(configText);
+            m_ConfigSha = HriOutput.Sha256(configText);
             HriOutput.ReadGit(out m_Commit, out m_Branch);
             int seed = m_Cfg.ActiveSeed;
             string task = task1 ? "Task1" : "Task2";
@@ -226,17 +233,6 @@ namespace WarehouseHRI
                    "}\n";
         }
 
-        static string Sha256(string text)
-        {
-            using (var sha = SHA256.Create())
-            {
-                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(text));
-                var sb = new StringBuilder(bytes.Length * 2);
-                foreach (var b in bytes) sb.Append(b.ToString("x2"));
-                return sb.ToString();
-            }
-        }
-
         void OnHeadingTo(RoadNode node)
         {
             if (node == null || !node.IsJunction) return;
@@ -283,6 +279,14 @@ namespace WarehouseHRI
             worker.Show(GestureCommand.NONE);
             worker.faceTarget = robot.transform;
 
+            if (bridge != null && bridge.linkEnabled && m_Cfg.link.link_required)
+            {
+                Status = $"trial {index}/{TrialTotal}: waiting for the Python bridge ({bridge.Status})";
+                while (!bridge.Connected) yield return null;
+                yield return new WaitForSeconds(0.5f); // let replies flow before the watchdog matters
+            }
+
+            if (bridge != null) bridge.ResetTrialStats();
             brain.HeadingTo += OnHeadingTo;
             brain.JunctionFinished += OnJunctionFinished;
             robot.Collided += OnCollided;
@@ -376,6 +380,19 @@ namespace WarehouseHRI
                 safety_stop = brain.SafetyStopSeconds,
             };
             rec.junctions.AddRange(m_Records);
+            if (bridge != null && bridge.linkEnabled)
+            {
+                bridge.Rtt.Stats(out var rttMean, out var rttMax, out var rttN);
+                bridge.InferenceStats(out var infMean, out var infMax, out var infN, out var perModel);
+                rec.link_status = (m_Cfg.link.link_required ? "required" : "shadow") + ", " + bridge.Status;
+                rec.link_perception = bridge.PerceptionLabel;
+                rec.link_replies = rttN;
+                rec.round_trip_mean_ms = rttN > 0 ? rttMean : -1f;
+                rec.round_trip_max_ms = rttN > 0 ? rttMax : -1f;
+                rec.inference_mean_ms = infN > 0 ? infMean : -1f;
+                rec.inference_max_ms = infN > 0 ? infMax : -1f;
+                rec.inference_per_model_ms = perModel;
+            }
 
             HriOutput.WriteNew(Path.Combine(SessionFolder, $"run_{index:000}.json"), JsonUtility.ToJson(rec, true));
             m_Results.WriteLine(CsvRow(rec));
@@ -418,7 +435,8 @@ namespace WarehouseHRI
                 HriOutput.F(r.max_turn_dps, "0.0"), HriOutput.F(r.final_distance_to_b_m),
                 HriOutput.Csv(string.Join("; ", j)), r.collisions.ToString(HriOutput.Inv),
                 r.human_collisions.ToString(HriOutput.Inv), HriOutput.F(r.closest_human_m),
-                "", ""); // inference_ms, round_trip_ms: stubs until Steps 3-4
+                r.inference_mean_ms >= 0f ? HriOutput.F(r.inference_mean_ms) : "",
+                r.round_trip_mean_ms >= 0f ? HriOutput.F(r.round_trip_mean_ms) : "");
         }
     }
 }

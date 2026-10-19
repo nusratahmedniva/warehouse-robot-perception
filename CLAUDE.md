@@ -109,6 +109,12 @@
   scripted poses) behind IPersonSource / IGestureSource until Steps 3-4;
   obstacle avoidance = NavMesh. Builder disables the upstream racks'
   oversized carving NavMeshObstacles and adds a floor slab collider.
-- Next, in order: Step 0 message spec; Step 3 TCP link (length-prefixed
-  JSON + JPEG) wired to PythonLinkWatchdog; Step 4 perception; Step 5
+- Done 2026-10-20: Step 0 message format (docs/protocol.md, protocol v1,
+  golden frame robot_vision/tests/fixtures/hri_frame_v1.frame) and
+  Step 3 TCP link: robot_vision/hri_bridge_server.py (configs/bridge.json,
+  port 5050, stub perception) + HriBridgeClient.cs, shadow mode
+  (link_required false); watchdog verified at 0.3 s. Panorama: centre =
+  world +z, yaw grows to the right (hri_protocol.pano_bearing).
+- Next, in order: Step 4 perception (YOLO pose arm direction, distance,
+  STOP via gesture_adapter) behind IPersonSource / IGestureSource; Step 5
   Python state machine + simulator; Step 7 analysis script.

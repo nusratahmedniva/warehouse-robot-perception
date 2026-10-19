@@ -64,7 +64,16 @@
   "link": {
     "watchdog_s": 0.3,
     "link_required": false,
-    "link_note": "Set link_required to true once the Step 3 TCP client calls PythonLinkWatchdog.NotifyMessageReceived()."
+    "link_note": "enabled: Unity connects to the Python bridge (robot_vision/hri_bridge_server.py) and sends observations; replies are logged but decisions stay on the scripted baselines (shadow mode) until Step 4. link_required: the robot stops by itself when Python has been silent for watchdog_s, and trials wait for the link before starting.",
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 5050,
+    "send_interval_s": 0.1,
+    "connect_retry_s": 1.0,
+    "jpeg_quality": 75,
+    "cam360_send_width_px": 1024,
+    "send_gesture_image": true,
+    "send_cam360_image": true
   },
 
   "cameras": {

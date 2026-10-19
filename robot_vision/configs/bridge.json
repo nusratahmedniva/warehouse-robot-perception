@@ -1,0 +1,14 @@
+{
+  "label": "Step 3 Unity bridge server (protocol v1, docs/protocol.md). Declared 2026-10-20 before any bridge run; not tuned.",
+  "paths": {"output_root": "outputs"},
+  "host": "127.0.0.1",
+  "port": 5050,
+  "port_note": "Must equal hri_config.json -> link.port in the Unity project. 5000 stays with the older ping health check.",
+  "heartbeat_s": 0.1,
+  "heartbeat_note": "Python sends a heartbeat whenever it has sent nothing for heartbeat_s; Unity stops the robot after watchdog_s = 0.3 s of silence.",
+  "frame_read_timeout_s": 5.0,
+  "save_images_every_n": 50,
+  "save_images_note": "Every n-th observation's images are saved to the run folder (0 = none) so the transfer can be checked by eye.",
+  "perception": "stub",
+  "perception_note": "stub = no people, gesture NONE, labelled 'stub (no perception until Step 4)'. Unity's decisions stay on the scripted baselines while the link runs in shadow mode."
+}

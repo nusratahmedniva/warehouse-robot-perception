@@ -51,6 +51,18 @@ namespace WarehouseHRI
             return new StreamWriter(fs, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
         }
 
+        /// <summary>SHA-256 of a text's UTF-8 bytes, lower-case hex.</summary>
+        public static string Sha256(string text)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                var bytes = sha.ComputeHash(new UTF8Encoding(false).GetBytes(text ?? ""));
+                var sb = new StringBuilder(bytes.Length * 2);
+                foreach (var b in bytes) sb.Append(b.ToString("x2", Inv));
+                return sb.ToString();
+            }
+        }
+
         public static string F(float x, string format = "0.###") =>
             float.IsNaN(x) || float.IsInfinity(x) ? "" : x.ToString(format, Inv);
 

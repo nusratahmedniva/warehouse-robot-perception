@@ -13,6 +13,7 @@ namespace WarehouseHRI
         public PanTiltCamera panTilt;
         public Camera360 cam360;
         public TextMesh robotDisplay;
+        public HriBridgeClient bridge;
         public bool showPreviews = true;
 
         GUIStyle m_Big, m_Small;
@@ -37,8 +38,9 @@ namespace WarehouseHRI
                 $"People: {brain.PeopleDetected}   gesture read: {brain.LastRead}   " +
                 (brain.SafetyStopActive ? $"SAFETY STOP ({brain.SafetyReason})" : "") + "\n" +
                 $"Perception: {brain.PersonSource?.Label}\nGestures: {brain.GestureSource?.Label}\n" +
+                (bridge != null ? $"Python link: {bridge.Status}  rtt {HriOutput.F(bridge.Rtt.LastMs, "0.0")} ms  {bridge.PerceptionLabel}\n" : "") +
                 (tm != null ? $"{tm.Status}\n{tm.LastSummary}" : "");
-            GUI.Box(new Rect(10, 10, 520, 110), text, m_Small);
+            GUI.Box(new Rect(10, 10, 560, 130), text, m_Small);
 
             if (!string.IsNullOrEmpty(brain.Prompt))
                 GUI.Label(new Rect(0, Screen.height * 0.12f, Screen.width, 50), brain.Prompt, m_Big);

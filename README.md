@@ -57,11 +57,34 @@ junction centre, off every lane. Diagonal commands exist in code but this roadma
 | What the worker shows | `RoadNode.CommandToward(B)`, called only by the TrialManager | stays (scenario side) |
 | Scoring (outcome, distance to B, closest human) | true positions, after the run | stays |
 | Obstacle avoidance | **NavMesh map** (AI Navigation; racks and walls via their colliders), not the cameras | stays |
-| Python link | watchdog hook (`PythonLinkWatchdog`, 0.3 s) present, `link_required` = false | Step 3 |
-| Inference time, Unity-Python delay | empty columns, `not_evaluated` | Steps 3-4 |
+| Python link | TCP bridge (Step 3) in **shadow mode**: observations and images go to Python, replies are logged, decisions still use the scripted sources | Step 4 switches decisions to the replies |
+| Python perception | `StubPerception`: no people, gesture NONE, labelled "stub (no perception until Step 4)" | Step 4 |
+| Unity-Python round trip | measured per reply (observation written -> reply read) | stays |
+| Inference time | Python-side time per observation (now: JPEG check of the stub only) | Step 4 adds per-model times |
 
 RobotBrain sees people and gestures only through the two interfaces and never sees B. Every run log names
 both sources, so results from these baselines measure navigation, timing and the dialog logic, not perception.
+
+### Python bridge (Step 3)
+
+Message format: [docs/protocol.md](docs/protocol.md) (length-prefixed JSON + JPEG images, protocol v1).
+Start the server first (it waits for Unity and accepts it again after every Play):
+
+```
+# Windows PowerShell, from robot_vision\
+.\.venv\Scripts\python.exe hri_bridge_server.py
+# macOS Terminal, from robot_vision/
+.venv/bin/python hri_bridge_server.py
+```
+
+(Use the venv you run the tests with; in this checkout it is the repository-root `.venv`.) Then press Play.
+The HUD shows `Python link: connected` and the round trip. `hri_config.json -> link`: `enabled` (connect at
+all), `link_required` (false = shadow mode, the robot drives without Python; true = trials wait for Python and
+the robot stops by itself after 0.3 s of silence). Server output: `robot_vision/outputs/bridge_<time>/` with
+the config, `run.json` (git commit), and per connection `hello.json`, `frames.csv`, `summary.json` and every
+50th observation's images. Unity's per-run log adds `link_status`, round-trip mean/max and inference mean/max;
+telemetry adds `link`, `inference_ms` and `round_trip_ms` per 0.1 s row. After updating, run
+**Build Guided Scene** again so the robot gets its `HriBridgeClient`.
 
 ### Outputs
 

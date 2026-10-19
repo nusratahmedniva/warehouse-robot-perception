@@ -6,18 +6,20 @@ namespace WarehouseHRI
     /// <summary>
     /// Time series of one run, one row every interval_s (0.1 s) of simulation time, written to a new CSV file
     /// (never overwritten). Positions are floor coordinates (x, z; y is up); heading is Unity yaw in degrees
-    /// (0 = +z, 90 = +x). Inference time and Unity-Python delay are STUBS (empty) until Steps 3 and 4.
+    /// (0 = +z, 90 = +x). link = Python bridge up/down/off; inference_ms (Python-side time) and round_trip_ms are
+    /// those of the latest perception reply, empty when no reply arrived in the row's interval.
     /// </summary>
     public class RobotTelemetry : MonoBehaviour
     {
         public const string Header =
             "t_s,trial,state,x,z,heading_deg,v_cmd_mps,w_cmd_dps,v_mps,w_dps,speed_meas_mps,turn_meas_dps," +
-            "people_detected,gesture_read,safety_stop,safety_reason,watchdog_stop,inference_ms,round_trip_ms";
+            "people_detected,gesture_read,safety_stop,safety_reason,watchdog_stop,link,inference_ms,round_trip_ms";
 
         public bool useConfigFile = true;
         public float intervalS = 0.1f;
         public DiffDriveRobot robot;
         public RobotBrain brain;
+        public HriBridgeClient bridge;
 
         StreamWriter m_Writer;
         float m_T0, m_Next;
@@ -31,6 +33,7 @@ namespace WarehouseHRI
         {
             if (robot == null) robot = GetComponent<DiffDriveRobot>();
             if (brain == null) brain = GetComponent<RobotBrain>();
+            if (bridge == null) bridge = GetComponent<HriBridgeClient>();
             if (useConfigFile) intervalS = HriConfig.Current.telemetry.interval_s;
         }
 
@@ -67,6 +70,7 @@ namespace WarehouseHRI
         {
             var p = transform.position;
             string state = brain != null ? brain.State.ToString() : "";
+            bool fresh = bridge != null && Time.time - bridge.LastReplyTime <= intervalS * 1.5f; // a reply in this row's interval
             string row = string.Join(",",
                 HriOutput.F(t, "0.00"), m_Trial.ToString(HriOutput.Inv), state,
                 HriOutput.F(p.x, "0.000"), HriOutput.F(p.z, "0.000"), HriOutput.F(robot.YawDeg, "0.0"),
@@ -78,8 +82,9 @@ namespace WarehouseHRI
                 brain != null && brain.SafetyStopActive ? "1" : "0",
                 HriOutput.Csv(brain != null ? brain.SafetyReason : ""),
                 robot.WatchdogStopped ? "1" : "0",
-                "", // inference_ms: stub until Step 4
-                ""); // round_trip_ms: stub until Step 3
+                bridge == null || !bridge.linkEnabled ? "off" : bridge.Connected ? "up" : "down",
+                fresh ? HriOutput.F(bridge.LastInferenceMs) : "",   // Python time for the latest reply
+                fresh ? HriOutput.F(bridge.Rtt.LastMs) : "");       // round trip of the latest reply
             m_Writer.WriteLine(row);
             Rows++;
         }

@@ -88,6 +88,15 @@ namespace WarehouseHRI
         {
             public float watchdog_s = 0.3f;
             public bool link_required;
+            public bool enabled = true;
+            public string host = "127.0.0.1";
+            public int port = 5050;
+            public float send_interval_s = 0.1f;
+            public float connect_retry_s = 1f;
+            public int jpeg_quality = 75;
+            public int cam360_send_width_px = 1024;
+            public bool send_gesture_image = true;
+            public bool send_cam360_image = true;
         }
 
         [Serializable]
