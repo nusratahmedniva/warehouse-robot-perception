@@ -18215,6 +18215,69 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 383314019}
   m_Mesh: {fileID: 3133272015504963124, guid: ff8e350189595744e94fa0a6a6d17105, type: 3}
+--- !u!1 &386359588
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 386359590}
+  - component: {fileID: 386359589}
+  m_Layer: 0
+  m_Name: NavMesh Surface
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &386359589
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 386359588}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a5ac11cc976e418e8d13136b07e1f52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_AgentTypeID: -1372625422
+  m_CollectObjects: 0
+  m_Size: {x: 10, y: 10, z: 10}
+  m_Center: {x: 0, y: 2, z: 0}
+  m_LayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_UseGeometry: 0
+  m_DefaultArea: 0
+  m_GenerateLinks: 0
+  m_IgnoreNavMeshAgent: 1
+  m_IgnoreNavMeshObstacle: 1
+  m_OverrideTileSize: 0
+  m_TileSize: 256
+  m_OverrideVoxelSize: 0
+  m_VoxelSize: 0.16666667
+  m_MinRegionArea: 2
+  m_NavMeshData: {fileID: 23800000, guid: 245bc8b1ab28a914a8f44731e6d8341d, type: 2}
+  m_BuildHeightMesh: 0
+--- !u!4 &386359590
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 386359588}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 7.370719, y: -0.9503856, z: 0.07442802}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &388869194
 GameObject:
   m_ObjectHideFlags: 0
@@ -45334,6 +45397,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: WarehouseRobot
       objectReference: {fileID: 0}
+    - target: {fileID: 866627785858978419, guid: 5395fb35907d0484ba53377a9774640f, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 4992311535451325668, guid: 5395fb35907d0484ba53377a9774640f, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0.72035885
@@ -45379,6 +45446,17 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5395fb35907d0484ba53377a9774640f, type: 3}
+--- !u!114 &928316543 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 4806213889101922185, guid: 5395fb35907d0484ba53377a9774640f, type: 3}
+  m_PrefabInstance: {fileID: 928316542}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a2f1828755848bd8a99590993b2ff4d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &929871473
 GameObject:
   m_ObjectHideFlags: 0
@@ -88112,6 +88190,53 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1821593331}
   m_Mesh: {fileID: 2566144448053749868, guid: ff8e350189595744e94fa0a6a6d17105, type: 3}
+--- !u!1 &1821859798
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1821859800}
+  - component: {fileID: 1821859799}
+  m_Layer: 0
+  m_Name: RobotBridge
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1821859799
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1821859798}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ece0a6ca0b8443ea71fb7b4f0b38742, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  bridgeConfig: {fileID: 4900000, guid: cc1763d2a7aa4fbbbd3217a08846ca79, type: 3}
+  robot: {fileID: 928316543}
+  showPanel: 1
+--- !u!4 &1821859800
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1821859798}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1822243286
 GameObject:
   m_ObjectHideFlags: 0
@@ -103324,3 +103449,5 @@ SceneRoots:
   - {fileID: 214774686}
   - {fileID: 1923959516}
   - {fileID: 928316542}
+  - {fileID: 1821859800}
+  - {fileID: 386359590}
