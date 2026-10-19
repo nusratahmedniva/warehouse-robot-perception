@@ -2,10 +2,11 @@
 every telemetry message with a command.
 
 Run (from robot_vision/):
-    python -m bridge.server --mode hello [--config configs/bridge.json] [--duration-s 60]
+    python -m bridge.server --mode hello [--config configs/bridge.json] [--duration-s 60] [--mute-after-s 5]
 
 Mode hello: answers v = hello_test.v_mps (0.2), omega = 0, so the robot creeps forward while connected; it also
-requests a NavMesh path to a point target_ahead_m in front of the robot's first reported pose. Every server start
+requests a NavMesh path to a point target_ahead_m in front of the robot's first reported pose. --mute-after-s N stops
+answering N s after Unity connects while keeping the connection open, to test Unity's watchdog. Every server start
 writes a new folder outputs/bridge_<mode>_<timestamp>/ with run_info.json (git commit, config hash),
 config_used/, messages.jsonl (one line per message, with the round-trip delay Unity measured), every
 save_every_n_frames-th JPEG of each stream, summary.json and COMPLETE.
@@ -50,15 +51,26 @@ def load_config(path: str | Path = DEFAULT_CONFIG) -> tuple[dict, Path]:
 class HelloController:
     """Hello test: constant creep command, plus one NavMesh target ahead of the first pose."""
 
-    def __init__(self, hello_cfg: dict):
+    def __init__(self, hello_cfg: dict, mute_after_s: float | None = None):
         self.cfg = hello_cfg
+        self.mute_after_s = mute_after_s
         self.target: tuple[float, float] | None = None
+        self.connected_at = time.monotonic()
+        self.muted_logged = False
 
     def on_connect(self) -> None:
         self.target = None
+        self.connected_at = time.monotonic()
+        self.muted_logged = False
 
     def on_message(self, msg: P.Message) -> dict | None:
         if msg.type != "telemetry":
+            return None
+        if self.mute_after_s is not None and time.monotonic() - self.connected_at >= self.mute_after_s:
+            if not self.muted_logged:
+                print(f"[bridge] muted after {self.mute_after_s:g} s: no more commands (Unity's watchdog should stop "
+                      f"the robot)", flush=True)
+                self.muted_logged = True
             return None
         if self.target is None:
             pose, d = msg.header["pose"], float(self.cfg["target_ahead_m"])
@@ -243,16 +255,17 @@ class BridgeServer:
             writer.close()
 
 
-async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None) -> Path:
+async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None) -> Path:
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
     hashes = dio.copy_configs(out, [cfg_path])
     dio.write_json(out / "run_info.json", {
         "created": datetime.now().isoformat(timespec="seconds"), "mode": mode,
         "command": " ".join([Path(sys.executable).name] + sys.argv), "git": dio.git_info(),
         "python": platform.python_version(), "platform": platform.platform(),
-        "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION})
+        "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION,
+        "mute_after_s": mute_after_s})
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
-    controller = HelloController(cfg["hello_test"])
+    controller = HelloController(cfg["hello_test"], mute_after_s)
     server = BridgeServer(cfg, controller, log)
     port = await server.start()
     print(f"[bridge] mode {mode}: listening on {cfg['host']}:{port}; run folder {out}", flush=True)
@@ -274,10 +287,12 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--config", default=DEFAULT_CONFIG)
     ap.add_argument("--mode", choices=["hello"], default="hello")
     ap.add_argument("--duration-s", type=float, default=None, help="stop after this many seconds")
+    ap.add_argument("--mute-after-s", type=float, default=None,
+                    help="stop answering this many seconds after Unity connects (watchdog test)")
     args = ap.parse_args(argv)
     cfg, cfg_path = load_config(args.config)
     try:
-        asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s))
+        asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s))
     except KeyboardInterrupt:
         pass
 

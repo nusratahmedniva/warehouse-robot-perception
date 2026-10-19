@@ -224,6 +224,17 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((h2["reply_to"], h2["target_x"]), (2, h["target_x"]))  # target fixed after the first pose
         self.assertGreater(h2["seq"], h["seq"])
 
+    async def test_mute_stops_answering_but_keeps_connection(self):
+        self.server.controller = S.HelloController(self.cfg["hello_test"], mute_after_s=0.2)
+        r, w = await self.connect()
+        await self.send(w, telemetry(1))
+        self.assertEqual((await self.recv(r)).header["reply_to"], 1)
+        await asyncio.sleep(0.3)
+        await self.send(w, telemetry(2))
+        with self.assertRaises(asyncio.TimeoutError):  # silent, connection still open
+            await asyncio.wait_for(P.read_message(r, self.limits), 0.5)
+        self.assertIsNotNone(self.server.active)
+
     async def test_frames_logged_sampled_and_not_answered(self):
         r, w = await self.connect()
         for i, idx in enumerate((19, 20, 21)):
