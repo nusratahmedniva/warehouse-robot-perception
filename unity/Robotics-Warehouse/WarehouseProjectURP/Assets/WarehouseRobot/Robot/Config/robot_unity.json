@@ -39,5 +39,21 @@
   },
   "debug": {
     "keyboard_pan_speed_dps": 60.0
+  },
+  "placement": {
+    "floor_tag": "Floor",
+    "ray_start_above_m": 1.0,
+    "ray_length_m": 3.0,
+    "note": "On Play the robot is set onto the nearest surface tagged floor_tag below it (raycast from ray_start_above_m above its pivot)."
+  },
+  "collisions": {
+    "ignore_tags": ["Floor"],
+    "merge_recontact_s": 0.5,
+    "note": "Contacts with objects tagged ignore_tags are ignored by physics and not recorded. Touching the same object again within merge_recontact_s of losing contact counts as the same collision."
+  },
+  "obstacles": {
+    "groups": ["Shelves", "FloorBoxes", "Walls", "Stations"],
+    "make_rigidbodies_kinematic": true,
+    "note": "Applied at Play by ColliderSetup, never to the vendored warehouse files: every direct child of a group object that has no collider gets a BoxCollider per mesh, and Rigidbodies under the groups become kinematic so the robot is blocked instead of pushing boxes and rack legs away."
   }
 }

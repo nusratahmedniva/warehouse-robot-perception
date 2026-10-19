@@ -7,6 +7,9 @@ namespace WarehouseRobot
     /// control behind a toggle that is off by default. F1 shows/hides the panel; F2 or the panel checkbox toggles
     /// keyboard control. With control on: arrow keys drive (up/down = +/- max speed, left/right = turn), Z/X pan
     /// left/right, C centres the pan. Turning control off commands a stop.
+    /// "Stop robot" latches the emergency stop (DiffDriveController.EngageEmergencyStop): v = 0, omega = 0 override
+    /// bridge and keyboard commands until released. Releasing takes two clicks ("Release stop...", then "Confirm
+    /// release" within 3 s) so it cannot happen by accident.
     /// </summary>
     [DisallowMultipleComponent]
     public class RobotDebugPanel : MonoBehaviour
@@ -17,6 +20,8 @@ namespace WarehouseRobot
         RobotRig rig;
         float panSpeedDps;
         bool lastKeyboardControl;
+        float releaseConfirmUntil = -1f;
+        const float ReleaseConfirmS = 3f;
 
         /// <summary>Turning keyboard control off commands a stop (handled in Update, also for Inspector edits).</summary>
         public bool KeyboardControl
@@ -73,7 +78,7 @@ namespace WarehouseRobot
             if (pan != null && pan.Ready) panH = w * pan.Image.height / pan.Image.width;
             if (omni != null && omni.Ready) eqH = w * omni.Equirect.height / omni.Equirect.width;
 
-            float h = pad + line + panH + line + eqH + 6f * line + pad;
+            float h = pad + line + panH + line + eqH + 7f * line + pad;
             GUI.Box(new Rect(pad, pad, w + 2f * pad, h), GUIContent.none);
             float x = 2f * pad, y = 2f * pad;
 
@@ -91,6 +96,15 @@ namespace WarehouseRobot
             {
                 GUI.Label(new Rect(x, y, w, line), $"v {drive.V:F2} m/s (cmd {drive.CommandedV:F2})   omega {drive.Omega:F2} rad/s (cmd {drive.CommandedOmega:F2})");
             }
+            y += line;
+            if (drive != null && drive.EmergencyStop)
+            {
+                var c = GUI.color;
+                GUI.color = Color.red;
+                GUI.Label(new Rect(x, y, w, line), "EMERGENCY STOP LATCHED: v = 0, omega = 0 (bridge and keyboard ignored)");
+                GUI.color = c;
+            }
+            else GUI.Label(new Rect(x, y, w, line), "Emergency stop: off");
             y += line;
             if (col != null)
             {
@@ -113,7 +127,25 @@ namespace WarehouseRobot
             }
             y += line;
             GUI.enabled = true;
-            if (GUI.Button(new Rect(x, y, 120f, line), "Stop robot") && drive != null) drive.Stop();
+            if (drive == null || !drive.Ready) return;
+            if (!drive.EmergencyStop)
+            {
+                if (GUI.Button(new Rect(x, y, 140f, line), "Stop robot")) drive.EngageEmergencyStop("debug panel button");
+                releaseConfirmUntil = -1f;
+            }
+            else if (Time.unscaledTime > releaseConfirmUntil)
+            {
+                if (GUI.Button(new Rect(x, y, 140f, line), "Release stop...")) releaseConfirmUntil = Time.unscaledTime + ReleaseConfirmS;
+            }
+            else
+            {
+                if (GUI.Button(new Rect(x, y, 140f, line), "Confirm release"))
+                {
+                    drive.ReleaseEmergencyStop("debug panel button, confirmed");
+                    releaseConfirmUntil = -1f;
+                }
+                GUI.Label(new Rect(x + 150f, y, w - 150f, line), $"click again within {releaseConfirmUntil - Time.unscaledTime:F0} s");
+            }
         }
     }
 }

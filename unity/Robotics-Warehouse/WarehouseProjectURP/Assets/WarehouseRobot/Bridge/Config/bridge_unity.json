@@ -1,0 +1,22 @@
+{
+  "note": "Step 2 bridge, Unity side (2026-10-20). Host, port, rates, watchdog and limits come from the shared bridge.json named in paths (Python reads the same file). Protocol: docs/protocol.md.",
+  "paths": {
+    "repo_root_relative_to_unity_project": "../../..",
+    "bridge_config": "robot_vision/configs/bridge.json"
+  },
+  "auto_connect": true,
+  "reconnect_interval_s": 1.0,
+  "connect_timeout_s": 2.0,
+  "nav": {
+    "agent_type": "AMR",
+    "snap_max_distance_m": 1.0,
+    "snap_note": "NavMesh.SamplePosition snaps the path start (robot) and the target to the NavMesh within this distance; telemetry reports the horizontal snap distances.",
+    "agent_note": "AMR agent type (ProjectSettings, created by Nusrat 2026-10-20): radius 0.5 m = half of the 1.00 m required passage width (robot + pallet, footprint.py), height 1.8 m, step height 0.02 m, max slope 5 deg. Its ID is read from the NavMesh Surface with this agent type; Play logs an error if none is baked."
+  },
+  "camera_360": {
+    "centre_world_yaw_deg": 0.0,
+    "centre_note": "Confirmed 2026-10-20 in Unity: a cube placed along world +Z appears at the centre of the equirectangular image (ConvertToEquirect puts the cubemap +Z face at the centre)."
+  },
+  "flip_rows": false,
+  "flip_note": "true only if the JPEGs Python saves are upside down (GPU readback row order differs by graphics API)."
+}

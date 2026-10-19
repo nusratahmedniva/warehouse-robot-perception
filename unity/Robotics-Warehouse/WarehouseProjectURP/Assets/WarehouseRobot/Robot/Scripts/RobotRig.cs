@@ -46,6 +46,36 @@ namespace WarehouseRobot
             PanTilt = GetComponentInChildren<PanTiltCamera>(true);
             Omni = GetComponentInChildren<Camera360>(true);
             Collisions = GetComponent<CollisionRecorder>();
+            if (Config != null) PlaceOnFloor(Config.Unity.placement);
+        }
+
+        /// <summary>
+        /// Set the robot onto the nearest surface tagged placement.floor_tag below its pivot, so it never starts inside
+        /// or above the floor. Logs the correction.
+        /// </summary>
+        void PlaceOnFloor(PlacementConfig p)
+        {
+            Physics.SyncTransforms();
+            Vector3 origin = transform.position + Vector3.up * p.ray_start_above_m;
+            RaycastHit best = default;
+            bool found = false;
+            foreach (var hit in Physics.RaycastAll(origin, Vector3.down, p.ray_length_m, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.collider.transform.IsChildOf(transform) || hit.collider.gameObject.tag != p.floor_tag) continue;
+                if (!found || hit.distance < best.distance) { best = hit; found = true; }
+            }
+            if (!found)
+            {
+                Debug.LogWarning($"[RobotRig] No surface tagged '{p.floor_tag}' found below the robot; it stays at y = {transform.position.y:F3}.", this);
+                return;
+            }
+            float dy = best.point.y - transform.position.y;
+            var pos = transform.position;
+            pos.y = best.point.y;
+            transform.position = pos;
+            var body = GetComponent<Rigidbody>();
+            if (body != null) body.position = pos;
+            Debug.Log($"[RobotRig] Placed on '{best.collider.name}' at y = {pos.y:F3} m (moved {dy:+0.000;-0.000} m).", this);
         }
 
         void Start()
@@ -67,6 +97,8 @@ namespace WarehouseRobot
             var expectedSize = new Vector3(cfg.Robot.robot_width_m, cfg.Robot.robot_height_m - cfg.Unity.body.collider_bottom_m, cfg.Robot.robot_length_m);
             if (box == null || (box.size - expectedSize).sqrMagnitude > tol * tol)
                 Debug.LogError("[RobotRig] Body collider does not match robot.json; rebuild the prefab.", this);
+            if (GetComponent<ColliderSetup>() == null || transform.Find("MastCollider") == null)
+                Debug.LogError("[RobotRig] Prefab predates ColliderSetup / mast collider; rebuild the prefab (Warehouse Robot > Build Robot Prefab).", this);
             if (Vector3.Angle(transform.up, Vector3.up) > 0.01f)
                 Debug.LogError("[RobotRig] Robot must be placed level (rotation X = Z = 0) so the cameras stay level.", this);
 

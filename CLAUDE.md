@@ -73,6 +73,9 @@ Specification: docs/project_flow.md
   (check_environment.select_device).
 - Lower-bound person distance assumes a level camera (pitch = roll = 0);
   the Unity robot camera must stay level.
+- Unity 360 camera: equirectangular, world-aligned; the image centre
+  column faces world +Z (yaw 0). Confirmed in Unity on 2026-10-20 with
+  a cube placed along +Z. Bridge JPEGs are upright (same check).
 
 ## Project status
 - Done (THUD++ pipeline): segmentation baseline, YOLO + ByteTrack,

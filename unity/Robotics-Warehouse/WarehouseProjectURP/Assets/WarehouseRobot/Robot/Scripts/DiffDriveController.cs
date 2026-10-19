@@ -6,7 +6,9 @@ namespace WarehouseRobot
     /// Differential drive on a Rigidbody: follows the commanded forward speed v (m/s) and turn rate omega (rad/s,
     /// &gt; 0 = left / counter-clockwise from above) within the limits of robot.json. Speeding up uses max_accel_mps2,
     /// slowing down (and the first half of a reversal) uses decel_mps2. Wheels are visual only (no WheelColliders);
-    /// each side spins at its rim speed / wheel radius, i.e. v / r when driving straight.
+    /// each side spins at its rim speed / wheel radius, i.e. v / r when driving straight. A latched emergency stop
+    /// holds v = 0, omega = 0 against every caller (bridge, keyboard) until it is released, braking at
+    /// estop_decel_mps2 instead of decel_mps2 (the look-ahead keeps assuming decel_mps2).
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     [DisallowMultipleComponent]
@@ -28,6 +30,8 @@ namespace WarehouseRobot
         public float V { get; private set; }
         public float Omega { get; private set; }
         public bool Ready => limits != null;
+        /// <summary>True while the emergency stop is latched: every SetCommand is ignored.</summary>
+        public bool EmergencyStop { get; private set; }
 
         public void SetWheels(Transform[] left, Transform[] right)
         {
@@ -38,7 +42,7 @@ namespace WarehouseRobot
         /// <summary>Command a forward speed (m/s) and turn rate (rad/s, &gt; 0 = left). Values beyond the limits are clamped.</summary>
         public void SetCommand(float v, float omega)
         {
-            if (!Ready) return;
+            if (!Ready || EmergencyStop) return;
             CommandedV = Mathf.Clamp(v, -limits.max_speed_mps, limits.max_speed_mps);
             CommandedOmega = Mathf.Clamp(omega, -limits.max_angular_speed_radps, limits.max_angular_speed_radps);
         }
@@ -48,6 +52,23 @@ namespace WarehouseRobot
         {
             CommandedV = 0f;
             CommandedOmega = 0f;
+        }
+
+        /// <summary>Latch the emergency stop: command v = 0, omega = 0 (braking at estop_decel_mps2) and ignore all commands.</summary>
+        public void EngageEmergencyStop(string source)
+        {
+            Stop();
+            if (EmergencyStop) return;
+            EmergencyStop = true;
+            Debug.LogWarning($"[DiffDriveController] EMERGENCY STOP engaged ({source}): v = 0, omega = 0, bridge and keyboard commands ignored until released.", this);
+        }
+
+        /// <summary>Release the latched emergency stop; the robot stays at v = 0 until the next command.</summary>
+        public void ReleaseEmergencyStop(string source)
+        {
+            if (!EmergencyStop) return;
+            EmergencyStop = false;
+            Debug.LogWarning($"[DiffDriveController] Emergency stop released ({source}).", this);
         }
 
         void Awake()
@@ -69,7 +90,8 @@ namespace WarehouseRobot
         void FixedUpdate()
         {
             float dt = Time.fixedDeltaTime;
-            V = RampSpeed(V, CommandedV, limits.max_accel_mps2, limits.decel_mps2, dt);
+            float decel = EmergencyStop ? limits.estop_decel_mps2 : limits.decel_mps2;
+            V = RampSpeed(V, CommandedV, limits.max_accel_mps2, decel, dt);
             Omega = RampSpeed(Omega, CommandedOmega, limits.max_angular_accel_radps2, limits.max_angular_accel_radps2, dt);
 
             Vector3 forward = Vector3.ProjectOnPlane(body.rotation * Vector3.forward, Vector3.up).normalized;
