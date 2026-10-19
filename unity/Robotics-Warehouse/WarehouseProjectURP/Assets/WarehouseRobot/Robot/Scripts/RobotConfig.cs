@@ -165,6 +165,8 @@ namespace WarehouseRobot
             Positive("pan_tilt_camera.vertical_fov_deg", p.vertical_fov_deg);
             Positive("pan_tilt_camera.near_m", p.near_m);
             if (p.vertical_fov_deg >= 180f) e.Add("pan_tilt_camera.vertical_fov_deg must be < 180");
+            // far_m is a render distance only (no rendered depth is used); whether it reaches the whole scene is
+            // checked at Play by RobotRig against the scene diagonal, since the config cannot know the scene.
             if (p.far_m <= p.near_m) e.Add("pan_tilt_camera.far_m must exceed near_m");
             if (p.tilt_deg != 0f) e.Add("pan_tilt_camera.tilt_deg must be 0: the lower-bound person distance assumes a level camera");
             if (p.pan_min_deg >= p.pan_max_deg) e.Add("pan_tilt_camera.pan_min_deg must be below pan_max_deg");

@@ -69,6 +69,36 @@ namespace WarehouseRobot
                 Debug.LogError("[RobotRig] Body collider does not match robot.json; rebuild the prefab.", this);
             if (Vector3.Angle(transform.up, Vector3.up) > 0.01f)
                 Debug.LogError("[RobotRig] Robot must be placed level (rotation X = Z = 0) so the cameras stay level.", this);
+
+            CheckFarClipCoversScene(cfg);
+        }
+
+        /// <summary>
+        /// far_m is a render distance only (v3 takes distance from flat-floor geometry, not rendered depth). It must
+        /// reach across the whole scene, or distant walls and the ceiling render as skybox: compare it with the
+        /// diagonal of the bounds of every renderer outside the robot (an upper bound on any in-scene distance).
+        /// </summary>
+        void CheckFarClipCoversScene(RobotConfig cfg)
+        {
+            bool any = false;
+            var scene = new Bounds();
+            foreach (var r in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                if (!r.enabled || r.transform.IsChildOf(transform)) continue;
+                if (any) scene.Encapsulate(r.bounds);
+                else { scene = r.bounds; any = true; }
+            }
+            if (!any) return;
+            float diagonal = scene.size.magnitude;
+            void Check(string name, float farM)
+            {
+                if (farM < diagonal)
+                    Debug.LogWarning($"[RobotRig] {name} far clip {farM:F0} m is shorter than the scene diagonal {diagonal:F1} m; distant geometry may render as skybox (raise far_m in robot_unity.json).", this);
+                else
+                    Debug.Log($"[RobotRig] {name} far clip {farM:F0} m covers the scene diagonal {diagonal:F1} m.", this);
+            }
+            Check("Pan-tilt camera", cfg.Unity.pan_tilt_camera.far_m);
+            Check("360 camera", cfg.Unity.camera_360.far_m);
         }
     }
 }
