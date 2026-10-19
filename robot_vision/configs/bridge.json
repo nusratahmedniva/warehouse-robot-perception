@@ -1,0 +1,29 @@
+{
+  "note": "Step 2 TCP bridge (2026-10-20). Shared by Python (bridge/server.py) and Unity (Assets/WarehouseRobot/Bridge/Config/bridge_unity.json -> paths). Protocol: docs/protocol.md. Rates and limits are design values, not tuned.",
+  "protocol_version": 1,
+  "host": "127.0.0.1",
+  "port": 5005,
+  "telemetry_hz": 20.0,
+  "frame_360_hz": 5.0,
+  "frame_pan_tilt_hz": 10.0,
+  "jpeg_quality": 85,
+  "watchdog_timeout_s": 0.3,
+  "watchdog_note": "Unity sets v = 0, omega = 0 (the drive then brakes at robot.json decel_mps2) when no command has arrived for watchdog_timeout_s (docs/project_flow.md: Python silent for 0.3 s).",
+  "max_header_bytes": 1048576,
+  "max_attachment_bytes": 33554432,
+  "max_pending_frames": 4,
+  "paths": {
+    "output_root": "outputs"
+  },
+  "logging": {
+    "save_every_n_frames": 20
+  },
+  "hello_test": {
+    "v_mps": 0.2,
+    "omega_radps": 0.0,
+    "pan_deg": 0.0,
+    "target_ahead_m": 5.0,
+    "state": "hello",
+    "screen_text": "Bridge hello test: creeping forward at 0.2 m/s"
+  }
+}

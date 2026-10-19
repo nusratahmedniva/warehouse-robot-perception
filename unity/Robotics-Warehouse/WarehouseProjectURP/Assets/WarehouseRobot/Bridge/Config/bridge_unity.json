@@ -1,0 +1,22 @@
+{
+  "note": "Step 2 bridge, Unity side (2026-10-20). Host, port, rates, watchdog and limits come from the shared bridge.json named in paths (Python reads the same file). Protocol: docs/protocol.md.",
+  "paths": {
+    "repo_root_relative_to_unity_project": "../../..",
+    "bridge_config": "robot_vision/configs/bridge.json"
+  },
+  "auto_connect": true,
+  "reconnect_interval_s": 1.0,
+  "connect_timeout_s": 2.0,
+  "nav": {
+    "agent_type": "Humanoid",
+    "sample_radius_m": 1.0,
+    "agent_note": "Humanoid (radius 0.5 m) = half of the 1.00 m required passage width (robot + pallet, footprint.py)."
+  },
+  "camera_360": {
+    "centre_world_yaw_deg": 0.0,
+    "centre_yaw_status": "assumed_unverified",
+    "centre_note": "Assumed: ConvertToEquirect puts the cubemap +Z face (world +Z, yaw 0) at the image centre. Set centre_yaw_status to verified only after checking it in Unity."
+  },
+  "flip_rows": false,
+  "flip_note": "true only if the JPEGs Python saves are upside down (GPU readback row order differs by graphics API)."
+}
