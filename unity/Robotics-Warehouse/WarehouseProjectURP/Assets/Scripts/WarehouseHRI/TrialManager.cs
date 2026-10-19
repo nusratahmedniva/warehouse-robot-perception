@@ -75,6 +75,9 @@ namespace WarehouseHRI
         [Tooltip("Task 1 goal: the endpoint reached by FORWARD from the first junction.")]
         public RoadNode task1Goal;
 
+        [Tooltip("Viewer-only marker moved to goal B each trial (on a layer the robot cameras do not render).")]
+        public Transform goalMarker;
+
         [Header("Run")]
         public bool runOnStart = true;
 
@@ -86,6 +89,14 @@ namespace WarehouseHRI
         public int Successes { get; private set; }
         public string LastSummary { get; private set; } = "";
         public RoadNode CurrentGoal { get; private set; }
+        /// <summary>Trials finished so far in this session (the success ratio is Successes / CompletedTrials).</summary>
+        public int CompletedTrials { get; private set; }
+        /// <summary>Junction dialogs finished in the current trial (shown = scripted, read = what the robot accepted).</summary>
+        public IReadOnlyList<JunctionRecord> CurrentRecords => m_Records;
+
+        /// <summary>The command the worker was scripted to show at a junction in this trial (display and scoring only).</summary>
+        public GestureCommand ShownAt(RoadNode junction) =>
+            junction != null && m_Shown.TryGetValue(junction.name, out var c) ? c : GestureCommand.NONE;
         public string Status { get; private set; } = "idle";
 
         HriConfig m_Cfg;
@@ -176,6 +187,7 @@ namespace WarehouseHRI
 
             Running = true;
             Successes = 0;
+            CompletedTrials = 0;
             TrialTotal = Mathf.Max(1, m_Cfg.trials.trial_count);
             var goals = new GoalSequence(seed);
             Debug.Log($"[WarehouseHRI] Session {HriOutput.Relative(m_Root, SessionFolder)}: {task}, {mode}, seed {seed}, {TrialTotal} trials, " +
@@ -270,6 +282,7 @@ namespace WarehouseHRI
             m_Collided = false;
             m_CollidedWith = "";
             m_RobotCollider = robot.GetComponent<Collider>();
+            if (goalMarker != null) goalMarker.position = goal.Position;
 
             // Reset to A, facing the first road.
             Vector3 a = startNode.Position;
@@ -351,6 +364,7 @@ namespace WarehouseHRI
             var score = TrialScoring.Score(fin, b, brain.Finished && !brain.Halted, m_Collided, stuck, timedOut,
                 brain.Aborted, brain.AbortReason, m_Cfg.trials.success_radius_m);
             if (score.Outcome == TrialOutcome.SUCCESS) Successes++;
+            CompletedTrials = index;
             if (m_Collided && m_CollidedWith.Length > 0) score.Detail = "collision with " + m_CollidedWith;
 
             var rec = new RunRecord

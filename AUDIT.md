@@ -13,6 +13,19 @@ evidence either way; nothing is guessed).
 
 ---
 
+## Update 2026-10-20 (3): viewer camera and overlay
+
+`FollowCamera.cs` (C: chase / top-down / gesture camera; chase is the Game-view default), `HriHud.cs` rewritten
+as an overlay (state, junction, gesture shown vs read, goal B with marker and label, running success ratio,
+Python link), goal marker built by the builder on a new `ViewerOnly` layer (ProjectSettings/TagManager.asset)
+that the gesture and 360 deg cameras exclude. Builder: `BatchBuild()` entry point for batch mode; the committed
+scene was rebuilt with it (adds HriBridgeClient, view camera, marker; old Main Camera disabled).
+Verified in batch Play mode: Camera.main is the view camera in chase mode; images of all three views checked;
+marker 3 m ahead of the robot: 508 marker pixels in the chase view, 0 in the gesture camera. The IMGUI overlay
+itself cannot be captured in batch mode: compile-checked only, check it in the Editor. Unity EditMode: 38/38.
+
+---
+
 ## Update 2026-10-20 (2): Step 0 message format and Step 3 TCP link + watchdog
 
 | Step | Status | Evidence | Still missing |

@@ -115,6 +115,9 @@
   port 5050, stub perception) + HriBridgeClient.cs, shadow mode
   (link_required false); watchdog verified at 0.3 s. Panorama: centre =
   world +z, yaw grows to the right (hri_protocol.pano_bearing).
+- Viewer (2026-10-20): FollowCamera (C cycles chase / top-down / gesture
+  camera), HriHud overlay, goal marker on layer ViewerOnly (robot cameras
+  never render it). Builder batch entry: GuidedSceneBuilder.BatchBuild.
 - Next, in order: Step 4 perception (YOLO pose arm direction, distance,
   STOP via gesture_adapter) behind IPersonSource / IGestureSource; Step 5
   Python state machine + simulator; Step 7 analysis script.

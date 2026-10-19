@@ -23,6 +23,9 @@ namespace WarehouseHRI.EditorTools
         public const string RootName = "WarehouseHRI";
         public const string WorkerModelPath = "Assets/WarehouseRobot/Characters/worker.fbx";
         const string NavMeshAssetName = "NavMesh-WarehouseHRI.asset";
+        public const string ScenePath = "Assets/Scenes/WarehouseRobot.unity";
+        public const string ViewerOnlyLayer = "ViewerOnly";
+        const string MarkerMaterialPath = "Assets/WarehouseRobot/HRIMaterials/GoalMarker.mat";
 
         // Roadmap in floor coordinates (x, z), placed in the open aisles of the generated warehouse: rack centres
         // are at x = -12.5, 0, 12.5 and z = -15, -5, 5, 15, so x = +-6.25 and z = 0 are clear lanes. The builder
@@ -46,6 +49,18 @@ namespace WarehouseHRI.EditorTools
             }
 
             Build();
+        }
+
+        /// <summary>
+        /// Batch mode entry point: open the scene, build, save. Example:
+        /// Unity -batchmode -quit -projectPath &lt;project&gt; -executeMethod WarehouseHRI.EditorTools.GuidedSceneBuilder.BatchBuild
+        /// </summary>
+        public static void BatchBuild()
+        {
+            EditorSceneManager.OpenScene(ScenePath);
+            Build();
+            if (!EditorSceneManager.SaveScene(SceneManager.GetActiveScene()))
+                throw new System.Exception("Could not save " + ScenePath);
         }
 
         [MenuItem("Tools/Warehouse HRI/Gesture Pose Test")]
@@ -72,6 +87,8 @@ namespace WarehouseHRI.EditorTools
             var view = Camera.main;
             if (view != null)
             {
+                var follow = view.GetComponent<FollowCamera>();
+                if (follow != null) follow.enabled = false; // the pose test places the camera itself
                 // Put the view camera where the robot would stand (2 m in front, 1.2 m high) and face the worker.
                 Vector3 eye = worker.transform.position + worker.transform.forward * 3f + Vector3.up * 1.3f;
                 view.transform.position = eye;
@@ -119,8 +136,14 @@ namespace WarehouseHRI.EditorTools
             Stand(j2, j1);
             log.AppendLine("Roadmap: " + Describe(a) + " " + Describe(j1) + " " + Describe(j2));
 
+            // Viewer-only layer: the goal marker lives there and the robot's cameras never render it.
+            int viewerLayer = EnsureLayer(ViewerOnlyLayer, log);
+
             // Robot, cameras, worker.
             var robot = BuildRobot(root, cfg, a, j1, log);
+            int robotMask = viewerLayer >= 0 ? ~(1 << viewerLayer) : ~0;
+            robot.transform.Find("PanPivot/GestureCamera").GetComponent<Camera>().cullingMask = robotMask;
+            robot.transform.Find("Cam360").GetComponent<Camera>().cullingMask = robotMask;
             var worker = BuildWorker(root, j1, log);
 
             // The upstream rack prefab carries carving NavMeshObstacles whose extents are centimetre values used as
@@ -161,7 +184,10 @@ namespace WarehouseHRI.EditorTools
             tm.startNode = a;
             tm.endpoints = new List<RoadNode> { e1, e2, e3, e4 };
             tm.task1Goal = e1;
+            tm.goalMarker = BuildGoalMarker(root, e1.Position, viewerLayer).transform;
             EditorUtility.SetDirty(tm);
+
+            BuildViewCamera(root, robot, log);
 
             EditorSceneManager.MarkSceneDirty(scene);
             Selection.activeGameObject = root;
@@ -408,6 +434,99 @@ namespace WarehouseHRI.EditorTools
             log.AppendLine($"Robot: {r.length_m} x {r.width_m} x {r.height_m} m box collider, Rigidbody {r.mass_kg} kg, " +
                            $"Cam360 at {c.cam360_height_m} m, gesture camera {c.gesture_width_px}x{c.gesture_height_px} at {c.gesture_height_m} m.");
             return robot;
+        }
+
+        static int EnsureLayer(string name, StringBuilder log)
+        {
+            int existing = LayerMask.NameToLayer(name);
+            if (existing >= 0) return existing;
+            var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset");
+            if (assets == null || assets.Length == 0) return -1;
+            var tags = new SerializedObject(assets[0]);
+            var layers = tags.FindProperty("layers");
+            for (int i = 8; i < layers.arraySize; i++)
+            {
+                var p = layers.GetArrayElementAtIndex(i);
+                if (!string.IsNullOrEmpty(p.stringValue)) continue;
+                p.stringValue = name;
+                tags.ApplyModifiedProperties();
+                AssetDatabase.SaveAssets();
+                log.AppendLine($"Added layer '{name}' (index {i}) to ProjectSettings/TagManager.asset.");
+                return i;
+            }
+
+            log.AppendLine($"WARNING: no free user layer for '{name}'; the goal marker will be visible to the robot cameras.");
+            return -1;
+        }
+
+        static Material MarkerMaterial()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>(MarkerMaterialPath);
+            if (m != null) return m;
+            string dir = Path.GetDirectoryName(MarkerMaterialPath)?.Replace('\\', '/');
+            if (!AssetDatabase.IsValidFolder(dir)) AssetDatabase.CreateFolder(Path.GetDirectoryName(dir)?.Replace('\\', '/'), Path.GetFileName(dir));
+            var shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            m = new Material(shader) { color = new Color(1f, 0.65f, 0f) };
+            AssetDatabase.CreateAsset(m, MarkerMaterialPath);
+            return m;
+        }
+
+        /// <summary>Goal B marker: a ring of the 0.3 m success radius and a pole with a ball. No colliders.</summary>
+        static GameObject BuildGoalMarker(GameObject root, Vector3 at, int layer)
+        {
+            var marker = Child(root, "GoalMarker");
+            marker.transform.SetPositionAndRotation(at, Quaternion.identity);
+            var ring = Primitive(marker, "Ring", PrimitiveType.Cylinder);
+            ring.transform.localPosition = new Vector3(0f, 0.01f, 0f);
+            ring.transform.localScale = new Vector3(0.6f, 0.005f, 0.6f); // diameter 0.6 m = success radius 0.3 m
+            var pole = Primitive(marker, "Pole", PrimitiveType.Cylinder);
+            pole.transform.localPosition = new Vector3(0f, 1f, 0f);
+            pole.transform.localScale = new Vector3(0.04f, 1f, 0.04f);
+            var ball = Primitive(marker, "Ball", PrimitiveType.Sphere);
+            ball.transform.localPosition = new Vector3(0f, 2.05f, 0f);
+            ball.transform.localScale = Vector3.one * 0.25f;
+            var mat = MarkerMaterial();
+            foreach (var r in marker.GetComponentsInChildren<Renderer>())
+            {
+                r.sharedMaterial = mat;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+
+            if (layer >= 0)
+                foreach (var t in marker.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;
+            GetOrAdd<NavMeshModifier>(marker).ignoreFromBuild = true;
+            return marker;
+        }
+
+        /// <summary>Game-view camera with FollowCamera (chase by default); the old fly camera is disabled.</summary>
+        static void BuildViewCamera(GameObject root, GameObject robot, StringBuilder log)
+        {
+            var go = Child(root, "ViewCamera");
+            var cam = GetOrAdd<Camera>(go);
+            cam.depth = 10f;
+            cam.nearClipPlane = 0.05f;
+            cam.farClipPlane = 300f;
+            go.tag = "MainCamera";
+            if (go.GetComponent<AudioListener>() == null) go.AddComponent<AudioListener>();
+            var follow = GetOrAdd<FollowCamera>(go);
+            follow.target = robot.transform;
+            follow.gestureCamera = robot.transform.Find("PanPivot/GestureCamera").GetComponent<Camera>();
+            follow.mode = FollowCameraMode.Chase;
+            Vector3 fwd = robot.transform.forward;
+            go.transform.SetPositionAndRotation(robot.transform.position - fwd * follow.chaseDistanceM + Vector3.up * follow.chaseHeightM,
+                Quaternion.LookRotation(fwd * (follow.chaseDistanceM + follow.lookAheadM) + Vector3.up * (follow.lookHeightM - follow.chaseHeightM)));
+            var hud = robot.GetComponent<HriHud>();
+            if (hud != null) hud.followCamera = follow;
+            EditorUtility.SetDirty(follow);
+
+            foreach (var other in SceneManager.GetActiveScene().GetRootGameObjects())
+            {
+                if (other == root || other.GetComponent<Camera>() == null || !other.activeSelf) continue;
+                other.SetActive(false);
+                log.AppendLine($"Disabled the camera object '{other.name}' (the view camera with FollowCamera replaces it).");
+            }
+
+            log.AppendLine("View camera: chase by default; C cycles chase / top-down / gesture camera.");
         }
 
         static GestureWorker BuildWorker(GameObject root, RoadNode firstJunction, StringBuilder log)

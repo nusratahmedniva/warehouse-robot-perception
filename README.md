@@ -38,6 +38,13 @@ Code: `Assets/Scripts/WarehouseHRI/` (runtime, no UnityEditor APIs), `Assets/Edi
    to `Assets/Scenes/WarehouseRobot/NavMesh-WarehouseHRI.asset`) and the TrialManager. The Console lists the
    roadmap, every NavMesh path length and any problem.
 4. Save the scene, press Play. The TrialManager runs `trial_count` trials automatically.
+   The Game view shows the **view camera** (`FollowCamera`, chase by default). **C** cycles chase (behind and
+   above the robot) -> top-down (orthographic, +z up, roof clipped) -> gesture camera (exactly what the robot's
+   pan-tilt camera sees). **H** toggles the camera previews. The overlay (top left) shows the robot state, the
+   current junction, the gesture shown (scripted) vs read (by the robot), goal B (name, position, distance; an
+   orange "B" label and an orange marker whose ring is the 0.3 m success radius) and the running success ratio.
+   The goal marker is on the `ViewerOnly` layer, which the robot's cameras do not render, so it can never leak
+   into vision; the overlay is Game-view only for the same reason. The old fly camera ("Main Camera") is disabled.
 5. **Tools > Warehouse HRI > Gesture Pose Test** (in Play mode): stops the trials, puts the view camera where the
    robot would stand and cycles the worker through LEFT, FORWARD_LEFT, FORWARD, FORWARD_RIGHT, RIGHT and STOP,
    so the arm poses can be checked by eye. LEFT must appear on the viewer's (robot's) left.
