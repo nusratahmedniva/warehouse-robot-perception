@@ -302,10 +302,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &3408816
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -433,10 +429,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &5852984
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1020,10 +1012,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &18222196
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1120,10 +1108,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &19762155
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1356,10 +1340,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &20777075
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1479,10 +1459,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &23648294
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1814,10 +1790,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &27758646
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2048,10 +2020,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &37527600
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2148,10 +2116,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &44457519
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2315,10 +2279,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &45153606
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2417,10 +2377,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &46507661
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2867,10 +2823,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &48515160
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -3002,10 +2954,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &52171623
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -3169,10 +3117,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &52251990
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -3293,10 +3237,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &52901735
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -3573,10 +3513,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &60587945
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -3708,10 +3644,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &62267611
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -3831,10 +3763,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &62678407
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -4691,10 +4619,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &94661175
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -4826,10 +4750,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &94924386
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -5062,10 +4982,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &98663713
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -5249,10 +5165,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &105493880
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -5371,10 +5283,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &105704002
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -5506,10 +5414,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &106542342
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -5754,10 +5658,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &109122601
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -5855,10 +5755,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &109568748
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -6056,10 +5952,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &121754648
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -6540,10 +6432,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &130765637
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -6663,10 +6551,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &130815004
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -6763,10 +6647,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &130877144
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -6885,10 +6765,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &134632889
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -6985,10 +6861,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &135857308
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -7172,10 +7044,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &137608054
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -7518,10 +7386,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &145841537
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -7779,10 +7643,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &148420123
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -8002,10 +7862,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &151028309
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -8365,10 +8221,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &163829035
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -8500,10 +8352,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &165789970
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -8635,10 +8483,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &167297961
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -9367,10 +9211,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &198975923
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -9558,10 +9398,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &211844142
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -9900,10 +9736,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &218195018
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -10474,10 +10306,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &222347005
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -11802,10 +11630,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &246763858
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -12030,10 +11854,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &248159237
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -12230,10 +12050,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &254609618
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -12434,10 +12250,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &257444239
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -12706,10 +12518,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &264112555
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -12875,10 +12683,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &269630598
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -13000,10 +12804,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &271617913
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -13413,10 +13213,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &289445519
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -13535,10 +13331,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &289765159
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -13858,10 +13650,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &294007606
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -13958,10 +13746,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &295212636
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -14367,10 +14151,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &301006694
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -14629,10 +14409,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &304709407
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -14729,10 +14505,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &305040481
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -14896,10 +14668,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &305820386
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -15033,10 +14801,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &312246028
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -15200,10 +14964,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &312671273
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -15473,10 +15233,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &313638132
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -15681,10 +15437,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &316211594
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -15880,10 +15632,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &316642570
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -16168,10 +15916,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &327804520
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -16347,10 +16091,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &328651851
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -16757,10 +16497,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &338535994
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -16910,10 +16646,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &347010300
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -17067,10 +16799,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &349925636
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -17191,10 +16919,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &351173080
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -17569,10 +17293,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &360327927
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -17879,10 +17599,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - beam
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &362746300
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -18449,10 +18165,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &383314024
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -18572,10 +18284,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &388869198
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -18696,10 +18404,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &389821397
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -19077,10 +18781,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &402395733
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -19454,10 +19154,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &414368841
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -19555,10 +19251,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &419802427
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -19678,10 +19370,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &424280033
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -19814,10 +19502,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &426495741
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -20052,10 +19736,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &430523086
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -20219,10 +19899,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &431560306
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -20717,10 +20393,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &438708250
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -20886,10 +20558,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &444343936
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -21093,10 +20761,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &445968643
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -21193,10 +20857,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &447189933
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -21421,10 +21081,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &452894848
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -21805,10 +21461,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &454200574
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -22168,10 +21820,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &462011318
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -22304,10 +21952,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &462378370
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -22588,10 +22232,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &465423517
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -22817,10 +22457,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &468393797
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -22923,10 +22559,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &470522392
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -23040,10 +22672,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &475486953
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -23245,10 +22873,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &482083924
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -23345,10 +22969,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &483590118
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -23480,10 +23100,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &483786651
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -23646,10 +23262,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &489136586
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -23781,10 +23393,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &490375004
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -23987,10 +23595,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &493637683
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -24154,10 +23758,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &494786176
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -24323,10 +23923,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &496249209
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -24806,10 +24402,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &502361364
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -25034,10 +24626,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &502915831
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -25748,10 +25336,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &511726870
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -25915,10 +25499,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &514668644
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -26394,10 +25974,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &529966941
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -26834,10 +26410,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &542302442
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -26957,10 +26529,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &549579600
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -27198,10 +26766,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &550173049
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -27354,10 +26918,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &552526347
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -27789,10 +27349,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &566506244
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -28027,10 +27583,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &569908337
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -28232,10 +27784,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &575137168
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -28540,10 +28088,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &585899080
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -28890,10 +28434,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &593984965
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -29539,10 +29079,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &605146898
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -29707,10 +29243,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &606269531
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -29808,10 +29340,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &606573520
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -30150,10 +29678,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &610805804
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -30621,10 +30145,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &628957349
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -30726,10 +30246,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &629723648
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -30844,10 +30360,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &631650920
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -30945,10 +30457,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &631884342
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -31437,10 +30945,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &643724184
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -32252,10 +31756,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &664905519
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -32358,10 +31858,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &667475588
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -32498,10 +31994,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &675252547
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -32894,10 +32386,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &681419968
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -33018,10 +32506,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &681596023
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -33310,10 +32794,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &695549556
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -33615,10 +33095,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &701785788
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -33847,10 +33323,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &705313865
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -34053,10 +33525,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &714523838
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -34220,10 +33688,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &723793038
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -34549,10 +34013,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &729060446
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -34753,10 +34213,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &732752081
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -34854,10 +34310,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &734320261
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -35231,10 +34683,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &738130842
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -35337,10 +34785,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &739389086
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -35509,10 +34953,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &740067166
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -35677,10 +35117,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &741126530
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -35989,10 +35425,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &743475791
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -36264,10 +35696,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &745039973
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -36369,10 +35797,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &750274104
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -36521,10 +35945,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &752856859
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -36644,10 +36064,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &759740184
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -36920,10 +36336,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &763426104
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -37043,10 +36455,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &764100956
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -37225,10 +36633,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &764965647
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -37639,10 +37043,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &775027518
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -37807,10 +37207,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &775096873
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -38087,10 +37483,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &777940475
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -38340,10 +37732,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &785007972
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -38848,10 +38236,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &796405262
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -39331,10 +38715,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &803820845
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -39676,10 +39056,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &806434554
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -39843,10 +39219,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &807755507
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -40189,10 +39561,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &811142161
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -40566,10 +39934,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &814821373
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -40668,10 +40032,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &820042009
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -40799,10 +40159,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &820228143
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -41983,10 +41339,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &842577544
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -42089,10 +41441,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &843584600
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -42241,10 +41589,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &844256211
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -42341,10 +41685,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &847297247
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -42441,10 +41781,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - beam
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &849979123
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -42645,10 +41981,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &854179950
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -42769,10 +42101,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &856398257
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -43723,10 +43051,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &882303761
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -44014,10 +43338,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &884697341
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -44116,10 +43436,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &885578241
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -44251,10 +43567,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &887823620
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -44450,10 +43762,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &894626362
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -44614,10 +43922,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &903094312
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -44749,10 +44053,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &905145498
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -44916,10 +44216,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &905805353
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -45122,10 +44418,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - beam
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &912347208
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -45362,10 +44654,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &916227527
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -45982,10 +45270,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &927785770
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -46119,10 +45403,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &929871478
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -46359,10 +45639,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &937614541
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -46731,10 +46007,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &945035149
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -46915,10 +46187,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &946077150
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -47051,10 +46319,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &947023331
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -47174,10 +46438,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &948109144
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -47298,10 +46558,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &953033035
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -47639,10 +46895,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &956455844
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -47887,10 +47139,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &961502220
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -48294,10 +47542,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &971305385
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -48461,10 +47705,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &971922672
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -48865,10 +48105,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &982390661
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -49000,10 +48236,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &984833194
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -49420,10 +48652,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &991520574
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -49741,10 +48969,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1001946510
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -49864,10 +49088,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1002762250
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -50069,10 +49289,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1005407182
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -50274,10 +49490,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1010694016
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -50683,10 +49895,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1014757719
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -50887,10 +50095,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1022139565
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -51310,10 +50514,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1031465269
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -51434,10 +50634,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1032203060
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -51535,10 +50731,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - beam
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1032459803
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -51657,10 +50849,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1036013168
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -51824,10 +51012,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1038883714
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -52048,10 +51232,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1041533268
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -52206,10 +51386,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1046782088
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -52670,10 +51846,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1063759645
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -52837,10 +52009,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1063805728
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -52939,10 +52107,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1063936492
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -53039,10 +52203,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1065960548
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -53211,10 +52371,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &1068823695
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -53328,10 +52484,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1071109031
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -53463,10 +52615,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1072396537
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -53773,10 +52921,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1078948829
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -54185,10 +53329,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1083387147
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -54385,10 +53525,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1086840727
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -54541,10 +53677,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1088361368
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -54709,10 +53841,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1090334726
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -54920,10 +54048,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1097900780
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -55021,10 +54145,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1099608082
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -55156,10 +54276,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1101382863
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -55310,10 +54426,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1104134560
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -55474,10 +54586,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1105242102
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -55990,10 +55098,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1114895607
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -56323,10 +55427,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1124159029
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -56447,10 +55547,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1126278302
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -56629,10 +55725,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1126545900
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -57038,10 +56130,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1129791693
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -57255,10 +56343,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1131701463
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -57495,10 +56579,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1132955937
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -57662,10 +56742,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1137333909
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -58499,10 +57575,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1163353116
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -58757,10 +57829,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1164819763
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -59064,10 +58132,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1171040418
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -59397,10 +58461,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1173919057
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -59637,10 +58697,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1177546711
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -60087,10 +59143,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1187166872
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -60187,10 +59239,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1192064928
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -60322,10 +59370,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1192896929
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -60445,10 +59489,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1194101659
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -61153,10 +60193,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1215078889
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -61360,10 +60396,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1227835040
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -61460,10 +60492,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1228490794
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -61560,10 +60588,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1234161530
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -61660,10 +60684,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1235324607
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -61783,10 +60803,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1236476810
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -62186,10 +61202,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1244841019
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -62286,10 +61298,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1248187114
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -62421,10 +61429,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1250396054
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -62649,10 +61653,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1259315260
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -63091,10 +62091,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1277467241
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -63213,10 +62209,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1278649397
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -63314,10 +62306,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1280663137
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -63449,10 +62437,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1283131125
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -63584,10 +62568,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1283264808
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -63719,10 +62699,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1286891343
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -63820,10 +62796,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1287521251
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -63987,10 +62959,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1287856271
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -64333,10 +63301,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1290746769
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -64538,10 +63502,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1292388483
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -64880,10 +63840,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1297597758
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -64981,10 +63937,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1299182954
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -65117,10 +64069,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1302631264
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -65284,10 +64232,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1306182677
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -65513,10 +64457,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1313021055
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -65719,10 +64659,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1323810600
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -66341,7 +65277,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -66580,10 +65516,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1335495664
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -66750,10 +65682,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1337708101
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -67233,10 +66161,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1351326672
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -67334,10 +66258,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1351612809
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -67588,10 +66508,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1359794599
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -67817,10 +66733,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1361726453
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -68023,10 +66935,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1364121966
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -68204,10 +67112,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - beam
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1366692787
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -68549,10 +67453,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1370339874
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -68754,10 +67654,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1371438989
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -68889,10 +67785,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1373066485
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -69012,10 +67904,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1377215237
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -69067,6 +67955,26 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1377215233}
   m_Mesh: {fileID: 7033542491135965237, guid: ff8e350189595744e94fa0a6a6d17105, type: 3}
+--- !u!1 &1382736087 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8095125946893382557, guid: 40fd736ca3384471b8439e24bb6e34dc, type: 3}
+  m_PrefabInstance: {fileID: 1452380196}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1382736088
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1382736087}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a8b1b8d7d2f4f8b9d8a4e6c1f2a7b30, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  host: 127.0.0.1
+  port: 5000
+  connectTimeoutSeconds: 3
 --- !u!1 &1382852630
 GameObject:
   m_ObjectHideFlags: 0
@@ -69135,10 +68043,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1382852634
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -69816,10 +68720,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1406606586
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -70126,10 +69026,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1415142750
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -70249,10 +69145,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1423323155
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -70571,10 +69463,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1436862397
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -70694,10 +69582,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1438747577
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -70862,10 +69746,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1441537019
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -71303,10 +70183,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1449917171
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -71427,10 +70303,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1450215411
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -71646,7 +70518,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 8095125946893382557, guid: 40fd736ca3384471b8439e24bb6e34dc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1382736088}
   m_SourcePrefab: {fileID: 100100000, guid: 40fd736ca3384471b8439e24bb6e34dc, type: 3}
 --- !u!1 &1454436924
 GameObject:
@@ -71717,10 +70592,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1454436928
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -71946,10 +70817,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1457947445
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -72114,10 +70981,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1459006837
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -72283,10 +71146,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1459214586
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -72451,10 +71310,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1462482719
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -72584,10 +71439,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1464403175
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -72684,10 +71535,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1464877891
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -72807,10 +71654,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1465118048
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -72939,10 +71782,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - beam
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1470507652
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -73167,10 +72006,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1471778912
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -73268,10 +72103,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1472393978
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -73459,10 +72290,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1476597995
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -73582,10 +72409,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1476950961
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -74408,10 +73231,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1485439911
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -74817,10 +73636,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1497021867
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -74984,10 +73799,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1497561535
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -75268,10 +74079,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1503989909
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -75509,10 +74316,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1506924439
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -76224,10 +75027,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1520973085
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -76839,10 +75638,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1527638468
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -77006,10 +75801,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1529843825
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -77330,10 +76121,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1536042202
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -77465,10 +76252,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1542819769
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -77810,10 +76593,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1550257939
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -77977,10 +76756,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1552582278
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -78145,10 +76920,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1554121222
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -78386,10 +77157,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1559884004
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -78719,10 +77486,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1562455500
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -78825,10 +77588,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &1568176388
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -79009,10 +77768,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1568448983
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -79110,10 +77865,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1573632145
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -79266,10 +78017,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1579752606
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -79551,10 +78298,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1594380927
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -79718,10 +78461,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1594394332
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -79854,10 +78593,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1600129631
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -79976,10 +78711,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1601897304
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -80216,10 +78947,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1602741858
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -80638,10 +79365,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1610699404
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -80874,10 +79597,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1613994828
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -81102,10 +79821,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1623249778
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -81750,10 +80465,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1633426233
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -81952,10 +80663,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1635001469
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -82192,10 +80899,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1637242390
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -82314,10 +81017,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1637569154
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -82449,10 +81148,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1639954434
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -82572,10 +81267,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1640028750
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -82673,10 +81364,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1644484318
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -82808,10 +81495,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1647669362
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -83045,10 +81728,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1658941510
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -83180,10 +81859,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1659585659
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -83452,10 +82127,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1662575286
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -83620,10 +82291,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1662646265
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -83976,10 +82643,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &1675022844
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -84093,10 +82756,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1676608719
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -84692,10 +83351,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1711790635
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -85015,10 +83670,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1714321806
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -85150,10 +83801,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1718958798
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -85272,10 +83919,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1719243768
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -85407,10 +84050,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1722437138
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -85530,10 +84169,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1723922648
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -85904,10 +84539,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1729724355
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -86071,10 +84702,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1730422356
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -86196,10 +84823,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1731734563
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -86629,10 +85252,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1740169925
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -86865,10 +85484,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1744882309
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -87000,10 +85615,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1748641606
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -87342,10 +85953,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1755303604
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -87447,10 +86054,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - shelf
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!208 &1760648332
 NavMeshObstacle:
   m_ObjectHideFlags: 0
@@ -87898,10 +86501,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1778150612
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -88795,10 +87394,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1798483191
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -89159,10 +87754,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1806211226
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -89283,10 +87874,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1813064668
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -89441,10 +88028,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1821593335
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -89541,10 +88124,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1822243289
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -90092,10 +88671,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1836771359
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -90259,10 +88834,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1836845253
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -90547,10 +89118,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1847304587
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -90682,10 +89249,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1847886762
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -90954,10 +89517,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1852897888
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -91182,10 +89741,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1854501936
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -91679,10 +90234,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1864753043
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -92002,10 +90553,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1872109553
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -92207,10 +90754,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - beam
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1879888219
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -92713,10 +91256,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1885012024
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -93133,10 +91672,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1892562485
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -93430,10 +91965,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1894974709
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -93530,10 +92061,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1897393920
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -93814,10 +92341,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1901147359
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -93915,10 +92438,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1901194607
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -94278,10 +92797,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1905758012
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -94400,10 +92915,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1907743192
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -94567,10 +93078,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1914530366
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -95067,10 +93574,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1923678600
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -95198,10 +93701,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1925854465
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -95396,10 +93895,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1928741213
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -95519,10 +94014,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1930430652
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -96102,10 +94593,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1949002155
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -96773,10 +95260,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1970474702
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -96928,10 +95411,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1979651668
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -97052,10 +95531,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1982066477
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -97258,10 +95733,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1984240568
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -97530,10 +96001,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1989501287
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -97907,10 +96374,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1994126791
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -98007,10 +96470,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1995513048
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -98107,10 +96566,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - station
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1995591914
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -98274,10 +96729,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &1997607166
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -98480,10 +96931,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2002784022
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -98743,10 +97190,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2006110127
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -99089,10 +97532,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2010251532
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -99275,10 +97714,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2016003855
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -99504,10 +97939,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2028023957
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -99745,10 +98176,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2033190303
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -99877,10 +98304,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - light
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2039352523
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -100012,10 +98435,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2046566078
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -100454,10 +98873,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2063550668
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -100691,10 +99106,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2075081219
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -100814,10 +99225,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2075457193
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -101087,10 +99494,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2075792862
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -101399,10 +99802,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - skylight
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2077758778
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -101521,10 +99920,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2079656621
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -101656,10 +100051,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2083531503
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -101928,10 +100319,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2089702184
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -102155,10 +100542,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2092813996
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -102557,10 +100940,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2106120140
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -102724,10 +101103,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2108086233
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -103029,10 +101404,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2113349931
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -103269,10 +101640,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2114879856
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -103405,10 +101772,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2117701445
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -103877,10 +102240,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - box
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2127733702
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -104002,10 +102361,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2127748137
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -104208,10 +102563,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - beam
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2132324887
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -104419,10 +102770,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ceiling
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2135699277
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -104660,10 +103007,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - ground
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2140103884
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -104782,10 +103125,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b33f0bc2b78db642a758f07826d0dd0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  labels:
-  - wall
-  useAutoLabeling: 0
-  autoLabelingSchemeType: 
 --- !u!23 &2140989795
 MeshRenderer:
   m_ObjectHideFlags: 0
