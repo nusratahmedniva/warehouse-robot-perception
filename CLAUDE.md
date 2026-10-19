@@ -1,12 +1,19 @@
-# Warehouse robot: perception and passage decisions
+# Avatar-Mediated Human-Robot Interaction in Virtual Worlds
 
 ## Project goal
-- Target: a warehouse robot running this full pipeline inside a Unity
-  emulator (aisles between racks, workers, pallets, a carried load).
-- THUD++ (Unity-made) is used for development and ground-truth
-  validation of the perception steps, not as the final setting.
-- Safety logic must depend only on reliable floor and person
-  recognition; all other objects are obstacles by geometry.
+A robot in a Unity warehouse starts at point A and must reach a goal B
+that it never knows; workers (one reused avatar) guide it there with
+arm-pointing gestures, one junction at a time. At each junction the
+robot slows, finds the nearest person with its 360-degree camera,
+approaches to 2.0 m, asks "Which direction?", reads a gesture that must
+hold for 1.0 s, and takes the indicated branch. An open palm (STOP) or
+a person stepping into the path stops it at once, and Unity stops it by
+itself if Python is silent for 0.3 s. Two automated tasks (straight A
+to B, and a guided route with 2-3 junctions and a changing B) give the
+results; thresholds are frozen on development trials before the final
+trials run once on a different seed.
+
+Specification: docs/project_flow.md
 
 ## Standing rules (apply to every task)
 - Code must run on Windows 11 and macOS. Use pathlib. Read all paths
@@ -14,8 +21,8 @@
   outputs store paths relative to configured roots.
 - Never copy datasets into the repo. Datasets, model weights, outputs
   and CLAUDE.local.md stay git-ignored.
-- Do not modify my friend's gesture module (git submodule at
-  external/media_pipe_gesture). Connect to it only through an adapter.
+- Do not modify Anisha's (GitHub: anisha274) gesture module (git
+  submodule at external/media_pipe_gesture). Connect to it only through an adapter.
 - Do not rerun successful inference. Never overwrite existing output
   folders; each run writes a new timestamped folder under outputs/.
 - Reference (ground-truth) data is read only by evaluation code.
@@ -28,7 +35,11 @@
 - Label results honestly: "reference-depth baseline",
   "reference-camera-pose baseline", "camera_proxy", "proxy_route".
 - Save the exact config and git commit hash in every output folder.
-- Commit locally at checkpoints. Never push.
+- Commit locally at checkpoints. Claude Code (the AI) must never run
+  git push. Nusrat and Anisha review the work and push their own
+  branches themselves.
+- Each person works on their own branch and merges into main through
+  pull requests.
 - Always run Python from the project venv, never the system Python:
   Windows robot_vision\.venv\Scripts\python.exe,
   macOS robot_vision/.venv/bin/python.
@@ -61,16 +72,16 @@
   the Unity robot camera must stay level.
 
 ## Project status
-- Done: segmentation baseline, YOLO + ByteTrack, Step 4 fusion,
-  Step 8 motion (frozen: configs/motion_frozen.json, hash
-  15821ff9...1625), Step 9 decision rules (60f6e1d; revised after
+- Done (THUD++ pipeline): segmentation baseline, YOLO + ByteTrack,
+  Step 4 fusion, Step 8 motion (frozen: configs/motion_frozen.json,
+  hash 15821ff9...1625), Step 9 decision rules (60f6e1d; revised after
   the replay demo in 2a9ed63 and cc89948; configs/decision.json).
   Step 9 decisions use only motion_trusted (dynamic_classes:
   person), motion range 0-6 m, and stop for untrusted motion near
   the route. Second review (2c4aad8, 5ffd04e): caution band,
   lower-bound distance for unlocated people, stop_hold_s; proxy
-  routes regenerated at 1.00 m. Work continues on branch
-  feature/warehouse-robot.
+  routes regenerated at 1.00 m.
+- passage.py (Step 6, from the earlier plan) is kept but not used in v3.
 - Splits (enforced by data_splits.json and the guard): Office/dynamic
   Capture_1 development, Capture_2 adjustment (used), Captures 3-4
   final; Gym/dynamic Captures 2-6 cross-scene final; Gym Capture_1
@@ -91,15 +102,17 @@
   - Load (implemented): Euro pallet 1.20 x 0.80 m, 0.80 m side across
     travel, centred, "configured, not measured" (configs/load.json).
     Required width 1.00 m, computed only by footprint.py.
-  - Step 6 (not yet implemented): a map cell is free only if labelled
-    floor AND within a height tolerance of the fitted floor plane;
-    unseen cells count as blocked.
   - Gesture module (implemented): git submodule at
     external/media_pipe_gesture, pinned 180e2796; adapter
     robot_vision/gesture_adapter.py (configs/gesture.json), modes
     full_frame (her baseline) and person_crop, raw scores, no threshold
     in the adapter; to_gesture_events -> decision.GestureEvent. Gesture
     evaluation: not_evaluated until Unity recordings with labels exist.
-- Next, in order: Step 6 passage width; slimmed evaluation harness; one
-  final THUD++ evaluation. Unity warehouse
-  scene is built by me in parallel.
+- Next, in order (Steps 1-7):
+  1. Robot and cameras
+  2. TCP bridge
+  3. Perception
+  4. Worker poses (Anisha)
+  5. State machine
+  6. Scenarios
+  7. Logging
