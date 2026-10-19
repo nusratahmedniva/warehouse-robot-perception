@@ -70,7 +70,7 @@ The schema is checked in `robot_vision/bridge/protocol.py` (`SCHEMAS`).
 | `collision_count` | collisions recorded since Play |
 | `reached_end_point` | true once the scenario says the robot reached the end point |
 | `nav_has_target`, `nav_target_x`, `nav_target_z` | the target point Python requested |
-| `nav_status` | `none`, `complete`, `partial`, `invalid`, `start_off_navmesh`, `target_off_navmesh`, `no_agent_type` |
+| `nav_status` | `none`, `complete`, `partial`, `invalid`, `start_off_navmesh`, `target_off_navmesh`, `no_agent_type` (no enabled, baked NavMesh Surface for the agent type `nav.agent_type`, "AMR"; all queries use that agent type) |
 | `nav_start_snap_m`, `nav_target_snap_m` | horizontal distance (m) by which the robot position and the target were moved onto the NavMesh (`NavMesh.SamplePosition`, at most `nav.snap_max_distance_m` in bridge_unity.json); -1 if that end could not be snapped |
 | `nav_corners` | `[{"x", "z"}, ...]` NavMesh path corners from the snapped start to the snapped target (`NavMesh.CalculatePath`, recomputed every telemetry tick) |
 | `last_command_seq` | `seq` of the last command received (-1 before any) |
@@ -140,7 +140,8 @@ contains a key named `goal`, `goal_point`, `goal_x`, `goal_z`, `end_point`,
 ## Safety in Unity
 
 - **Emergency stop**: the debug panel's "Stop robot" button latches it
-  (`DiffDriveController.EngageEmergencyStop`): v = 0, omega = 0, and
+  (`DiffDriveController.EngageEmergencyStop`): v = 0, omega = 0, braking
+  at `estop_decel_mps2` (1.5 m/s², robot.json) instead of `decel_mps2`, and
   bridge and keyboard commands are ignored until it is released with two
   deliberate clicks ("Release stop...", then "Confirm release" within
   3 s). Engaging and releasing are logged; telemetry carries `estop`.

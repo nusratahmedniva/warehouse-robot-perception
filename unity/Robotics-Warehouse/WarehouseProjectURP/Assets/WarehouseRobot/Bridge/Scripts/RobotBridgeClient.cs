@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
+using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Rendering;
@@ -73,7 +75,7 @@ namespace WarehouseRobot.Bridge
         readonly List<NavCorner> navCorners = new List<NavCorner>();
         NavMeshPath navPath;
         int agentTypeId;
-        bool agentResolved, agentMissingLogged;
+        bool agentResolved, agentFailed;
 
         // Round-trip delay: telemetry seq -> Stopwatch timestamp when queued.
         readonly Dictionary<int, long> sentTelemetry = new Dictionary<int, long>();
@@ -134,6 +136,7 @@ namespace WarehouseRobot.Bridge
                 Debug.LogError("[RobotBridge] AsyncGPUReadback is not supported here; no camera frames will be sent.", this);
             robot.Omni.FrameCaptured += On360Captured;
             RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
+            ResolveAgentType(); // report a missing NavMesh at Play start, not at the first target
             if (cfg.Unity.auto_connect) Connect();
         }
 
@@ -406,23 +409,39 @@ namespace WarehouseRobot.Bridge
 
         static float HorizontalDistance(Vector3 a, Vector3 b) => new Vector2(a.x - b.x, a.z - b.z).magnitude;
 
+        /// <summary>
+        /// Agent type ID for every NavMesh query (SamplePosition, CalculatePath), read from the scene's NavMesh Surface
+        /// whose agent type is named nav.agent_type in bridge_unity.json ("AMR"). Without an enabled, baked surface for
+        /// that agent the robot gets no paths (nav_status no_agent_type) and one clear error is logged.
+        /// </summary>
         bool ResolveAgentType()
         {
             if (agentResolved) return true;
+            if (agentFailed) return false;
             string name = cfg.Unity.nav.agent_type;
-            for (int i = 0; i < NavMesh.GetSettingsCount(); i++)
+            var surfaces = FindObjectsByType<NavMeshSurface>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var match = surfaces.FirstOrDefault(s => NavMesh.GetSettingsNameFromID(s.agentTypeID) == name);
+            string problem = null;
+            if (surfaces.Length == 0)
+                problem = "the scene has no NavMesh Surface";
+            else if (match == null)
+                problem = "no NavMesh Surface uses it (found: " + string.Join(", ", surfaces.Select(s =>
+                    "'" + s.name + "' -> " + (NavMesh.GetSettingsNameFromID(s.agentTypeID) ?? "unknown id " + s.agentTypeID))) + ")";
+            else if (match.navMeshData == null)
+                problem = "NavMesh Surface '" + match.name + "' has not been baked";
+            else if (!match.isActiveAndEnabled)
+                problem = "NavMesh Surface '" + match.name + "' is disabled";
+            if (problem != null)
             {
-                int id = NavMesh.GetSettingsByIndex(i).agentTypeID;
-                if (NavMesh.GetSettingsNameFromID(id) == name)
-                {
-                    agentTypeId = id;
-                    agentResolved = true;
-                    return true;
-                }
+                agentFailed = true;
+                Debug.LogError("[RobotBridge] No NavMesh for agent type '" + name + "' (bridge_unity.json nav.agent_type): " + problem
+                    + ". Select the NavMesh Surface, set Agent Type to " + name + ", click Bake and save the scene. No paths until then.", this);
+                return false;
             }
-            if (!agentMissingLogged) Debug.LogError($"[RobotBridge] NavMesh agent type '{name}' not found (bridge_unity.json nav.agent_type).", this);
-            agentMissingLogged = true;
-            return false;
+            agentTypeId = match.agentTypeID;
+            agentResolved = true;
+            Debug.Log("[RobotBridge] NavMesh queries use agent type '" + name + "' (id " + agentTypeId + ") from NavMesh Surface '" + match.name + "'.", this);
+            return true;
         }
 
         void DrawPath()

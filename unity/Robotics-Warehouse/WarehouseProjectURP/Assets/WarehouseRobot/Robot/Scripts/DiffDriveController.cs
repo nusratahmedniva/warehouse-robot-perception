@@ -7,7 +7,8 @@ namespace WarehouseRobot
     /// &gt; 0 = left / counter-clockwise from above) within the limits of robot.json. Speeding up uses max_accel_mps2,
     /// slowing down (and the first half of a reversal) uses decel_mps2. Wheels are visual only (no WheelColliders);
     /// each side spins at its rim speed / wheel radius, i.e. v / r when driving straight. A latched emergency stop
-    /// holds v = 0, omega = 0 against every caller (bridge, keyboard) until it is released.
+    /// holds v = 0, omega = 0 against every caller (bridge, keyboard) until it is released, braking at
+    /// estop_decel_mps2 instead of decel_mps2 (the look-ahead keeps assuming decel_mps2).
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     [DisallowMultipleComponent]
@@ -53,7 +54,7 @@ namespace WarehouseRobot
             CommandedOmega = 0f;
         }
 
-        /// <summary>Latch the emergency stop: command v = 0, omega = 0 (braking at decel_mps2) and ignore all commands.</summary>
+        /// <summary>Latch the emergency stop: command v = 0, omega = 0 (braking at estop_decel_mps2) and ignore all commands.</summary>
         public void EngageEmergencyStop(string source)
         {
             Stop();
@@ -89,7 +90,8 @@ namespace WarehouseRobot
         void FixedUpdate()
         {
             float dt = Time.fixedDeltaTime;
-            V = RampSpeed(V, CommandedV, limits.max_accel_mps2, limits.decel_mps2, dt);
+            float decel = EmergencyStop ? limits.estop_decel_mps2 : limits.decel_mps2;
+            V = RampSpeed(V, CommandedV, limits.max_accel_mps2, decel, dt);
             Omega = RampSpeed(Omega, CommandedOmega, limits.max_angular_accel_radps2, limits.max_angular_accel_radps2, dt);
 
             Vector3 forward = Vector3.ProjectOnPlane(body.rotation * Vector3.forward, Vector3.up).normalized;

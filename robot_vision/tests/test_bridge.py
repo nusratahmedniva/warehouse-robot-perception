@@ -376,6 +376,21 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg["telemetry_hz"], 20.0)
         self.assertNotIn("goal", json.dumps(cfg).lower())
 
+    def test_estop_decel_is_separate_from_look_ahead_decel(self):
+        import footprint as fp
+        robot = json.loads((ROOT / "configs" / "robot.json").read_text(encoding="utf-8"))
+        decision = json.loads((ROOT / "configs" / "decision.json").read_text(encoding="utf-8"))
+        self.assertEqual((robot["decel_mps2"], robot["estop_decel_mps2"]), (0.5, 1.5))
+        self.assertGreaterEqual(robot["estop_decel_mps2"], robot["decel_mps2"])
+        la = fp.look_ahead(robot, decision["look_ahead"])  # still built on decel_mps2 only
+        self.assertEqual((la["decel_mps2"], la["look_ahead_m"]), (0.5, 3.0))
+
+    def test_unity_nav_agent_is_amr(self):
+        unity = json.loads((UNITY_PROJECT / "Assets/WarehouseRobot/Bridge/Config/bridge_unity.json").read_text(encoding="utf-8"))
+        self.assertEqual(unity["nav"]["agent_type"], "AMR")
+        settings = (UNITY_PROJECT / "ProjectSettings/NavMeshAreas.asset").read_text(encoding="utf-8")
+        self.assertIn("- AMR", settings)  # the agent type exists in the project
+
     def test_unity_configs_point_at_shared_configs(self):
         for rel, key, target in (("Assets/WarehouseRobot/Bridge/Config/bridge_unity.json", "bridge_config", "bridge.json"),
                                  ("Assets/WarehouseRobot/Robot/Config/robot_unity.json", "robot_config", "robot.json")):

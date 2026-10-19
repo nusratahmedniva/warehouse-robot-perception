@@ -15,6 +15,7 @@ namespace WarehouseRobot
         public float max_speed_mps;
         public float max_accel_mps2;
         public float decel_mps2;
+        public float estop_decel_mps2;
         public float max_angular_speed_radps;
         public float max_angular_accel_radps2;
     }
@@ -167,6 +168,8 @@ namespace WarehouseRobot
             Positive("robot.json max_speed_mps", r.max_speed_mps);
             Positive("robot.json max_accel_mps2", r.max_accel_mps2);
             Positive("robot.json decel_mps2", r.decel_mps2);
+            Positive("robot.json estop_decel_mps2", r.estop_decel_mps2);
+            if (r.estop_decel_mps2 < r.decel_mps2) e.Add("robot.json estop_decel_mps2 must be >= decel_mps2");
             Positive("robot.json max_angular_speed_radps", r.max_angular_speed_radps);
             Positive("robot.json max_angular_accel_radps2", r.max_angular_accel_radps2);
 
