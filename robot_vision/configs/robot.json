@@ -1,10 +1,16 @@
 {
   "note": "Provisional values chosen by the project owner. The load is configured in load_config (configured, not measured); its dimensions are to be measured later in Unity.",
   "robot_width_m": 0.60,
+  "robot_length_m": 0.80,
+  "robot_height_m": 0.40,
   "safety_margin_per_side_m": 0.10,
   "max_speed_mps": 1.0,
+  "max_accel_mps2": 0.5,
   "decel_mps2": 0.5,
+  "max_angular_speed_radps": 1.0,
+  "max_angular_accel_radps2": 2.0,
   "speed_note": "Added 2026-10-15 after the Step 9 replay demo (design decision, not tuning): inputs of the decision look-ahead (decision.json -> look_ahead).",
+  "body_drive_note": "Added 2026-10-19 for Step 1 (Unity robot): robot_length_m, robot_height_m (top of the body above the ground, mast excluded), max_accel_mps2, max_angular_speed_radps, max_angular_accel_radps2. Provisional simulation values, not measured, not tuned. Unity reads this file (Assets/WarehouseRobot/Robot/Config/robot_unity.json -> paths): the box is robot_width_m x robot_length_m x robot_height_m, and the differential drive is limited by max_speed_mps, max_accel_mps2, decel_mps2 (braking, the same value the look-ahead uses), max_angular_speed_radps and max_angular_accel_radps2.",
   "load_config": "configs/load.json",
   "required_passage_width_rule": "(furthest right - furthest left extent of robot and load from the robot centre line) + 2 * safety_margin_per_side_m; computed only by footprint.required_width / footprint.load_footprint"
 }
