@@ -237,7 +237,7 @@ class HriPerception:
         for box, c, tid, kp, kc in zip(boxes, confs, ids, kps, kcs):
             if box[3] - box[1] < p["min_box_height_px"]:
                 continue
-            u = 0.5 * (box[0] + box[2])
+            u = float(0.5 * (box[0] + box[2]))
             d, src = person_distance(box, kp, kc, h, p)
             out.append({"track_id": int(tid), "bearing_deg": round(hp.pano_bearing(u, w, heading_deg), 2),
                         "distance_m": round(d, 3) if d is not None else -1.0, "distance_source": src,
@@ -265,7 +265,7 @@ class HriPerception:
         persons = [self._ga.PersonBox("target", *map(float, box))] if box is not None else []
         events = self._ga.to_gesture_events(self.stop.detect(rgb, timestamp, persons=persons)) if persons else ()
         mp_ms = (time.perf_counter() - t1) * 1000.0
-        stop = max((e.confidence for e in events if e.gesture == "STOP"), default=0.0)
+        stop = float(max((e.confidence for e in events if e.gesture == "STOP"), default=0.0))
         detail["stop_score"] = round(stop, 3)
         if stop >= self.cfg["stop"]["min_confidence"]:
             command, conf, detail["why"] = "STOP", stop, "open palm (MediaPipe)"

@@ -70,6 +70,14 @@ class FramingTests(unittest.TestCase):
         with self.assertRaises(hp.ProtocolError):
             hp.decode(hp.encode_raw(b'[1, 2]'))
 
+    def test_numpy_scalars_are_encoded(self):
+        import numpy as np
+        h = hp.perception_reply(1, 0.0, ack_seq=1, label="x", confidence=np.float32(0.5),
+                                people=[{"bearing_deg": np.float32(12.5), "distance_m": np.float64(3.0), "track_id": np.int64(2)}])
+        frame, _ = hp.decode(hp.encode(h))
+        self.assertEqual(frame.header["people"][0], {"bearing_deg": 12.5, "distance_m": 3.0, "track_id": 2})
+        self.assertEqual(frame.header["gesture"]["confidence"], 0.5)
+
     def test_perception_reply(self):
         r = hp.perception_reply(5, 2.0, ack_seq=42, label="stub", command="LEFT",
                                 inference=[{"model": "a", "ms": 1.5}, {"model": "b", "ms": 2.0}])

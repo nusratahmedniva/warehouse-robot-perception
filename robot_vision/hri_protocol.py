@@ -52,7 +52,15 @@ def encode(header: dict, images: list[bytes] = ()) -> bytes:
     for e, img in zip(entries, images):
         if e.get("bytes") != len(img):
             raise ProtocolError(f"image {e.get('name')!r}: header says {e.get('bytes')} bytes, got {len(img)}")
-    return encode_raw(json.dumps(header, separators=(",", ":"), ensure_ascii=False).encode("utf-8"), images)
+    return encode_raw(json.dumps(header, separators=(",", ":"), ensure_ascii=False, default=_json_default).encode("utf-8"),
+                      images)
+
+
+def _json_default(o):
+    """numpy scalars (float32 etc.) from the models -> plain Python numbers."""
+    if hasattr(o, "item"):
+        return o.item()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
 
 
 def _parse_header(raw: bytes) -> dict:
