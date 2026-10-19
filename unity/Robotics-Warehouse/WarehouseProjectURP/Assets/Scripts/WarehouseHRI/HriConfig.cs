@@ -13,6 +13,8 @@ namespace WarehouseHRI
     public class HriConfig
     {
         public const string RelativePath = "WarehouseHRI/hri_config.json";
+        /// <summary>Optional, git-ignored overlay (*.local.json): only the fields it contains replace the main file's.</summary>
+        public const string LocalRelativePath = "WarehouseHRI/hri_config.local.json";
 
         public string label = "defaults compiled into HriConfig.cs";
         public bool frozen;
@@ -23,6 +25,29 @@ namespace WarehouseHRI
         public LinkSettings link = new LinkSettings();
         public CameraSettings cameras = new CameraSettings();
         public TelemetrySettings telemetry = new TelemetrySettings();
+        public PerceptionSettings perception = new PerceptionSettings();
+        public GestureSweepSettings gesture_sweep = new GestureSweepSettings();
+
+        [Serializable]
+        public class PerceptionSettings
+        {
+            public string mode = "scripted";              // scripted (baseline) | vision (Python replies)
+            public float stale_after_s = 0.5f;            // older replies are ignored (no people, gesture NONE)
+            public float unknown_person_distance_m = 1.0f; // used for a person whose distance vision could not estimate
+            public float chest_height_m = 1.3f;           // pan-tilt aim height above a vision person's feet
+        }
+
+        [Serializable]
+        public class GestureSweepSettings
+        {
+            public int repeats = 20;
+            public float distance_min_m = 1.7f;
+            public float distance_max_m = 2.5f;
+            public float view_angle_max_deg = 25f;
+            public float worker_yaw_jitter_deg = 15f;
+            public float settle_s = 0.6f;
+            public float hold_s = 1.5f;
+        }
 
         [Serializable]
         public class TrialSettings
@@ -121,6 +146,7 @@ namespace WarehouseHRI
 
         static HriConfig s_Current;
         static string s_SourceText;
+        static string s_LocalText;
 
         /// <summary>Full path of the config file (StreamingAssets).</summary>
         public static string FilePath => Path.Combine(Application.streamingAssetsPath, RelativePath);
@@ -131,20 +157,43 @@ namespace WarehouseHRI
             get { _ = Current; return s_SourceText; }
         }
 
+        /// <summary>The local overlay's text, or null when there is none (copied into every run folder too).</summary>
+        public static string LocalText
+        {
+            get { _ = Current; return s_LocalText; }
+        }
+
+        public static string LocalFilePath => Path.Combine(Application.streamingAssetsPath, LocalRelativePath);
+
         public static HriConfig Current
         {
             get
             {
-                if (s_Current == null) s_Current = Load(FilePath, out s_SourceText);
+                if (s_Current == null)
+                {
+                    s_Current = Load(FilePath, out s_SourceText);
+                    s_LocalText = null;
+                    if (File.Exists(LocalFilePath))
+                    {
+                        s_LocalText = File.ReadAllText(LocalFilePath);
+                        JsonUtility.FromJsonOverwrite(s_LocalText, s_Current);
+                        Debug.Log("[WarehouseHRI] Config overlay applied: " + LocalRelativePath);
+                    }
+                }
+
                 return s_Current;
             }
         }
+
+        /// <summary>Text hashed and saved as "the exact config": main file plus the overlay, if any.</summary>
+        public static string EffectiveText => (SourceText ?? "") + (LocalText != null ? "\n// hri_config.local.json overlay:\n" + LocalText : "");
 
         /// <summary>Re-read the file on next access (TrialManager calls this at the start of a session).</summary>
         public static void Reload()
         {
             s_Current = null;
             s_SourceText = null;
+            s_LocalText = null;
         }
 
         public static HriConfig Load(string path, out string text)
@@ -172,5 +221,11 @@ namespace WarehouseHRI
         public int ActiveSeed => IsFinal ? trials.final_seed : trials.dev_seed;
 
         public bool IsFinal => string.Equals(trials.mode, "final", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Decisions use the Python vision replies (else the scripted baselines).</summary>
+        public bool IsVision => string.Equals(perception.mode, "vision", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>The robot must stop when Python is silent: configured, and always in vision mode.</summary>
+        public bool LinkRequired => link.link_required || IsVision;
     }
 }

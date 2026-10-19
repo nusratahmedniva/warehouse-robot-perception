@@ -22,6 +22,8 @@ namespace WarehouseHRI.EditorTools
     {
         public const string RootName = "WarehouseHRI";
         public const string WorkerModelPath = "Assets/WarehouseRobot/Characters/worker.fbx";
+        /// <summary>Extracted Mixamo textures and the worker's material; git-ignored like the FBX itself.</summary>
+        public const string WorkerTextureDir = "Assets/WarehouseRobot/Characters/worker_textures";
         const string NavMeshAssetName = "NavMesh-WarehouseHRI.asset";
         public const string ScenePath = "Assets/Scenes/WarehouseRobot.unity";
         public const string ViewerOnlyLayer = "ViewerOnly";
@@ -186,6 +188,14 @@ namespace WarehouseHRI.EditorTools
             tm.task1Goal = e1;
             tm.goalMarker = BuildGoalMarker(root, e1.Position, viewerLayer).transform;
             EditorUtility.SetDirty(tm);
+            var sweep = GetOrAdd<GestureSweep>(trialsGo);
+            sweep.robot = tm.robot;
+            sweep.worker = worker;
+            sweep.panTilt = robot.GetComponentInChildren<PanTiltCamera>();
+            sweep.bridge = tm.bridge;
+            sweep.trialManager = tm;
+            sweep.stand = j1.workerStand;
+            EditorUtility.SetDirty(sweep);
 
             BuildViewCamera(root, robot, log);
 
@@ -428,6 +438,16 @@ namespace WarehouseHRI.EditorTools
             bridge.cam360 = cam360;
             telemetry.bridge = bridge;
             hud.bridge = bridge;
+            var visionPeople = GetOrAdd<VisionPersonSource>(robot);
+            visionPeople.bridge = bridge;
+            var visionGestures = GetOrAdd<VisionGestureSource>(robot);
+            visionGestures.bridge = bridge;
+            var selector = GetOrAdd<PerceptionSelector>(robot);
+            selector.brain = brain;
+            selector.scriptedPeople = people;
+            selector.scriptedGestures = gestures;
+            selector.visionPeople = visionPeople;
+            selector.visionGestures = visionGestures;
             GetOrAdd<NavMeshModifier>(robot).ignoreFromBuild = true;
 
             foreach (var comp in robot.GetComponents<Component>()) EditorUtility.SetDirty(comp);
@@ -555,6 +575,7 @@ namespace WarehouseHRI.EditorTools
                     modelChild = inst.transform;
                 }
 
+                ApplyWorkerMaterial(modelChild.gameObject, log);
                 var animator = modelChild.GetComponentInChildren<Animator>();
                 if (animator == null) animator = modelChild.gameObject.AddComponent<Animator>();
                 worker.animator = animator;
@@ -590,6 +611,61 @@ namespace WarehouseHRI.EditorTools
 
             EditorUtility.SetDirty(worker);
             return worker;
+        }
+
+        /// <summary>
+        /// Mixamo FBX files embed their textures, which Unity does not extract by itself, so the worker rendered
+        /// as a pale, partly transparent figure. Extract them once (git-ignored folder) and give every renderer an
+        /// opaque URP Lit material with the diffuse map.
+        /// </summary>
+        static void ApplyWorkerMaterial(GameObject model, StringBuilder log)
+        {
+            if (!AssetDatabase.IsValidFolder(WorkerTextureDir))
+            {
+                var importer = AssetImporter.GetAtPath(WorkerModelPath) as ModelImporter;
+                AssetDatabase.CreateFolder(Path.GetDirectoryName(WorkerTextureDir)?.Replace('\\', '/'), Path.GetFileName(WorkerTextureDir));
+                bool ok = importer != null && importer.ExtractTextures(WorkerTextureDir);
+                AssetDatabase.Refresh();
+                log.AppendLine(ok ? "Worker: extracted the FBX's embedded textures to " + WorkerTextureDir + " (git-ignored)."
+                    : "Worker: the FBX has no extractable textures; using a plain material.");
+            }
+
+            Texture2D diffuse = null;
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { WorkerTextureDir }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (path.IndexOf("diffuse", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    path.IndexOf("albedo", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    path.IndexOf("basecolor", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    diffuse = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                    break;
+                }
+            }
+
+            string matPath = WorkerTextureDir + "/Worker_URP.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            if (mat == null)
+            {
+                mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                AssetDatabase.CreateAsset(mat, matPath);
+            }
+
+            mat.SetTexture("_BaseMap", diffuse);
+            mat.SetColor("_BaseColor", diffuse != null ? Color.white : new Color(0.25f, 0.35f, 0.55f));
+            mat.SetFloat("_Surface", 0f); // opaque
+            mat.SetFloat("_Smoothness", 0.25f);
+            EditorUtility.SetDirty(mat);
+            int n = 0;
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
+                for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+                r.sharedMaterials = mats;
+                n++;
+            }
+
+            log.AppendLine($"Worker: opaque URP material ({(diffuse != null ? diffuse.name : "no diffuse texture, plain colour")}) on {n} renderer(s).");
         }
 
         static Transform PlaceholderArm(GameObject parent, string name, float x)

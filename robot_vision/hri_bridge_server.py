@@ -35,7 +35,11 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_CONFIG = HERE / "configs" / "bridge.json"
 
 FRAME_FIELDS = ["recv_s", "seq", "type", "t_unity", "t_sim", "state", "robot_x", "robot_z", "heading_deg",
-                "n_images", "image_bytes", "images_ok", "inference_total_ms", "reply_seq"]
+                "n_images", "image_bytes", "images_ok", "inference_total_ms", "reply_seq", "skipped_before",
+                # perception output (vision; empty for the stub). Never ground truth.
+                "n_people", "target_id", "target_bearing_deg", "target_distance_m", "target_distance_source",
+                "gesture_read", "gesture_source", "gesture_why", "right_arm_deg", "left_arm_deg", "stop_score",
+                "model_ms", "people_json"]
 
 
 class StubPerception:
@@ -44,7 +48,18 @@ class StubPerception:
     label = "stub (no perception until Step 4)"
 
     def process(self, frame: hp.Frame) -> dict:
-        return {"people": [], "command": "NONE", "confidence": 0.0, "inference": []}
+        return {"people": [], "command": "NONE", "confidence": 0.0, "inference": [], "log": {}}
+
+
+def make_perception(cfg: dict):
+    """bridge.json -> perception: 'stub' or 'vision' (hri_perception.py with perception_config)."""
+    kind = cfg.get("perception", "stub")
+    if kind == "stub":
+        return StubPerception()
+    if kind == "vision":
+        import hri_perception as hpm
+        return hpm.HriPerception(hpm.load_config(HERE / cfg["perception_config"]))
+    raise ValueError(f"unknown perception {kind!r}")
 
 
 def check_images(frame: hp.Frame) -> tuple[bool, list[str]]:
@@ -71,7 +86,7 @@ class BridgeServer:
 
     def __init__(self, cfg: dict, perception=None, run_dir: Path | None = None, log=print):
         self.cfg = cfg
-        self.perception = perception or StubPerception()
+        self.perception = perception if perception is not None else StubPerception()
         self.run_dir = run_dir
         self.log = log
         self.heartbeat_s = float(cfg["heartbeat_s"])
@@ -158,8 +173,20 @@ class Session:
                 readable, _, _ = select.select([self.conn], [], [], wait)
                 if readable:
                     self.conn.settimeout(self.s.read_timeout_s)
-                    frame = hp.read_frame(self.conn)
-                    if not self.handle(frame):
+                    frames = [hp.read_frame(self.conn)]
+                    # Perception can be slower than Unity's 0.1 s; answer only the newest observation so the
+                    # replies never lag behind (older ones are logged as skipped, not answered).
+                    while select.select([self.conn], [], [], 0)[0]:
+                        frames.append(hp.read_frame(self.conn))
+                    obs = [i for i, f in enumerate(frames) if f.header["type"] == "observation"]
+                    keep = obs[-1] if obs else None
+                    alive = True
+                    for i, f in enumerate(frames):
+                        if f.header["type"] == "observation" and i != keep:
+                            self.skip(f)
+                            continue
+                        alive = self.handle(f, skipped_before=len(obs) - 1 if i == keep else 0) and alive
+                    if not alive:
                         self.end_reason = "bye"
                         break
                 if time.monotonic() - self.last_sent >= self.s.heartbeat_s:
@@ -177,7 +204,14 @@ class Session:
         finally:
             self.close()
 
-    def handle(self, frame: hp.Frame) -> bool:
+    def skip(self, frame: hp.Frame) -> None:
+        self.counts["observation_skipped"] = self.counts.get("observation_skipped", 0) + 1
+        if self.dir is not None:
+            h = frame.header
+            self.csv.writerow({"recv_s": f"{time.monotonic() - self.t0:.4f}", "seq": h.get("seq"),
+                               "type": "observation_skipped", "t_unity": h.get("t"), "t_sim": h.get("t_sim")})
+
+    def handle(self, frame: hp.Frame, skipped_before: int = 0) -> bool:
         h = frame.header
         now = time.monotonic()
         kind = h["type"]
@@ -208,11 +242,12 @@ class Session:
             self.send(hp.perception_reply(reply_seq, time.monotonic(), ack_seq=h.get("seq"),
                                           label=self.s.perception.label, people=result["people"],
                                           command=result["command"], confidence=result["confidence"],
-                                          inference=result["inference"], total_ms=total_ms))
+                                          inference=result["inference"], total_ms=total_ms,
+                                          target=result.get("target"), gesture_detail=result.get("gesture_detail")))
             robot = h.get("robot", {})
             row.update(t_sim=h.get("t_sim"), state=h.get("state"), robot_x=robot.get("x"), robot_z=robot.get("z"),
                        heading_deg=robot.get("heading_deg"), images_ok=int(ok),
-                       inference_total_ms=f"{total_ms:.3f}")
+                       inference_total_ms=f"{total_ms:.3f}", skipped_before=skipped_before, **result.get("log", {}))
             self.save_images(frame)
         elif kind == "bye":
             self.s.log(f"Unity said bye: {h.get('reason', '')}")
@@ -263,11 +298,18 @@ def main() -> None:
     cfg = load_config(cfg_path)
     if a.port is not None:
         cfg["port"] = a.port
+    perception = make_perception(cfg)  # loads and warms up the models before Unity connects
     out = dio.new_run_dir(cfg, "bridge")
-    hashes = dio.copy_configs(out, [cfg_path])
+    used = [cfg_path]
+    if cfg.get("perception") == "vision":
+        import hri_perception as hpm
+        pcfg_path = HERE / cfg["perception_config"]
+        used += [pcfg_path, HERE / hpm.load_config(pcfg_path)["stop"]["adapter_config"]]
+    hashes = dio.copy_configs(out, used)
     dio.write_json(out / "run.json", {"git": dio.git_info(), "config_sha256": hashes, "port": cfg["port"],
-                                      "protocol_version": hp.VERSION, "perception": StubPerception.label})
-    server = BridgeServer(cfg, run_dir=out)
+                                      "protocol_version": hp.VERSION, "perception": perception.label,
+                                      "device": getattr(perception, "device", None)})
+    server = BridgeServer(cfg, perception=perception, run_dir=out)
     server.start()
 
     def on_sigterm(*_):
@@ -282,6 +324,8 @@ def main() -> None:
         pass
     finally:
         server.stop()
+        if hasattr(perception, "close"):
+            perception.close()
         print("Bridge stopped.", flush=True)
 
 

@@ -76,3 +76,6 @@ unity/**/Assets/WarehouseRobot/Characters/**/*.tga
 
 # macOS Finder metadata
 .DS_Store
+unity/**/Assets/WarehouseRobot/Characters/worker_textures/
+unity/**/Assets/WarehouseRobot/Characters/worker_textures.meta
+*.local.json.meta

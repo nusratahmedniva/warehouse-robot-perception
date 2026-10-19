@@ -86,14 +86,31 @@ gestures; true positions never leave Unity's scoring code.
 
 ```json
 {"type": "perception", "v": 1, "seq": 42, "t": 1005.3, "ack_seq": 42,
- "label": "stub (no perception until Step 4)",
- "people": [{"bearing_deg": 12.5, "distance_m": 4.2, "confidence": 0.91, "track_id": 3}],
- "gesture": {"command": "NONE", "confidence": 0.0},
- "inference": [{"model": "yolo11n-pose", "ms": 14.2}], "inference_total_ms": 14.2}
+ "label": "vision (YOLO11s-pose arm direction + MediaPipe STOP)",
+ "people": [{"track_id": 3, "bearing_deg": 12.5, "distance_m": 4.2, "distance_source": "ankles", "confidence": 0.91}],
+ "target": {"track_id": 3, "bearing_deg": 12.5, "distance_m": 4.2, "distance_source": "ankles", "confidence": 0.91},
+ "gesture": {"command": "FORWARD_LEFT", "confidence": 0.88, "source": "arm", "why": "ok",
+             "right_arm_deg": -999.0, "left_arm_deg": -43.1},
+ "inference": [{"model": "jpeg_decode", "ms": 3.1}, {"model": "yolo11s-pose/cam360", "ms": 38.0},
+               {"model": "yolo11s-pose/gesture", "ms": 33.5}, {"model": "mediapipe/stop", "ms": 17.9}],
+ "inference_total_ms": 95.2}
 ```
 
 `ack_seq` echoes the observation's `seq`; Unity computes the round-trip delay from its own send time of
 that `seq`. `inference_total_ms` covers decoding and all models for that observation.
+
+Fields added in Step 4 (still protocol v1: only new fields, all optional for the receiver):
+- `people[].distance_source`: `ankles` (feet keypoints on the floor), `box_bottom` (bottom of the box; too far
+  if the feet are hidden) or `unknown`; `distance_m` is `-1` when unknown. Bearings are relative to the robot
+  pose sent with the observation `ack_seq` (Unity keeps that pose per `seq`).
+- `target`: the chosen (nearest) person, `track_id` -1 when nobody is seen.
+- `gesture.source` (`arm`, `mediapipe` for STOP, `none`), `gesture.why`, the two arm angles (image angle from
+  straight up, + = image right; -999 = not measured).
+- `inference[].model` names: `jpeg_decode`, `yolo11s-pose/cam360`, `yolo11s-pose/gesture`, `mediapipe/stop`.
+
+The stub (`perception: "stub"` in bridge.json) sends the same message with no people, `target.track_id` -1
+and gesture NONE. When Python has several observations waiting, it answers only the newest one; the older
+ones get no reply (logged as `observation_skipped`).
 
 ### `heartbeat`
 

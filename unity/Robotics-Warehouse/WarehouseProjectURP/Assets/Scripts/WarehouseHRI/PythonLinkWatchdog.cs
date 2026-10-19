@@ -23,7 +23,7 @@ namespace WarehouseHRI
         {
             if (!useConfigFile) return;
             var l = HriConfig.Current.link;
-            linkRequired = l.link_required;
+            linkRequired = HriConfig.Current.LinkRequired;
             silenceLimitS = l.watchdog_s;
         }
 

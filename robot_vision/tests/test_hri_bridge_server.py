@@ -125,5 +125,77 @@ class BridgeServerTests(unittest.TestCase):
         self.assertTrue(summary["end_reason"].startswith("protocol error"))
 
 
+class FakeVision:
+    """Stands in for HriPerception (no models): fixed people, target, gesture and per-model times."""
+    label = "fake vision"
+
+    def process(self, frame):
+        people = [{"track_id": 3, "bearing_deg": 12.5, "distance_m": 4.2, "distance_source": "ankles", "confidence": 0.9}]
+        return {"people": people, "target": dict(people[0]), "command": "FORWARD_LEFT", "confidence": 0.8,
+                "gesture_detail": {"source": "arm", "why": "ok", "right_arm_deg": -44.0, "left_arm_deg": -999.0},
+                "inference": [{"model": "yolo11s-pose/cam360", "ms": 20.0}, {"model": "yolo11s-pose/gesture", "ms": 15.0},
+                              {"model": "mediapipe/stop", "ms": 5.0}],
+                "log": {"n_people": 1, "target_id": 3, "gesture_read": "FORWARD_LEFT", "gesture_source": "arm",
+                        "model_ms": "yolo11s-pose/cam360:20.00"}}
+
+
+@unittest.skipIf(Image is None, "Pillow not installed")
+class VisionReplyTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.run_dir = Path(self.tmp.name)
+        cfg = {"host": "127.0.0.1", "port": 0, "heartbeat_s": 0.1, "frame_read_timeout_s": 2.0, "save_images_every_n": 0}
+        self.server = BridgeServer(cfg, perception=FakeVision(), run_dir=self.run_dir, log=lambda *_: None)
+        self.port = self.server.start()
+        self.client = socket.create_connection(("127.0.0.1", self.port), timeout=2.0)
+
+    def tearDown(self):
+        self.client.close()
+        self.server.stop()
+        self.tmp.cleanup()
+
+    def obs(self, seq):
+        return hp.encode(hp.message("observation", seq, 0.0, t_sim=seq * 0.1, robot={"x": 0, "z": 0, "heading_deg": 0},
+                                    state="Read", images=[]))
+
+    def replies(self, n):
+        out = []
+        while len(out) < n:
+            f = hp.read_frame(self.client)
+            if f.header["type"] == "perception":
+                out.append(f.header)
+        return out
+
+    def test_reply_has_people_target_gesture_and_per_model_times(self):
+        self.client.sendall(self.obs(1))
+        r = self.replies(1)[0]
+        self.assertEqual(r["ack_seq"], 1)
+        self.assertEqual(r["target"]["track_id"], 3)
+        self.assertEqual(r["target"]["distance_source"], "ankles")
+        self.assertEqual(r["people"][0]["bearing_deg"], 12.5)
+        self.assertEqual((r["gesture"]["command"], r["gesture"]["source"]), ("FORWARD_LEFT", "arm"))
+        self.assertEqual([m["model"] for m in r["inference"]],
+                         ["yolo11s-pose/cam360", "yolo11s-pose/gesture", "mediapipe/stop"])
+        self.assertEqual(r["label"], "fake vision")
+
+    def test_stub_reply_has_no_target(self):
+        r = hp.perception_reply(1, 0.0, ack_seq=1, label="stub")
+        self.assertEqual(r["target"]["track_id"], -1)
+        self.assertEqual(r["target"]["distance_m"], -1.0)
+
+    def test_backlog_is_answered_with_the_newest_observation_only(self):
+        self.client.sendall(self.obs(1) + self.obs(2) + self.obs(3))
+        r = self.replies(1)[0]
+        self.assertEqual(r["ack_seq"], 3)
+        hp.send_frame(self.client, hp.message("bye", 4, 0.0))
+        time.sleep(0.3)
+        rows = list(csv.DictReader((self.run_dir / "conn_001" / "frames.csv").open(encoding="utf-8")))
+        kinds = [(row["type"], row["seq"]) for row in rows]
+        self.assertIn(("observation_skipped", "1"), kinds)
+        self.assertIn(("observation_skipped", "2"), kinds)
+        answered = [row for row in rows if row["type"] == "observation"]
+        self.assertEqual((answered[0]["seq"], answered[0]["skipped_before"], answered[0]["gesture_read"]), ("3", "2", "FORWARD_LEFT"))
+
+
 if __name__ == "__main__":
     unittest.main()

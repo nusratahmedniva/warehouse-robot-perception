@@ -13,7 +13,11 @@ namespace WarehouseHRI
     {
         public const string Header =
             "t_s,trial,state,x,z,heading_deg,v_cmd_mps,w_cmd_dps,v_mps,w_dps,speed_meas_mps,turn_meas_dps," +
-            "people_detected,gesture_read,safety_stop,safety_reason,watchdog_stop,link,inference_ms,round_trip_ms";
+            "people_detected,gesture_read,safety_stop,safety_reason,watchdog_stop,link,inference_ms,round_trip_ms," +
+            "t_sim,perception,yolo_cam360_ms,yolo_gesture_ms,mediapipe_ms,vision_target_distance_m,vision_gesture_source";
+
+        /// <summary>Raised after each row with its t_s, so the scoring side can write a truth row on the same grid.</summary>
+        public event System.Action<float> RowWritten;
 
         public bool useConfigFile = true;
         public float intervalS = 0.1f;
@@ -84,9 +88,17 @@ namespace WarehouseHRI
                 robot.WatchdogStopped ? "1" : "0",
                 bridge == null || !bridge.linkEnabled ? "off" : bridge.Connected ? "up" : "down",
                 fresh ? HriOutput.F(bridge.LastInferenceMs) : "",   // Python time for the latest reply
-                fresh ? HriOutput.F(bridge.Rtt.LastMs) : "");       // round trip of the latest reply
+                fresh ? HriOutput.F(bridge.Rtt.LastMs) : "",        // round trip of the latest reply
+                HriOutput.F(Time.time, "0.000"),
+                brain != null && brain.GestureSource != null ? HriOutput.Csv(brain.GestureSource.Label) : "",
+                fresh ? HriOutput.F(HriProtocol.ModelMs(bridge.LatestPerception, "yolo11s-pose/cam360")) : "",
+                fresh ? HriOutput.F(HriProtocol.ModelMs(bridge.LatestPerception, "yolo11s-pose/gesture")) : "",
+                fresh ? HriOutput.F(HriProtocol.ModelMs(bridge.LatestPerception, "mediapipe/stop")) : "",
+                fresh && bridge.LatestPerception?.target != null ? HriOutput.F(bridge.LatestPerception.target.distance_m) : "",
+                fresh && bridge.LatestPerception?.gesture != null ? bridge.LatestPerception.gesture.source : "");
             m_Writer.WriteLine(row);
             Rows++;
+            RowWritten?.Invoke(t);
         }
     }
 }

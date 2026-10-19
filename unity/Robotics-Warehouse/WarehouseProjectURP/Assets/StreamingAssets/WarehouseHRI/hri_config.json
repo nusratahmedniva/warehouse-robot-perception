@@ -3,10 +3,9 @@
   "frozen": false,
   "output_root": "../../../robot_vision/outputs",
   "output_root_note": "Relative to the Unity project folder (the folder that contains Assets/) in the Editor; to the player's data folder in a build. outputs/ is git-ignored.",
-
   "trials": {
     "task": "Task2",
-    "task_note": "Task1 = straight A to B with FORWARD at the first junction (baseline); Task2 = guided route, B changes every trial.",
+    "task_note": "Task1 = straight A to B with FORWARD at the first junction (baseline); Task2 = guided route, B changes every trial; GestureSweep = development gesture evaluation (see gesture_sweep).",
     "mode": "development",
     "mode_note": "development uses dev_seed; final uses final_seed, needs frozen = true, and runs once (refused if a trials_final_* folder with FINAL_DONE.json exists).",
     "dev_seed": 1,
@@ -18,7 +17,6 @@
     "pause_between_trials_s": 1.0,
     "success_radius_m": 0.3
   },
-
   "robot": {
     "dimensions_note": "Nominal MiR100 datasheet footprint 0.89 x 0.58 x 0.35 m (L x W x H), not measured in the scene; the body is a box stand-in until the URDF model is imported.",
     "width_m": 0.58,
@@ -38,7 +36,6 @@
     "align_tolerance_deg": 5,
     "replan_deviation_m": 1.0
   },
-
   "brain": {
     "junction_slow_radius_m": 3.0,
     "junction_speed_scale": 0.4,
@@ -60,7 +57,6 @@
     "person_detection_range_m": 12,
     "gesture_read_range_m": 6
   },
-
   "link": {
     "watchdog_s": 0.3,
     "link_required": false,
@@ -75,7 +71,6 @@
     "send_gesture_image": true,
     "send_cam360_image": true
   },
-
   "cameras": {
     "cam360_interval_s": 0.1,
     "cam360_face_px": 512,
@@ -87,8 +82,25 @@
     "gesture_height_m": 1.2,
     "pan_speed_dps": 120
   },
-
   "telemetry": {
     "interval_s": 0.1
+  },
+  "perception": {
+    "mode": "scripted",
+    "mode_note": "scripted = scripted-perception and scripted-gesture baselines (true positions, scripted poses); vision = people and gestures from the Python bridge (robot_vision/hri_bridge_server.py with perception 'vision'); vision makes the Python link required (watchdog, trials wait for Python). Every run log names the sources.",
+    "stale_after_s": 0.5,
+    "unknown_person_distance_m": 1.0,
+    "unknown_distance_note": "A person vision sees but cannot range (no ground contact) is placed this close: conservative, it can trigger the person-in-path stop; it is never used for scoring.",
+    "chest_height_m": 1.3
+  },
+  "gesture_sweep": {
+    "note": "Development gesture evaluation (trials.task = 'GestureSweep', development mode only): the robot stands still, the worker shows each of the seven commands (incl. NONE) 'repeats' times in a seeded random order, at a random distance, view angle and worker yaw; truth goes to truth_sweep.csv, read only by robot_vision/hri_eval_dev.py.",
+    "repeats": 20,
+    "distance_min_m": 1.7,
+    "distance_max_m": 2.5,
+    "view_angle_max_deg": 25,
+    "worker_yaw_jitter_deg": 15,
+    "settle_s": 0.6,
+    "hold_s": 1.5
   }
 }

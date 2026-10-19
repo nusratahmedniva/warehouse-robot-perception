@@ -1,6 +1,8 @@
 {
   "label": "Step 3 Unity bridge server (protocol v1, docs/protocol.md). Declared 2026-10-20 before any bridge run; not tuned.",
-  "paths": {"output_root": "outputs"},
+  "paths": {
+    "output_root": "outputs"
+  },
   "host": "127.0.0.1",
   "port": 5050,
   "port_note": "Must equal hri_config.json -> link.port in the Unity project. 5000 stays with the older ping health check.",
@@ -9,6 +11,7 @@
   "frame_read_timeout_s": 5.0,
   "save_images_every_n": 50,
   "save_images_note": "Every n-th observation's images are saved to the run folder (0 = none) so the transfer can be checked by eye.",
-  "perception": "stub",
-  "perception_note": "stub = no people, gesture NONE, labelled 'stub (no perception until Step 4)'. Unity's decisions stay on the scripted baselines while the link runs in shadow mode."
+  "perception": "vision",
+  "perception_note": "vision = hri_perception.py (YOLO11s-pose + ByteTrack people on the panorama, arm direction on the gesture camera, MediaPipe STOP via the gesture adapter); stub = no people, gesture NONE (tests, and running without the models). Unity decides with the replies only when hri_config.json -> perception.mode is 'vision'.",
+  "perception_config": "configs/hri_perception.json"
 }

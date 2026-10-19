@@ -200,11 +200,13 @@ namespace WarehouseHRI
             public string reason;
         }
 
+        /// <summary>One person seen by vision. distance_m = -1: unknown (distance_source "unknown").</summary>
         [Serializable]
         public class PersonReport
         {
             public float bearing_deg, distance_m, confidence;
-            public int track_id;
+            public int track_id = -1;
+            public string distance_source = "";
         }
 
         [Serializable]
@@ -212,6 +214,9 @@ namespace WarehouseHRI
         {
             public string command = "NONE";
             public float confidence;
+            public string source = "";          // arm | mediapipe | none
+            public string why = "";
+            public float right_arm_deg = -999f, left_arm_deg = -999f;
         }
 
         [Serializable]
@@ -229,9 +234,19 @@ namespace WarehouseHRI
             public double t;
             public string label;
             public PersonReport[] people = new PersonReport[0];
+            /// <summary>The chosen (nearest) person; track_id -1 when there is none.</summary>
+            public PersonReport target = new PersonReport();
             public GestureReport gesture = new GestureReport();
             public ModelTime[] inference = new ModelTime[0];
             public float inference_total_ms;
+        }
+
+        /// <summary>Time of one model in a reply, or NaN when that model did not run.</summary>
+        public static float ModelMs(Perception p, string model)
+        {
+            if (p?.inference == null) return float.NaN;
+            foreach (var m in p.inference) if (m.model == model) return m.ms;
+            return float.NaN;
         }
 
         /// <summary>Gesture command from its wire name (NONE for anything unknown).</summary>

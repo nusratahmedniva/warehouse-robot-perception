@@ -59,6 +59,7 @@ namespace WarehouseHRI
         string m_HelloTemplate;
         float m_NextSend;
         Texture2D m_GestureTex, m_PanoTex;
+        readonly Dictionary<int, HriProtocol.RobotPose> m_SentPose = new Dictionary<int, HriProtocol.RobotPose>();
         RenderTexture m_PanoSmall;
 
         public RttTracker Rtt { get; } = new RttTracker(Stopwatch.Frequency);
@@ -71,6 +72,8 @@ namespace WarehouseHRI
         public string PerceptionLabel { get; private set; } = "";
         public float LastReplyTime { get; private set; } = float.NegativeInfinity;
         public float LastInferenceMs { get; private set; } = float.NaN;
+        /// <summary>Robot pose sent with the observation that LatestPerception answers (bearings are relative to it).</summary>
+        public HriProtocol.RobotPose LatestPerceptionPose { get; private set; }
 
         void Awake()
         {
@@ -112,7 +115,7 @@ namespace WarehouseHRI
             return new HriProtocol.Hello
             {
                 unity_version = Application.unityVersion,
-                config_sha256 = HriOutput.Sha256(HriConfig.SourceText ?? JsonUtility.ToJson(HriConfig.Current)),
+                config_sha256 = HriOutput.Sha256(HriConfig.EffectiveText),
                 perception_mode = (brain != null ? $"{brain.PersonSource?.Label} / {brain.GestureSource?.Label}" : "") +
                                   " (link in shadow mode, Step 3)",
                 gesture_camera = new HriProtocol.CameraInfo
@@ -241,7 +244,16 @@ namespace WarehouseHRI
                 case "perception":
                     var p = JsonUtility.FromJson<HriProtocol.Perception>(frame.HeaderJson);
                     Rtt.OnAck(p.ack_seq, ticks);
-                    LatestPerception = p;
+                    if (m_SentPose.TryGetValue(p.ack_seq, out var pose))
+                    {
+                        LatestPerceptionPose = pose;
+                        LatestPerception = p;
+                    }
+
+                    // poses of older (skipped or answered) observations are no longer needed
+                    var stale = new List<int>();
+                    foreach (var k in m_SentPose.Keys) if (k <= p.ack_seq) stale.Add(k);
+                    foreach (var k in stale) m_SentPose.Remove(k);
                     PerceptionLabel = p.label ?? "";
                     LastReplyTime = Time.time;
                     LastInferenceMs = p.inference_total_ms;
@@ -303,6 +315,8 @@ namespace WarehouseHRI
             }
 
             obs.images = entries.ToArray();
+            m_SentPose[obs.seq] = obs.robot;
+            if (m_SentPose.Count > 200) m_SentPose.Clear(); // Python stopped answering
             Enqueue(obs.seq, HriProtocol.Encode(JsonUtility.ToJson(obs), images), true);
             Sent++;
         }

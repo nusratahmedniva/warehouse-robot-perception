@@ -130,15 +130,22 @@ def message(type_: str, seq: int, t: float, **fields) -> dict:
     return {"type": type_, "v": VERSION, "seq": seq, "t": t, **fields}
 
 
+NO_TARGET = {"track_id": -1, "bearing_deg": 0.0, "distance_m": -1.0, "distance_source": "none", "confidence": 0.0}
+
+
 def perception_reply(seq: int, t: float, ack_seq: int, label: str, people: list[dict] | None = None,
                      command: str = "NONE", confidence: float = 0.0,
-                     inference: list[dict] | None = None, total_ms: float | None = None) -> dict:
-    """A perception message. total_ms (decoding + all models) defaults to the sum of the per-model times."""
+                     inference: list[dict] | None = None, total_ms: float | None = None,
+                     target: dict | None = None, gesture_detail: dict | None = None) -> dict:
+    """A perception message. total_ms (decoding + all models) defaults to the sum of the per-model times.
+    target: the chosen (nearest) person, NO_TARGET when there is none. distance_m = -1 means unknown."""
     if command not in COMMANDS:
         raise ValueError(f"command {command!r} not in {COMMANDS}")
     inference = inference or []
+    gesture = {"command": command, "confidence": confidence}
+    gesture.update(gesture_detail or {})
     return message("perception", seq, t, ack_seq=ack_seq, label=label, people=people or [],
-                   gesture={"command": command, "confidence": confidence}, inference=inference,
+                   target=dict(target) if target else dict(NO_TARGET), gesture=gesture, inference=inference,
                    inference_total_ms=round(total_ms if total_ms is not None else sum(i["ms"] for i in inference), 3))
 
 

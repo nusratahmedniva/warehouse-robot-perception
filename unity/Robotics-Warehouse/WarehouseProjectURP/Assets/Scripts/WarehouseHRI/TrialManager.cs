@@ -21,6 +21,7 @@ namespace WarehouseHRI
         public int seed;
         public bool config_frozen;
         public string config_sha256, git_commit, git_branch;
+        public string perception_mode; // "vision" or "scripted-gesture baseline"
         public string perception_source, gesture_source;
         public string outcome, failure_reason, detail;
         public int successes, trials_so_far;
@@ -44,6 +45,7 @@ namespace WarehouseHRI
         public string inference_per_model_ms = "";
         public string abort_reason;
         public string telemetry_file;
+        public string truth_file;
     }
 
     /// <summary>
@@ -140,7 +142,9 @@ namespace WarehouseHRI
             error = null;
             if (robot == null || brain == null || worker == null || startNode == null) error = "robot, brain, worker and startNode must be assigned";
             else if (m_Cfg.trials.dev_seed == m_Cfg.trials.final_seed) error = "dev_seed and final_seed must differ";
-            else if (m_Cfg.link.enabled && m_Cfg.link.link_required && (bridge == null || !bridge.linkEnabled))
+            else if (m_Cfg.IsVision && !m_Cfg.link.enabled)
+                error = "perception.mode is vision but link.enabled is false in hri_config.json";
+            else if (m_Cfg.link.enabled && m_Cfg.LinkRequired && (bridge == null || !bridge.linkEnabled))
                 error = "link_required is true but no HriBridgeClient is wired to the TrialManager; run Tools > Warehouse HRI > Build Guided Scene again";
             else if (m_Cfg.IsFinal && !m_Cfg.frozen) error ="final mode requires \"frozen\": true in hri_config.json (freeze thresholds after the development trials)";
             return error == null;
@@ -175,12 +179,13 @@ namespace WarehouseHRI
             }
 
             string configText = HriConfig.SourceText ?? JsonUtility.ToJson(m_Cfg, true);
-            m_ConfigSha = HriOutput.Sha256(configText);
+            m_ConfigSha = HriOutput.Sha256(HriConfig.EffectiveText);
             HriOutput.ReadGit(out m_Commit, out m_Branch);
             int seed = m_Cfg.ActiveSeed;
             string task = task1 ? "Task1" : "Task2";
             SessionFolder = HriOutput.CreateSessionFolder(m_Root, $"trials_{mode}_{task}");
             HriOutput.WriteNew(Path.Combine(SessionFolder, "hri_config.json"), configText);
+            if (HriConfig.LocalText != null) HriOutput.WriteNew(Path.Combine(SessionFolder, "hri_config.local.json"), HriConfig.LocalText);
             HriOutput.WriteNew(Path.Combine(SessionFolder, "session.json"), SessionJson(mode, task, seed));
             m_Results = HriOutput.CreateNewWriter(Path.Combine(SessionFolder, "results.csv"));
             m_Results.WriteLine(ResultsHeader);
@@ -238,6 +243,7 @@ namespace WarehouseHRI
                    $"  \"git_commit\": \"{m_Commit}\",\n  \"git_branch\": \"{m_Branch}\",\n" +
                    "  \"git_dirty\": \"not checked\",\n" +
                    $"  \"unity_version\": \"{Application.unityVersion}\",\n  \"platform\": \"{Application.platform}\",\n" +
+                   $"  \"perception_mode\": \"{(m_Cfg.IsVision ? "vision" : "scripted-gesture baseline")}\",\n" +
                    $"  \"perception_source\": \"{brain.PersonSource?.Label}\",\n  \"gesture_source\": \"{brain.GestureSource?.Label}\",\n" +
                    "  \"obstacle_avoidance\": \"NavMesh map (AI Navigation), not the cameras\",\n" +
                    $"  \"endpoints\": [{string.Join(", ", names)}],\n" +
@@ -292,7 +298,7 @@ namespace WarehouseHRI
             worker.Show(GestureCommand.NONE);
             worker.faceTarget = robot.transform;
 
-            if (bridge != null && bridge.linkEnabled && m_Cfg.link.link_required)
+            if (bridge != null && bridge.linkEnabled && m_Cfg.LinkRequired)
             {
                 Status = $"trial {index}/{TrialTotal}: waiting for the Python bridge ({bridge.Status})";
                 while (!bridge.Connected) yield return null;
@@ -306,6 +312,11 @@ namespace WarehouseHRI
 
             string telemetryPath = Path.Combine(SessionFolder, $"telemetry_run{index:000}.csv");
             if (telemetry != null) telemetry.Begin(telemetryPath, index);
+            // Ground truth on the telemetry's 0.1 s grid, in its own file: scoring and evaluation only.
+            string truthPath = Path.Combine(SessionFolder, $"truth_run{index:000}.csv");
+            m_Truth = HriOutput.CreateNewWriter(truthPath);
+            m_Truth.WriteLine(TruthHeader);
+            if (telemetry != null) telemetry.RowWritten += WriteTruthRow;
 
             yield return new WaitForFixedUpdate();
             float t0 = Time.fixedTime;
@@ -354,7 +365,14 @@ namespace WarehouseHRI
             }
 
             float total = Time.fixedTime - t0;
-            if (telemetry != null) telemetry.End();
+            if (telemetry != null)
+            {
+                telemetry.End();
+                telemetry.RowWritten -= WriteTruthRow;
+            }
+
+            m_Truth.Dispose();
+            m_Truth = null;
             brain.HeadingTo -= OnHeadingTo;
             brain.JunctionFinished -= OnJunctionFinished;
             robot.Collided -= OnCollided;
@@ -371,7 +389,9 @@ namespace WarehouseHRI
             {
                 trial = index, task = task, mode = mode, seed = seed, config_frozen = m_Cfg.frozen,
                 config_sha256 = m_ConfigSha, git_commit = m_Commit, git_branch = m_Branch,
+                perception_mode = m_Cfg.IsVision ? "vision" : "scripted-gesture baseline",
                 perception_source = brain.PersonSource?.Label, gesture_source = brain.GestureSource?.Label,
+                truth_file = HriOutput.Relative(m_Root, truthPath),
                 outcome = score.Outcome.ToString(), failure_reason = score.Reason.ToString(), detail = score.Detail,
                 successes = Successes, trials_so_far = index, success_ratio = (float)Successes / index,
                 a_name = startNode.name, a_x = a.x, a_z = a.z, b_name = goal.name, b_x = b.x, b_z = b.y,
@@ -398,7 +418,7 @@ namespace WarehouseHRI
             {
                 bridge.Rtt.Stats(out var rttMean, out var rttMax, out var rttN);
                 bridge.InferenceStats(out var infMean, out var infMax, out var infN, out var perModel);
-                rec.link_status = (m_Cfg.link.link_required ? "required" : "shadow") + ", " + bridge.Status;
+                rec.link_status = (m_Cfg.IsVision ? "vision" : m_Cfg.LinkRequired ? "required" : "shadow") + ", " + bridge.Status;
                 rec.link_perception = bridge.PerceptionLabel;
                 rec.link_replies = rttN;
                 rec.round_trip_mean_ms = rttN > 0 ? rttMean : -1f;
@@ -413,6 +433,20 @@ namespace WarehouseHRI
             LastSummary = $"trial {index}: {rec.outcome} {(rec.failure_reason == "none" ? "" : rec.failure_reason + " ")}({rec.detail}); " +
                           $"ratio {Successes}/{index}";
             Debug.Log("[WarehouseHRI] " + LastSummary);
+        }
+
+        public const string TruthHeader = "t_s,t_sim,worker_x,worker_z,worker_yaw_deg,gesture_shown,robot_x,robot_z,robot_heading_deg,state";
+        StreamWriter m_Truth;
+
+        void WriteTruthRow(float t)
+        {
+            if (m_Truth == null) return;
+            var w = worker.transform;
+            var r = robot.transform.position;
+            m_Truth.WriteLine(string.Join(",", HriOutput.F(t, "0.00"), HriOutput.F(Time.time, "0.000"),
+                HriOutput.F(w.position.x, "0.000"), HriOutput.F(w.position.z, "0.000"), HriOutput.F(w.eulerAngles.y, "0.0"),
+                worker.Current.ToString(), HriOutput.F(r.x, "0.000"), HriOutput.F(r.z, "0.000"), HriOutput.F(robot.YawDeg, "0.0"),
+                brain.State.ToString()));
         }
 
         float HumanDistance()
