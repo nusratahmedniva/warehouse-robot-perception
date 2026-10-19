@@ -30,6 +30,18 @@ namespace WarehouseHRI
             if (Input.GetKeyDown(togglePreviewsKey)) showPreviews = !showPreviews;
         }
 
+        void LateUpdate()
+        {
+            // TextMesh is drawn from both sides and reads mirrored from behind, so the display above the robot turns
+            // (yaw only) to face whoever is watching: the Game-view camera. Cosmetic; the robot's cameras never see it.
+            if (robotDisplay == null) return;
+            var view = followCamera != null ? followCamera.ViewCamera : Camera.main;
+            if (view == null) return;
+            Vector3 d = robotDisplay.transform.position - view.transform.position;
+            d.y = 0f;
+            if (d.sqrMagnitude > 1e-6f) robotDisplay.transform.rotation = Quaternion.LookRotation(d, Vector3.up);
+        }
+
         /// <summary>Junction the robot is at (dialog states) or heading to; null between other nodes.</summary>
         RoadNode CurrentJunction()
         {
