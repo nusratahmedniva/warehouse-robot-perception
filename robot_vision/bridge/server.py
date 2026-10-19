@@ -33,6 +33,7 @@ import decision_io as dio  # noqa: E402  (run-folder helpers: new_run_dir, git_i
 from bridge import protocol as P  # noqa: E402
 
 DEFAULT_CONFIG = "configs/bridge.json"
+FRAME_COUNTERS = ("frames_360_sent", "frames_360_dropped", "frames_pan_tilt_sent", "frames_pan_tilt_dropped")
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG) -> tuple[dict, Path]:
@@ -97,6 +98,9 @@ class RunLog:
         self.errors: list[str] = []
         self.watchdog_count = 0
         self.connections = 0
+        self.estop_seen = False
+        self.frames_received = {"frame_360": 0, "frame_pan_tilt": 0}
+        self.frame_counters: list[dict] = []  # Unity's per-connection frame counters, from its latest telemetry
 
     def now(self) -> float:
         return round(time.monotonic() - self.t0, 6)
@@ -105,6 +109,7 @@ class RunLog:
         self._write({"t_wall_s": self.now(), "dir": "event", "type": kind, **fields})
         if kind == "connect":
             self.connections += 1
+            self.frame_counters.append({})
         if kind in ("framing_error", "message_error"):
             self.errors.append(f"{kind}: {fields.get('error')}")
 
@@ -123,6 +128,12 @@ class RunLog:
                 self.rtt_seen.add(h["rtt_telemetry_seq"])
                 self.rtts.append(float(h["rtt_ms"]))
             self.watchdog_count = max(self.watchdog_count, h["watchdog_count"])
+            self.estop_seen |= h["estop"]
+            if not self.frame_counters:
+                self.frame_counters.append({})
+            self.frame_counters[-1] = {k: h[k] for k in FRAME_COUNTERS}
+        if direction == "in" and t in self.frames_received:
+            self.frames_received[t] += 1
         if direction == "in" and t in ("frame_360", "frame_pan_tilt") and self.save_every > 0 \
                 and h["frame_index"] % self.save_every == 0:
             name = f"{t}_{h['frame_index']:06d}.jpg"
@@ -141,7 +152,23 @@ class RunLog:
             rtt.update(mean_ms=round(statistics.fmean(r), 3), median_ms=round(statistics.median(r), 3),
                        p95_ms=round(r[min(len(r) - 1, math.ceil(0.95 * len(r)) - 1)], 3), max_ms=round(r[-1], 3))
         return {"duration_s": self.now(), "connections": self.connections, "message_counts": dict(sorted(self.counts.items())),
-                "round_trip": rtt, "watchdog_count_reported_by_unity": self.watchdog_count, "errors": self.errors}
+                "round_trip": rtt, "frames": self.frame_summary(),
+                "watchdog_count_reported_by_unity": self.watchdog_count, "estop_seen": self.estop_seen,
+                "errors": self.errors}
+
+    def frame_summary(self) -> dict:
+        """Drop rate per camera from Unity's counters (summed over connections) and frames Python received."""
+        out = {"note": "Unity counts per connection and reports in every telemetry message; the last report of each "
+                       "connection is used, so frames sent after it are missing from sent_by_unity. drop_rate = "
+                       "dropped / (sent + dropped); a frame slot is dropped when a whole period passes without a "
+                       "frame or its readback/encoding fails."}
+        for cam, prefix, msg_type in (("360", "frames_360", "frame_360"), ("pan_tilt", "frames_pan_tilt", "frame_pan_tilt")):
+            sent = sum(c.get(f"{prefix}_sent", 0) for c in self.frame_counters)
+            dropped = sum(c.get(f"{prefix}_dropped", 0) for c in self.frame_counters)
+            out[cam] = {"sent_by_unity": sent, "dropped_by_unity": dropped,
+                        "drop_rate": round(dropped / (sent + dropped), 4) if sent + dropped else None,
+                        "received_by_python": self.frames_received[msg_type]}
+        return out
 
     def close(self) -> None:
         self.lines.close()

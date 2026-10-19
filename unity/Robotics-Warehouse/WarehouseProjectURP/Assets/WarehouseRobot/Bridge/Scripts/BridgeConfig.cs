@@ -33,14 +33,13 @@ namespace WarehouseRobot.Bridge
     public class BridgeNavConfig
     {
         public string agent_type;
-        public float sample_radius_m;
+        public float snap_max_distance_m;
     }
 
     [Serializable]
     public class Bridge360Config
     {
         public float centre_world_yaw_deg;
-        public string centre_yaw_status;
     }
 
     /// <summary>Assets/WarehouseRobot/Bridge/Config/bridge_unity.json.</summary>
@@ -117,9 +116,7 @@ namespace WarehouseRobot.Bridge
             Positive("reconnect_interval_s", u.reconnect_interval_s);
             Positive("connect_timeout_s", u.connect_timeout_s);
             if (string.IsNullOrEmpty(u.nav.agent_type)) e.Add("nav.agent_type is required");
-            Positive("nav.sample_radius_m", u.nav.sample_radius_m);
-            if (u.camera_360.centre_yaw_status != "assumed_unverified" && u.camera_360.centre_yaw_status != "verified")
-                e.Add("camera_360.centre_yaw_status must be assumed_unverified or verified");
+            Positive("nav.snap_max_distance_m", u.nav.snap_max_distance_m);
             return e;
         }
     }

@@ -25,9 +25,11 @@ POSE = {"x": 1.0, "z": 2.0, "yaw_deg": 90.0}
 def telemetry(seq: int, **over) -> dict:
     h = {"type": "telemetry", "seq": seq, "time_s": 0.05 * seq, "pose": dict(POSE), "v": 0.0, "omega": 0.0,
          "v_cmd": 0.0, "omega_cmd": 0.0, "pan_deg": 0.0, "collision_count": 0, "reached_end_point": False,
-         "nav_has_target": False, "nav_target_x": 0.0, "nav_target_z": 0.0, "nav_status": "none", "nav_corners": [],
-         "last_command_seq": -1, "rtt_telemetry_seq": -1, "rtt_ms": -1.0, "watchdog_stopped": False,
-         "watchdog_count": 0, "keyboard_override": False}
+         "nav_has_target": False, "nav_target_x": 0.0, "nav_target_z": 0.0, "nav_status": "none",
+         "nav_start_snap_m": -1.0, "nav_target_snap_m": -1.0, "nav_corners": [], "last_command_seq": -1,
+         "rtt_telemetry_seq": -1, "rtt_ms": -1.0, "watchdog_stopped": False, "watchdog_count": 0,
+         "keyboard_override": False, "estop": False, "frames_360_sent": 0, "frames_360_dropped": 0,
+         "frames_pan_tilt_sent": 0, "frames_pan_tilt_dropped": 0}
     h.update(over)
     return h
 
@@ -41,6 +43,9 @@ def frame_pan(seq: int, index: int) -> dict:
     return {"type": "frame_pan_tilt", "seq": seq, "time_s": 1.0, "frame_index": index, "width": 730, "height": 530,
             "fx": 458.99, "fy": 458.99, "cx": 365.0, "cy": 265.0, "vertical_fov_deg": 60.0, "pan_deg": 0.0,
             "tilt_deg": 0.0, "camera_height_m": 1.2, "pose": dict(POSE), "encoding": "jpeg"}
+
+
+V = b'{"version":%d,' % P.PROTOCOL_VERSION  # start of a raw header with the current version
 
 
 def raw(header_bytes: bytes, tail: bytes = b"") -> bytes:
@@ -70,7 +75,7 @@ class FramingTests(unittest.TestCase):
 
     def test_version(self):
         with self.assertRaises(P.VersionError):
-            P.decode(P.encode({"type": "hello", "seq": 0}, version=2), LIM)
+            P.decode(P.encode({"type": "hello", "seq": 0}, version=99), LIM)
         with self.assertRaises(P.FramingError):  # missing version
             P.decode(raw(b'{"type":"hello","seq":0,"attachments":[]}'), LIM)
         with self.assertRaises(P.FramingError):  # version not an integer
@@ -80,13 +85,13 @@ class FramingTests(unittest.TestCase):
         cases = {
             "not json": b"{oops",
             "not an object": b"[1,2]",
-            "not utf-8": b'{"version":1,"type":"\xff","attachments":[]}',
-            "no attachments list": b'{"version":1,"type":"hello","seq":0}',
-            "attachment without size": b'{"version":1,"type":"t","seq":0,"attachments":[{"name":"a"}]}',
-            "negative size": b'{"version":1,"type":"t","seq":0,"attachments":[{"name":"a","size":-1}]}',
-            "duplicate name": b'{"version":1,"type":"t","seq":0,"attachments":[{"name":"a","size":0},{"name":"a","size":0}]}',
-            "too large": b'{"version":1,"type":"t","seq":0,"attachments":[{"name":"a","size":2000000}]}',
-            "NaN": b'{"version":1,"type":"t","seq":0,"attachments":[],"v":NaN}',
+            "not utf-8": V + b'"type":"\xff","attachments":[]}',
+            "no attachments list": V + b'"type":"hello","seq":0}',
+            "attachment without size": V + b'"type":"t","seq":0,"attachments":[{"name":"a"}]}',
+            "negative size": V + b'"type":"t","seq":0,"attachments":[{"name":"a","size":-1}]}',
+            "duplicate name": V + b'"type":"t","seq":0,"attachments":[{"name":"a","size":0},{"name":"a","size":0}]}',
+            "too large": V + b'"type":"t","seq":0,"attachments":[{"name":"a","size":2000000}]}',
+            "NaN": V + b'"type":"t","seq":0,"attachments":[],"v":NaN}',
         }
         for name, header in cases.items():
             with self.subTest(name), self.assertRaises(P.FramingError):
@@ -131,7 +136,7 @@ class ReadMessageTests(unittest.IsolatedAsyncioTestCase):
 
 class ValidateTests(unittest.TestCase):
     def check(self, header: dict, attachments: dict | None = None, allowed=P.FROM_UNITY):
-        P.validate(P.Message({**header, "version": 1, "attachments": []}, attachments or {}), allowed)
+        P.validate(P.Message({**header, "version": P.PROTOCOL_VERSION, "attachments": []}, attachments or {}), allowed)
 
     def test_valid_messages(self):
         self.check(hello())
@@ -202,7 +207,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.clients.append(w)
         return r, w
 
-    async def send(self, w, header, attachments=None, version=1):
+    async def send(self, w, header, attachments=None, version=P.PROTOCOL_VERSION):
         w.write(P.encode(header, attachments, version=version))
         await w.drain()
 
@@ -266,8 +271,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_version_mismatch_closes(self):
         r, w = await self.connect()
-        await self.send(w, telemetry(1), version=2)
-        self.assertIn("version 2", await self.assert_closed_with_fatal_error(r))
+        await self.send(w, telemetry(1), version=99)
+        self.assertIn("version 99", await self.assert_closed_with_fatal_error(r))
 
     async def test_broken_json_closes(self):
         r, w = await self.connect()
@@ -317,6 +322,22 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([x["rtt_ms"] for x in tel], [None, 12.5, 12.5])
         s = self.log.summary()["round_trip"]
         self.assertEqual((s["n"], s["mean_ms"], s["coverage"]), (1, 12.5, "1 of 3 telemetry messages"))
+
+    async def test_frame_drop_rate_per_camera_in_summary(self):
+        r, w = await self.connect()
+        await self.send(w, frame_pan(0, 0), {"image": JPEG})
+        await self.send(w, telemetry(1, frames_pan_tilt_sent=38, frames_pan_tilt_dropped=2, frames_360_sent=20, estop=True))
+        await self.recv(r)
+        w.close()
+        await asyncio.sleep(0.1)
+        r2, w2 = await self.connect()  # second connection: Unity's counters restart
+        await self.send(w2, telemetry(2, frames_pan_tilt_sent=10, frames_360_sent=5, frames_360_dropped=5))
+        await self.recv(r2)
+        f = self.log.summary()["frames"]
+        self.assertEqual(f["pan_tilt"], {"sent_by_unity": 48, "dropped_by_unity": 2, "drop_rate": 0.04, "received_by_python": 1})
+        self.assertEqual(f["360"], {"sent_by_unity": 25, "dropped_by_unity": 5, "drop_rate": round(5 / 30, 4),
+                                    "received_by_python": 0})
+        self.assertTrue(self.log.summary()["estop_seen"])
 
     async def test_server_close_disconnects_client(self):
         r, w = await self.connect()

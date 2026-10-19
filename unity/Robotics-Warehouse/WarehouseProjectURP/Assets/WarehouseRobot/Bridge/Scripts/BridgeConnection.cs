@@ -58,12 +58,13 @@ namespace WarehouseRobot.Bridge
 
         public bool TryDequeue(out BridgeEvent e) => events.TryDequeue(out e);
 
-        /// <summary>Queue a framed message; dropped if not connected. Frames count toward PendingFrames.</summary>
-        public void Send(byte[] framed, bool isFrame = false)
+        /// <summary>Queue a framed message. Returns false (message dropped) if not connected. Frames count toward PendingFrames.</summary>
+        public bool Send(byte[] framed, bool isFrame = false)
         {
-            if (!connected || stopping) return;
+            if (!connected || stopping) return false;
             if (isFrame) Interlocked.Increment(ref pendingFrames);
             outgoing.Add(new OutItem { Data = framed, IsFrame = isFrame });
+            return true;
         }
 
         struct OutItem

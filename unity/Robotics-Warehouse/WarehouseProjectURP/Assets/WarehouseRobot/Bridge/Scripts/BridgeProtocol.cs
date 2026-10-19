@@ -12,7 +12,7 @@ namespace WarehouseRobot.Bridge
     /// </summary>
     public static class BridgeProtocol
     {
-        public const int Version = 1;
+        public const int Version = 2;
 
         /// <summary>Frame a header (whose attachments list must already match) and its attachments.</summary>
         public static byte[] Frame(string headerJson, params byte[][] attachments)
@@ -189,6 +189,8 @@ namespace WarehouseRobot.Bridge
         public float nav_target_x;
         public float nav_target_z;
         public string nav_status = "none";
+        public float nav_start_snap_m = -1f;
+        public float nav_target_snap_m = -1f;
         public List<NavCorner> nav_corners = new List<NavCorner>();
         public int last_command_seq = -1;
         public int rtt_telemetry_seq = -1;
@@ -196,6 +198,11 @@ namespace WarehouseRobot.Bridge
         public bool watchdog_stopped;
         public int watchdog_count;
         public bool keyboard_override;
+        public bool estop;
+        public int frames_360_sent;
+        public int frames_360_dropped;
+        public int frames_pan_tilt_sent;
+        public int frames_pan_tilt_dropped;
     }
 
     [Serializable]
@@ -211,7 +218,6 @@ namespace WarehouseRobot.Bridge
         public int height;
         public float camera_height_m;
         public float centre_world_yaw_deg;
-        public string centre_yaw_status;
         public PoseMsg pose = new PoseMsg();
         public string encoding = "jpeg";
     }

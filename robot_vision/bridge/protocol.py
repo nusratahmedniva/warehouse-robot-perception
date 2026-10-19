@@ -12,7 +12,7 @@ import math
 import struct
 from dataclasses import dataclass, field
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 LENGTH = struct.Struct(">I")
 
 # Keys that would carry goal B (or any end-point coordinate) to Python. Rejected at any depth.
@@ -30,11 +30,13 @@ SCHEMAS: dict[str, dict] = {
               "frame_pan_tilt_hz": NUM, "watchdog_timeout_s": NUM},
     "telemetry": {"time_s": NUM, "pose": POSE, "v": NUM, "omega": NUM, "v_cmd": NUM, "omega_cmd": NUM,
                   "pan_deg": NUM, "collision_count": INT, "reached_end_point": BOOL, "nav_has_target": BOOL,
-                  "nav_target_x": NUM, "nav_target_z": NUM, "nav_status": STR, "nav_corners": [CORNER],
-                  "last_command_seq": INT, "rtt_telemetry_seq": INT, "rtt_ms": NUM, "watchdog_stopped": BOOL,
-                  "watchdog_count": INT, "keyboard_override": BOOL},
+                  "nav_target_x": NUM, "nav_target_z": NUM, "nav_status": STR, "nav_start_snap_m": NUM,
+                  "nav_target_snap_m": NUM, "nav_corners": [CORNER], "last_command_seq": INT, "rtt_telemetry_seq": INT,
+                  "rtt_ms": NUM, "watchdog_stopped": BOOL, "watchdog_count": INT, "keyboard_override": BOOL,
+                  "estop": BOOL, "frames_360_sent": INT, "frames_360_dropped": INT, "frames_pan_tilt_sent": INT,
+                  "frames_pan_tilt_dropped": INT},
     "frame_360": {"time_s": NUM, "frame_index": INT, "width": INT, "height": INT, "camera_height_m": NUM,
-                  "centre_world_yaw_deg": NUM, "centre_yaw_status": STR, "pose": POSE, "encoding": STR},
+                  "centre_world_yaw_deg": NUM, "pose": POSE, "encoding": STR},
     "frame_pan_tilt": {"time_s": NUM, "frame_index": INT, "width": INT, "height": INT, "fx": NUM, "fy": NUM,
                        "cx": NUM, "cy": NUM, "vertical_fov_deg": NUM, "pan_deg": NUM, "tilt_deg": NUM,
                        "camera_height_m": NUM, "pose": POSE, "encoding": STR},

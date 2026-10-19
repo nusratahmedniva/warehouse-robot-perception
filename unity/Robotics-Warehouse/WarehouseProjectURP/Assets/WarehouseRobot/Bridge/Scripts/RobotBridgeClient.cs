@@ -25,16 +25,33 @@ namespace WarehouseRobot.Bridge
         [SerializeField] RobotRig robot;
         [SerializeField] bool showPanel = true;
 
+        /// <summary>
+        /// One camera stream. Slots fall due every 1 / rate seconds. A due slot waits while the previous frame is still
+        /// in flight; it is dropped only when a whole further period passes without it being sent, or when its
+        /// readback or encoding fails. Counters are per connection; drop rate = Dropped / (Sent + Dropped).
+        /// </summary>
         class StreamState
         {
             public int Busy;        // 1 while a readback or encode is in flight (set on main, cleared on encoder thread)
+            public bool Scheduled;
             public float NextTime;
-            public int Requested, Encoded, Dropped;
+            public int Requested;
+            public int Sent;        // queued for sending (encoder thread)
+            public int Dropped;
+
+            public void Reset()
+            {
+                Scheduled = false;
+                Requested = 0;
+                Interlocked.Exchange(ref Busy, 0);
+                Interlocked.Exchange(ref Sent, 0);
+                Interlocked.Exchange(ref Dropped, 0);
+            }
         }
 
         BridgeConfig cfg;
         BridgeConnection connection;
-        FrameEncoder encoder;
+        FrameEncoder encoder360, encoderPan;
         RobotDebugPanel debugPanel;
         int seq;
         float nextTelemetryTime;
@@ -51,6 +68,8 @@ namespace WarehouseRobot.Bridge
         bool hasTarget;
         Vector2 target;
         string navStatus = "none";
+        float navStartSnapM = -1f, navTargetSnapM = -1f;
+        string lastDiagnosedStatus;
         readonly List<NavCorner> navCorners = new List<NavCorner>();
         NavMeshPath navPath;
         int agentTypeId;
@@ -131,7 +150,8 @@ namespace WarehouseRobot.Bridge
             var s = cfg.Shared;
             connection = new BridgeConnection(s.host, s.port, s.max_header_bytes, s.max_attachment_bytes,
                 cfg.Unity.reconnect_interval_s, cfg.Unity.connect_timeout_s);
-            encoder = new FrameEncoder(connection);
+            encoder360 = new FrameEncoder(connection);
+            encoderPan = new FrameEncoder(connection);
             Debug.Log($"[RobotBridge] Connecting to {connection.Endpoint} (retry every {cfg.Unity.reconnect_interval_s:F1} s)", this);
         }
 
@@ -139,9 +159,10 @@ namespace WarehouseRobot.Bridge
         {
             if (connection == null) return;
             bool wasConnected = connection.Connected;
-            encoder.Dispose();
+            encoder360.Dispose();
+            encoderPan.Dispose();
             connection.Dispose();
-            encoder = null;
+            encoder360 = encoderPan = null;
             connection = null;
             if (wasConnected) OnDisconnected("disconnected by Unity");
         }
@@ -158,7 +179,8 @@ namespace WarehouseRobot.Bridge
                     case BridgeEventKind.Message: OnMessage(e.Message); break;
                 }
             }
-            while (encoder.TryGetError(out var err)) LogErrorOnce("Frame encoding failed: " + err);
+            while (encoder360.TryGetError(out var err)) LogErrorOnce("360 frame encoding failed: " + err);
+            while (encoderPan.TryGetError(out var err)) LogErrorOnce("Pan-tilt frame encoding failed: " + err);
 
             CheckWatchdog();
 
@@ -178,6 +200,8 @@ namespace WarehouseRobot.Bridge
             commandSeen = false;
             watchdogStopped = false;
             sentTelemetry.Clear();
+            stream360.Reset();
+            streamPan.Reset();
             var hello = new HelloMsg
             {
                 seq = NextSeq(),
@@ -295,6 +319,8 @@ namespace WarehouseRobot.Bridge
                 nav_target_x = target.x,
                 nav_target_z = target.y,
                 nav_status = navStatus,
+                nav_start_snap_m = navStartSnapM,
+                nav_target_snap_m = navTargetSnapM,
                 nav_corners = navCorners,
                 last_command_seq = lastCommandSeq,
                 rtt_telemetry_seq = rttSeq,
@@ -302,6 +328,11 @@ namespace WarehouseRobot.Bridge
                 watchdog_stopped = watchdogStopped,
                 watchdog_count = watchdogCount,
                 keyboard_override = KeyboardOverride,
+                estop = drive.EmergencyStop,
+                frames_360_sent = Volatile.Read(ref stream360.Sent),
+                frames_360_dropped = Volatile.Read(ref stream360.Dropped),
+                frames_pan_tilt_sent = Volatile.Read(ref streamPan.Sent),
+                frames_pan_tilt_dropped = Volatile.Read(ref streamPan.Dropped),
             };
             connection.Send(BridgeProtocol.Frame(JsonUtility.ToJson(t)));
             long now = Stopwatch.GetTimestamp();
@@ -321,22 +352,59 @@ namespace WarehouseRobot.Bridge
             return new PoseMsg { x = p.x, z = p.z, yaw_deg = robot.transform.eulerAngles.y };
         }
 
+        /// <summary>
+        /// Path from the robot to the requested target. Both ends are snapped to the NavMesh with
+        /// NavMesh.SamplePosition within nav.snap_max_distance_m; the horizontal snap distances go into telemetry
+        /// (-1 when that end could not be snapped).
+        /// </summary>
         void UpdateNavPath()
         {
             navCorners.Clear();
-            if (!hasTarget) { navStatus = "none"; return; }
-            if (!ResolveAgentType()) { navStatus = "no_agent_type"; return; }
-            var filter = new NavMeshQueryFilter { agentTypeID = agentTypeId, areaMask = NavMesh.AllAreas };
-            float radius = cfg.Unity.nav.sample_radius_m;
-            Vector3 from = robot.transform.position;
-            if (!NavMesh.SamplePosition(from, out var start, radius, filter)) { navStatus = "start_off_navmesh"; return; }
-            if (!NavMesh.SamplePosition(new Vector3(target.x, from.y, target.y), out var end, radius, filter)) { navStatus = "target_off_navmesh"; return; }
-            NavMesh.CalculatePath(start.position, end.position, filter, navPath);
-            navStatus = navPath.status == NavMeshPathStatus.PathComplete ? "complete"
-                : navPath.status == NavMeshPathStatus.PathPartial ? "partial" : "invalid";
-            if (navStatus == "invalid") return;
-            foreach (var c in navPath.corners) navCorners.Add(new NavCorner { x = c.x, z = c.z });
+            navStartSnapM = navTargetSnapM = -1f;
+            navStatus = ComputeNavPath();
+            if (navStatus != lastDiagnosedStatus) DiagnoseNav();
+            lastDiagnosedStatus = navStatus;
         }
+
+        NavMeshQueryFilter NavFilter => new NavMeshQueryFilter { agentTypeID = agentTypeId, areaMask = NavMesh.AllAreas };
+        Vector3 TargetPoint => new Vector3(target.x, robot.transform.position.y, target.y);
+
+        string ComputeNavPath()
+        {
+            if (!hasTarget) return "none";
+            if (!ResolveAgentType()) return "no_agent_type";
+            float maxSnap = cfg.Unity.nav.snap_max_distance_m;
+            Vector3 from = robot.transform.position;
+            if (!NavMesh.SamplePosition(from, out var start, maxSnap, NavFilter)) return "start_off_navmesh";
+            navStartSnapM = HorizontalDistance(from, start.position);
+            if (!NavMesh.SamplePosition(TargetPoint, out var end, maxSnap, NavFilter)) return "target_off_navmesh";
+            navTargetSnapM = HorizontalDistance(TargetPoint, end.position);
+            NavMesh.CalculatePath(start.position, end.position, NavFilter, navPath);
+            if (navPath.status == NavMeshPathStatus.PathInvalid) return "invalid";
+            foreach (var c in navPath.corners) navCorners.Add(new NavCorner { x = c.x, z = c.z });
+            return navPath.status == NavMeshPathStatus.PathComplete ? "complete" : "partial";
+        }
+
+        /// <summary>When a path end is off the NavMesh, log once how far the nearest NavMesh point actually is.</summary>
+        void DiagnoseNav()
+        {
+            if (navStatus != "start_off_navmesh" && navStatus != "target_off_navmesh") return;
+            bool atStart = navStatus == "start_off_navmesh";
+            Vector3 p = atStart ? robot.transform.position : TargetPoint;
+            float maxSnap = cfg.Unity.nav.snap_max_distance_m;
+            float wide = 20f * maxSnap;
+            string nearest;
+            if (NavMesh.SamplePosition(p, out var hit, wide, NavFilter))
+                nearest = "the nearest NavMesh point is " + HorizontalDistance(p, hit.position).ToString("F2") + " m away horizontally and "
+                    + Mathf.Abs(hit.position.y - p.y).ToString("F2") + " m vertically";
+            else
+                nearest = "no NavMesh within " + wide.ToString("F0") + " m (is a NavMesh baked for agent type '" + cfg.Unity.nav.agent_type + "'?)";
+            string which = atStart ? "start (robot)" : "target";
+            Debug.LogWarning("[RobotBridge] Path " + which + " at (" + p.x.ToString("F2") + ", " + p.z.ToString("F2") + ") is off the NavMesh: "
+                + nearest + "; snap limit " + maxSnap.ToString("F2") + " m (bridge_unity.json nav.snap_max_distance_m).", this);
+        }
+
+        static float HorizontalDistance(Vector3 a, Vector3 b) => new Vector2(a.x - b.x, a.z - b.z).magnitude;
 
         bool ResolveAgentType()
         {
@@ -375,13 +443,18 @@ namespace WarehouseRobot.Bridge
         bool FrameDue(StreamState s, float hz)
         {
             if (connection == null || !connection.Connected || !SystemInfo.supportsAsyncGPUReadback) return false;
-            if (Time.unscaledTime < s.NextTime) return false;
-            if (Volatile.Read(ref s.Busy) != 0 || connection.PendingFrames >= cfg.Shared.max_pending_frames)
+            float now = Time.unscaledTime, period = 1f / hz;
+            if (!s.Scheduled) { s.NextTime = now; s.Scheduled = true; }
+            if (now < s.NextTime) return false;
+            int missed = (int)((now - s.NextTime) / period); // slots that passed entirely without a frame
+            if (missed > 0)
             {
-                s.Dropped++;
-                return false;
+                Interlocked.Add(ref s.Dropped, missed);
+                s.NextTime += missed * period;
             }
-            s.NextTime = Mathf.Max(s.NextTime + 1f / hz, Time.unscaledTime);
+            if (Volatile.Read(ref s.Busy) != 0 || connection.PendingFrames >= cfg.Shared.max_pending_frames)
+                return false; // the current slot stays open; try again next frame
+            s.NextTime += period;
             return true;
         }
 
@@ -398,10 +471,9 @@ namespace WarehouseRobot.Bridge
                 height = omni.Equirect.height,
                 camera_height_m = omni.transform.position.y - robot.transform.position.y,
                 centre_world_yaw_deg = c.centre_world_yaw_deg,
-                centre_yaw_status = c.centre_yaw_status,
                 pose = CurrentPose(),
             };
-            RequestFrame(stream360, omni.Equirect, size => HeaderWithImage(meta, meta.attachments, size));
+            RequestFrame(stream360, encoder360, omni.Equirect, size => HeaderWithImage(meta, meta.attachments, size));
         }
 
         void OnEndCameraRendering(ScriptableRenderContext context, Camera cam)
@@ -428,7 +500,7 @@ namespace WarehouseRobot.Bridge
                 camera_height_m = cam.transform.position.y - robot.transform.position.y,
                 pose = CurrentPose(),
             };
-            RequestFrame(streamPan, img, size => HeaderWithImage(meta, meta.attachments, size));
+            RequestFrame(streamPan, encoderPan, img, size => HeaderWithImage(meta, meta.attachments, size));
         }
 
         static string HeaderWithImage(object meta, List<AttachmentSpec> attachments, int size)
@@ -438,16 +510,16 @@ namespace WarehouseRobot.Bridge
             return JsonUtility.ToJson(meta); // runs on the encoder thread (ToJson is thread-safe)
         }
 
-        void RequestFrame(StreamState s, RenderTexture rt, Func<int, string> header)
+        void RequestFrame(StreamState s, FrameEncoder encoder, RenderTexture rt, Func<int, string> header)
         {
             Interlocked.Exchange(ref s.Busy, 1);
             s.Requested++;
             int w = rt.width, h = rt.height;
             AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBA32, req =>
             {
-                if (req.hasError || encoder == null || connection == null || !connection.Connected)
+                if (req.hasError || encoder360 == null || connection == null || !connection.Connected)
                 {
-                    if (req.hasError) s.Dropped++;
+                    if (req.hasError) Interlocked.Increment(ref s.Dropped);
                     Interlocked.Exchange(ref s.Busy, 0);
                     return;
                 }
@@ -459,7 +531,12 @@ namespace WarehouseRobot.Bridge
                     FlipRows = cfg.Unity.flip_rows, // EncodeArrayToJPG takes Unity's bottom-up rows, like Texture2D
                     Quality = cfg.Shared.jpeg_quality,
                     HeaderForImageSize = header,
-                    Done = () => { Interlocked.Increment(ref s.Encoded); Interlocked.Exchange(ref s.Busy, 0); },
+                    Done = ok =>
+                    {
+                        if (ok) Interlocked.Increment(ref s.Sent);
+                        else Interlocked.Increment(ref s.Dropped);
+                        Interlocked.Exchange(ref s.Busy, 0);
+                    },
                 });
             });
         }
@@ -469,6 +546,15 @@ namespace WarehouseRobot.Bridge
         int NextSeq() => seq++;
 
         static bool IsFinite(float f) => !float.IsNaN(f) && !float.IsInfinity(f);
+
+        static string SnapText(float m) => m < 0f ? "off NavMesh" : m.ToString("F2") + " m";
+
+        static string StreamLine(string label, StreamState s)
+        {
+            int sent = Volatile.Read(ref s.Sent), dropped = Volatile.Read(ref s.Dropped);
+            string rate = sent + dropped > 0 ? " (" + (100f * dropped / (sent + dropped)).ToString("F1") + " %)" : "";
+            return label + ": sent " + sent + "  dropped " + dropped + rate;
+        }
 
         void LogErrorOnce(string text)
         {
@@ -492,7 +578,7 @@ namespace WarehouseRobot.Bridge
 
             const float line = 20f, pad = 8f, width = 360f;
             float x = Screen.width - width - pad, y = pad;
-            GUI.Box(new Rect(x - pad, y, width + pad, 12f * line + 2f * pad), GUIContent.none);
+            GUI.Box(new Rect(x - pad, y, width + pad, 14f * line + 2f * pad), GUIContent.none);
             y += pad;
             void Line(string text)
             {
@@ -507,9 +593,11 @@ namespace WarehouseRobot.Bridge
             Line(lastCommand != null ? $"Command #{lastCommand.seq}: v {lastCommand.v:F2}  omega {lastCommand.omega:F2}  pan {lastCommand.pan_deg:F0}" : "Command: none yet");
             Line(rttCount > 0 ? $"Round trip: last {rttMs:F1} ms  mean {rttSumMs / rttCount:F1}  max {rttMaxMs:F1}  (n {rttCount})" : "Round trip: -");
             Line($"Watchdog stops: {watchdogCount}" + (watchdogStopped ? "  (holding stop)" : "") + (KeyboardOverride ? "  [keyboard override]" : ""));
+            Line(robot.Drive.EmergencyStop ? "EMERGENCY STOP latched (commands ignored)" : "Emergency stop: off");
             Line($"Nav: {navStatus}" + (hasTarget ? $"  target ({target.x:F1}, {target.y:F1})  corners {navCorners.Count}" : ""));
-            Line($"360 frames: sent {stream360.Encoded}  dropped {stream360.Dropped}");
-            Line($"Pan-tilt frames: sent {streamPan.Encoded}  dropped {streamPan.Dropped}");
+            Line(hasTarget ? $"Nav snap: start {SnapText(navStartSnapM)}  target {SnapText(navTargetSnapM)}" : "Nav snap: -");
+            Line(StreamLine("360 frames", stream360));
+            Line(StreamLine("Pan-tilt frames", streamPan));
             Line($"Telemetry seq {seq}   F3 hides this panel");
             y += 4f;
             if (connection == null)

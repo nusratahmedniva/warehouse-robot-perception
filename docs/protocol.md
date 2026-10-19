@@ -1,4 +1,4 @@
-# Unity <-> Python bridge protocol (version 1)
+# Unity <-> Python bridge protocol (version 2)
 
 One TCP connection. Unity is the client, Python the server
 (`robot_vision/bridge/server.py`). Host, port, rates and limits come from
@@ -19,7 +19,7 @@ Every header holds:
 
 | field         | type   | meaning                                                              |
 |---------------|--------|----------------------------------------------------------------------|
-| `version`     | int    | protocol version; must equal `protocol_version` in bridge.json (1)   |
+| `version`     | int    | protocol version; must equal `protocol_version` in bridge.json (2)   |
 | `type`        | string | message type (below)                                                 |
 | `seq`         | int    | sender's message counter, >= 0, unique and increasing in creation order (a frame can arrive after later telemetry, since it is encoded in the background) |
 | `attachments` | list   | `[{"name": str, "size": int}, ...]` in the order the bytes follow; `[]` if none |
@@ -71,23 +71,25 @@ The schema is checked in `robot_vision/bridge/protocol.py` (`SCHEMAS`).
 | `reached_end_point` | true once the scenario says the robot reached the end point |
 | `nav_has_target`, `nav_target_x`, `nav_target_z` | the target point Python requested |
 | `nav_status` | `none`, `complete`, `partial`, `invalid`, `start_off_navmesh`, `target_off_navmesh`, `no_agent_type` |
-| `nav_corners` | `[{"x", "z"}, ...]` NavMesh path corners from the robot to the target (`NavMesh.CalculatePath`, recomputed every telemetry tick) |
+| `nav_start_snap_m`, `nav_target_snap_m` | horizontal distance (m) by which the robot position and the target were moved onto the NavMesh (`NavMesh.SamplePosition`, at most `nav.snap_max_distance_m` in bridge_unity.json); -1 if that end could not be snapped |
+| `nav_corners` | `[{"x", "z"}, ...]` NavMesh path corners from the snapped start to the snapped target (`NavMesh.CalculatePath`, recomputed every telemetry tick) |
 | `last_command_seq` | `seq` of the last command received (-1 before any) |
 | `rtt_telemetry_seq`, `rtt_ms` | round-trip delay of the most recent answered telemetry: from Unity queuing telemetry `rtt_telemetry_seq` to receiving the command whose `reply_to` names it (-1 if none yet) |
 | `watchdog_stopped` | true while the watchdog holds the robot stopped |
 | `watchdog_count` | watchdog stops since Play |
 | `keyboard_override` | true while the debug keyboard control drives the robot (bridge commands are then ignored) |
+| `estop` | true while the emergency stop is latched (v = 0, omega = 0; bridge and keyboard commands ignored until released) |
+| `frames_360_sent`, `frames_360_dropped`, `frames_pan_tilt_sent`, `frames_pan_tilt_dropped` | frame counters of this connection (see "Frame rates and drops") |
 
 ### `frame_360` (`frame_360_hz`; attachment `image`, JPEG)
 `time_s`, `frame_index` (Camera360 capture counter), `width`, `height`
 (equirectangular, 2:1), `camera_height_m`, `pose` (robot pose at
 capture), `encoding` ("jpeg"), and:
 - `centre_world_yaw_deg`: the world direction (same convention as
-  `yaw_deg`) that the image centre column faces. The image is
-  world-aligned (it does not turn with the robot).
-- `centre_yaw_status`: `assumed_unverified` until the direction has been
-  checked in Unity; then `verified`. Python must not rely on an
-  unverified value for bearings.
+  `yaw_deg`) that the image centre column faces: 0, i.e. world +Z.
+  Confirmed in Unity on 2026-10-20: a cube placed along world +Z appears
+  at the image centre. The image is world-aligned (it does not turn with
+  the robot).
 
 ### `frame_pan_tilt` (`frame_pan_tilt_hz`; attachment `image`, JPEG)
 `time_s`, `frame_index`, `width`, `height`, intrinsics `fx`, `fy`, `cx`,
@@ -95,8 +97,19 @@ capture), `encoding` ("jpeg"), and:
 `cx = width / 2`, `cy = height / 2`), `vertical_fov_deg`, `pan_deg` and
 `tilt_deg` at render time, `camera_height_m`, `pose`, `encoding` ("jpeg").
 
-Images are encoded from GPU readbacks (`AsyncGPUReadback`) on a
-background thread; row 0 of the JPEG is the top of the image.
+Images are encoded from GPU readbacks (`AsyncGPUReadback`) on one
+background thread per camera; row 0 of the JPEG is the top of the image
+(confirmed in Unity).
+
+### Frame rates and drops
+
+Each camera stream has slots every `1 / frame_*_hz` seconds. When a slot
+falls due while the previous frame of that camera is still being read
+back or encoded, the slot waits (the frame is sent late); it is counted
+as dropped only when a whole further period passes without a frame, or
+when its readback or encoding fails. Unity reports the per-connection
+counters in every telemetry message; the server writes the drop rate per
+camera, `dropped / (sent + dropped)`, to `summary.json` (`frames`).
 
 ## Python -> Unity
 
@@ -126,6 +139,11 @@ contains a key named `goal`, `goal_point`, `goal_x`, `goal_z`, `end_point`,
 
 ## Safety in Unity
 
+- **Emergency stop**: the debug panel's "Stop robot" button latches it
+  (`DiffDriveController.EngageEmergencyStop`): v = 0, omega = 0, and
+  bridge and keyboard commands are ignored until it is released with two
+  deliberate clicks ("Release stop...", then "Confirm release" within
+  3 s). Engaging and releasing are logged; telemetry carries `estop`.
 - **Watchdog**: once a command has arrived, if no command arrives for
   `watchdog_timeout_s` (0.3 s), Unity sets v = 0, omega = 0 (the drive
   brakes at `decel_mps2`), logs a warning and counts it
@@ -140,3 +158,10 @@ it in the next telemetry. The Python server writes one line per message
 to `messages.jsonl` in its run folder, including `rtt_ms`, and a summary
 (mean, median, 95th percentile, maximum, with coverage) in
 `summary.json`.
+
+## Changes
+
+- Version 2 (2026-10-20, after the first Unity test): telemetry gains
+  `nav_start_snap_m`, `nav_target_snap_m`, `estop` and the four frame
+  counters; `frame_360` drops `centre_yaw_status` (the centre direction is
+  confirmed). Version 1 peers are refused.

@@ -1,4 +1,5 @@
 using System;
+using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -86,8 +87,8 @@ namespace WarehouseRobot.EditorTools
             float w = r.robot_width_m, l = r.robot_length_m, h = r.robot_height_m;
             float wr = b.wheel_radius_m, ww = b.wheel_width_m;
 
-            // Physics: one box over the whole footprint (wheels included), floating at collider_bottom_m. Gravity off and
-            // Y position / X-Z rotation frozen keep the robot planar and its cameras level.
+            // Physics: a body box over the whole footprint (wheels included), floating at collider_bottom_m, plus the
+            // MastCollider below. Gravity off and Y position / X-Z rotation frozen keep the robot planar and its cameras level.
             var rb = root.AddComponent<Rigidbody>();
             rb.mass = b.mass_kg;
             rb.useGravity = false;
@@ -101,6 +102,11 @@ namespace WarehouseRobot.EditorTools
             box.size = new Vector3(w, h - b.collider_bottom_m, l);
 
             root.AddComponent<RobotRig>().Bind(configAsset);
+            root.AddComponent<ColliderSetup>();
+            // Keep the robot out of NavMesh bakes (its meshes would cut a hole in the NavMesh where it stands).
+            var modifier = root.AddComponent<NavMeshModifier>();
+            modifier.ignoreFromBuild = true;
+            modifier.applyToChildren = true;
 
             // Body box between the wheels.
             Part(PrimitiveType.Cube, "Body", root.transform, new Vector3(0f, 0.5f * (b.ground_clearance_m + h), 0f),
@@ -154,6 +160,16 @@ namespace WarehouseRobot.EditorTools
             omniGo.AddComponent<Camera360>().Bind(omniCam);
             float head = 1.6f * c360.near_m;
             Part(PrimitiveType.Sphere, "Camera360Head", omniGo.transform, Vector3.zero, new Vector3(head, head, head), Quaternion.identity, mats.Wheel);
+
+            // Second collider of the same Rigidbody: mast, pan-tilt housing and 360 head, from the body top to the top
+            // of the head, so the robot is blocked by shelves above its body instead of passing through them.
+            float mastWidth = Mathf.Max(2f * m.radius_m, head, 0.6f * housing);
+            float mastTop = c360.height_m + 0.5f * head;
+            var mastCollider = new GameObject("MastCollider");
+            mastCollider.transform.SetParent(root.transform, false);
+            var mc = mastCollider.AddComponent<BoxCollider>();
+            mc.center = new Vector3(0f, 0.5f * (h + mastTop), m.forward_offset_m);
+            mc.size = new Vector3(mastWidth, mastTop - h, mastWidth);
 
             root.AddComponent<CollisionRecorder>();
             root.AddComponent<RobotDebugPanel>();

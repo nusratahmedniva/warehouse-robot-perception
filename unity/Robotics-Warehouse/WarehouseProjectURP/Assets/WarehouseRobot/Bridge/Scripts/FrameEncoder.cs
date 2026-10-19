@@ -7,7 +7,8 @@ using UnityEngine.Experimental.Rendering;
 namespace WarehouseRobot.Bridge
 {
     /// <summary>
-    /// JPEG-encodes GPU readbacks on a background thread (ImageConversion.EncodeArrayToJPG and JsonUtility.ToJson
+    /// JPEG-encodes GPU readbacks on a background thread (one encoder per camera, so the pan-tilt stream never waits
+    /// behind a large 360 frame) (ImageConversion.EncodeArrayToJPG and JsonUtility.ToJson
     /// are thread-safe), frames the message and queues it on the connection. Errors are queued for the main thread.
     /// </summary>
     public sealed class FrameEncoder : IDisposable
@@ -19,7 +20,7 @@ namespace WarehouseRobot.Bridge
             public bool FlipRows;
             public int Quality;
             public Func<int, string> HeaderForImageSize; // builds the header JSON once the JPEG size is known
-            public Action Done;            // called on the encoder thread when the job is finished (sent or failed)
+            public Action<bool> Done;      // called on the encoder thread when finished: true = queued for sending
         }
 
         readonly BlockingCollection<Job> jobs = new BlockingCollection<Job>(new ConcurrentQueue<Job>());
@@ -46,12 +47,13 @@ namespace WarehouseRobot.Bridge
                 while (true)
                 {
                     var job = jobs.Take(stop.Token);
+                    bool ok = false;
                     try
                     {
                         if (job.FlipRows) FlipRows(job.Rgba, job.Width, job.Height);
                         byte[] jpg = ImageConversion.EncodeArrayToJPG(job.Rgba, GraphicsFormat.R8G8B8A8_UNorm,
                             (uint)job.Width, (uint)job.Height, 0, job.Quality);
-                        connection.Send(BridgeProtocol.Frame(job.HeaderForImageSize(jpg.Length), jpg), isFrame: true);
+                        ok = connection.Send(BridgeProtocol.Frame(job.HeaderForImageSize(jpg.Length), jpg), isFrame: true);
                     }
                     catch (Exception ex)
                     {
@@ -59,7 +61,7 @@ namespace WarehouseRobot.Bridge
                     }
                     finally
                     {
-                        job.Done?.Invoke();
+                        job.Done?.Invoke(ok);
                     }
                 }
             }

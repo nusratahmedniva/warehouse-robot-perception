@@ -75,6 +75,28 @@ namespace WarehouseRobot
         public float keyboard_pan_speed_dps;
     }
 
+    [Serializable]
+    public class PlacementConfig
+    {
+        public string floor_tag;
+        public float ray_start_above_m;
+        public float ray_length_m;
+    }
+
+    [Serializable]
+    public class CollisionsConfig
+    {
+        public string[] ignore_tags;
+        public float merge_recontact_s;
+    }
+
+    [Serializable]
+    public class ObstaclesConfig
+    {
+        public string[] groups;
+        public bool make_rigidbodies_kinematic;
+    }
+
     /// <summary>Assets/WarehouseRobot/Robot/Config/robot_unity.json.</summary>
     [Serializable]
     public class UnityRobotConfig
@@ -85,6 +107,9 @@ namespace WarehouseRobot
         public Camera360Config camera_360;
         public PanTiltCameraConfig pan_tilt_camera;
         public DebugConfig debug;
+        public PlacementConfig placement;
+        public CollisionsConfig collisions;
+        public ObstaclesConfig obstacles;
     }
 
     /// <summary>
@@ -103,8 +128,9 @@ namespace WarehouseRobot
                 throw new InvalidOperationException("No Unity robot config assigned (robot_unity.json).");
             var unity = JsonUtility.FromJson<UnityRobotConfig>(unityConfig.text);
             if (unity == null || unity.paths == null || unity.body == null || unity.mast == null ||
-                unity.camera_360 == null || unity.pan_tilt_camera == null || unity.debug == null)
-                throw new InvalidOperationException(unityConfig.name + ": missing section (paths, body, mast, camera_360, pan_tilt_camera, debug).");
+                unity.camera_360 == null || unity.pan_tilt_camera == null || unity.debug == null || unity.placement == null ||
+                unity.collisions == null || unity.obstacles == null)
+                throw new InvalidOperationException(unityConfig.name + ": missing section (paths, body, mast, camera_360, pan_tilt_camera, debug, placement, collisions, obstacles).");
             if (string.IsNullOrEmpty(unity.paths.repo_root_relative_to_unity_project) || string.IsNullOrEmpty(unity.paths.robot_config))
                 throw new InvalidOperationException(unityConfig.name + ": paths.repo_root_relative_to_unity_project and paths.robot_config are required.");
 
@@ -184,6 +210,14 @@ namespace WarehouseRobot
             if (c.height_m <= p.height_m) e.Add("camera_360.height_m must be above pan_tilt_camera.height_m (360 camera on top of the mast)");
 
             Positive("debug.keyboard_pan_speed_dps", Unity.debug.keyboard_pan_speed_dps);
+
+            var pl = Unity.placement;
+            if (string.IsNullOrEmpty(pl.floor_tag)) e.Add("placement.floor_tag is required");
+            Positive("placement.ray_start_above_m", pl.ray_start_above_m);
+            if (pl.ray_length_m <= pl.ray_start_above_m) e.Add("placement.ray_length_m must exceed ray_start_above_m");
+            if (Unity.collisions.ignore_tags == null) e.Add("collisions.ignore_tags is required (may be empty)");
+            if (Unity.collisions.merge_recontact_s < 0f) e.Add("collisions.merge_recontact_s must be >= 0");
+            if (Unity.obstacles.groups == null) e.Add("obstacles.groups is required (may be empty)");
             return e;
         }
     }

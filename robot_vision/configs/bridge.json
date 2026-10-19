@@ -1,6 +1,6 @@
 {
   "note": "Step 2 TCP bridge (2026-10-20). Shared by Python (bridge/server.py) and Unity (Assets/WarehouseRobot/Bridge/Config/bridge_unity.json -> paths). Protocol: docs/protocol.md. Rates and limits are design values, not tuned.",
-  "protocol_version": 1,
+  "protocol_version": 2,
   "host": "127.0.0.1",
   "port": 5005,
   "telemetry_hz": 20.0,
