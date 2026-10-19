@@ -250,7 +250,8 @@ def eval_trials(session: Path) -> dict:
     junctions = Counter()
     for r in runs:
         for j in r.get("junctions", []):
-            junctions["correct" if j["read"] == j["shown"] else "wrong"] += 1
+            junctions["correct" if j["read"] == j["shown"] else "none (unclear, asked again / aborted)"
+                      if j["read"] == "NONE" else "wrong direction"] += 1
     rtt = [r["round_trip_mean_ms"] for r in runs if r.get("round_trip_mean_ms", -1) >= 0]
     return {"trials": len(rows), "successes": sum(r["outcome"] == "SUCCESS" for r in rows),
             "failure_reasons": dict(Counter(r["failure_reason"] for r in rows if r["outcome"] != "SUCCESS")),

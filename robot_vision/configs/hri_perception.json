@@ -7,7 +7,10 @@
     "1. The Mixamo worker rendered untextured (pale, partly transparent); the scene builder now extracts the FBX textures and gives the worker an opaque material. Rendering fix, no threshold involved.",
     "2. Arm direction: was the shoulder -> wrist angle plus an elbow-straightness test (min_elbow_angle_deg 140). YOLO11s-pose places the elbow and wrist too low on raised arms of this avatar (FORWARD: elbow at shoulder height, wrist at head height), so straight arms failed the elbow test and FORWARD read -30 deg. Now: the circular mean of the shoulder -> wrist and elbow -> wrist directions (the same for a straight arm; their errors on this avatar are opposite), and the two must agree within max_segment_disagreement_deg (45) instead of the elbow test. The bin centres and the 15 deg tolerance are unchanged."
   ],
-  "changes_after_dev_eval": [],
+  "changes_after_dev_eval": [
+    "2026-10-20, after development evaluation hri_dev_eval_20261020_025237 (10 vision trials, dev seed 1): people recall 1.0 at 0-3 m but 0.09 at 3-6 m and 0 beyond; 7 of 10 trials aborted with 'no person found at J1' (worker 3.7 m away). Diagnosis on development captures (not on evaluation numbers alone): the panorama was downscaled to 1024 px and JPEG 75; at 1024 px YOLO found nobody beyond about 4 m, and JPEG 75 removed the 6 m detection that 2048 px gives.",
+    "Change (sensor/transfer, not a decision threshold): Unity sends only the horizon band +30..-60 deg of the panorama at its native 2048 px width with JPEG quality 90 (hri_config.json -> link), the band limits travel in the image entry, and people.imgsz is 2048 (was 1024). No gesture threshold changed. The dev trials were then run again with the same dev seed."
+  ],
 
   "paths": {"output_root": "outputs"},
   "device": "auto",
@@ -21,7 +24,7 @@
 
   "people": {
     "image": "cam360",
-    "imgsz": 1024,
+    "imgsz": 2048,
     "det_confidence": 0.25,
     "tracker": "bytetrack.yaml",
     "min_box_height_px": 12,
@@ -29,6 +32,7 @@
     "ankle_confidence": 0.5,
     "occlusion_margin_px": 2,
     "why": {
+      "imgsz": "2048 = the panorama band's native width (2048 x 512), so YOLO sees the full resolution; was 1024 before the first development evaluation (see changes_after_dev_eval).",
       "det_confidence": "Ultralytics' default for tracking; ByteTrack uses low-score boxes for association, so the detector threshold stays low.",
       "min_box_height_px": "A 1.8 m person at 20 m spans about 10 px of a 512 px high panorama (180 deg / 512 px = 0.35 deg per px); smaller boxes are beyond any distance the task needs.",
       "camera_height_m": "Cam360 height in hri_config.json (cameras.cam360_height_m).",

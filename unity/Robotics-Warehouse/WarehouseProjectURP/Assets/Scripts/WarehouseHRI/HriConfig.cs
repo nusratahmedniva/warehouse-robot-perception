@@ -118,8 +118,10 @@ namespace WarehouseHRI
             public int port = 5050;
             public float send_interval_s = 0.1f;
             public float connect_retry_s = 1f;
-            public int jpeg_quality = 75;
-            public int cam360_send_width_px = 1024;
+            public int jpeg_quality = 90;
+            public int cam360_send_width_px = 2048;
+            public float cam360_band_top_deg = 30f;
+            public float cam360_band_bottom_deg = -60f;
             public bool send_gesture_image = true;
             public bool send_cam360_image = true;
         }

@@ -29,7 +29,10 @@ namespace WarehouseHRI
         public float sendIntervalS = 0.1f;
         public float connectRetryS = 1f;
         public int jpegQuality = 75;
-        public int cam360SendWidth = 1024;
+        public int cam360SendWidth = 2048;
+        [Tooltip("Only this elevation band of the panorama is sent (where people stand).")]
+        public float cam360BandTopDeg = 30f;
+        public float cam360BandBottomDeg = -60f;
         public bool sendGestureImage = true;
         public bool sendCam360Image = true;
         [Tooltip("Observations waiting to be written above this count are skipped (Python too slow).")]
@@ -87,6 +90,8 @@ namespace WarehouseHRI
                 connectRetryS = l.connect_retry_s;
                 jpegQuality = l.jpeg_quality;
                 cam360SendWidth = l.cam360_send_width_px;
+                cam360BandTopDeg = l.cam360_band_top_deg;
+                cam360BandBottomDeg = l.cam360_band_bottom_deg;
                 sendGestureImage = l.send_gesture_image;
                 sendCam360Image = l.send_cam360_image;
             }
@@ -127,6 +132,7 @@ namespace WarehouseHRI
                 cam360 = new HriProtocol.Cam360Info
                 {
                     width = panoW, height = panoW / 2, height_m = cfg.cam360_height_m, plus_x_column = Camera360.PlusXColumn,
+                    projection = "equirect_world_aligned, horizon band (see elevation_top_deg / elevation_bottom_deg per image)",
                 },
             };
         }
@@ -304,14 +310,26 @@ namespace WarehouseHRI
                 AddImage("gesture", panTilt.Image, ref m_GestureTex, entries, images);
             if (gfx && sendCam360Image && cam360 != null && cam360.Equirect != null)
             {
-                if (m_PanoSmall == null)
+                var pano = cam360.Equirect;
+                if (cam360SendWidth < pano.width)
                 {
-                    m_PanoSmall = new RenderTexture(cam360SendWidth, cam360SendWidth / 2, 0, RenderTextureFormat.ARGB32) { name = "Cam360_Send" };
-                    m_PanoSmall.Create();
+                    if (m_PanoSmall == null)
+                    {
+                        m_PanoSmall = new RenderTexture(cam360SendWidth, cam360SendWidth / 2, 0, RenderTextureFormat.ARGB32) { name = "Cam360_Send" };
+                        m_PanoSmall.Create();
+                    }
+
+                    Graphics.Blit(pano, m_PanoSmall);
+                    pano = m_PanoSmall;
                 }
 
-                Graphics.Blit(cam360.Equirect, m_PanoSmall);
-                AddImage("cam360", m_PanoSmall, ref m_PanoTex, entries, images);
+                // Horizon band only: rows from the bottom (ReadPixels origin) at the two elevations.
+                int y0 = Mathf.Clamp(Mathf.RoundToInt((cam360BandBottomDeg / 180f + 0.5f) * pano.height), 0, pano.height - 1);
+                int y1 = Mathf.Clamp(Mathf.RoundToInt((cam360BandTopDeg / 180f + 0.5f) * pano.height), y0 + 1, pano.height);
+                AddImage("cam360", pano, ref m_PanoTex, entries, images, new RectInt(0, y0, pano.width, y1 - y0));
+                var e = entries[entries.Count - 1];
+                e.elevation_bottom_deg = ((float)y0 / pano.height - 0.5f) * 180f;
+                e.elevation_top_deg = ((float)y1 / pano.height - 0.5f) * 180f;
             }
 
             obs.images = entries.ToArray();
@@ -321,16 +339,18 @@ namespace WarehouseHRI
             Sent++;
         }
 
-        void AddImage(string name, RenderTexture rt, ref Texture2D tex, List<HriProtocol.ImageEntry> entries, List<byte[]> images)
+        void AddImage(string name, RenderTexture rt, ref Texture2D tex, List<HriProtocol.ImageEntry> entries, List<byte[]> images,
+            RectInt? region = null)
         {
-            if (tex == null || tex.width != rt.width || tex.height != rt.height)
-                tex = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
+            var r = region ?? new RectInt(0, 0, rt.width, rt.height);
+            if (tex == null || tex.width != r.width || tex.height != r.height)
+                tex = new Texture2D(r.width, r.height, TextureFormat.RGB24, false);
             var prev = RenderTexture.active;
             RenderTexture.active = rt;
-            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
+            tex.ReadPixels(new Rect(r.x, r.y, r.width, r.height), 0, 0, false);
             RenderTexture.active = prev;
             byte[] jpg = tex.EncodeToJPG(jpegQuality);
-            entries.Add(new HriProtocol.ImageEntry { name = name, width = rt.width, height = rt.height, bytes = jpg.Length });
+            entries.Add(new HriProtocol.ImageEntry { name = name, width = r.width, height = r.height, bytes = jpg.Length });
             images.Add(jpg);
         }
 

@@ -116,6 +116,9 @@ namespace WarehouseHRI
             public int width;
             public int height;
             public int bytes;
+            /// <summary>cam360 only: elevation of the image's top and bottom edges (a horizon band of the panorama).</summary>
+            public float elevation_top_deg = 90f;
+            public float elevation_bottom_deg = -90f;
         }
 
         /// <summary>Fields every message has (plus images/ack_seq when present), parsed first to dispatch.</summary>

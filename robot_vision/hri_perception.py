@@ -133,30 +133,32 @@ def classify_gesture(kp, conf, g: dict) -> tuple[str, dict]:
 
 # ---------------------------------------------------------------- panorama geometry (pure)
 
-def pano_elevation_deg(v: float, height: int) -> float:
-    """Elevation of panorama row v (0 = top); 0 = horizon, negative = below."""
-    return (0.5 - (v + 0.5) / height) * 180.0
+def pano_elevation_deg(v: float, height: int, top_deg: float = 90.0, bottom_deg: float = -90.0) -> float:
+    """Elevation of row v (0 = top) of a panorama band spanning top_deg..bottom_deg; 0 = horizon, negative = below."""
+    return top_deg - (v + 0.5) / height * (top_deg - bottom_deg)
 
 
-def ground_distance(v: float, height: int, camera_height_m: float) -> float | None:
+def ground_distance(v: float, height: int, camera_height_m: float, top_deg: float = 90.0,
+                    bottom_deg: float = -90.0) -> float | None:
     """Horizontal distance to the floor point seen at row v (level camera, flat floor); None above the horizon."""
-    e = pano_elevation_deg(v, height)
+    e = pano_elevation_deg(v, height, top_deg, bottom_deg)
     if e >= -0.05:
         return None
     return camera_height_m / math.tan(math.radians(-e))
 
 
-def person_distance(box, kp, kconf, pano_height: int, p: dict) -> tuple[float | None, str]:
+def person_distance(box, kp, kconf, pano_height: int, p: dict, top_deg: float = 90.0,
+                    bottom_deg: float = -90.0) -> tuple[float | None, str]:
     """(distance m, source) for one panorama person: 'ankles', 'box_bottom' or 'unknown' (see config)."""
     if kp is not None and kconf is not None:
         ys = [kp[i][1] for i in (L_ANKLE, R_ANKLE) if kconf[i] >= p["ankle_confidence"]]
         if ys:
-            d = ground_distance(float(np.mean(ys)), pano_height, p["camera_height_m"])
+            d = ground_distance(float(np.mean(ys)), pano_height, p["camera_height_m"], top_deg, bottom_deg)
             if d is not None:
                 return d, "ankles"
     bottom = box[3]
     if bottom < pano_height - p["occlusion_margin_px"]:
-        d = ground_distance(bottom, pano_height, p["camera_height_m"])
+        d = ground_distance(bottom, pano_height, p["camera_height_m"], top_deg, bottom_deg)
         if d is not None:
             return d, "box_bottom"
     return None, "unknown"
@@ -203,7 +205,7 @@ class HriPerception:
 
     def _warm_up(self):
         """First calls compile kernels and load weights; done at start so the 0.3 s watchdog is not hit later."""
-        blank = np.zeros((self.cfg["people"]["imgsz"] // 2, self.cfg["people"]["imgsz"], 3), np.uint8)
+        blank = np.zeros((self.cfg["people"]["imgsz"] // 4, self.cfg["people"]["imgsz"], 3), np.uint8)
         self.pano_model.predict(blank, imgsz=self.cfg["people"]["imgsz"], device=self.device, verbose=False)
         self.gesture_model.predict(blank[:530, :730], imgsz=self.cfg["gesture"]["imgsz"], device=self.device, verbose=False)
         self.stop.detect(np.zeros((530, 730, 3), np.uint8), 0.0)
@@ -219,7 +221,7 @@ class HriPerception:
             raise ValueError("JPEG could not be decoded")
         return img  # BGR
 
-    def people(self, bgr, heading_deg: float) -> tuple[list[dict], float]:
+    def people(self, bgr, heading_deg: float, top_deg: float = 90.0, bottom_deg: float = -90.0) -> tuple[list[dict], float]:
         p = self.cfg["people"]
         h, w = bgr.shape[:2]
         t0 = time.perf_counter()
@@ -238,7 +240,7 @@ class HriPerception:
             if box[3] - box[1] < p["min_box_height_px"]:
                 continue
             u = float(0.5 * (box[0] + box[2]))
-            d, src = person_distance(box, kp, kc, h, p)
+            d, src = person_distance(box, kp, kc, h, p, top_deg, bottom_deg)
             out.append({"track_id": int(tid), "bearing_deg": round(hp.pano_bearing(u, w, heading_deg), 2),
                         "distance_m": round(d, 3) if d is not None else -1.0, "distance_source": src,
                         "confidence": round(float(c), 3), "box_h": float(box[3] - box[1])})
@@ -280,13 +282,16 @@ class HriPerception:
         h = frame.header
         heading = float(h.get("robot", {}).get("heading_deg", 0.0))
         imgs = {e.get("name"): data for e, data in zip(h.get("images", []), frame.images)}
+        entries = {e.get("name"): e for e in h.get("images", [])}
         inference = []
         people, command, conf, detail = [], "NONE", 0.0, {"why": "no gesture image"}
         t_dec = time.perf_counter()
         decoded = {k: self._decode(v) for k, v in imgs.items()}
         inference.append({"model": "jpeg_decode", "ms": round((time.perf_counter() - t_dec) * 1000.0, 3)})
         if "cam360" in decoded:
-            people, ms = self.people(decoded["cam360"], heading)
+            e = entries["cam360"]
+            people, ms = self.people(decoded["cam360"], heading, float(e.get("elevation_top_deg", 90.0)),
+                                     float(e.get("elevation_bottom_deg", -90.0)))
             inference.append({"model": "yolo11s-pose/cam360", "ms": round(ms, 3)})
         if "gesture" in decoded:
             command, conf, detail, times = self.gesture(decoded["gesture"], float(h.get("t_sim", 0.0)))

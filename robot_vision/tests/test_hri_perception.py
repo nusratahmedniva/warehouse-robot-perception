@@ -149,5 +149,15 @@ class IsolationTests(unittest.TestCase):
             self.assertNotIn("truth_", (HERE / name).read_text(encoding="utf-8"), name)
 
 
+class BandTests(unittest.TestCase):
+    def test_band_rows_map_to_elevation_and_distance(self):
+        # 2048 x 512 band from +30 to -60 deg: 90 deg over 512 rows, horizon at row 512 / 3.
+        self.assertAlmostEqual(hpm.pano_elevation_deg(-0.5, 512, 30, -60), 30.0)
+        self.assertAlmostEqual(hpm.pano_elevation_deg(511.5, 512, 30, -60), -60.0)
+        e = -math.degrees(math.atan(1.5 / 4.0))
+        v = (30 - e) / 90 * 512 - 0.5
+        self.assertAlmostEqual(hpm.ground_distance(v, 512, 1.5, 30, -60), 4.0, delta=1e-6)
+
+
 if __name__ == "__main__":
     unittest.main()

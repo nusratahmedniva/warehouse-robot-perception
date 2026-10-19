@@ -69,6 +69,11 @@ the tests on both sides.
             {"name": "cam360",  "format": "jpeg", "width": 1024, "height": 512, "bytes": 88001}]}
 ```
 
+Since Step 4 the `cam360` image is a horizon band of the 2048 x 1024 panorama (default +30 to -60 deg
+elevation, 2048 x 512) and its entry carries `"elevation_top_deg"` and `"elevation_bottom_deg"`; row v (0 =
+top) has elevation top - (v + 0.5) / height * (top - bottom). Without these fields the image is the full
++90..-90 panorama. Columns still cover the full 360 deg (world-aligned).
+
 `images` may be empty (rendering unavailable). Nothing in an observation is ground truth about people or
 gestures; true positions never leave Unity's scoring code.
 

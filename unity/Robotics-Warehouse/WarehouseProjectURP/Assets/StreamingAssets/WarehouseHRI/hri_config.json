@@ -66,10 +66,13 @@
     "port": 5050,
     "send_interval_s": 0.1,
     "connect_retry_s": 1.0,
-    "jpeg_quality": 75,
-    "cam360_send_width_px": 1024,
+    "jpeg_quality": 90,
+    "cam360_send_width_px": 2048,
     "send_gesture_image": true,
-    "send_cam360_image": true
+    "send_cam360_image": true,
+    "cam360_band_top_deg": 30,
+    "cam360_band_bottom_deg": -60,
+    "cam360_note": "Changed 2026-10-20 after the first development trials (hri_dev_eval_20261020_025237: people recall 0.09 at 3-6 m): was the full panorama at 1024 px and JPEG 75. Now the horizon band +30..-60 deg at the native 2048 px width, JPEG 90. See robot_vision/configs/hri_perception.json -> changes_after_dev_eval."
   },
   "cameras": {
     "cam360_interval_s": 0.1,
