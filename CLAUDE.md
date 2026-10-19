@@ -100,6 +100,15 @@
     full_frame (her baseline) and person_crop, raw scores, no threshold
     in the adapter; to_gesture_events -> decision.GestureEvent. Gesture
     evaluation: not_evaluated until Unity recordings with labels exist.
-- Next, in order: Step 6 passage width; slimmed evaluation harness; one
-  final THUD++ evaluation. Unity warehouse
-  scene is built by me in parallel.
+- Guided-robot task (v3 spec, see AUDIT.md), done 2026-10-20: Steps 1, 2
+  and the Unity part of Step 6 in unity/.../Assets/Scripts/WarehouseHRI
+  (runtime), Assets/Editor/GuidedSceneBuilder.cs (Tools > Warehouse HRI >
+  Build Guided Scene / Gesture Pose Test), Assets/Tests/EditMode (29 tests).
+  Thresholds: Assets/StreamingAssets/WarehouseHRI/hri_config.json (not
+  frozen). People and gestures are SCRIPTED BASELINES (true positions,
+  scripted poses) behind IPersonSource / IGestureSource until Steps 3-4;
+  obstacle avoidance = NavMesh. Builder disables the upstream racks'
+  oversized carving NavMeshObstacles and adds a floor slab collider.
+- Next, in order: Step 0 message spec; Step 3 TCP link (length-prefixed
+  JSON + JPEG) wired to PythonLinkWatchdog; Step 4 perception; Step 5
+  Python state machine + simulator; Step 7 analysis script.

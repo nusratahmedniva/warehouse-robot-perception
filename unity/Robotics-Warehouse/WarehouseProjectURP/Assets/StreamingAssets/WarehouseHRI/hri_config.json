@@ -1,0 +1,85 @@
+{
+  "label": "Warehouse HRI thresholds, declared 2026-10-19 from the project spec and nominal robot data before any trial; not tuned on results. Set frozen to true after the development trials, before the final trials. Any later change must be disclosed in the README.",
+  "frozen": false,
+  "output_root": "../../../robot_vision/outputs",
+  "output_root_note": "Relative to the Unity project folder (the folder that contains Assets/) in the Editor; to the player's data folder in a build. outputs/ is git-ignored.",
+
+  "trials": {
+    "task": "Task2",
+    "task_note": "Task1 = straight A to B with FORWARD at the first junction (baseline); Task2 = guided route, B changes every trial.",
+    "mode": "development",
+    "mode_note": "development uses dev_seed; final uses final_seed, needs frozen = true, and runs once (refused if a trials_final_* folder with FINAL_DONE.json exists).",
+    "dev_seed": 1,
+    "final_seed": 2,
+    "trial_count": 10,
+    "timeout_s": 240,
+    "stuck_s": 8,
+    "stuck_min_progress_m": 0.25,
+    "pause_between_trials_s": 1.0,
+    "success_radius_m": 0.3
+  },
+
+  "robot": {
+    "dimensions_note": "Nominal MiR100 datasheet footprint 0.89 x 0.58 x 0.35 m (L x W x H), not measured in the scene; the body is a box stand-in until the URDF model is imported.",
+    "width_m": 0.58,
+    "length_m": 0.89,
+    "height_m": 0.35,
+    "ground_clearance_m": 0.025,
+    "mass_kg": 70,
+    "max_speed_mps": 1.0,
+    "max_turn_rate_dps": 60,
+    "accel_mps2": 0.5,
+    "decel_mps2": 0.5,
+    "emergency_decel_mps2": 1.5,
+    "angular_accel_dps2": 180,
+    "lookahead_m": 0.8,
+    "rotate_in_place_deg": 60,
+    "turn_gain": 2.0,
+    "align_tolerance_deg": 5,
+    "replan_deviation_m": 1.0
+  },
+
+  "brain": {
+    "junction_slow_radius_m": 3.0,
+    "junction_speed_scale": 0.4,
+    "junction_stop_m": 0.3,
+    "endpoint_stop_m": 0.1,
+    "approach_distance_m": 2.0,
+    "approach_tolerance_m": 0.15,
+    "approach_speed_scale": 0.5,
+    "scan_min_s": 0.2,
+    "scan_timeout_s": 5,
+    "ask_settle_s": 0.5,
+    "gesture_hold_s": 1.0,
+    "gesture_window_s": 5,
+    "max_asks": 2,
+    "execute_align_deg": 15,
+    "safety_stop_distance_m": 1.2,
+    "safety_note": "Person-in-path stop: ahead of the robot centre within 1.2 m and within 0.6 m of its centre line. 1.2 m = half length 0.445 + emergency stopping distance at 1.0 m/s (1.0^2 / (2 x 1.5) = 0.33) + 0.1 s reaction (0.1) + 0.3 margin. Must stay below approach_distance_m so the worker being asked never triggers it.",
+    "safety_corridor_half_width_m": 0.6,
+    "person_detection_range_m": 12,
+    "gesture_read_range_m": 6
+  },
+
+  "link": {
+    "watchdog_s": 0.3,
+    "link_required": false,
+    "link_note": "Set link_required to true once the Step 3 TCP client calls PythonLinkWatchdog.NotifyMessageReceived()."
+  },
+
+  "cameras": {
+    "cam360_interval_s": 0.1,
+    "cam360_face_px": 512,
+    "cam360_equirect_width_px": 2048,
+    "cam360_height_m": 1.5,
+    "gesture_width_px": 730,
+    "gesture_height_px": 530,
+    "gesture_vfov_deg": 60,
+    "gesture_height_m": 1.2,
+    "pan_speed_dps": 120
+  },
+
+  "telemetry": {
+    "interval_s": 0.1
+  }
+}

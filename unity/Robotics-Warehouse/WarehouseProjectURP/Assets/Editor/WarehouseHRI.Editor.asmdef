@@ -1,0 +1,19 @@
+{
+    "name": "WarehouseHRI.Editor",
+    "rootNamespace": "WarehouseHRI.EditorTools",
+    "references": [
+        "WarehouseHRI",
+        "Unity.AI.Navigation"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

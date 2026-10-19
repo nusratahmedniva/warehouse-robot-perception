@@ -1,0 +1,87 @@
+using System.IO;
+using UnityEngine;
+
+namespace WarehouseHRI
+{
+    /// <summary>
+    /// Time series of one run, one row every interval_s (0.1 s) of simulation time, written to a new CSV file
+    /// (never overwritten). Positions are floor coordinates (x, z; y is up); heading is Unity yaw in degrees
+    /// (0 = +z, 90 = +x). Inference time and Unity-Python delay are STUBS (empty) until Steps 3 and 4.
+    /// </summary>
+    public class RobotTelemetry : MonoBehaviour
+    {
+        public const string Header =
+            "t_s,trial,state,x,z,heading_deg,v_cmd_mps,w_cmd_dps,v_mps,w_dps,speed_meas_mps,turn_meas_dps," +
+            "people_detected,gesture_read,safety_stop,safety_reason,watchdog_stop,inference_ms,round_trip_ms";
+
+        public bool useConfigFile = true;
+        public float intervalS = 0.1f;
+        public DiffDriveRobot robot;
+        public RobotBrain brain;
+
+        StreamWriter m_Writer;
+        float m_T0, m_Next;
+        int m_Trial;
+
+        public bool Recording => m_Writer != null;
+        public string FilePath { get; private set; }
+        public int Rows { get; private set; }
+
+        void Awake()
+        {
+            if (robot == null) robot = GetComponent<DiffDriveRobot>();
+            if (brain == null) brain = GetComponent<RobotBrain>();
+            if (useConfigFile) intervalS = HriConfig.Current.telemetry.interval_s;
+        }
+
+        /// <summary>Start a new CSV at <paramref name="path"/> (must not exist).</summary>
+        public void Begin(string path, int trial)
+        {
+            End();
+            m_Writer = HriOutput.CreateNewWriter(path);
+            m_Writer.WriteLine(Header);
+            FilePath = path;
+            m_Trial = trial;
+            m_T0 = Time.fixedTime;
+            m_Next = m_T0;
+            Rows = 0;
+        }
+
+        public void End()
+        {
+            if (m_Writer == null) return;
+            m_Writer.Dispose();
+            m_Writer = null;
+        }
+
+        void OnDisable() => End();
+
+        void FixedUpdate()
+        {
+            if (m_Writer == null || Time.fixedTime + 1e-4f < m_Next) return;
+            m_Next += intervalS;
+            Write(Time.fixedTime - m_T0);
+        }
+
+        void Write(float t)
+        {
+            var p = transform.position;
+            string state = brain != null ? brain.State.ToString() : "";
+            string row = string.Join(",",
+                HriOutput.F(t, "0.00"), m_Trial.ToString(HriOutput.Inv), state,
+                HriOutput.F(p.x, "0.000"), HriOutput.F(p.z, "0.000"), HriOutput.F(robot.YawDeg, "0.0"),
+                HriOutput.F(robot.CommandedV, "0.000"), HriOutput.F(robot.CommandedW, "0.0"),
+                HriOutput.F(robot.V, "0.000"), HriOutput.F(robot.W, "0.0"),
+                HriOutput.F(robot.MeasuredSpeed, "0.000"), HriOutput.F(robot.MeasuredTurnRateDps, "0.0"),
+                brain != null ? brain.PeopleDetected.ToString(HriOutput.Inv) : "",
+                brain != null ? brain.LastRead.ToString() : "",
+                brain != null && brain.SafetyStopActive ? "1" : "0",
+                HriOutput.Csv(brain != null ? brain.SafetyReason : ""),
+                robot.WatchdogStopped ? "1" : "0",
+                "", // inference_ms: stub until Step 4
+                ""); // round_trip_ms: stub until Step 3
+            m_Writer.WriteLine(row);
+            Rows++;
+        }
+    }
+}

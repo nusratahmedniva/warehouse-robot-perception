@@ -73,3 +73,6 @@ unity/**/Assets/WarehouseRobot/Characters/**/*.fbx
 unity/**/Assets/WarehouseRobot/Characters/**/*.png
 unity/**/Assets/WarehouseRobot/Characters/**/*.jpg
 unity/**/Assets/WarehouseRobot/Characters/**/*.tga
+
+# macOS Finder metadata
+.DS_Store
