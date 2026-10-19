@@ -118,6 +118,12 @@
 - Viewer (2026-10-20): FollowCamera (C cycles chase / top-down / gesture
   camera), HriHud overlay, goal marker on layer ViewerOnly (robot cameras
   never render it). Builder batch entry: GuidedSceneBuilder.BatchBuild.
-- Next, in order: Step 4 perception (YOLO pose arm direction, distance,
-  STOP via gesture_adapter) behind IPersonSource / IGestureSource; Step 5
-  Python state machine + simulator; Step 7 analysis script.
+- Done 2026-10-20: Step 4 vision perception (hri_perception.py, YOLO11s-pose
+  people + arm direction, MediaPipe STOP via gesture_adapter with
+  configs/gesture_hri.json STOP = Open_Palm only). Thresholds frozen:
+  configs/hri_perception_frozen.json (test checks the hashes). Unity
+  perception.mode scripted|vision; dev eval hri_dev_eval_20261020_031217:
+  10/10 trials, gesture accuracy 0.93-1.0 at coverage 0.80-1.0. Python
+  ~235 ms/observation on the Mac (watchdog stops briefly).
+- Next, in order: Step 5 Python state machine + simulator; Step 7 analysis
+  script; final trials (final seed, once).

@@ -1,0 +1,19 @@
+{
+  "label": "Step 4 vision perception thresholds, frozen after the development evaluation",
+  "frozen_at": "2026-10-20",
+  "config": "configs/hri_perception.json",
+  "sha256": "a2067f6f672eaeb587db54a0d5605924d2d99128de1cdedaad9e1db8f122f287",
+  "adapter_config": "configs/gesture_hri.json",
+  "adapter_sha256": "c32182cc997c07a359c1f00de30bfb14abc85b29c3703c5b9885f07998d5a26c",
+  "pose_weights_sha256": "1060bda4a27012060eca246f9b2adeea22eabb045a1e58f8d229be29b7ebc2ba",
+  "unity_image_settings": {
+    "jpeg_quality": 90,
+    "cam360_send_width_px": 2048,
+    "cam360_band_top_deg": 30,
+    "cam360_band_bottom_deg": -60,
+    "send_interval_s": 0.1
+  },
+  "developed_on": "Dev seed 1 only: gesture sweep gestures_sweep_development_20261020_030642 (140 samples) and 10 Task2 trials trials_development_Task2_20261020_025740, both in vision mode; earlier runs listed in changes_after_dev_eval. The final seed was never used.",
+  "dev_evaluation": "outputs/hri_dev_eval_20261020_031217 (git-ignored)",
+  "rule": "Any change to the two configs or these image settings after this point must be disclosed in the README and invalidates this record; tests/test_hri_perception.py checks the hashes."
+}

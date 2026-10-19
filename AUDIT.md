@@ -13,6 +13,28 @@ evidence either way; nothing is guessed).
 
 ---
 
+## Update 2026-10-20 (4): Step 4 vision perception
+
+| Step | Status | Evidence | Still missing |
+|---|---|---|---|
+| **4** Perception | **done (dev-evaluated, frozen)** | `hri_perception.py`, `configs/hri_perception.json` (frozen, `hri_perception_frozen.json`), `configs/gesture_hri.json`, bridge `perception: vision`; Unity `VisionPersonSource`, `VisionGestureSource`, `PerceptionSelector`, `GestureSweep`, `truth_run###.csv`; `hri_eval_dev.py` | Final evaluation (final seed, once); Windows/CUDA timing |
+
+All per-run metrics are now implemented, including per-model inference time (yolo11s-pose/cam360, yolo11s-pose/gesture,
+mediapipe/stop, jpeg_decode, total) per reply and per run; gesture shown (truth file) vs read (telemetry) per
+0.1 s; people detected per frame.
+
+Development evaluation (vision, dev seed 1; hri_dev_eval_20261020_031217): see README "Vision perception".
+Changes made after seeing development results (disclosed in configs/hri_perception.json): worker textures,
+arm direction from two segments (after a 7-image smoke look), and the panorama band at 2048 px / JPEG 90 after
+the first dev trials (people recall 0.09 at 3-6 m, 2/10 SUCCESS). Bugs found by the runs and fixed: numpy
+float32 broke JSON replies (first sweep aborted, marked ABORTED.txt).
+
+Rules: inference never imports truth (test); truth files are separate and read only by hri_eval_dev.py;
+results labelled vision / scripted-gesture baseline; obstacle avoidance still NavMesh; final seed untouched.
+Open issue: Python ~235 ms per observation on this Mac exceeds the 0.3 s watchdog at p95; brief stops occur.
+
+---
+
 ## Update 2026-10-20 (3): viewer camera and overlay
 
 `FollowCamera.cs` (C: chase / top-down / gesture camera; chase is the Game-view default), `HriHud.cs` rewritten

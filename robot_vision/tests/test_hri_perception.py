@@ -159,5 +159,19 @@ class BandTests(unittest.TestCase):
         self.assertAlmostEqual(hpm.ground_distance(v, 512, 1.5, 30, -60), 4.0, delta=1e-6)
 
 
+class FrozenTests(unittest.TestCase):
+    def test_frozen_configs_are_unchanged(self):
+        import hashlib, json
+        rec = json.loads((HERE / "configs" / "hri_perception_frozen.json").read_text(encoding="utf-8"))
+        for key, sha in (("config", "sha256"), ("adapter_config", "adapter_sha256")):
+            self.assertEqual(hashlib.sha256((HERE / rec[key]).read_bytes()).hexdigest(), rec[sha],
+                             f"{rec[key]} changed after it was frozen; disclose the change and refreeze")
+        self.assertTrue(hpm.load_config()["frozen"])
+        unity = json.loads((HERE.parent / "unity" / "Robotics-Warehouse" / "WarehouseProjectURP" / "Assets" /
+                            "StreamingAssets" / "WarehouseHRI" / "hri_config.json").read_text(encoding="utf-8"))
+        for k, v in rec["unity_image_settings"].items():
+            self.assertEqual(unity["link"][k], v, f"hri_config.json link.{k} changed after the freeze")
+
+
 if __name__ == "__main__":
     unittest.main()

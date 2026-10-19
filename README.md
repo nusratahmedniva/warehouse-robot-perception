@@ -93,6 +93,46 @@ the config, `run.json` (git commit), and per connection `hello.json`, `frames.cs
 telemetry adds `link`, `inference_ms` and `round_trip_ms` per 0.1 s row. After updating, run
 **Build Guided Scene** again so the robot gets its `HriBridgeClient`.
 
+### Vision perception (Step 4)
+
+`hri_config.json -> perception.mode`: `scripted` (default; baselines) or `vision`. In vision mode RobotBrain gets
+people from `VisionPersonSource` and gestures from `VisionGestureSource` (the Python replies); the Python link
+becomes required. Python (`robot_vision/hri_perception.py`, thresholds frozen in `configs/hri_perception.json`,
+record `configs/hri_perception_frozen.json`):
+- People: YOLO11s-pose + ByteTrack on the 360 deg horizon band (+30..-60 deg, 2048 x 512, JPEG 90); bearing from
+  the column, distance from the ankles on the floor (level camera, flat floor); nearest person = target.
+- Gesture: YOLO11s-pose on the gesture camera; arm direction = mean of shoulder->wrist and elbow->wrist; bins
+  LEFT -90, FORWARD_LEFT -45, FORWARD 0, FORWARD_RIGHT 45, RIGHT 90 deg (+-15), NONE between or when unclear.
+- STOP: MediaPipe gesture recognizer through `gesture_adapter.py` (Anisha's module unchanged) with
+  `configs/gesture_hri.json`: STOP = Open_Palm only (her baseline also maps Closed_Fist; the worker points with
+  fists, so that mapping would stop the robot at every direction).
+- Weights: `robot_vision/models/yolo11s-pose.pt` (git-ignored; sha256 in the config). Download once from
+  robot_vision/models: `python -c "from ultralytics import YOLO; YOLO('yolo11s-pose.pt')"`.
+- The Mixamo worker's textures are extracted by Build Guided Scene into the git-ignored
+  `Characters/worker_textures/` (untextured it rendered pale and was hard to detect).
+
+Development evaluation (**vision**, dev seed 1 only, macOS M-series laptop, MPS; `hri_eval_dev.py`,
+report `outputs/hri_dev_eval_20261020_031217`). Accuracy = correct / frames with a command; coverage = frames
+with a command / all frames of that command. Unity synthetic scene, one avatar, 1.7-2.5 m, view +-25 deg:
+
+| shown | coverage | accuracy | 1.0 s hold: correct / wrong / none (of 20) |
+|---|---|---|---|
+| NONE | false command rate 0.0 | - | 20 without a false accept |
+| LEFT | 0.953 | 1.0 | 18 / 0 / 2 |
+| FORWARD_LEFT | 0.982 | 0.927 (8 frames read LEFT) | 17 / 0 / 3 |
+| FORWARD | 0.795 | 1.0 | 15 / 0 / 5 |
+| FORWARD_RIGHT | 0.914 | 1.0 | 16 / 0 / 4 |
+| RIGHT | 1.0 | 1.0 | 18 / 0 / 2 |
+| STOP | 1.0 | 1.0 | 20 / 0 / 0 |
+
+Diagonals meet the declared criterion (accuracy >= 0.9, coverage >= 0.8): no recommendation to drop them.
+People recall (true worker within the bearing match of 10 deg): 0.91 at 0-3 m, 1.0 at 3-6 m, 0.55 at 6-9 m,
+0.0 at 9-12 m (all 0.763 of 2159 frames); distance known for all matched frames, error median 0.25 m,
+p90 0.59 m, mean +0.28 m (too far). Trials: 10/10 SUCCESS, 15/15 junction readings correct.
+Python time per observation: total median 235 ms, p95 319 ms (YOLO on the panorama band median 139 ms); it
+rose from 154 to 252 ms over the 8.5 min session (likely thermal throttling; not measured). Replies above
+0.3 s let the watchdog stop the robot briefly: 14 telemetry rows, at most 0.42 s per trial.
+
 ### Outputs
 
 `output_root` in `hri_config.json` (default `../../../robot_vision/outputs`, relative to the Unity project folder,
