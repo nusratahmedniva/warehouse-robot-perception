@@ -2,7 +2,7 @@
 
 Providers. A decision frame is assembled from three sources, each behind a small interface:
 - persons:  persons_at(t) -> list[PersonState]   (THUD: Step 8 motion_states.csv; Unity: the scene adapter)
-- passage:  passage_at(t) -> PassageState        (placeholder until Step 6 exists)
+- passage:  passage_at(t) -> PassageState        (GridPassage for Step 6, scripted for scenarios)
 - gestures: gestures_at(t) -> list[GestureEvent] (placeholder until the gesture adapter exists)
 The placeholders here read scenario / script files. The real gesture module connects later through an adapter
 that outputs GestureEvent; its code is not touched.
@@ -32,8 +32,10 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 import footprint as fp
+from passage import OccupancyGrid, PassageProvider
 import run_paths as rp
 from decision import (RULE_NAMES, Decision, DecisionEngine, DecisionFrame, GestureEvent, PassageState, PersonState,
                       RouteCorridor)
@@ -91,6 +93,18 @@ class ScriptedPassage:
             if _within(s, t):
                 return PassageState(s["status"], s.get("available_width_m"), self.required)
         return PassageState("not_evaluated", None, self.required)
+
+
+class GridPassage:
+    """Step 6 provider for a fixed or time-varying route corridor."""
+
+    def __init__(self, grid: OccupancyGrid, corridor: RouteCorridor | Callable[[float], RouteCorridor]):
+        self.provider = PassageProvider(grid)
+        self.corridor = corridor
+
+    def passage_at(self, t: float) -> PassageState:
+        corridor = self.corridor(t) if callable(self.corridor) else self.corridor
+        return self.provider.passage_at(corridor)
 
 
 class ScriptedGestures:

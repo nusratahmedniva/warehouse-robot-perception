@@ -1,0 +1,8 @@
+{
+  "note": "Step 6 occupancy grid. Values are fixed before evaluation.",
+  "cell_size_m": 0.1,
+  "floor_height_tolerance_m": 0.08,
+  "sample_step_m": 0.1,
+  "unseen_cells": "blocked",
+  "free_cell_rule": "predicted floor label and absolute height difference from fitted floor plane within tolerance"
+}

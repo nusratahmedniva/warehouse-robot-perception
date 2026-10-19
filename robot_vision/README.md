@@ -886,6 +886,19 @@ cd /path/to/RobotVisionWorkspace/robot_vision
 The tests and `run_decisions.py` need no dataset. `replay_decisions.py` needs only the local Step 8 and Step 4 run
 folders. `person_box_depth.py` also reads the capture's depth images from the dataset root. No inference is rerun.
 
+### Step 6 passage width
+
+`passage.py` implements the occupancy-grid provider used by the decision layer. A grid cell is free only when
+the fused observation is labelled `floor`, has valid world height, and is within `floor_height_tolerance_m` of
+the fitted floor height. Every unseen cell is blocked. The provider samples the route centreline and measures
+the contiguous free lateral run around it; the minimum run is returned as `PassageState.available_width_m`.
+`GridPassage` in `decision_io.py` adapts this result to the `passage_at(t)` provider contract. The fixed values
+are in `configs/passage.json`.
+
+The input adapter must pass fused observations as `(world_x, world_z, label, world_y, floor_world_y)` and must
+not import reference loaders. A clear passage is still rejected by `DecisionEngine` when its reported required
+width differs from the configured load footprint.
+
 ### Input contract (`decision.py`)
 
 A caller builds one `DecisionFrame` per timestamp and passes it to `DecisionEngine.step()`. THUD replays and,
@@ -1303,9 +1316,9 @@ coverage (labelled people whose track received a hand detection), plus confusion
 - Static furniture is still not a trusted motion class. On Capture_1 it is mostly removed, not measured.
 - The reference is a visible-surface proxy, not person-centre ground truth. Capture_3 and Capture_4 have not
   been used.
-- No passage width, clearance or occupancy map is computed yet (Step 6). Step 9 decisions run on scenario files
-  and a replay with a placeholder passage and scripted gestures; they have not been evaluated. `camera_proxy` is
-  not the robot position.
+- Step 6 passage width is implemented as an occupancy-grid provider, but it has not yet been evaluated on final
+  THUD++ or live Unity streams. Scenario replay still uses scripted passage segments; `camera_proxy` is not the
+  robot position.
 - The load size is configured, not measured.
 - Gestures have not been evaluated: there are no robot-view images with gesture labels yet (Unity). The smoke
   test uses four close-up sample photos. `gesture_min_confidence` (0.6) has not been checked against the
