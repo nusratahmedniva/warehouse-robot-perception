@@ -117,17 +117,17 @@ Specification: docs/project_flow.md
 - Next, in order (Steps 1-7):
   1. Robot and cameras (done, PR #6)
   2. TCP bridge (done, protocol v2)
-  3. Perception (in branch anisha/integrate-hri: robot_vision/hri_perception.py,
+  3. Perception (done, merged into main with anisha/step5-7: robot_vision/hri_perception.py,
      bridge/perception.py, `python -m bridge.server --perception vision`;
      YOLO11s-pose people on frame_360 + arm direction on frame_pan_tilt,
      MediaPipe STOP via gesture_adapter with configs/gesture_hri.json
      (STOP = Open_Palm only). Thresholds in configs/hri_perception.json,
-     frozen: false until a development evaluation on the v2 pipeline.)
-  4. Worker poses (Anisha) (in the same branch: Assets/WarehouseRobot/HRI,
+     frozen 2026-10-20 after the v2 development evaluation.)
+  4. Worker poses (Anisha) (done, same merge: Assets/WarehouseRobot/HRI,
      Tools > Warehouse HRI > Add Worker and Roadmap / Gesture Pose Test;
      roadmap A, J1, J2, E1-E4 validated on the AMR NavMesh)
-  5. State machine (done 2026-10-20, branch anisha/step5-7: hri_control.py,
-     hri_sim.py, bridge/guide.py, configs/hri_control.json not frozen)
+  5. State machine (done 2026-10-20, branch anisha/step5-7, merged: hri_control.py,
+     hri_sim.py, bridge/guide.py, configs/hri_control.json frozen 2026-10-20)
   6. Scenarios (done: TrialRunner, GoalSequence, TrialBatchPlay; roadmap.json
      must equal HriScenarioBuilder)
   7. Logging (done: hri_trials.py, hri_analysis.py, hri_eval_dev.py). Dev seed 1,
@@ -136,4 +136,8 @@ Specification: docs/project_flow.md
   Frozen 2026-10-20 (configs/hri_frozen.json, tests/test_hri_frozen.py): diagonals
   dropped, reask_shift_m 0.4. Final run once 2026-10-20 (seed 2, ce37a56): 10/10 SUCCESS,
   14/14 junctions, 0 collisions (trials_final_Task2_20261020_172445,
-  FINAL_DONE.json). No further final runs.
+  FINAL_DONE.json). No further Task 2 final runs.
+  Task 1 (A to E1, FORWARD at J1) prepared 2026-10-21 with the same frozen settings:
+  run-once guard per task (TrialRunner -> FinalRunGuard), per-task fields and the
+  robot.json and pose-weights hashes in hri_frozen.json (AUDIT.md section 8). Task 1
+  development runs only check the pipeline; nothing is adjusted on them.

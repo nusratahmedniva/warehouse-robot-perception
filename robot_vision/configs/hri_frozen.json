@@ -1,18 +1,9 @@
 {
-  "label": "Frozen configuration for the final guided-robot trials (final seed, run once).",
+  "label": "Frozen configuration for the final guided-robot trials (final seed, each task's final runs once).",
   "frozen_at": "2026-10-20",
   "based_on_commit": "b7e3062",
-  "note": "Paths relative to the repository root. configs/trials.json is not hashed: its mode switches from development to final for the final run; its seeds, trial count, timeout and criteria must not change (checked by test_hri_frozen).",
-  "trials_fixed": {
-    "task": "Task2",
-    "dev_seed": 1,
-    "final_seed": 2,
-    "trial_count": 10,
-    "timeout_s": 240,
-    "stuck_s": 10,
-    "stuck_min_progress_m": 0.25,
-    "success_radius_m": 0.3
-  },
+  "task2_final_commit": "ce37a56",
+  "note": "Paths relative to the repository root. configs/trials.json is not hashed: its task and mode switch between runs (mode development -> final); its seeds, trial count, timeout and criteria must equal tasks.<task>.trials_fixed (checked by test_hri_frozen).",
   "sha256": {
     "robot_vision/configs/hri_control.json": "79662c4b603cf4b966f7cdb76c21672cc6e20fceb026a1053e061c0f84f93b72",
     "robot_vision/configs/hri_perception.json": "cdfd268b8baa53e79c6e10a416bf5cc79a4f4ca2cc2a87e567b0d9eec0e9a6f8",
@@ -21,5 +12,47 @@
     "robot_vision/configs/bridge.json": "df792cc96e11179086aa8274ccc58a3566c8d5be52badddce28cf7bf8cec1e8a",
     "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Robot/Config/robot_unity.json": "c7d59e8dfdcd24413e25af09d5419afeaa87d4f4b7ab7ae28f714528d731cbb5",
     "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Bridge/Config/bridge_unity.json": "db856234c9893836316b51a96aab2b12cc0091f286c339c140c42b89943d24b5"
+  },
+  "sha256_note": "Shared by all tasks (perception, gesture, state machine, roadmap, bridge, Unity robot and bridge). Exactly the values recorded for the Task 2 final; test_hri_frozen pins them.",
+  "sha256_added_2026_10_21": {
+    "robot_vision/configs/robot.json": "ff8a6673a2965994568c2f8834752ae2157e6e61b685418fcf04d751623d8880",
+    "robot_vision/configs/hri_trials_metrics.json": "522f4a12e87b31b29732bec0e37f72a215bc0a42069e3b1a4a0a650b4b073b10"
+  },
+  "sha256_added_note": "Added 2026-10-21 before the Task 1 final, not part of the Task 2 frozen set. hri_trials_metrics.json (in_motion_speed_threshold_mps 0.05, evaluation only) was declared 2026-10-21 before any Task 1 trial. robot.json was last changed in 0c2771d, an ancestor of the Task 2 final commit ce37a56 (git log ce37a56..HEAD -- robot_vision/configs/robot.json is empty), and its LF-normalised sha256 at ce37a56 equals this value.",
+  "pose_weights": {
+    "path": "robot_vision/models/yolo11s-pose.pt",
+    "sha256": "1060bda4a27012060eca246f9b2adeea22eabb045a1e58f8d229be29b7ebc2ba",
+    "status": "to be confirmed against the Task 2 machine's file",
+    "evidence": "Downloaded 2026-10-21 on the Task 1 machine from the official Ultralytics assets release v8.4.0 (git-ignored). Equal to pose_model.sha256 in configs/hri_perception.json (frozen, unchanged since the Task 2 final), which HriPerception checks at load, refusing to run otherwise; the Task 2 final ran with --perception vision. The Unity trial runner refuses a final if the local file's sha256 differs."
+  },
+  "tasks": {
+    "Task2": {
+      "route": {"start": "A", "goal": "seeded"},
+      "route_note": "Guided route: B is one of the roadmap endpoints, drawn by GoalSequence(seed) and different every trial. Final run once 2026-10-20 (trials_final_Task2_20261020_172445).",
+      "trials_fixed": {
+        "task": "Task2",
+        "dev_seed": 1,
+        "final_seed": 2,
+        "trial_count": 10,
+        "timeout_s": 240,
+        "stuck_s": 10,
+        "stuck_min_progress_m": 0.25,
+        "success_radius_m": 0.3
+      }
+    },
+    "Task1": {
+      "route": {"start": "A", "goal": "E1"},
+      "route_note": "Straight A to B: B = roadmap task1_goal (E1) in every trial; the worker shows FORWARD at J1. Added 2026-10-21; the trial settings are those of Task 2.",
+      "trials_fixed": {
+        "task": "Task1",
+        "dev_seed": 1,
+        "final_seed": 2,
+        "trial_count": 10,
+        "timeout_s": 240,
+        "stuck_s": 10,
+        "stuck_min_progress_m": 0.25,
+        "success_radius_m": 0.3
+      }
+    }
   }
 }

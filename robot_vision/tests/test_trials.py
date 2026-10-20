@@ -152,6 +152,46 @@ class MergeAnalysisEvalTests(unittest.TestCase):
             self.assertEqual(a["junctions"]["shown_vs_read"]["LEFT"], {"LEFT": 1, "NONE": 1})
             self.assertIn("Success 1/2", ha.markdown(a))
 
+    def test_time_excluding_stale_stops(self):
+        rows = [{"trial": "1", "time_s": t, "safety": s} for t, s in
+                [("10.0", ""), ("10.1", "perception stale"), ("10.2", "perception stale"), ("10.3", ""),
+                 ("10.4", "person in path"), ("10.5", "perception stale")]]   # the last row has no next row: not counted
+        self.assertAlmostEqual(ht.stale_stop_s(rows), 0.2)
+        self.assertIsNone(ht.stale_stop_s([{"trial": "1", "time_s": "10.0"}]))   # older log without a safety column
+        with tempfile.TemporaryDirectory() as d:
+            u, b = fake_session(Path(d))
+            write_csv(b / "decisions.csv", [dict(r, rtt_ms="0.8", watchdog_count="0") for r in rows])
+            runs, _ = ht.merge(u, b)
+            self.assertEqual((runs[0]["total_s"], runs[0]["stale_stop_s"], runs[0]["time_excl_stale_stops_s"]),
+                             (60.0, 0.2, 59.8))
+            self.assertEqual((runs[1]["stale_stop_s"], runs[1]["time_excl_stale_stops_s"]), (None, None))  # no rows, trial 2
+            for r in runs:
+                r["_folder"] = "x"
+            a = ha.analyse(runs)
+            self.assertEqual((a["time_excl_stale_stops_s"]["n"], a["time_excl_stale_stops_s"]["mean"]), (1, 59.8))
+            self.assertEqual(a["total_s"]["n"], 2)
+            self.assertIn("| time excl. stale stops | 1 | 59.8 |", ha.markdown(a))
+
+    def test_in_motion_time(self):
+        rows = [{"time_s": t, "v_mps": v} for t, v in
+                [("10.0", "0.0"), ("10.1", "0.05"), ("10.2", "0.06"), ("10.3", "0.8"), ("10.4", "-0.2"), ("10.5", "0.0"),
+                 ("10.6", "0.9")]]   # 0.05 is not above the threshold; the last row has no next row: not counted
+        self.assertAlmostEqual(ht.in_motion_s(rows, 0.05), 0.3)
+        self.assertIsNone(ht.in_motion_s([{"time_s": "10.0", "worker_x": "1"}], 0.05))   # older log without speed
+        self.assertEqual(ht.load_metrics_config()["in_motion_speed_threshold_mps"], 0.05)
+        with tempfile.TemporaryDirectory() as d:
+            u, b = fake_session(Path(d))      # truth_run001.csv has no v_mps; trial 2 has no truth csv
+            runs, _ = ht.merge(u, b)
+            self.assertEqual([r["in_motion_s"] for r in runs], [None, None])
+            write_csv(u / "truth_run001.csv", rows)
+            runs, _ = ht.merge(u, b, {"in_motion_speed_threshold_mps": 0.05})
+            self.assertEqual((runs[0]["in_motion_s"], runs[0]["in_motion_speed_threshold_mps"]), (0.3, 0.05))
+            for r in runs:
+                r["_folder"] = "x"
+            a = ha.analyse(runs)
+            self.assertIn("| in motion | 1 | 0.3 |", ha.markdown(a))
+            self.assertIn("above 0.05 m/s", ha.markdown(a))
+
     def test_eval_people_and_guard(self):
         with tempfile.TemporaryDirectory() as d:
             u, b = fake_session(Path(d))

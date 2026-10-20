@@ -151,8 +151,9 @@ camera, not the panorama, so panorama misses do not reach it.
 - **Final-session perception metrics:** not_evaluated (by design).
 - **Scenario simplifications:**
   - people and gestures are scripted poses of one Mixamo worker;
-  - one worker per junction, no other moving people during the trials;
-  - the safety stop is tested in the simulator (intruder test) and was not exercised in Unity.
+  - one worker per junction, no other moving people during the trials.
+- **"Person steps into the path" stop:** tested only in the simulator (`hri_sim.py` intruder test), not in Unity.
+  No Unity trial has a person entering the robot's path, so this stop has no Unity evidence.
 - **Mixamo files:** not in git (licence); each user must add them.
 
 ## 7. Reproduce
@@ -170,4 +171,71 @@ From `robot_vision/`, start the bridge first, then Unity.
   2. `python hri_analysis.py outputs/<hri_trials folder>`
   3. Development sessions only: `python hri_eval_dev.py --sweep ... --trials ... --simulate 200`
 
-The final mode refuses to run a second time (FINAL_DONE.json).
+The final mode runs once per task: it refuses if a `trials_final_<same task>_*` folder holds FINAL_DONE.json
+(see section 8).
+
+## 8. Changes before the Task 1 final (21 October 2026)
+
+Task 1 is the straight A to B run: B is the roadmap's `task1_goal` (E1) in every trial, and the worker shows FORWARD
+at J1. It runs with exactly the settings frozen for Task 2. All changes below were made before any Task 1 trial.
+
+1. **Run-once guard per task.** `TrialRunner` refused a final if *any* `trials_final_*` folder held
+   FINAL_DONE.json, so the Task 2 final would have blocked the Task 1 final. It now refuses only if a
+   `trials_final_<same task>_*` folder holds FINAL_DONE.json (`FinalRunGuard.EarlierFinal` in the WarehouseHRI
+   assembly).
+   - EditMode tests (`FinalRunGuardTests`): Task 2 final present -> Task 1 final allowed; Task 1 final present ->
+     Task 1 final refused; an unfinished final folder (no FINAL_DONE.json) does not block.
+   - Goal choice, worker placement and scoring in `TrialRunner` are unchanged.
+2. **Per-task frozen settings** (`configs/hri_frozen.json`).
+   - The shared hashes (`sha256`: hri_control, hri_perception, gesture_hri, roadmap, bridge, robot_unity,
+     bridge_unity) are unchanged. `test_hri_frozen.py` pins them to the values recorded for the Task 2 final
+     (ce37a56).
+   - Per task: `tasks.<task>.route` and `tasks.<task>.trials_fixed`, checked for the task named in `trials.json`.
+     Task 1 uses the Task 2 seeds, trial count, timeout and success criteria (tested).
+   - `trials.json`: task Task1, mode development.
+3. **robot.json added to the frozen set** (`sha256_added_2026_10_21`, ff8a6673...8880).
+   - Last changed in 0c2771d, an ancestor of ce37a56.
+   - `git log ce37a56..HEAD -- robot_vision/configs/robot.json` is empty, and its hash at ce37a56 equals the
+     current one.
+4. **Pose weights hash recorded** (`pose_weights`): `robot_vision/models/yolo11s-pose.pt`, sha256
+   1060bda4...c2ba. **Status: to be confirmed against the Task 2 machine's file.**
+   - Downloaded on 21 October 2026 on the Task 1 machine from the official Ultralytics assets release v8.4.0
+     (git-ignored, not committed).
+   - The hash equals `pose_model.sha256` in the frozen `hri_perception.json`. `HriPerception` checks that hash at
+     load and refuses to run otherwise, and the Task 2 final ran in vision mode. This is strong evidence that the
+     Task 2 machine used the same file, but the file itself has not been compared.
+   - The Unity runner now also refuses a final if the local file's hash differs (`FinalRunGuard.WeightsProblem`).
+
+**No perception, gesture or state-machine setting changed.** `git diff ce37a56 -- robot_vision/configs` lists only
+`trials.json` (task, mode, mode note), `hri_frozen.json` and the new evaluation-only `hri_trials_metrics.json`. hri_control.json, hri_perception.json, gesture_hri.json,
+roadmap.json, bridge.json, robot.json and the two Unity configs are byte-identical to the Task 2 final.
+
+**Task 1 development runs only check that the pipeline works** (bridge, perception, trial runner and logging on the
+Task 1 route, dev seed 1). They must not be used to adjust any setting. If one shows a problem that needs a change,
+the change is disclosed here and the frozen hashes are re-recorded before the Task 1 final.
+
+Notes:
+- Machine for the Task 1 final: to be recorded.
+  - If it differs from the Task 2 machine:
+    - comparable between the tasks: success, gesture accuracy, distance travelled, `time_excl_stale_stops_s` and
+      `in_motion_s` (defined below);
+    - not comparable: inference times, stale-perception stops, and total trial time (it includes those stops).
+  - Development runs on Nusrat's PC are pipeline checks only.
+- **Time measures reported separately** (added 21 October 2026, before any Task 1 trial; reporting only, no
+  perception, gesture or state-machine setting changed). `hri_trials.py` writes per run `total_s`,
+  `stale_stop_s`, `time_excl_stale_stops_s` and `in_motion_s`, and `hri_analysis.py` reports each separately.
+  Each 0.1 s log row counts until the next row of the trial.
+  - `stale_stop_s`: time Python held the robot because perception was stale (decisions.csv `safety` =
+    "perception stale").
+  - `time_excl_stale_stops_s` = `total_s` - `stale_stop_s`. It still includes scanning, asking and reading at
+    junctions.
+  - `in_motion_s`: time when the robot's speed `|v_mps|` in Unity's 0.1 s truth log (`truth_run###.csv`) is above
+    `in_motion_speed_threshold_mps` = 0.05 m/s (5 % of the 1.0 m/s maximum).
+  - **The threshold was set on 21 October 2026, before any Task 1 trial**, in `configs/hri_trials_metrics.json`.
+    That file is evaluation-only and its hash is in `hri_frozen.json` (`sha256_added_2026_10_21`).
+  - Older logs without a `safety` or `v_mps` column give None, not a guess.
+  - The Task 2 figures in section 2 give total time and stale-perception stops. Both new measures can be
+    recomputed from the Task 2 session folders with the new `hri_trials.py`; its logs have both columns.
+- The Unity EditMode tests are run locally; CI runs only the Python tests.
+- Checks on 21 October 2026 (Windows): Python 224 tests pass, including 11 in `test_hri_frozen.py` and the two time-measure tests in
+  `test_trials.py`; Unity EditMode 15/15 pass (10 earlier + 5 `FinalRunGuardTests`).

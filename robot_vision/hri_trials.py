@@ -4,13 +4,23 @@ Unity's trial runner folder (trials_<mode>_<task>_<time>/) holds the ground trut
 travelled distance, speeds, collisions, closest distance to the worker, what the worker showed at each junction.
 The bridge's guide run folder (bridge_guide_<time>/) holds what Python did: per-trial state machine summary
 (python_trial_###.json: per-step times, junction readings, abort reason), decisions.csv (0.1 s; round trip,
-watchdog) and perception.csv (per-model inference time per frame). This is evaluation code: it may read truth;
-inference code never imports it.
+watchdog, safety reason) and perception.csv (per-model inference time per frame). This is evaluation code: it may
+read truth; inference code never imports it.
+
+Times (each log row counts until the next row of the trial; rows every 0.1 s):
+- total_s: Unity's trial time.
+- stale_stop_s: time Python held the robot because perception was stale (decisions.csv safety "perception stale").
+- time_excl_stale_stops_s = total_s - stale_stop_s; still includes scanning, asking and reading at junctions.
+- in_motion_s: time whose speed |v_mps| in Unity's truth_run###.csv is above in_motion_speed_threshold_mps
+  (configs/hri_trials_metrics.json).
+Stale stops depend on the machine's inference speed, so total_s and stale_stop_s are not comparable across machines;
+time_excl_stale_stops_s and in_motion_s are. Older logs without a safety or v_mps column give None.
 
 Output: a new folder <output_root>/hri_trials_<time>/ with run_###.json (all metrics of one run), results.csv (one
 row per run, running success ratio), summary.json, the configs of both sides and run.json (git commit).
 
 Usage (from robot_vision/):  python hri_trials.py --unity outputs/trials_development_Task2_X --bridge outputs/bridge_guide_Y
+                             [--metrics-config configs/hri_trials_metrics.json]
 """
 
 from __future__ import annotations
@@ -23,10 +33,13 @@ import statistics as st
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+DEFAULT_METRICS_CONFIG = "configs/hri_trials_metrics.json"
 STEPS = ("navigate", "scan", "approach", "ask", "gesture", "execute")
+STALE = "perception stale"
 MODELS = ("jpeg_decode", "yolo11s-pose/cam360", "yolo11s-pose/gesture", "mediapipe/stop")
 COLUMNS = ["trial", "task", "mode", "seed", "perception", "outcome", "failure_reason", "detail", "success_ratio",
            "a_x", "a_z", "b_name", "b_x", "b_z", "straight_line_m", "travelled_m", "total_s",
+           "stale_stop_s", "time_excl_stale_stops_s", "in_motion_s",
            *[f"{s}_s" for s in STEPS], "safety_stop_s", "avg_speed_mps", "max_speed_mps", "avg_turn_dps", "max_turn_dps",
            "final_distance_to_b_m", "junctions_shown_vs_read", "collisions", "human_collisions", "closest_human_m",
            "inference_total_ms_mean", "inference_total_ms_p95", *[f"{m}_ms_mean" for m in MODELS],
@@ -117,9 +130,37 @@ def model_times(rows: list[dict]) -> dict:
     return out
 
 
+def _timed(rows: list[dict], column: str) -> list[tuple[float, dict]]:
+    return sorted(((num(r.get("time_s")), r) for r in rows if column in r and num(r.get("time_s")) is not None),
+                  key=lambda x: x[0])
+
+
+def stale_stop_s(rows: list[dict]):
+    """Seconds with safety == "perception stale" in one trial's decisions.csv rows; None if not logged."""
+    timed = _timed(rows, "safety")
+    if not timed:
+        return None
+    return sum(t1 - t0 for (t0, r), (t1, _) in zip(timed, timed[1:]) if r["safety"] == STALE)
+
+
+def in_motion_s(rows: list[dict], threshold_mps: float):
+    """Seconds with |v_mps| > threshold_mps in one trial's Unity truth rows; None if speed is not logged."""
+    timed = _timed(rows, "v_mps")
+    if not timed:
+        return None
+    return sum(t1 - t0 for (t0, r), (t1, _) in zip(timed, timed[1:]) if abs(num(r["v_mps"], 0.0)) > threshold_mps)
+
+
+def load_metrics_config(path: str | Path = DEFAULT_METRICS_CONFIG) -> dict:
+    p = Path(path)
+    return json.loads((p if p.is_absolute() else HERE / p).read_text(encoding="utf-8"))
+
+
 # ---------------------------------------------------------------- merge
 
-def merge(unity: Path, bridge: Path) -> tuple[list[dict], dict]:
+def merge(unity: Path, bridge: Path, metrics: dict | None = None) -> tuple[list[dict], dict]:
+    metrics = metrics if metrics is not None else load_metrics_config()
+    threshold = float(metrics["in_motion_speed_threshold_mps"])
     session = json.loads((unity / "session.json").read_text(encoding="utf-8"))
     decisions = read_csv(bridge / "decisions.csv")
     perception = read_csv(bridge / "perception.csv")
@@ -142,12 +183,16 @@ def merge(unity: Path, bridge: Path) -> tuple[list[dict], dict]:
         if t["outcome"] == "SUCCESS":
             successes += 1
         times = model_times(per)
+        stale = stale_stop_s(dec)
+        motion = in_motion_s(read_csv(unity / f"truth_run{i:03d}.csv"), threshold)
         run = {
             "trial": i, "task": t["task"], "mode": t["mode"], "seed": t["seed"],
             "perception": py.get("perception", "unknown"), "outcome": t["outcome"], "failure_reason": t["failure_reason"],
             "detail": t["detail"], "successes_so_far": successes, "success_ratio": round(successes / (len(runs) + 1), 4),
             "a": {"name": t["a_name"], "x": t["a_x"], "z": t["a_z"]}, "b": {"name": t["b_name"], "x": t["b_x"], "z": t["b_z"]},
             "straight_line_m": r3(t["straight_line_m"]), "travelled_m": r3(t["travelled_m"]), "total_s": r3(t["total_s"]),
+            "stale_stop_s": r3(stale), "time_excl_stale_stops_s": r3(t["total_s"] - stale) if stale is not None else None,
+            "in_motion_s": r3(motion), "in_motion_speed_threshold_mps": threshold,
             "step_s": py.get("step_s", {}), "safety_stop_s": py.get("safety_stop_s"),
             "avg_speed_mps": r3(t["avg_speed_mps"]), "max_speed_mps": r3(t["max_speed_mps"]),
             "avg_turn_dps": r3(t["avg_turn_dps"]), "max_turn_dps": r3(t["max_turn_dps"]),
@@ -193,9 +238,10 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--unity", required=True, help="Unity trial runner folder (trials_...)")
     ap.add_argument("--bridge", required=True, help="bridge guide run folder (bridge_guide_...)")
+    ap.add_argument("--metrics-config", default=DEFAULT_METRICS_CONFIG)
     a = ap.parse_args(argv)
-    unity, bridge = dio.resolve(a.unity), dio.resolve(a.bridge)
-    runs, meta = merge(unity, bridge)
+    unity, bridge, metrics_path = dio.resolve(a.unity), dio.resolve(a.bridge), dio.resolve(a.metrics_config)
+    runs, meta = merge(unity, bridge, load_metrics_config(metrics_path))
     if not runs:
         raise SystemExit(f"no truth_run*.json in {unity}")
     out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "hri_trials")
@@ -203,6 +249,7 @@ def main(argv=None) -> None:
     for d in (unity / "config_used", bridge / "config_used"):
         for f in d.glob("*.json"):
             (out / "config_used" / f.name).write_bytes(f.read_bytes())
+    (out / "config_used" / metrics_path.name).write_bytes(metrics_path.read_bytes())
     for r in runs:
         (out / f"run_{r['trial']:03d}.json").write_text(json.dumps(r, indent=2) + "\n", encoding="utf-8")
     with (out / "results.csv").open("x", newline="", encoding="utf-8") as f:
