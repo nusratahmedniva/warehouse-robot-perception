@@ -1,0 +1,536 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+using UnityEngine;
+using WarehouseHRI;
+using WarehouseRobot.Bridge;
+
+namespace WarehouseRobot.Scenario
+{
+    [Serializable]
+    public class SweepSettings
+    {
+        public int repeats = 20;
+        public float distance_min_m = 1.7f, distance_max_m = 2.5f, view_angle_max_deg = 25f, worker_yaw_jitter_deg = 15f;
+        public float settle_s = 0.6f, hold_s = 2f;
+    }
+
+    [Serializable]
+    public class TrialsConfig
+    {
+        public string task = "Task2", mode = "development";
+        public int dev_seed = 1, final_seed = 2, trial_count = 10;
+        public float timeout_s = 240f, stuck_s = 10f, stuck_min_progress_m = 0.25f, success_radius_m = 0.3f;
+        public float pause_between_trials_s = 1f, truth_interval_s = 0.1f;
+        public string output_root = "outputs";
+        public SweepSettings gesture_sweep = new SweepSettings();
+        public bool IsFinal => string.Equals(mode, "final", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Serializable] class FrozenFlag { public bool frozen; }
+    [Serializable] class RoadmapMeta { public string start = "A"; public string task1_goal = "E1"; }
+
+    [Serializable]
+    public class ShownRecord
+    {
+        public string junction, shown;
+        public float t_placed;
+    }
+
+    [Serializable]
+    public class TruthRun
+    {
+        public int trial;
+        public string task, mode;
+        public int seed;
+        public string a_name, b_name;
+        public float a_x, a_z, b_x, b_z;
+        public string outcome, failure_reason, detail, python_final_state;
+        public float final_x, final_z, final_distance_to_b_m, straight_line_m, travelled_m, total_s, t_start, t_end;
+        public float avg_speed_mps, max_speed_mps, avg_turn_dps, max_turn_dps;
+        public int collisions, human_collisions;
+        public string collided_with = "";
+        public float closest_human_m = -1f;
+        public string closest_human_note = "horizontal distance from the robot's body collider to the worker's centre axis (truth)";
+        public List<ShownRecord> shown = new List<ShownRecord>();
+        public string truth_file;
+    }
+
+    /// <summary>
+    /// Step 7 trial runner (scenario side, Unity). Reads robot_vision/configs/trials.json. For each trial it picks goal
+    /// B with a seeded generator (dev_seed in development, final_seed in final mode), resets the robot to the roadmap
+    /// start, and keeps the one worker at the junction the robot is heading to (the junction named by Python's NavMesh
+    /// target), showing the command toward B. Python decides everything; it learns of trials only through telemetry
+    /// trial_index / trial_running, never of B. A trial ends when Python reports done or aborted and the robot has
+    /// stopped, or on collision, timeout or getting stuck; it is then scored from ground truth. Output (new folder
+    /// robot_vision/outputs/trials_mode_task_time/): session.json (git commit, seed, goal order), config_used/,
+    /// truth_run###.json and truth_run###.csv (0.1 s), results_unity.csv. Task "GestureSweep" instead keeps the
+    /// robot still and has the worker show every command (truth_sweep.csv) for the development gesture evaluation.
+    /// </summary>
+    public class TrialRunner : MonoBehaviour
+    {
+        public string repoRootRelativeToProject = "../../..";
+        public bool runOnStart = true;
+
+        public string Status { get; private set; } = "idle";
+        public int TrialIndex { get; private set; }
+        public int TrialTotal { get; private set; }
+        public int Successes { get; private set; }
+        public int Completed { get; private set; }
+        public string CurrentGoal { get; private set; } = "";
+        public string LastSummary { get; private set; } = "";
+        public string SessionFolder { get; private set; }
+
+        RobotRig robot;
+        RobotBridgeClient bridge;
+        GestureWorker worker;
+        readonly Dictionary<string, RoadNode> nodes = new Dictionary<string, RoadNode>();
+        TrialsConfig cfg;
+        RoadmapMeta meta;
+        string repoRoot, outRoot, cfgText, roadText, cfgName = "trials.json";
+        static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+        string RepoFile(string rel) => Path.GetFullPath(Path.Combine(repoRoot, rel));
+
+        void Start()
+        {
+            if (runOnStart) StartCoroutine(Run());
+        }
+
+        bool Setup(out string error)
+        {
+            error = null;
+            repoRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", repoRootRelativeToProject));
+            try
+            {
+                // A git-ignored trials.local.json (e.g. a short smoke run) replaces trials.json; the file used is saved.
+                string local = RepoFile("robot_vision/configs/trials.local.json");
+                cfgName = File.Exists(local) ? "trials.local.json" : "trials.json";
+                cfgText = File.ReadAllText(RepoFile("robot_vision/configs/" + cfgName));
+                roadText = File.ReadAllText(RepoFile("robot_vision/configs/roadmap.json"));
+                cfg = JsonUtility.FromJson<TrialsConfig>(cfgText);
+                meta = JsonUtility.FromJson<RoadmapMeta>(roadText);
+            }
+            catch (Exception e)
+            {
+                error = "cannot read robot_vision/configs/trials.json or roadmap.json: " + e.Message;
+                return false;
+            }
+
+            robot = FindFirstObjectByType<RobotRig>();
+            bridge = FindFirstObjectByType<RobotBridgeClient>();
+            worker = FindFirstObjectByType<GestureWorker>();
+            nodes.Clear();
+            foreach (var n in FindObjectsByType<RoadNode>(FindObjectsSortMode.None)) nodes[n.name] = n;
+            if (robot == null || robot.Drive == null || bridge == null || worker == null || !nodes.ContainsKey(meta.start))
+                error = "need RobotRig, RobotBridgeClient, GestureWorker and the roadmap (run Tools > Warehouse HRI > Add Worker and Roadmap)";
+            else if (cfg.dev_seed == cfg.final_seed) error = "dev_seed and final_seed must differ";
+            else if (cfg.IsFinal && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
+                error = "final mode needs frozen hri_control.json and hri_perception.json";
+            outRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
+            if (error == null && cfg.IsFinal && Directory.Exists(outRoot))
+                foreach (var d in Directory.GetDirectories(outRoot, "trials_final_*"))
+                    if (File.Exists(Path.Combine(d, "FINAL_DONE.json"))) error = "final trials already run: " + Path.GetFileName(d);
+            return error == null;
+        }
+
+        bool Frozen(string rel)
+        {
+            try { return JsonUtility.FromJson<FrozenFlag>(File.ReadAllText(RepoFile(rel))).frozen; }
+            catch (Exception) { return false; }
+        }
+
+        IEnumerator Run()
+        {
+            yield return null;
+            if (!Setup(out var error))
+            {
+                Status = "not started: " + error;
+                Debug.LogError("[TrialRunner] " + error);
+                yield break;
+            }
+
+            string mode = cfg.IsFinal ? "final" : "development";
+            int seed = cfg.IsFinal ? cfg.final_seed : cfg.dev_seed;
+            bool sweep = string.Equals(cfg.task, "GestureSweep", StringComparison.OrdinalIgnoreCase);
+            if (sweep && cfg.IsFinal)
+            {
+                Status = "not started: GestureSweep is development only";
+                yield break;
+            }
+
+            SessionFolder = NewFolder(sweep ? "gestures_sweep_development" : $"trials_{mode}_{cfg.task}");
+            Directory.CreateDirectory(Path.Combine(SessionFolder, "config_used"));
+            WriteNew(Path.Combine(SessionFolder, "config_used", cfgName), cfgText);
+            WriteNew(Path.Combine(SessionFolder, "config_used", "roadmap.json"), roadText);
+            ReadGit(out var commit, out var branch);
+            var endpoints = new List<string>();
+            foreach (var kv in nodes) if (kv.Value.IsEndpoint) endpoints.Add(kv.Key);
+            endpoints.Sort(StringComparer.Ordinal);
+            TrialTotal = sweep ? GestureSweepOrder.Commands.Length * cfg.gesture_sweep.repeats : Mathf.Max(1, cfg.trial_count);
+            var preview = new List<string>();
+            var gp = new GoalSequence(seed);
+            for (int i = 0; i < TrialTotal && !sweep; i++)
+                preview.Add(string.Equals(cfg.task, "Task1", StringComparison.OrdinalIgnoreCase) ? meta.task1_goal : endpoints[gp.NextGoalIndex(endpoints.Count)]);
+            WriteNew(Path.Combine(SessionFolder, "session.json"),
+                "{\n" + $"  \"task\": \"{cfg.task}\",\n  \"mode\": \"{mode}\",\n  \"seed\": {seed},\n" +
+                $"  \"trials\": {TrialTotal},\n  \"endpoints\": [{Quote(endpoints)}],\n  \"goal_order\": [{Quote(preview)}],\n" +
+                $"  \"git_commit\": \"{commit}\",\n  \"git_branch\": \"{branch}\",\n  \"unity_version\": \"{Application.unityVersion}\",\n" +
+                $"  \"trials_config_sha256\": \"{Sha256(cfgText)}\",\n  \"roadmap_sha256\": \"{Sha256(roadText)}\",\n" +
+                "  \"note\": \"goal B lives only in Unity (this folder); Python never receives it\"\n}\n");
+
+            Status = "waiting for the Python bridge";
+            while (!bridge.Connected) yield return null;
+            yield return new WaitForSeconds(0.5f);
+
+            if (sweep) yield return Sweep(seed);
+            else yield return Trials(seed, mode, endpoints);
+        }
+
+        // ---------------- trials ----------------
+
+        IEnumerator Trials(int seed, string mode, List<string> endpoints)
+        {
+            var goals = new GoalSequence(seed);
+            bool task1 = string.Equals(cfg.task, "Task1", StringComparison.OrdinalIgnoreCase);
+            using (var results = NewWriter(Path.Combine(SessionFolder, "results_unity.csv")))
+            {
+                results.WriteLine("trial,b_name,outcome,failure_reason,detail,final_distance_to_b_m,total_s,travelled_m,collisions,closest_human_m,python_final_state");
+                for (int i = 1; i <= TrialTotal; i++)
+                {
+                    TrialIndex = i;
+                    CurrentGoal = task1 ? meta.task1_goal : endpoints[goals.NextGoalIndex(endpoints.Count)];
+                    TruthRun rec = null;
+                    yield return OneTrial(i, seed, mode, CurrentGoal, r => rec = r);
+                    Completed = i;
+                    if (rec.outcome == "SUCCESS") Successes++;
+                    results.WriteLine(string.Join(",", i.ToString(Inv), rec.b_name, rec.outcome, rec.failure_reason, Csv(rec.detail),
+                        F(rec.final_distance_to_b_m), F(rec.total_s), F(rec.travelled_m), rec.collisions.ToString(Inv),
+                        F(rec.closest_human_m), Csv(rec.python_final_state)));
+                    LastSummary = $"trial {i}: {rec.outcome} {(rec.failure_reason == "none" ? "" : rec.failure_reason)} ({rec.detail}); {Successes}/{i}";
+                    Debug.Log("[TrialRunner] " + LastSummary);
+                    yield return new WaitForSeconds(cfg.pause_between_trials_s);
+                }
+            }
+
+            string summary = $"{{\n  \"trials\": {TrialTotal},\n  \"successes\": {Successes},\n  \"mode\": \"{mode}\",\n  \"task\": \"{cfg.task}\",\n  \"seed\": {seed}\n}}\n";
+            WriteNew(Path.Combine(SessionFolder, "summary_unity.json"), summary);
+            if (cfg.IsFinal) WriteNew(Path.Combine(SessionFolder, "FINAL_DONE.json"), summary);
+            Status = $"done: {Successes}/{TrialTotal} SUCCESS";
+            Debug.Log($"[TrialRunner] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
+        }
+
+        IEnumerator OneTrial(int index, int seed, string mode, string goal, Action<TruthRun> done)
+        {
+            var start = nodes[meta.start];
+            var first = start.OnlyNext;
+            Vector3 a = start.Position;
+            float yaw = first != null ? Mathf.Atan2(first.Position.x - a.x, first.Position.z - a.z) * Mathf.Rad2Deg : start.transform.eulerAngles.y;
+            Teleport(new Vector3(a.x, robot.transform.position.y, a.z), yaw);
+            bridge.ReachedEndPoint = false;
+            var shown = new List<ShownRecord>();
+            var placed = new HashSet<string>();
+            worker.faceTarget = robot.transform;
+            if (first != null && first.IsJunction) Place(first, goal, shown, placed);
+            int collisionBase = robot.Collisions != null ? robot.Collisions.Records.Count : 0;
+            var body = robot.GetComponent<Collider>();
+            if (body == null) body = robot.GetComponentInChildren<Collider>();
+
+            string truthPath = Path.Combine(SessionFolder, $"truth_run{index:000}.csv");
+            var truth = NewWriter(truthPath);
+            truth.WriteLine("time_s,robot_x,robot_z,robot_yaw_deg,v_mps,omega_radps,worker_x,worker_z,worker_yaw_deg,gesture_shown,closest_human_m,collisions,python_state");
+            bridge.TrialIndex = index;
+            bridge.TrialRunning = true;
+            yield return new WaitForFixedUpdate();
+            float t0 = Time.time, nextTruth = t0;
+            Vector3 last = robot.transform.position, progressPos = last;
+            float progressTime = t0, travelled = 0f, speedSum = 0f, speedMax = 0f, turnSum = 0f, turnMax = 0f, closest = float.PositiveInfinity;
+            int samples = 0;
+            string end = null;
+            while (end == null)
+            {
+                yield return new WaitForFixedUpdate();
+                float now = Time.time;
+                var p = robot.transform.position;
+                Vector3 step = p - last;
+                step.y = 0f;
+                travelled += step.magnitude;
+                last = p;
+                float sp = Mathf.Abs(robot.Drive.V), tr = Mathf.Abs(robot.Drive.Omega) * Mathf.Rad2Deg;
+                speedSum += sp; turnSum += tr; speedMax = Mathf.Max(speedMax, sp); turnMax = Mathf.Max(turnMax, tr); samples++;
+                float hd = HumanDistance(body);
+                closest = Mathf.Min(closest, hd);
+                if (bridge.HasTarget)
+                    foreach (var kv in nodes)
+                        if (kv.Value.IsJunction && !placed.Contains(kv.Key) &&
+                            Vector2.Distance(bridge.Target, new Vector2(kv.Value.Position.x, kv.Value.Position.z)) < 0.5f)
+                            Place(kv.Value, goal, shown, placed);
+                if (now >= nextTruth)
+                {
+                    nextTruth += cfg.truth_interval_s;
+                    var w = worker.transform;
+                    truth.WriteLine(string.Join(",", F(now, "0.000"), F(p.x, "0.000"), F(p.z, "0.000"), F(robot.transform.eulerAngles.y, "0.0"),
+                        F(robot.Drive.V, "0.000"), F(robot.Drive.Omega, "0.000"), F(w.position.x, "0.000"), F(w.position.z, "0.000"),
+                        F(w.eulerAngles.y, "0.0"), worker.Current.ToString(), F(hd, "0.000"),
+                        ((robot.Collisions != null ? robot.Collisions.Records.Count : 0) - collisionBase).ToString(Inv), Csv(bridge.State)));
+                }
+
+                bool wantsToMove = Mathf.Abs(robot.Drive.CommandedV) > 0.05f;
+                Vector3 moved = p - progressPos;
+                moved.y = 0f;
+                if (!wantsToMove || moved.magnitude >= cfg.stuck_min_progress_m) { progressTime = now; progressPos = p; }
+                string st = bridge.State ?? "";
+                if (robot.Collisions != null && robot.Collisions.Records.Count > collisionBase) end = "collision";
+                else if ((st.StartsWith("done") || st.StartsWith("aborted")) && Mathf.Abs(robot.Drive.V) < 0.02f) end = st.StartsWith("done") ? "done" : "aborted";
+                else if (now - t0 > cfg.timeout_s) end = "timeout";
+                else if (now - progressTime > cfg.stuck_s) end = "stuck";
+                else if (!bridge.Connected) { Status = $"trial {index}: Python disconnected, waiting"; }
+                else Status = $"trial {index}/{TrialTotal}: goal {goal}, Python {st}";
+            }
+
+            bridge.TrialRunning = false;
+            robot.Drive.Stop();
+            truth.Dispose();
+            var gpos = nodes[goal].Position;
+            var fin = robot.transform.position;
+            float dist = Vector2.Distance(new Vector2(fin.x, fin.z), new Vector2(gpos.x, gpos.z));
+            var rec = new TruthRun
+            {
+                trial = index, task = cfg.task, mode = mode, seed = seed, a_name = meta.start, b_name = goal,
+                a_x = a.x, a_z = a.z, b_x = gpos.x, b_z = gpos.z, python_final_state = bridge.State,
+                final_x = fin.x, final_z = fin.z, final_distance_to_b_m = dist,
+                straight_line_m = Vector2.Distance(new Vector2(a.x, a.z), new Vector2(gpos.x, gpos.z)), travelled_m = travelled,
+                t_start = t0, t_end = Time.time, total_s = Time.time - t0,
+                avg_speed_mps = samples > 0 ? speedSum / samples : 0f, max_speed_mps = speedMax,
+                avg_turn_dps = samples > 0 ? turnSum / samples : 0f, max_turn_dps = turnMax,
+                closest_human_m = float.IsInfinity(closest) ? -1f : closest, shown = shown,
+                truth_file = Path.GetFileName(truthPath),
+            };
+            if (robot.Collisions != null)
+                for (int k = collisionBase; k < robot.Collisions.Records.Count; k++)
+                {
+                    var c = robot.Collisions.Records[k];
+                    rec.collisions++;
+                    if (c.object_path != null && c.object_path.Contains("Worker")) rec.human_collisions++;
+                    if (rec.collided_with.Length == 0) rec.collided_with = c.object_path;
+                }
+
+            Score(rec, end, dist);
+            bridge.ReachedEndPoint = rec.outcome == "SUCCESS";
+            WriteNew(Path.Combine(SessionFolder, $"truth_run{index:000}.json"), JsonUtility.ToJson(rec, true));
+            done(rec);
+        }
+
+        void Score(TruthRun r, string end, float dist)
+        {
+            string F3(float x) => x.ToString("0.000", Inv);
+            switch (end)
+            {
+                case "collision": Fail(r, "collision", "collision with " + r.collided_with); break;
+                case "stuck": Fail(r, "stuck", "no progress while driving"); break;
+                case "timeout": Fail(r, "timeout", "trial time limit reached"); break;
+                case "aborted": Fail(r, "aborted", r.python_final_state); break;
+                default:
+                    if (dist <= cfg.success_radius_m) { r.outcome = "SUCCESS"; r.failure_reason = "none"; r.detail = "stopped " + F3(dist) + " m from B"; }
+                    else Fail(r, "wrong_goal", "stopped " + F3(dist) + " m from B (> " + F3(cfg.success_radius_m) + " m)");
+                    break;
+            }
+        }
+
+        static void Fail(TruthRun r, string reason, string detail)
+        {
+            r.outcome = "FAILURE";
+            r.failure_reason = reason;
+            r.detail = detail;
+        }
+
+        void Place(RoadNode junction, string goal, List<ShownRecord> shown, HashSet<string> placed)
+        {
+            placed.Add(junction.name);
+            worker.PlaceAt(junction.workerStand != null ? junction.workerStand : junction.transform);
+            var cmd = junction.CommandToward(nodes[goal]);
+            worker.Show(cmd);
+            shown.Add(new ShownRecord { junction = junction.name, shown = cmd.ToString(), t_placed = Time.time });
+        }
+
+        void Teleport(Vector3 pos, float yawDeg)
+        {
+            var rb = robot.GetComponent<Rigidbody>();
+            robot.Drive.ResetMotion();
+            var rot = Quaternion.Euler(0f, yawDeg, 0f);
+            if (rb != null)
+            {
+                rb.position = pos;
+                rb.rotation = rot;
+            }
+
+            robot.transform.SetPositionAndRotation(pos, rot);
+        }
+
+        float HumanDistance(Collider body)
+        {
+            Vector3 w = worker.transform.position;
+            Vector3 from = robot.transform.position;
+            if (body != null)
+            {
+                w.y = body.bounds.center.y;
+                from = body.ClosestPoint(w);
+            }
+
+            Vector3 d = w - from;
+            d.y = 0f;
+            return d.magnitude;
+        }
+
+        // ---------------- gesture sweep (development) ----------------
+
+        IEnumerator Sweep(int seed)
+        {
+            var s = cfg.gesture_sweep;
+            var j1 = nodes.ContainsKey("J1") ? nodes["J1"] : null;
+            Transform stand = j1 != null && j1.workerStand != null ? j1.workerStand : worker.transform;
+            Vector3 w0 = stand.position;
+            float baseYaw = stand.eulerAngles.y;
+            worker.faceTarget = null;
+            bridge.TrialIndex = -1;
+            bridge.TrialRunning = false;
+            var order = GestureSweepOrder.Order(seed, s.repeats);
+            var rng = new GoalSequence(seed ^ 0x5eed);
+            using (var truth = NewWriter(Path.Combine(SessionFolder, "truth_sweep.csv")))
+            {
+                truth.WriteLine("sample,gesture_shown,t_start,t_end,distance_m,view_angle_deg,worker_yaw_offset_deg,worker_x,worker_z,robot_x,robot_z,robot_yaw_deg");
+                for (int i = 0; i < order.Count; i++)
+                {
+                    TrialIndex = i + 1;
+                    float d = rng.Uniform(s.distance_min_m, s.distance_max_m);
+                    float view = rng.Uniform(-s.view_angle_max_deg, s.view_angle_max_deg);
+                    float jitter = rng.Uniform(-s.worker_yaw_jitter_deg, s.worker_yaw_jitter_deg);
+                    Vector3 dir = Quaternion.Euler(0f, baseYaw + view, 0f) * Vector3.forward;
+                    Vector3 rp = w0 + dir * d;
+                    rp.y = robot.transform.position.y;
+                    float ryaw = Quaternion.LookRotation(-dir).eulerAngles.y;
+                    Teleport(rp, ryaw);
+                    worker.transform.SetPositionAndRotation(w0, Quaternion.Euler(0f, baseYaw + view + jitter, 0f));
+                    worker.Show(order[i]);
+                    Status = $"GestureSweep {i + 1}/{order.Count}: {order[i]} at {d:0.00} m";
+                    float t0 = Time.time + s.settle_s;
+                    while (Time.time < t0) yield return null;
+                    float t1 = t0 + s.hold_s;
+                    while (Time.time < t1) yield return null;
+                    truth.WriteLine(string.Join(",", (i + 1).ToString(Inv), order[i].ToString(), F(t0, "0.000"), F(t1, "0.000"), F(d, "0.000"),
+                        F(view, "0.0"), F(jitter, "0.0"), F(w0.x, "0.000"), F(w0.z, "0.000"), F(rp.x, "0.000"), F(rp.z, "0.000"), F(ryaw, "0.0")));
+                }
+            }
+
+            worker.Show(GestureCommand.NONE);
+            Status = "done: GestureSweep";
+            Debug.Log($"[TrialRunner] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
+        }
+
+        // ---------------- files ----------------
+
+        string NewFolder(string prefix)
+        {
+            Directory.CreateDirectory(outRoot);
+            string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", Inv);
+            string path = Path.Combine(outRoot, $"{prefix}_{stamp}");
+            for (int i = 2; Directory.Exists(path); i++) path = Path.Combine(outRoot, $"{prefix}_{stamp}_{i}");
+            Directory.CreateDirectory(path);
+            return path;
+        }
+
+        static void WriteNew(string path, string text)
+        {
+            using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write))
+            using (var w = new StreamWriter(fs, new UTF8Encoding(false))) w.Write(text);
+        }
+
+        static StreamWriter NewWriter(string path) =>
+            new StreamWriter(new FileStream(path, FileMode.CreateNew, FileAccess.Write), new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
+
+        static string F(float x, string fmt = "0.###") => float.IsNaN(x) || float.IsInfinity(x) ? "" : x.ToString(fmt, Inv);
+        static string Csv(string s) => s == null ? "" : s.IndexOfAny(new[] { ',', '"', '\n' }) >= 0 ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+        static string Quote(List<string> xs) => xs.Count == 0 ? "" : "\"" + string.Join("\", \"", xs) + "\"";
+
+        static string Sha256(string text)
+        {
+            using (var sha = SHA256.Create())
+            {
+                var sb = new StringBuilder();
+                foreach (var b in sha.ComputeHash(new UTF8Encoding(false).GetBytes(text))) sb.Append(b.ToString("x2", Inv));
+                return sb.ToString();
+            }
+        }
+
+        void ReadGit(out string commit, out string branch)
+        {
+            commit = branch = "unknown";
+            try
+            {
+                string gitDir = Path.Combine(repoRoot, ".git");
+                if (File.Exists(gitDir))
+                {
+                    string line = File.ReadAllText(gitDir).Trim();
+                    if (line.StartsWith("gitdir:")) gitDir = Path.GetFullPath(Path.Combine(repoRoot, line.Substring(7).Trim()));
+                }
+
+                if (!Directory.Exists(gitDir)) return;
+                string head = File.ReadAllText(Path.Combine(gitDir, "HEAD")).Trim();
+                if (!head.StartsWith("ref:")) { commit = head; branch = "(detached)"; return; }
+                string reference = head.Substring(4).Trim();
+                branch = reference.StartsWith("refs/heads/") ? reference.Substring(11) : reference;
+                // a worktree keeps refs in the main repository's .git (commondir)
+                string common = File.Exists(Path.Combine(gitDir, "commondir"))
+                    ? Path.GetFullPath(Path.Combine(gitDir, File.ReadAllText(Path.Combine(gitDir, "commondir")).Trim())) : gitDir;
+                foreach (var dir in new[] { gitDir, common })
+                {
+                    string refFile = Path.Combine(dir, reference.Replace('/', Path.DirectorySeparatorChar));
+                    if (File.Exists(refFile)) { commit = File.ReadAllText(refFile).Trim(); return; }
+                    string packed = Path.Combine(dir, "packed-refs");
+                    if (!File.Exists(packed)) continue;
+                    foreach (var l in File.ReadAllLines(packed))
+                        if (l.EndsWith(" " + reference)) { commit = l.Substring(0, l.IndexOf(' ')); return; }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[TrialRunner] could not read the git commit: " + e.Message);
+            }
+        }
+
+        void OnGUI()
+        {
+            if (Status == "idle") return;
+            GUI.Box(new Rect(10, Screen.height - 70, 520, 60),
+                $"{Status}\n{(Completed > 0 ? $"success {Successes}/{Completed}  " : "")}{LastSummary}");
+        }
+    }
+
+    /// <summary>Seeded order of the gesture sweep: every command 'repeats' times, shuffled (Fisher-Yates on GoalSequence).</summary>
+    public static class GestureSweepOrder
+    {
+        public static readonly GestureCommand[] Commands =
+        {
+            GestureCommand.NONE, GestureCommand.LEFT, GestureCommand.FORWARD_LEFT, GestureCommand.FORWARD,
+            GestureCommand.FORWARD_RIGHT, GestureCommand.RIGHT, GestureCommand.STOP,
+        };
+
+        public static List<GestureCommand> Order(int seed, int repeats)
+        {
+            var list = new List<GestureCommand>();
+            for (int r = 0; r < repeats; r++) list.AddRange(Commands);
+            var rng = new GoalSequence(seed);
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = rng.NextInt(i + 1);
+                (list[i], list[j]) = (list[j], list[i]);
+            }
+
+            return list;
+        }
+    }
+}

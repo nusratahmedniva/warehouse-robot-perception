@@ -1,0 +1,25 @@
+{
+  "label": "Frozen configuration for the final guided-robot trials (final seed, run once).",
+  "frozen_at": "2026-10-20",
+  "based_on_commit": "b7e3062",
+  "note": "Paths relative to the repository root. configs/trials.json is not hashed: its mode switches from development to final for the final run; its seeds, trial count, timeout and criteria must not change (checked by test_hri_frozen).",
+  "trials_fixed": {
+    "task": "Task2",
+    "dev_seed": 1,
+    "final_seed": 2,
+    "trial_count": 10,
+    "timeout_s": 240,
+    "stuck_s": 10,
+    "stuck_min_progress_m": 0.25,
+    "success_radius_m": 0.3
+  },
+  "sha256": {
+    "robot_vision/configs/hri_control.json": "79662c4b603cf4b966f7cdb76c21672cc6e20fceb026a1053e061c0f84f93b72",
+    "robot_vision/configs/hri_perception.json": "cdfd268b8baa53e79c6e10a416bf5cc79a4f4ca2cc2a87e567b0d9eec0e9a6f8",
+    "robot_vision/configs/gesture_hri.json": "c32182cc997c07a359c1f00de30bfb14abc85b29c3703c5b9885f07998d5a26c",
+    "robot_vision/configs/roadmap.json": "d7ee36b5de9b815d9a2d936831ad38c67f979d34c98401714a745fb54a16a421",
+    "robot_vision/configs/bridge.json": "df792cc96e11179086aa8274ccc58a3566c8d5be52badddce28cf7bf8cec1e8a",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Robot/Config/robot_unity.json": "c7d59e8dfdcd24413e25af09d5419afeaa87d4f4b7ab7ae28f714528d731cbb5",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Bridge/Config/bridge_unity.json": "db856234c9893836316b51a96aab2b12cc0091f286c339c140c42b89943d24b5"
+  }
+}

@@ -115,10 +115,25 @@ Specification: docs/project_flow.md
     in the adapter; to_gesture_events -> decision.GestureEvent. Gesture
     evaluation: not_evaluated until Unity recordings with labels exist.
 - Next, in order (Steps 1-7):
-  1. Robot and cameras
-  2. TCP bridge
-  3. Perception
-  4. Worker poses (Anisha)
-  5. State machine
-  6. Scenarios
-  7. Logging
+  1. Robot and cameras (done, PR #6)
+  2. TCP bridge (done, protocol v2)
+  3. Perception (in branch anisha/integrate-hri: robot_vision/hri_perception.py,
+     bridge/perception.py, `python -m bridge.server --perception vision`;
+     YOLO11s-pose people on frame_360 + arm direction on frame_pan_tilt,
+     MediaPipe STOP via gesture_adapter with configs/gesture_hri.json
+     (STOP = Open_Palm only). Thresholds in configs/hri_perception.json,
+     frozen: false until a development evaluation on the v2 pipeline.)
+  4. Worker poses (Anisha) (in the same branch: Assets/WarehouseRobot/HRI,
+     Tools > Warehouse HRI > Add Worker and Roadmap / Gesture Pose Test;
+     roadmap A, J1, J2, E1-E4 validated on the AMR NavMesh)
+  5. State machine (done 2026-10-20, branch anisha/step5-7: hri_control.py,
+     hri_sim.py, bridge/guide.py, configs/hri_control.json not frozen)
+  6. Scenarios (done: TrialRunner, GoalSequence, TrialBatchPlay; roadmap.json
+     must equal HriScenarioBuilder)
+  7. Logging (done: hri_trials.py, hri_analysis.py, hri_eval_dev.py). Dev seed 1,
+     vision: 10/10, 9/10, 10/10 (sessions _140241, _163348, _164719); see README.
+     An interrupted session (_113942, 3 trials) is kept, not used.
+  Frozen 2026-10-20 (configs/hri_frozen.json, tests/test_hri_frozen.py): diagonals
+  dropped, reask_shift_m 0.4. Final run once 2026-10-20 (seed 2, ce37a56): 10/10 SUCCESS,
+  14/14 junctions, 0 collisions (trials_final_Task2_20261020_172445,
+  FINAL_DONE.json). No further final runs.

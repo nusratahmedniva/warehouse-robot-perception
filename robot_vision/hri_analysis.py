@@ -1,0 +1,182 @@
+"""Step 7 analysis: summary of one or more merged trial sessions (hri_trials.py output folders).
+
+Writes a new folder <output_root>/hri_analysis_<time>/ with analysis.json, analysis.md, running_success.png and
+step_times.png: success ratio with its Wilson 95 % interval, failure reasons, success per goal, time per step,
+speed and turn rate, gesture shown vs read at the junctions, inference time per model, Unity-Python round trip,
+watchdog stops, collisions and the closest distance to a person. Every figure says over how many runs it is.
+
+Usage (from robot_vision/):  python hri_analysis.py outputs/hri_trials_X [outputs/hri_trials_Y ...]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import statistics as st
+from collections import Counter, defaultdict
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+STEPS = ("navigate", "scan", "approach", "ask", "gesture", "execute")
+COMMANDS = ("NONE", "LEFT", "FORWARD_LEFT", "FORWARD", "FORWARD_RIGHT", "RIGHT", "STOP")
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float | None, float | None]:
+    if n == 0:
+        return None, None
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return round(max(0.0, c - h), 4), round(min(1.0, c + h), 4)
+
+
+def stats(v: list[float]) -> dict:
+    v = [x for x in v if x is not None]
+    if not v:
+        return {"n": 0}
+    s = sorted(v)
+    return {"n": len(v), "mean": round(st.fmean(v), 3), "median": round(st.median(v), 3), "min": round(s[0], 3),
+            "max": round(s[-1], 3)}
+
+
+def load_runs(folders: list[Path]) -> list[dict]:
+    runs = []
+    for f in folders:
+        for p in sorted(f.glob("run_*.json")):
+            r = json.loads(p.read_text(encoding="utf-8"))
+            r["_folder"] = f.name
+            runs.append(r)
+    return runs
+
+
+def analyse(runs: list[dict]) -> dict:
+    n = len(runs)
+    k = sum(r["outcome"] == "SUCCESS" for r in runs)
+    per_goal = defaultdict(Counter)
+    for r in runs:
+        per_goal[r["b"]["name"]][r["outcome"]] += 1
+    junction_conf = defaultdict(Counter)
+    asks = Counter()
+    for r in runs:
+        for j in r["junctions"]:
+            junction_conf[j["shown"]][j["read"]] += 1
+            asks[j.get("asks")] += 1
+    models = defaultdict(list)
+    for r in runs:
+        for m, s in r["inference_ms"].items():
+            if s.get("mean") is not None:
+                models[m].append(s["mean"])
+    return {
+        "runs": n, "sessions": sorted({r["_folder"] for r in runs}),
+        "labels": {"perception": sorted({r["perception"] for r in runs}), "mode": sorted({r["mode"] for r in runs}),
+                   "seed": sorted({r["seed"] for r in runs}), "task": sorted({r["task"] for r in runs})},
+        "success": {"k": k, "n": n, "ratio": round(k / n, 4) if n else None, "wilson95": wilson(k, n)},
+        "failure_reasons": dict(Counter(r["failure_reason"] for r in runs if r["outcome"] != "SUCCESS")),
+        "per_goal": {g: dict(c) for g, c in sorted(per_goal.items())},
+        "total_s": stats([r["total_s"] for r in runs]),
+        "step_s": {s: stats([r["step_s"].get(s) for r in runs]) for s in STEPS},
+        "safety_stop_s": stats([r.get("safety_stop_s") for r in runs]),
+        "travel_ratio": stats([r["travelled_m"] / r["straight_line_m"] for r in runs if r["straight_line_m"]]),
+        "final_distance_to_b_m": stats([r["final_distance_to_b_m"] for r in runs if r["outcome"] == "SUCCESS"]),
+        "speed_mps": {"avg": stats([r["avg_speed_mps"] for r in runs]), "max": stats([r["max_speed_mps"] for r in runs])},
+        "turn_dps": {"avg": stats([r["avg_turn_dps"] for r in runs]), "max": stats([r["max_turn_dps"] for r in runs])},
+        "junctions": {"n": sum(sum(c.values()) for c in junction_conf.values()),
+                      "shown_vs_read": {s: dict(c) for s, c in sorted(junction_conf.items())},
+                      "correct": sum(c[s] for s, c in junction_conf.items()),
+                      "asks": {str(a): c for a, c in asks.items()}},
+        "inference_ms_mean_of_runs": {m: stats(v) for m, v in sorted(models.items())},
+        "round_trip_ms": {"mean_of_runs": stats([r["round_trip_ms"]["mean"] for r in runs]),
+                          "max": stats([r["round_trip_ms"]["max"] for r in runs])},
+        "watchdog_stops": stats([r.get("watchdog_stops") for r in runs]),
+        "collisions": {"total": sum(r["collisions"] for r in runs), "human": sum(r["human_collisions"] for r in runs)},
+        "closest_human_m": stats([r["closest_human_m"] for r in runs if r["closest_human_m"] is not None and r["closest_human_m"] >= 0]),
+    }
+
+
+def markdown(a: dict) -> str:
+    s = a["success"]
+    L = [f"# Trial analysis ({', '.join(a['labels']['perception'])})", "",
+         f"Sessions: {', '.join(a['sessions'])}. Task {a['labels']['task']}, mode {a['labels']['mode']}, seed {a['labels']['seed']}.", "",
+         f"**Success {s['k']}/{s['n']} = {s['ratio']}** (Wilson 95 %: {s['wilson95'][0]}-{s['wilson95'][1]}); "
+         f"failures: {a['failure_reasons'] or 'none'}.", "",
+         "| goal B | " + " | ".join(["SUCCESS", "FAILURE"]) + " |", "|---|---|---|"]
+    L += [f"| {g} | {c.get('SUCCESS', 0)} | {c.get('FAILURE', 0)} |" for g, c in a["per_goal"].items()]
+    L += ["", "Time per step (s, over runs):", "", "| step | n | mean | median | max |", "|---|---|---|---|---|"]
+    for k, v in list(a["step_s"].items()) + [("safety stop", a["safety_stop_s"]), ("total", a["total_s"])]:
+        if v.get("n"):
+            L.append(f"| {k} | {v['n']} | {v['mean']} | {v['median']} | {v['max']} |")
+    j = a["junctions"]
+    L += ["", f"Junctions: {j['correct']}/{j['n']} read as shown; asks per junction {j['asks']}.", "",
+          "| shown \\ read | " + " | ".join(COMMANDS) + " |", "|---|" + "---|" * len(COMMANDS)]
+    for shown, c in j["shown_vs_read"].items():
+        L.append(f"| {shown} | " + " | ".join(str(c.get(x, 0)) for x in COMMANDS) + " |")
+    L += ["", f"Speed m/s: average {a['speed_mps']['avg'].get('mean')}, max {a['speed_mps']['max'].get('max')}; "
+          f"turn rate deg/s: average {a['turn_dps']['avg'].get('mean')}, max {a['turn_dps']['max'].get('max')}; "
+          f"travelled / straight line: {a['travel_ratio'].get('mean')}.",
+          f"Final distance from B (successes): mean {a['final_distance_to_b_m'].get('mean')} m, max {a['final_distance_to_b_m'].get('max')} m.",
+          "", "Inference time (ms, mean per run, then over runs):", "", "| model | runs | mean | max |", "|---|---|---|---|"]
+    for m, v in a["inference_ms_mean_of_runs"].items():
+        if v.get("n"):
+            L.append(f"| {m} | {v['n']} | {v['mean']} | {v['max']} |")
+    L += ["", f"Round trip (Unity-measured) ms: mean of runs {a['round_trip_ms']['mean_of_runs'].get('mean')}, "
+          f"max {a['round_trip_ms']['max'].get('max')}. Watchdog stops per run: {a['watchdog_stops']}.",
+          f"Collisions: {a['collisions']['total']} (with a person: {a['collisions']['human']}). Closest distance to a person "
+          f"(robot body to worker axis): min {a['closest_human_m'].get('min')} m, mean {a['closest_human_m'].get('mean')} m.", ""]
+    return "\n".join(L) + "\n"
+
+
+def plots(runs: list[dict], out: Path) -> None:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    k = 0
+    ratio = []
+    for i, r in enumerate(runs, 1):
+        k += r["outcome"] == "SUCCESS"
+        ratio.append(k / i)
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.plot(range(1, len(runs) + 1), ratio, marker="o")
+    ax.set_ylim(0, 1.05)
+    ax.set_xlabel("run")
+    ax.set_ylabel("running success ratio")
+    fig.tight_layout()
+    fig.savefig(out / "running_success.png", dpi=120)
+    plt.close(fig)
+    fig, ax = plt.subplots(figsize=(6, 3))
+    bottom = [0.0] * len(runs)
+    for s in STEPS:
+        v = [r["step_s"].get(s, 0.0) or 0.0 for r in runs]
+        ax.bar(range(1, len(runs) + 1), v, bottom=bottom, label=s)
+        bottom = [b + x for b, x in zip(bottom, v)]
+    ax.set_xlabel("run")
+    ax.set_ylabel("time (s)")
+    ax.legend(fontsize=7, ncol=3)
+    fig.tight_layout()
+    fig.savefig(out / "step_times.png", dpi=120)
+    plt.close(fig)
+
+
+def main(argv=None) -> None:
+    import decision_io as dio
+
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("folders", nargs="+", help="hri_trials_* folders")
+    a = ap.parse_args(argv)
+    runs = load_runs([dio.resolve(f) for f in a.folders])
+    if not runs:
+        raise SystemExit("no run_*.json found")
+    res = analyse(runs)
+    out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "hri_analysis")
+    dio.write_json(out / "analysis.json", res)
+    dio.write_json(out / "run.json", {"git": dio.git_info(), "inputs": res["sessions"]})
+    (out / "analysis.md").write_text(markdown(res), encoding="utf-8")
+    plots(runs, out)
+    print(markdown(res))
+    print(f"Folder: {out.relative_to(HERE) if out.is_relative_to(HERE) else out}")
+
+
+if __name__ == "__main__":
+    main()

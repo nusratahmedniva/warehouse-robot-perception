@@ -4,6 +4,14 @@ every telemetry message with a command.
 Run (from robot_vision/):
     python -m bridge.server --mode hello [--config configs/bridge.json] [--duration-s 60] [--mute-after-s 5]
 
+--perception vision (optional): frame_360 and frame_pan_tilt also go to the Step 3 perception (bridge/perception.py,
+hri_perception.py; models on a background thread), whose latest reading is shown in screen_text and logged to
+perception.csv in the run folder. The commands themselves are unchanged (no decisions from vision yet: Step 5).
+
+Mode guide (Step 5): the hri_control state machine drives the robot (bridge/guide.py); trials are started by the Unity
+trial runner (telemetry trial_index / trial_running); use with --perception vision. Logs decisions.csv and
+python_trial_###.json in the run folder.
+
 Mode hello: answers v = hello_test.v_mps (0.2), omega = 0, so the robot creeps forward while connected; it also
 requests a NavMesh path to a point target_ahead_m in front of the robot's first reported pose. --mute-after-s N stops
 answering N s after Unity connects while keeping the connection open, to test Unity's watchdog. Every server start
@@ -80,6 +88,30 @@ class HelloController:
         return {"v": float(self.cfg["v_mps"]), "omega": float(self.cfg["omega_radps"]),
                 "pan_deg": float(self.cfg["pan_deg"]), "has_target": True, "target_x": self.target[0],
                 "target_z": self.target[1], "state": self.cfg["state"], "screen_text": self.cfg["screen_text"]}
+
+
+class PerceptionController:
+    """Wraps a controller: camera frames also go to the perception worker; its latest reading is shown on screen.
+    v, omega, pan and the target come from the wrapped controller unchanged."""
+
+    def __init__(self, inner, worker):
+        self.inner = inner
+        self.worker = worker
+
+    def on_connect(self) -> None:
+        self.inner.on_connect()
+
+    def on_message(self, msg: P.Message) -> dict | None:
+        if msg.type in ("frame_360", "frame_pan_tilt"):
+            self.worker.submit(msg)
+        reply = self.inner.on_message(msg)
+        if reply is not None:
+            s = self.worker.snapshot()
+            t = s["target"]
+            seen = (f"nearest person {t['bearing_deg']:+.0f} deg, {t['distance_m']:.1f} m" if t["track_id"] >= 0 and
+                    t["distance_m"] >= 0 else "nearest person: distance unknown" if t["track_id"] >= 0 else "no person")
+            reply = {**reply, "screen_text": f"{reply.get('screen_text', '')} | vision: {seen}; gesture {s['gesture']}"}
+        return reply
 
 
 class RunLog:
@@ -282,17 +314,47 @@ class BridgeServer:
             writer.close()
 
 
-async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None) -> Path:
+def make_perception_worker(out: Path, perception_config: str | Path):
+    """Load the vision models (before Unity connects) and start the worker writing to out/perception.csv."""
+    import hri_perception as hpm
+    from bridge.perception import PerceptionWorker
+    cfg = hpm.load_config(dio.resolve(perception_config))
+    return PerceptionWorker(hpm.HriPerception(cfg), out)
+
+
+async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
+              perception: str = "off", perception_config: str = "configs/hri_perception.json") -> Path:
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
-    hashes = dio.copy_configs(out, [cfg_path])
+    used = [cfg_path]
+    if perception == "vision":
+        import hri_perception as hpm
+        pcfg = dio.resolve(perception_config)
+        used += [pcfg, dio.resolve(hpm.load_config(pcfg)["stop"]["adapter_config"])]
+    hashes = dio.copy_configs(out, used)
     dio.write_json(out / "run_info.json", {
         "created": datetime.now().isoformat(timespec="seconds"), "mode": mode,
         "command": " ".join([Path(sys.executable).name] + sys.argv), "git": dio.git_info(),
         "python": platform.python_version(), "platform": platform.platform(),
         "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION,
-        "mute_after_s": mute_after_s})
+        "mute_after_s": mute_after_s, "perception": perception})
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
-    controller = HelloController(cfg["hello_test"], mute_after_s)
+    worker = None
+    if perception == "vision":
+        worker = make_perception_worker(out, perception_config)
+        print(f"[bridge] perception: {worker.label}", flush=True)
+    guide = None
+    if mode == "guide":
+        import hri_control as hc
+        from bridge.guide import GuideController
+        for extra in ("configs/hri_control.json", "configs/roadmap.json"):  # the exact configs of this run
+            (out / "config_used" / Path(extra).name).write_bytes(dio.resolve(extra).read_bytes())
+        controller = guide = GuideController(hc.make_controller(), worker, out)
+        if worker is None:
+            print("[bridge] WARNING: guide mode without --perception vision: no people, the robot will not move.", flush=True)
+    else:
+        controller = HelloController(cfg["hello_test"], mute_after_s)
+        if worker is not None:
+            controller = PerceptionController(controller, worker)
     server = BridgeServer(cfg, controller, log)
     port = await server.start()
     print(f"[bridge] mode {mode}: listening on {cfg['host']}:{port}; run folder {out}", flush=True)
@@ -304,6 +366,10 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
             await asyncio.Event().wait()
     finally:
         await server.close()
+        if guide is not None:
+            guide.close()
+        if worker is not None:
+            worker.close()
         log.close()
         print(f"[bridge] stopped; summary in {out / 'summary.json'}", flush=True)
     return out
@@ -312,14 +378,18 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", default=DEFAULT_CONFIG)
-    ap.add_argument("--mode", choices=["hello"], default="hello")
+    ap.add_argument("--mode", choices=["hello", "guide"], default="hello")
     ap.add_argument("--duration-s", type=float, default=None, help="stop after this many seconds")
     ap.add_argument("--mute-after-s", type=float, default=None,
                     help="stop answering this many seconds after Unity connects (watchdog test)")
+    ap.add_argument("--perception", choices=["off", "vision"], default="off",
+                    help="vision: run the Step 3 perception on the camera frames (needs the YOLO weights)")
+    ap.add_argument("--perception-config", default="configs/hri_perception.json")
     args = ap.parse_args(argv)
     cfg, cfg_path = load_config(args.config)
     try:
-        asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s))
+        asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
+                        args.perception_config))
     except KeyboardInterrupt:
         pass
 

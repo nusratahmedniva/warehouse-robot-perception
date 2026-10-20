@@ -69,6 +69,7 @@ The schema is checked in `robot_vision/bridge/protocol.py` (`SCHEMAS`).
 | `pan_deg` | current pan angle |
 | `collision_count` | collisions recorded since Play |
 | `reached_end_point` | true once the scenario says the robot reached the end point |
+| `trial_index`, `trial_running` | set by the Step 7 trial runner: trial number (-1 = none) and whether it is running. A new index while running starts a new run of the Python state machine at the roadmap start; `trial_running` false keeps it idle. Optional for Python (older Unity builds omit them). Never carries goal B. |
 | `nav_has_target`, `nav_target_x`, `nav_target_z` | the target point Python requested |
 | `nav_status` | `none`, `complete`, `partial`, `invalid`, `start_off_navmesh`, `target_off_navmesh`, `no_agent_type` (no enabled, baked NavMesh Surface for the agent type `nav.agent_type`, "AMR"; all queries use that agent type) |
 | `nav_start_snap_m`, `nav_target_snap_m` | horizontal distance (m) by which the robot position and the target were moved onto the NavMesh (`NavMesh.SamplePosition`, at most `nav.snap_max_distance_m` in bridge_unity.json); -1 if that end could not be snapped |
@@ -161,6 +162,10 @@ to `messages.jsonl` in its run folder, including `rtt_ms`, and a summary
 `summary.json`.
 
 ## Changes
+
+- 2026-10-20 (additive, still version 2): telemetry gains the optional `trial_index` and `trial_running`
+  (Step 7 trial runner). Python's `guide` mode (bridge/guide.py) answers every telemetry with the Step 5
+  state machine's command (hri_control.py).
 
 - Version 2 (2026-10-20, after the first Unity test): telemetry gains
   `nav_start_snap_m`, `nav_target_snap_m`, `estop` and the four frame
