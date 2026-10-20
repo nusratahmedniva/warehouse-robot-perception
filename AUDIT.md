@@ -215,8 +215,10 @@ Task 1 route, dev seed 1). They must not be used to adjust any setting. If one s
 the change is disclosed here and the frozen hashes are re-recorded before the Task 1 final.
 
 Notes:
-- Task 1 runs on a different machine (Windows 11, RTX 3060, CUDA) from the Task 2 final. Inference times and
-  stale-perception stops are therefore not comparable between the two tasks.
+- Machine for the Task 1 final: to be recorded.
+  - If it differs from the Task 2 machine, timing figures (inference times, stale-perception stops) are not
+    comparable between the tasks. Success, accuracy, distances and travel times remain comparable.
+  - Development runs on Nusrat's PC are pipeline checks only.
 - The Unity EditMode tests are run locally; CI runs only the Python tests.
 - Checks on 21 October 2026 (Windows): Python 222 tests pass, including 11 in `test_hri_frozen.py`; Unity
   EditMode 15/15 pass (10 earlier + 5 `FinalRunGuardTests`).

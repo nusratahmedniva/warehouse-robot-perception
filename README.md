@@ -21,7 +21,7 @@ Python handles perception and decisions; Unity runs the simulation.
    separately and place them in `Assets/WarehouseRobot/Characters/` as
    `worker.fbx`, `walking.fbx` and `idle.fbx`.
 
-## Perception and worker (branch anisha/integrate-hri)
+## Perception and worker (Steps 3 and 4)
 
 - Python: `python -m bridge.server --mode hello --perception vision` (from robot_vision/, project venv) runs the
   Step 3 perception on the frames the bridge receives: YOLO11s-pose + ByteTrack people on `frame_360` (bearing from
@@ -32,7 +32,7 @@ Python handles perception and decisions; Unity runs the simulation.
   latest reading is shown in `screen_text` and logged to `perception.csv` in the run folder. Weights:
   `robot_vision/models/yolo11s-pose.pt` (git-ignored; from robot_vision/models:
   `python -c "from ultralytics import YOLO; YOLO('yolo11s-pose.pt')"`). Thresholds: `configs/hri_perception.json`
-  (not frozen; needs a development evaluation on this pipeline).
+  (frozen 2026-10-20 after the development evaluation; see below).
 - Unity: **Tools > Warehouse HRI > Add Worker and Roadmap** adds the Mixamo worker (`GestureWorker`; textures
   extracted to the git-ignored `Characters/worker_textures/`), the roadmap A, J1, J2, E1-E4 (`RoadNode`, validated
   on the AMR NavMesh) and a chase camera (`FollowCamera`, C: chase / top-down / gesture camera). It also disables
@@ -45,8 +45,8 @@ Python handles perception and decisions; Unity runs the simulation.
   pure pursuit on the NavMesh corners; 1.0 s gesture hold with NONE gaps up to 0.3 s, one repeat ask, then abort;
   stops for STOP, a person in the path within the speed-dependent stopping distance, and perception older than
   1.0 s). Simulator `robot_vision/hri_sim.py`; tests `tests/test_hri_control.py`. Live: `python -m bridge.server
-  --mode guide --perception vision`. Thresholds `configs/hri_control.json` (not frozen; two changes made after
-  simulator runs are listed in it).
+  --mode guide --perception vision`. Thresholds `configs/hri_control.json` (frozen 2026-10-20; two changes made
+  after simulator runs are listed in it).
 - Step 7: Unity `TrialRunner` (the only place goal B exists; seeded goal order, truth files) and
   `TrialBatchPlay.Run` for batch mode; Python `hri_trials.py` (run_###.json, results.csv), `hri_analysis.py`
   (analysis.md, plots) and `hri_eval_dev.py` (development evaluation; refuses final sessions).
