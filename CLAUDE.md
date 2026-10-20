@@ -134,5 +134,6 @@ Specification: docs/project_flow.md
      vision: 10/10, 9/10, 10/10 (sessions _140241, _163348, _164719); see README.
      An interrupted session (_113942, 3 trials) is kept, not used.
   Frozen 2026-10-20 (configs/hri_frozen.json, tests/test_hri_frozen.py): diagonals
-  dropped, reask_shift_m 0.4. Final: not run; set trials.json mode to final and
-  run once.
+  dropped, reask_shift_m 0.4. Final run once 2026-10-20 (seed 2, ce37a56): 10/10 SUCCESS,
+  14/14 junctions, 0 collisions (trials_final_Task2_20261020_172445,
+  FINAL_DONE.json). No further final runs.

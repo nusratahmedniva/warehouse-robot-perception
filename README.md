@@ -66,6 +66,14 @@ Python handles perception and decisions; Unity runs the simulation.
 - Frozen 2026-10-20: `hri_control.json` and `hri_perception.json` (frozen: true); hashes of these, gesture_hri,
   roadmap, bridge and the two Unity configs in `configs/hri_frozen.json` (checked by `tests/test_hri_frozen.py`).
   The final run sets `trials.json -> mode` to `final` (nothing else) and runs once.
+- **Final result** (final seed 2, run once on 20 October 2026, commit ce37a56 = frozen 1a574cb + mode final;
+  vision mode): **10/10 SUCCESS** (Wilson 95 % 0.72-1.0), goal order E1 E2 E4 E2 E1 E3 E4 E1 E4 E1 (checked
+  against the seed), 14/14 junctions read as shown at the first ask, 0 collisions, 0 watchdog stops, closest
+  approach to the worker 1.03 m, final distance from B 0.047 m mean (max 0.058 m), total time 54.7 s mean
+  (max 76.6 s), stale-perception stops 1.4 s mean (max 6.0 s). Folders `trials_final_Task2_20261020_172445`
+  (FINAL_DONE.json), `bridge_guide_20261020_172422`, `hri_trials_20261020_173421`,
+  `hri_analysis_20261020_173421`. Perception metrics against truth (recall by distance, distance error) were
+  not computed for the final session: `hri_eval_dev.py` refuses final sessions by design (not_evaluated).
 - Known issue: on the 8 GB Mac, panorama YOLO takes about 190 ms alone but 220-440 ms (up to 790 ms) while
   Unity runs (flat at 157 ms over 6 minutes with Unity closed). The robot then stops for "perception stale":
   up to 52 s in one dev trial (trial total 124 s of the 240 s limit). The cause is not identified.
