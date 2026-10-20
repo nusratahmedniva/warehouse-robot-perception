@@ -4,8 +4,14 @@ Unity's trial runner folder (trials_<mode>_<task>_<time>/) holds the ground trut
 travelled distance, speeds, collisions, closest distance to the worker, what the worker showed at each junction.
 The bridge's guide run folder (bridge_guide_<time>/) holds what Python did: per-trial state machine summary
 (python_trial_###.json: per-step times, junction readings, abort reason), decisions.csv (0.1 s; round trip,
-watchdog) and perception.csv (per-model inference time per frame). This is evaluation code: it may read truth;
-inference code never imports it.
+watchdog, safety reason) and perception.csv (per-model inference time per frame). This is evaluation code: it may
+read truth; inference code never imports it.
+
+Times: total_s is Unity's trial time. stale_stop_s is the time Python held the robot because perception was stale
+(decisions.csv rows with safety "perception stale"; each row counts until the next row of the trial, rows every
+0.1 s). moving_s = total_s - stale_stop_s. Stale stops depend on the machine's inference speed, so total_s and
+stale_stop_s are not comparable across machines; moving_s is (it still includes standing at junctions for scan,
+ask and gesture, which the state machine times). Without a safety column (older logs) both are None.
 
 Output: a new folder <output_root>/hri_trials_<time>/ with run_###.json (all metrics of one run), results.csv (one
 row per run, running success ratio), summary.json, the configs of both sides and run.json (git commit).
@@ -24,9 +30,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 STEPS = ("navigate", "scan", "approach", "ask", "gesture", "execute")
+STALE = "perception stale"
 MODELS = ("jpeg_decode", "yolo11s-pose/cam360", "yolo11s-pose/gesture", "mediapipe/stop")
 COLUMNS = ["trial", "task", "mode", "seed", "perception", "outcome", "failure_reason", "detail", "success_ratio",
            "a_x", "a_z", "b_name", "b_x", "b_z", "straight_line_m", "travelled_m", "total_s",
+           "stale_stop_s", "moving_s",
            *[f"{s}_s" for s in STEPS], "safety_stop_s", "avg_speed_mps", "max_speed_mps", "avg_turn_dps", "max_turn_dps",
            "final_distance_to_b_m", "junctions_shown_vs_read", "collisions", "human_collisions", "closest_human_m",
            "inference_total_ms_mean", "inference_total_ms_p95", *[f"{m}_ms_mean" for m in MODELS],
@@ -117,6 +125,14 @@ def model_times(rows: list[dict]) -> dict:
     return out
 
 
+def stale_stop_s(rows: list[dict]):
+    """Seconds with safety == "perception stale" in one trial's decisions.csv rows; None if not logged."""
+    timed = sorted((num(r.get("time_s")), r) for r in rows if "safety" in r and num(r.get("time_s")) is not None)
+    if not timed:
+        return None
+    return sum(t1 - t0 for (t0, r), (t1, _) in zip(timed, timed[1:]) if r["safety"] == STALE)
+
+
 # ---------------------------------------------------------------- merge
 
 def merge(unity: Path, bridge: Path) -> tuple[list[dict], dict]:
@@ -142,12 +158,14 @@ def merge(unity: Path, bridge: Path) -> tuple[list[dict], dict]:
         if t["outcome"] == "SUCCESS":
             successes += 1
         times = model_times(per)
+        stale = stale_stop_s(dec)
         run = {
             "trial": i, "task": t["task"], "mode": t["mode"], "seed": t["seed"],
             "perception": py.get("perception", "unknown"), "outcome": t["outcome"], "failure_reason": t["failure_reason"],
             "detail": t["detail"], "successes_so_far": successes, "success_ratio": round(successes / (len(runs) + 1), 4),
             "a": {"name": t["a_name"], "x": t["a_x"], "z": t["a_z"]}, "b": {"name": t["b_name"], "x": t["b_x"], "z": t["b_z"]},
             "straight_line_m": r3(t["straight_line_m"]), "travelled_m": r3(t["travelled_m"]), "total_s": r3(t["total_s"]),
+            "stale_stop_s": r3(stale), "moving_s": r3(t["total_s"] - stale) if stale is not None else None,
             "step_s": py.get("step_s", {}), "safety_stop_s": py.get("safety_stop_s"),
             "avg_speed_mps": r3(t["avg_speed_mps"]), "max_speed_mps": r3(t["max_speed_mps"]),
             "avg_turn_dps": r3(t["avg_turn_dps"]), "max_turn_dps": r3(t["max_turn_dps"]),

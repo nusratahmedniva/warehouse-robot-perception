@@ -216,9 +216,19 @@ the change is disclosed here and the frozen hashes are re-recorded before the Ta
 
 Notes:
 - Machine for the Task 1 final: to be recorded.
-  - If it differs from the Task 2 machine, timing figures (inference times, stale-perception stops) are not
-    comparable between the tasks. Success, accuracy, distances and travel times remain comparable.
+  - If it differs from the Task 2 machine:
+    - comparable between the tasks: success, gesture accuracy, distance travelled, and time spent moving
+      (excluding stale-perception stops);
+    - not comparable: inference times, stale-perception stops, and total trial time (it includes those stops).
   - Development runs on Nusrat's PC are pipeline checks only.
+- **Moving time reported separately** (added 21 October 2026, before any Task 1 trial; reporting only, no setting
+  changed). `hri_trials.py` now writes per run `stale_stop_s` and `moving_s` next to `total_s`, and
+  `hri_analysis.py` reports all three.
+  - `stale_stop_s`: time Python held the robot because perception was stale. It comes from the decisions.csv
+    `safety` column, logged every 0.1 s.
+  - `moving_s` = `total_s` - `stale_stop_s`. It still includes standing at junctions for scan, ask and gesture.
+  - The Task 2 figures in section 2 give total time and stale-perception stops; its moving time can be
+    recomputed from the Task 2 session folders with the new `hri_trials.py`.
 - The Unity EditMode tests are run locally; CI runs only the Python tests.
-- Checks on 21 October 2026 (Windows): Python 222 tests pass, including 11 in `test_hri_frozen.py`; Unity
+- Checks on 21 October 2026 (Windows): Python 223 tests pass, including 11 in `test_hri_frozen.py` and the moving-time test in `test_trials.py`; Unity
   EditMode 15/15 pass (10 earlier + 5 `FinalRunGuardTests`).
