@@ -1,0 +1,27 @@
+{
+  "label": "Step 7 trials: read by the Unity trial runner (Assets/WarehouseRobot/Scenario) and by robot_vision/hri_trials.py. Declared 2026-10-20 before any trial; not tuned.",
+  "task": "Task2",
+  "task_note": "Task1 = A to B = roadmap task1_goal with FORWARD at the first junction (baseline); Task2 = guided route, goal B changes every trial (seeded); GestureSweep = development gesture evaluation (robot still, worker shows every command; truth_sweep.csv).",
+  "mode": "development",
+  "mode_note": "development uses dev_seed. final uses final_seed, runs once (refused if a trials_final_* folder with FINAL_DONE.json exists) and only when configs/hri_control.json and configs/hri_perception.json are frozen.",
+  "dev_seed": 1,
+  "final_seed": 2,
+  "trial_count": 10,
+  "timeout_s": 240,
+  "stuck_s": 10,
+  "stuck_min_progress_m": 0.25,
+  "success_radius_m": 0.3,
+  "pause_between_trials_s": 1.0,
+  "truth_interval_s": 0.1,
+  "output_root": "outputs",
+  "output_root_note": "Relative to robot_vision/ (the same outputs/ folder as the bridge server; git-ignored).",
+  "gesture_sweep": {
+    "repeats": 20,
+    "distance_min_m": 1.7,
+    "distance_max_m": 2.5,
+    "view_angle_max_deg": 25,
+    "worker_yaw_jitter_deg": 15,
+    "settle_s": 0.6,
+    "hold_s": 2.0
+  }
+}

@@ -54,6 +54,19 @@ namespace WarehouseRobot
             CommandedOmega = 0f;
         }
 
+        /// <summary>Trial reset (Step 7): zero the command and the applied speed and turn rate at once.</summary>
+        public void ResetMotion()
+        {
+            Stop();
+            V = 0f;
+            Omega = 0f;
+            if (body != null)
+            {
+                body.velocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+        }
+
         /// <summary>Latch the emergency stop: command v = 0, omega = 0 (braking at estop_decel_mps2) and ignore all commands.</summary>
         public void EngageEmergencyStop(string source)
         {

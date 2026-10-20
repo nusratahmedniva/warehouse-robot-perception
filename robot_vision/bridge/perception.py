@@ -36,7 +36,7 @@ class PerceptionWorker:
         self._pending: dict[str, object] = {"frame_360": None, "frame_pan_tilt": None}
         self._skipped = {"frame_360": 0, "frame_pan_tilt": 0}
         self.processed = {"frame_360": 0, "frame_pan_tilt": 0}
-        self._latest = {"people": [], "target": dict(NO_TARGET), "people_time_s": None,
+        self._latest = {"people": [], "target": dict(NO_TARGET), "people_time_s": None, "people_pose": None,
                         "gesture": "NONE", "gesture_confidence": 0.0, "gesture_source": "none", "gesture_time_s": None,
                         "inference_ms": {}}
         self._t0 = time.monotonic()
@@ -109,7 +109,7 @@ class PerceptionWorker:
             for q in people + [target]:
                 q.pop("box_h", None)
             with self._lock:
-                self._latest.update(people=people, target=target, people_time_s=h.get("time_s"))
+                self._latest.update(people=people, target=target, people_time_s=h.get("time_s"), people_pose=dict(pose))
                 self._latest["inference_ms"]["yolo11s-pose/cam360"] = round(ms, 3)
             row.update(n_people=len(people), target_id=target["track_id"], target_bearing_deg=target["bearing_deg"],
                        target_distance_m=target["distance_m"], target_distance_source=target["distance_source"],

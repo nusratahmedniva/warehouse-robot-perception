@@ -27,7 +27,8 @@ namespace WarehouseHRI.EditorTools
         public const string WorkerTextureDir = "Assets/WarehouseRobot/Characters/worker_textures";
 
         // Roadmap in floor coordinates (x, z), in the open aisles of the generated warehouse (rack centres at
-        // x = -12.5, 0, 12.5 and z = -15, -5, 5, 15). Checked against the AMR NavMesh on every build.
+        // x = -12.5, 0, 12.5 and z = -15, -5, 5, 15). Checked against the AMR NavMesh on every build. Must equal
+        // robot_vision/configs/roadmap.json (Python's map): robot_vision/tests/test_trials.py compares them.
         static readonly Vector2 k_A = new Vector2(6.25f, -10f);
         static readonly Vector2 k_J1 = new Vector2(6.25f, 0f);
         static readonly Vector2 k_J2 = new Vector2(-6.25f, 0f);
@@ -84,6 +85,12 @@ namespace WarehouseHRI.EditorTools
             var robot = FindByTypeName("RobotRig");
             if (robot != null) BuildViewCamera(root, robot, log);
             else log.AppendLine("WARNING: no RobotRig in the scene; the chase camera was not added.");
+
+            // Step 7 trial runner (Assembly-CSharp; added by type name, this editor assembly does not reference it).
+            var trialsGo = Child(root, "Trials");
+            var runnerType = System.Type.GetType("WarehouseRobot.Scenario.TrialRunner, Assembly-CSharp");
+            if (runnerType == null) log.AppendLine("WARNING: TrialRunner type not found; trials cannot run.");
+            else if (trialsGo.GetComponent(runnerType) == null) trialsGo.AddComponent(runnerType);
 
             DisableOversizedCarvingObstacles(log);
             Validate(new[] { a, j1, j2, e1, e2, e3, e4 }, log);

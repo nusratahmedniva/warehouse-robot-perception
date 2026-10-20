@@ -185,6 +185,8 @@ namespace WarehouseRobot.Bridge
         public float pan_deg;
         public int collision_count;
         public bool reached_end_point;
+        public int trial_index = -1;
+        public bool trial_running;
         public bool nav_has_target;
         public float nav_target_x;
         public float nav_target_z;

@@ -1,0 +1,51 @@
+{
+  "label": "Step 5 Python state machine and steering for the guided task (hri_control.py)",
+  "declared": "2026-10-20, before any simulator or Unity run. Values from the spec (2.0 m approach, 1.0 s hold, ask once more, 0.3 m success) and from robot.json limits; not tuned on results.",
+  "frozen": false,
+  "conventions": "Unity yaw in deg (0 = +z, 90 = +x, grows clockwise from above). Bearings + = right of the robot heading. Commands to Unity (protocol v2): omega in rad/s with omega > 0 = LEFT (REP-103), pan_deg > 0 = LEFT.",
+  "drive": {
+    "cruise_speed_mps": 0.8,
+    "junction_speed_mps": 0.35,
+    "approach_speed_mps": 0.4,
+    "junction_slow_radius_m": 3.0,
+    "lookahead_m": 0.8,
+    "rotate_in_place_deg": 50,
+    "turn_gain": 2.0,
+    "max_turn_rate_radps": 0.9,
+    "align_tolerance_deg": 5,
+    "execute_align_deg": 15,
+    "arrive_junction_m": 0.3,
+    "arrive_endpoint_m": 0.1,
+    "approach_tolerance_m": 0.15,
+    "stopped_speed_mps": 0.03,
+    "why": "Speeds below robot.json max_speed_mps (1.0) and max_angular_speed_radps (1.0) so the drive limits never saturate the controller; endpoint stop 0.1 m leaves margin to the 0.3 m success radius."
+  },
+  "dialog": {
+    "approach_distance_m": 2.0,
+    "ask_settle_s": 0.5,
+    "gesture_hold_s": 1.0,
+    "gesture_window_s": 5.0,
+    "max_asks": 2,
+    "scan_min_s": 0.4,
+    "scan_timeout_s": 6.0,
+    "prompt": "Which direction?",
+    "why": "approach 2.0 m, hold 1.0 s, ask once more then abort: the spec. scan_min_s = two 360 frames at 5 Hz, so one missed panorama does not decide the scan.",
+    "max_none_gap_s": 0.3,
+    "max_none_gap_note": "A NONE reading restarts the 1.0 s hold only if the candidate direction has not been seen for more than 0.3 s (3 pan-tilt frames at 10 Hz): one missed detection is not the worker changing the answer. A different direction always restarts the hold. 0 = strict."
+  },
+  "safety": {
+    "body_and_person_m": 0.65,
+    "reaction_s": 0.5,
+    "decel_mps2": 0.5,
+    "margin_m": 0.2,
+    "corridor_half_width_m": 0.6,
+    "people_stale_s": 1.0,
+    "gesture_stale_s": 0.5,
+    "why": "Person-in-path stop distance (robot centre to person centre) = body_and_person_m (half length 0.40 + person radius 0.25) + v * reaction_s (360 frame period 0.2 s + perception about 0.25 s + one tick) + v^2 / (2 * decel_mps2) (robot.json normal braking 0.5 m/s^2; the e-stop braking applies only when latched) + margin_m. At 0.8 m/s: 1.89 m; at the 0.4 m/s approach speed: 1.21 m, below approach_distance_m 2.0, so the worker being asked never triggers it. If no panorama result is newer than people_stale_s while driving, the robot stops.",
+    "unknown_person_distance_m": 1.0,
+    "unknown_note": "A person vision sees but cannot range (no ankles, feet hidden) is placed this close for the safety check: conservative; it may stop the robot, it never lets it drive on."
+  },
+  "changes_during_development": [
+    "2026-10-20, after simulator tests (hri_sim.py; no Unity run, no evaluation): (1) the fixed 1.2 m person-in-path distance let the simulated robot hit a person who stepped into the lane (perception latency plus 0.5 m/s^2 braking need about 1.9 m at 0.8 m/s); replaced by the speed-dependent stop distance in safety. (2) With 80 % per-frame gesture coverage (FORWARD in the v1 sweep) the strict hold rule failed: any single NONE frame restarted the 1.0 s hold; added dialog.max_none_gap_s = 0.3 s. Both are design corrections, reported with strict-vs-tolerant numbers in the Step 4/5 report."
+  ]
+}

@@ -89,6 +89,13 @@ namespace WarehouseRobot.Bridge
 
         /// <summary>Set by the scenario (Step 6) when the robot reached the end point; sent as reached_end_point.</summary>
         public bool ReachedEndPoint { get; set; }
+        /// <summary>Set by the trial runner (Step 7): current trial number (-1 = none) and whether it is running.
+        /// Sent in telemetry as trial_index / trial_running; never carries goal B.</summary>
+        public int TrialIndex { get; set; } = -1;
+        public bool TrialRunning { get; set; }
+        /// <summary>The NavMesh target of the last command (the scenario places the worker by it).</summary>
+        public bool HasTarget => hasTarget;
+        public Vector2 Target => target;
         public string State { get; private set; } = "";
         public string ScreenText { get; private set; } = "";
         public bool Connected => connection != null && connection.Connected;
@@ -318,6 +325,8 @@ namespace WarehouseRobot.Bridge
                 pan_deg = robot.PanTilt.PanDeg,
                 collision_count = robot.Collisions != null ? robot.Collisions.Records.Count : 0,
                 reached_end_point = ReachedEndPoint,
+                trial_index = TrialIndex,
+                trial_running = TrialRunning,
                 nav_has_target = hasTarget,
                 nav_target_x = target.x,
                 nav_target_z = target.y,

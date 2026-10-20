@@ -8,6 +8,10 @@ Run (from robot_vision/):
 hri_perception.py; models on a background thread), whose latest reading is shown in screen_text and logged to
 perception.csv in the run folder. The commands themselves are unchanged (no decisions from vision yet: Step 5).
 
+Mode guide (Step 5): the hri_control state machine drives the robot (bridge/guide.py); trials are started by the Unity
+trial runner (telemetry trial_index / trial_running); use with --perception vision. Logs decisions.csv and
+python_trial_###.json in the run folder.
+
 Mode hello: answers v = hello_test.v_mps (0.2), omega = 0, so the robot creeps forward while connected; it also
 requests a NavMesh path to a point target_ahead_m in front of the robot's first reported pose. --mute-after-s N stops
 answering N s after Unity connects while keeping the connection open, to test Unity's watchdog. Every server start
@@ -334,12 +338,23 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION,
         "mute_after_s": mute_after_s, "perception": perception})
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
-    controller = HelloController(cfg["hello_test"], mute_after_s)
     worker = None
     if perception == "vision":
         worker = make_perception_worker(out, perception_config)
-        controller = PerceptionController(controller, worker)
         print(f"[bridge] perception: {worker.label}", flush=True)
+    guide = None
+    if mode == "guide":
+        import hri_control as hc
+        from bridge.guide import GuideController
+        for extra in ("configs/hri_control.json", "configs/roadmap.json"):  # the exact configs of this run
+            (out / "config_used" / Path(extra).name).write_bytes(dio.resolve(extra).read_bytes())
+        controller = guide = GuideController(hc.make_controller(), worker, out)
+        if worker is None:
+            print("[bridge] WARNING: guide mode without --perception vision: no people, the robot will not move.", flush=True)
+    else:
+        controller = HelloController(cfg["hello_test"], mute_after_s)
+        if worker is not None:
+            controller = PerceptionController(controller, worker)
     server = BridgeServer(cfg, controller, log)
     port = await server.start()
     print(f"[bridge] mode {mode}: listening on {cfg['host']}:{port}; run folder {out}", flush=True)
@@ -351,6 +366,8 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
             await asyncio.Event().wait()
     finally:
         await server.close()
+        if guide is not None:
+            guide.close()
         if worker is not None:
             worker.close()
         log.close()
@@ -361,7 +378,7 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", default=DEFAULT_CONFIG)
-    ap.add_argument("--mode", choices=["hello"], default="hello")
+    ap.add_argument("--mode", choices=["hello", "guide"], default="hello")
     ap.add_argument("--duration-s", type=float, default=None, help="stop after this many seconds")
     ap.add_argument("--mute-after-s", type=float, default=None,
                     help="stop answering this many seconds after Unity connects (watchdog test)")

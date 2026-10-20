@@ -1,0 +1,25 @@
+{
+  "label": "Guided-task roadmap: the robot's map (it knows the roads, never goal B). Read by Python (hri_control.py) and by the Unity builder (Tools > Warehouse HRI > Add Worker and Roadmap), so both use the same nodes.",
+  "declared": "2026-10-20; positions in the open aisles of the generated warehouse (rack centres at x = -12.5, 0, 12.5 and z = -15, -5, 5, 15), validated on the AMR NavMesh by the builder.",
+  "frame": "Unity floor coordinates x, z in m (y up). Branch commands are relative to the arrival direction (previous node -> junction), from the robot's point of view.",
+  "start": "A",
+  "nodes": {
+    "A":  {"x": 6.25,   "z": -10.0, "kind": "waypoint"},
+    "J1": {"x": 6.25,   "z": 0.0,   "kind": "junction", "arrive_from": "A"},
+    "J2": {"x": -6.25,  "z": 0.0,   "kind": "junction", "arrive_from": "J1"},
+    "E1": {"x": 6.25,   "z": 10.0,  "kind": "endpoint"},
+    "E2": {"x": 18.75,  "z": 0.0,   "kind": "endpoint"},
+    "E3": {"x": -18.75, "z": 0.0,   "kind": "endpoint"},
+    "E4": {"x": -6.25,  "z": 10.0,  "kind": "endpoint"}
+  },
+  "branches": {
+    "A":  {"FORWARD": "J1"},
+    "J1": {"FORWARD": "E1", "RIGHT": "E2", "LEFT": "J2"},
+    "J2": {"FORWARD": "E3", "RIGHT": "E4"}
+  },
+  "worker_stand": {
+    "corner_offset_m": 2.5,
+    "rule": "The worker stands corner_offset_m ahead and corner_offset_m to the right of the junction (arrival direction), facing the arriving robot. Unity scenario side only; the robot finds the worker by vision."
+  },
+  "task1_goal": "E1"
+}
