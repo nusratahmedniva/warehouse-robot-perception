@@ -39,6 +39,28 @@ Python handles perception and decisions; Unity runs the simulation.
   the 12 upstream rack NavMeshObstacles whose carving boxes (cm values read as m) erased the whole NavMesh.
   **Tools > Warehouse HRI > Gesture Pose Test** (Play mode) cycles the six commands.
 
+## State machine and trials (Steps 5 and 7, branch anisha/step5-7)
+
+- Step 5: `robot_vision/hri_control.py` (states idle, navigate, scan, approach, ask, read, execute, done/aborted;
+  pure pursuit on the NavMesh corners; 1.0 s gesture hold with NONE gaps up to 0.3 s, one repeat ask, then abort;
+  stops for STOP, a person in the path within the speed-dependent stopping distance, and perception older than
+  1.0 s). Simulator `robot_vision/hri_sim.py`; tests `tests/test_hri_control.py`. Live: `python -m bridge.server
+  --mode guide --perception vision`. Thresholds `configs/hri_control.json` (not frozen; two changes made after
+  simulator runs are listed in it).
+- Step 7: Unity `TrialRunner` (the only place goal B exists; seeded goal order, truth files) and
+  `TrialBatchPlay.Run` for batch mode; Python `hri_trials.py` (run_###.json, results.csv), `hri_analysis.py`
+  (analysis.md, plots) and `hri_eval_dev.py` (development evaluation; refuses final sessions).
+- Development results (dev seed 1, vision mode, 10 trials, 20 October 2026): 10/10 SUCCESS (Wilson 95 %
+  0.72-1.0), 15/15 junctions read as shown at the first ask, 0 collisions, closest approach to the worker 1.03 m,
+  final distance from B 0.049 m mean. Gesture sweep (140 samples): per-frame accuracy 1.0 for the five directions
+  at coverage 0.96-1.0; STOP read as FORWARD_LEFT in 3/100 frames (one 1.0 s hold accepted it). People on the
+  panorama: recall 0.885 at 0-3 m, 1.0 at 3-6 m, 0.533 at 6-9 m, 0.0 at 9-12 m; distance error +0.255 m mean.
+  Folders: `outputs/hri_trials_20261020_141351`, `hri_analysis_20261020_141359`, `hri_dev_eval_20261020_141423`.
+- Known issue: on the 8 GB Mac, panorama YOLO slows from about 190 ms to about 440 ms over a 10-minute session
+  while Unity runs (flat at 157 ms over 6 minutes with Unity closed). The robot then stops for "perception stale"
+  (1 s in trial 1, 34 s in trial 10). `TrialBatchPlay` caps batch rendering at 60 fps, which halved the slowdown;
+  the remaining cause is not identified.
+
 ## Status
 
 Work in progress; final version due 22 October 2026.

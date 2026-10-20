@@ -15,6 +15,7 @@ namespace WarehouseRobot.ScenarioEditor
     {
         const string ActiveKey = "WarehouseRobot.TrialBatchPlay.Active";
         const string DeadlineKey = "WarehouseRobot.TrialBatchPlay.Deadline";
+        const int BatchFrameRate = 60;
 
         static TrialBatchPlay()
         {
@@ -40,6 +41,13 @@ namespace WarehouseRobot.ScenarioEditor
             if (!SessionState.GetBool(ActiveKey, false)) return;
             if (EditorApplication.timeSinceStartup > SessionState.GetFloat(DeadlineKey, float.MaxValue)) { Finish(1, "timeout"); return; }
             if (!EditorApplication.isPlaying) return;
+            // Batch-mode play is otherwise uncapped and renders as fast as it can, sharing the GPU with the Python
+            // models (MPS on Apple silicon). Physics runs on the fixed step either way; this only limits rendering.
+            if (Application.targetFrameRate != BatchFrameRate)
+            {
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = BatchFrameRate;
+            }
             var r = Object.FindFirstObjectByType<TrialRunner>();
             if (r == null) return;
             if (r.Status.StartsWith("done")) Finish(0, r.Status);

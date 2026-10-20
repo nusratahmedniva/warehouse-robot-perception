@@ -126,6 +126,13 @@ Specification: docs/project_flow.md
   4. Worker poses (Anisha) (in the same branch: Assets/WarehouseRobot/HRI,
      Tools > Warehouse HRI > Add Worker and Roadmap / Gesture Pose Test;
      roadmap A, J1, J2, E1-E4 validated on the AMR NavMesh)
-  5. State machine
-  6. Scenarios
-  7. Logging
+  5. State machine (done 2026-10-20, branch anisha/step5-7: hri_control.py,
+     hri_sim.py, bridge/guide.py, configs/hri_control.json not frozen)
+  6. Scenarios (done: TrialRunner, GoalSequence, TrialBatchPlay; roadmap.json
+     must equal HriScenarioBuilder)
+  7. Logging (done: hri_trials.py, hri_analysis.py, hri_eval_dev.py). Dev seed 1,
+     vision: 10/10 SUCCESS, 15/15 junctions (hri_trials_20261020_141351). An
+     earlier interrupted session (trials_development_Task2_20261020_113942,
+     3 trials, 1 timeout from slow inference) is kept, not used.
+  Final: not run. Before it: freeze hri_control.json and the Unity configs,
+  decide on the diagonals, resolve the inference slowdown with Unity running.
