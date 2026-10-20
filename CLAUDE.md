@@ -115,10 +115,17 @@ Specification: docs/project_flow.md
     in the adapter; to_gesture_events -> decision.GestureEvent. Gesture
     evaluation: not_evaluated until Unity recordings with labels exist.
 - Next, in order (Steps 1-7):
-  1. Robot and cameras
-  2. TCP bridge
-  3. Perception
-  4. Worker poses (Anisha)
+  1. Robot and cameras (done, PR #6)
+  2. TCP bridge (done, protocol v2)
+  3. Perception (in branch anisha/integrate-hri: robot_vision/hri_perception.py,
+     bridge/perception.py, `python -m bridge.server --perception vision`;
+     YOLO11s-pose people on frame_360 + arm direction on frame_pan_tilt,
+     MediaPipe STOP via gesture_adapter with configs/gesture_hri.json
+     (STOP = Open_Palm only). Thresholds in configs/hri_perception.json,
+     frozen: false until a development evaluation on the v2 pipeline.)
+  4. Worker poses (Anisha) (in the same branch: Assets/WarehouseRobot/HRI,
+     Tools > Warehouse HRI > Add Worker and Roadmap / Gesture Pose Test;
+     roadmap A, J1, J2, E1-E4 validated on the AMR NavMesh)
   5. State machine
   6. Scenarios
   7. Logging

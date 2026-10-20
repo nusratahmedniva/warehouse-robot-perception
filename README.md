@@ -21,6 +21,24 @@ Python handles perception and decisions; Unity runs the simulation.
    separately and place them in `Assets/WarehouseRobot/Characters/` as
    `worker.fbx`, `walking.fbx` and `idle.fbx`.
 
+## Perception and worker (branch anisha/integrate-hri)
+
+- Python: `python -m bridge.server --mode hello --perception vision` (from robot_vision/, project venv) runs the
+  Step 3 perception on the frames the bridge receives: YOLO11s-pose + ByteTrack people on `frame_360` (bearing from
+  the column, distance from the ankles on the floor, camera height and pose from the frame header) and the arm
+  direction (LEFT, FORWARD_LEFT, FORWARD, FORWARD_RIGHT, RIGHT, NONE) on `frame_pan_tilt`; STOP from the MediaPipe
+  gesture adapter (Anisha's module unchanged; `configs/gesture_hri.json` maps only Open_Palm to STOP because the
+  worker points with fists). The models run on a background thread; commands are unchanged (hello test), the
+  latest reading is shown in `screen_text` and logged to `perception.csv` in the run folder. Weights:
+  `robot_vision/models/yolo11s-pose.pt` (git-ignored; from robot_vision/models:
+  `python -c "from ultralytics import YOLO; YOLO('yolo11s-pose.pt')"`). Thresholds: `configs/hri_perception.json`
+  (not frozen; needs a development evaluation on this pipeline).
+- Unity: **Tools > Warehouse HRI > Add Worker and Roadmap** adds the Mixamo worker (`GestureWorker`; textures
+  extracted to the git-ignored `Characters/worker_textures/`), the roadmap A, J1, J2, E1-E4 (`RoadNode`, validated
+  on the AMR NavMesh) and a chase camera (`FollowCamera`, C: chase / top-down / gesture camera). It also disables
+  the 12 upstream rack NavMeshObstacles whose carving boxes (cm values read as m) erased the whole NavMesh.
+  **Tools > Warehouse HRI > Gesture Pose Test** (Play mode) cycles the six commands.
+
 ## Status
 
 Work in progress; final version due 22 October 2026.

@@ -49,6 +49,7 @@ Files deleted with that folder (each with its `.meta`):
 | `com.unity.robotics.warehouse.base/Scripts/Runtime/Unity.Robotics.Warehouse.asmdef` | Removed reference `GUID:a3867139fb5f48e43972bdbc58ef9b3c` (Unity.Perception.Runtime). | Perception removed. |
 | `com.unity.robotics.warehouse.base/Scripts/Editor/Unity.Robotics.Warehouse.Editor.asmdef` | Removed the same reference. | Perception removed. |
 | `com.unity.robotics.warehouse.base/Scripts/Runtime/WarehouseManager.cs` | Removed `[RequireComponent(typeof(ScenarioShim))]`, the `ScenarioShim` property, `IncrementIteration()`, and `AddComponent<MaterialRandomizerTag>()` on each floor tile; reworded one tooltip; added a modification notice. | Those types were deleted. |
+| `WarehouseProjectURP/.gitignore` | Added two ignore lines at the end (2026-10-20): the extracted Mixamo textures folder's `.meta` and `*.local.json.meta`. | The upstream rule `!/[Aa]ssets/**/*.meta` re-includes every meta file; these two belong to git-ignored content. |
 | `com.unity.robotics.warehouse.base/Scripts/Editor/EditorWarehouseGeneration.cs` | `Generate` no longer runs a randomizer iteration; removed the "Warehouse/Increment Iteration" menu item, its validator and Inspector button; added a modification notice. | Those types were deleted. |
 
 The other asmdef references (`1da8e233...`, `809aba06...`, `465c1207...`

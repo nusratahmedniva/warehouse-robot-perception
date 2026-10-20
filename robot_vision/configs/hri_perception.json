@@ -1,0 +1,88 @@
+{
+  "label": "Step 4 vision perception for the Unity guided-robot task",
+  "declared": "2026-10-20, before any model was run on Unity images and before any evaluation. Values chosen from geometry and the spec (see why), not from results. Frozen 2026-10-20 after the development evaluation (configs/hri_perception_frozen.json); every change made after seeing results is listed in changes_after_dev_eval.",
+  "frozen": false,
+  "changes_during_development": [
+    "2026-10-20, after a development smoke run on 7 captured poses of the dev scene (one image per command, robot 2 m in front; not an evaluation, no accuracy computed):",
+    "1. The Mixamo worker rendered untextured (pale, partly transparent); the scene builder now extracts the FBX textures and gives the worker an opaque material. Rendering fix, no threshold involved.",
+    "2. Arm direction: was the shoulder -> wrist angle plus an elbow-straightness test (min_elbow_angle_deg 140). YOLO11s-pose places the elbow and wrist too low on raised arms of this avatar (FORWARD: elbow at shoulder height, wrist at head height), so straight arms failed the elbow test and FORWARD read -30 deg. Now: the circular mean of the shoulder -> wrist and elbow -> wrist directions (the same for a straight arm; their errors on this avatar are opposite), and the two must agree within max_segment_disagreement_deg (45) instead of the elbow test. The bin centres and the 15 deg tolerance are unchanged."
+  ],
+  "ported_to_protocol_v2": "2026-10-20: moved onto the team's Step 1-2 base (robot, cameras and bridge protocol v2 by Nusrat). Thresholds unchanged. The v1 development evaluation (hri_dev_eval_20261020_031217, dev seed 1, own camera pipeline: 512 px cube faces, horizon band, JPEG 90) does not carry over to the v2 pipeline (1024 px cube faces, full 2048 x 1024 panorama, JPEG 85, 360 at 5 Hz, camera height 1.6 m taken from each frame header), so frozen is false again until a development evaluation on v2 (dev seed only). The frozen record of v1 stays on branch anisha/bridge-health-check.",
+  "changes_after_dev_eval": [
+    "2026-10-20, after development evaluation hri_dev_eval_20261020_025237 (10 vision trials, dev seed 1): people recall 1.0 at 0-3 m but 0.09 at 3-6 m and 0 beyond; 7 of 10 trials aborted with 'no person found at J1' (worker 3.7 m away). Diagnosis on development captures (not on evaluation numbers alone): the panorama was downscaled to 1024 px and JPEG 75; at 1024 px YOLO found nobody beyond about 4 m, and JPEG 75 removed the 6 m detection that 2048 px gives.",
+    "Change (sensor/transfer, not a decision threshold): Unity sends only the horizon band +30..-60 deg of the panorama at its native 2048 px width with JPEG quality 90 (hri_config.json -> link), the band limits travel in the image entry, and people.imgsz is 2048 (was 1024). No gesture threshold changed. The dev trials were then run again with the same dev seed."
+  ],
+
+  "paths": {"output_root": "outputs"},
+  "device": "auto",
+  "device_note": "check_environment.select_device: CUDA, then MPS, then CPU.",
+
+  "pose_model": {
+    "weights": "models/yolo11s-pose.pt",
+    "sha256": "1060bda4a27012060eca246f9b2adeea22eabb045a1e58f8d229be29b7ebc2ba",
+    "source": "Ultralytics YOLO11s-pose (COCO 17 keypoints), downloaded from the Ultralytics assets release v8.4.0; git-ignored"
+  },
+
+  "people": {
+    "image": "cam360",
+    "imgsz": 2048,
+    "det_confidence": 0.25,
+    "tracker": "bytetrack.yaml",
+    "min_box_height_px": 12,
+    "camera_height_m": 1.6,
+    "ankle_confidence": 0.5,
+    "occlusion_margin_px": 2,
+    "why": {
+      "imgsz": "2048 = the panorama band's native width (2048 x 512), so YOLO sees the full resolution; was 1024 before the first development evaluation (see changes_after_dev_eval).",
+      "det_confidence": "Ultralytics' default for tracking; ByteTrack uses low-score boxes for association, so the detector threshold stays low.",
+      "min_box_height_px": "A 1.8 m person at 20 m spans about 10 px of a 512 px high panorama (180 deg / 512 px = 0.35 deg per px); smaller boxes are beyond any distance the task needs.",
+      "camera_height_m": "Fallback only: every frame_360 header carries camera_height_m (1.60 m in robot_unity.json), which is used instead.",
+      "ankle_confidence": "Middle of the keypoint score range; below it the ankle position is not used for distance.",
+      "occlusion_margin_px": "A box whose bottom is within this many pixels of the image bottom is treated as cut off."
+    },
+    "distance_rule": "Level camera, flat floor, panorama row v -> elevation e = (0.5 - (v + 0.5) / height) * 180 deg. source 'ankles': both or one ankle keypoint above ankle_confidence, feet row = their mean; distance = camera_height_m / tan(-e) (e < 0). Otherwise, source 'box_bottom': the same formula on the bottom row of the box, if it is below the horizon and not cut off; correct when the feet are visible, too far when they are hidden (hidden feet are lower in the image, i.e. closer), so it is an upper bound in the worst case and is reported as its own source. Otherwise null (source 'unknown'). CLAUDE.md's lower-bound rule needs a depth image, which Unity does not send; without it no lower bound exists, so Unity treats an unknown distance conservatively (hri_config.json -> brain.unknown_person_distance_m).",
+    "pick": "nearest person by distance; people with unknown distance are picked only if nobody has a distance, then by the largest box"
+  },
+
+  "gesture": {
+    "image": "gesture",
+    "imgsz": 736,
+    "det_confidence": 0.4,
+    "keypoint_confidence": 0.5,
+    "direction_centres_deg": {"LEFT": -90, "FORWARD_LEFT": -45, "FORWARD": 0, "FORWARD_RIGHT": 45, "RIGHT": 90},
+    "direction_tolerance_deg": 15,
+    "raised_max_abs_deg": 120,
+    "max_segment_disagreement_deg": 45,
+    "min_arm_to_shoulder_width": 0.8,
+    "why": {
+      "angle": "Arm angle in the image = circular mean of the shoulder -> wrist and elbow -> wrist directions, measured from straight up; negative = toward the image left = the robot's left (the worker faces the robot, so the worker's right arm points to the robot's left).",
+      "direction_tolerance_deg": "Centres are 45 deg apart; +-15 deg around each centre is accepted and the 15 deg band between two centres (22.5 +- 7.5 deg from each) gives NONE, as the spec requires for 'between two directions'.",
+      "raised_max_abs_deg": "An arm hanging down is at about +-180 deg; above +-120 deg it is treated as not raised. Between 105 and 120 deg (past RIGHT/LEFT tolerance) the arm is raised but in no bin -> NONE.",
+      "max_segment_disagreement_deg": "The spec's directions use a straight arm, for which shoulder -> wrist and elbow -> wrist point the same way. A difference above 45 deg (an elbow bent by more than about 45 deg, or keypoints in the wrong place) is ambiguous -> NONE.",
+      "min_arm_to_shoulder_width": "Shoulder->wrist length in the image must be at least 0.8 x the shoulder width, so a foreshortened arm pointing at the camera (and the STOP pose) is not read as a direction.",
+      "keypoint_confidence": "Middle of the score range; a missing or low-confidence shoulder, elbow or wrist makes that arm unknown."
+    },
+    "rule": "Each arm: unknown (a keypoint below keypoint_confidence), down (|angle| > raised_max_abs_deg), or raised. A raised arm gives a direction if its two segments agree within max_segment_disagreement_deg, it is long enough and its mean angle is within direction_tolerance_deg of a centre, else NONE. Both arms raised and giving different answers -> NONE. No raised arm -> NONE.",
+    "target": "the person box with the largest area (the pan-tilt camera is aimed at the chosen person)"
+  },
+
+  "evaluation": {
+    "declared": "2026-10-20, before any evaluation run.",
+    "match_bearing_deg": 10,
+    "match_note": "A detected person matches the true worker when its bearing is within 10 deg (the worker spans about 10 deg of bearing at 3 m).",
+    "truth_join_max_s": 0.06,
+    "detection_range_m": 12,
+    "distance_bins_m": [0, 3, 6, 9, 12],
+    "hold_s": 1.0,
+    "diagonals_reliable_if": {"accuracy_min": 0.9, "coverage_min": 0.8},
+    "diagonals_note": "Per-frame accuracy and coverage of FORWARD_LEFT and FORWARD_RIGHT in the gesture sweep. Below either value: recommend dropping the diagonals (cut-order item 2); the decision is the owner's.",
+    "coverage_definition": "Coverage = frames (or samples) where vision gave a command other than NONE / all frames showing that command. Accuracy = correct / covered. Both are always reported together."
+  },
+
+  "stop": {
+    "adapter_config": "configs/gesture_hri.json",
+    "adapter_mode": "person_crop",
+    "min_confidence": 0.5,
+    "why": "MediaPipe category score; middle of the range, the same value as the adapter's hand detector thresholds. STOP overrides any arm direction."
+  }
+}
