@@ -1,7 +1,8 @@
 {
   "label": "Step 4 vision perception for the Unity guided-robot task",
   "declared": "2026-10-20, before any model was run on Unity images and before any evaluation. Values chosen from geometry and the spec (see why), not from results. Frozen 2026-10-20 after the development evaluation (configs/hri_perception_frozen.json); every change made after seeing results is listed in changes_after_dev_eval.",
-  "frozen": false,
+  "frozen": true,
+  "frozen_note": "Frozen 2026-10-20 for protocol v2 after hri_dev_eval_20261020_141423 (sweep) and the development sessions listed in hri_control.json. Hashes in configs/hri_frozen.json.",
   "changes_during_development": [
     "2026-10-20, after a development smoke run on 7 captured poses of the dev scene (one image per command, robot 2 m in front; not an evaluation, no accuracy computed):",
     "1. The Mixamo worker rendered untextured (pale, partly transparent); the scene builder now extracts the FBX textures and gives the worker an opaque material. Rendering fix, no threshold involved.",

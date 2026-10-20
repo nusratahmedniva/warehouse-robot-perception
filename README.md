@@ -50,16 +50,25 @@ Python handles perception and decisions; Unity runs the simulation.
 - Step 7: Unity `TrialRunner` (the only place goal B exists; seeded goal order, truth files) and
   `TrialBatchPlay.Run` for batch mode; Python `hri_trials.py` (run_###.json, results.csv), `hri_analysis.py`
   (analysis.md, plots) and `hri_eval_dev.py` (development evaluation; refuses final sessions).
-- Development results (dev seed 1, vision mode, 10 trials, 20 October 2026): 10/10 SUCCESS (Wilson 95 %
-  0.72-1.0), 15/15 junctions read as shown at the first ask, 0 collisions, closest approach to the worker 1.03 m,
-  final distance from B 0.049 m mean. Gesture sweep (140 samples): per-frame accuracy 1.0 for the five directions
-  at coverage 0.96-1.0; STOP read as FORWARD_LEFT in 3/100 frames (one 1.0 s hold accepted it). People on the
-  panorama: recall 0.885 at 0-3 m, 1.0 at 3-6 m, 0.533 at 6-9 m, 0.0 at 9-12 m; distance error +0.255 m mean.
-  Folders: `outputs/hri_trials_20261020_141351`, `hri_analysis_20261020_141359`, `hri_dev_eval_20261020_141423`.
-- Known issue: on the 8 GB Mac, panorama YOLO slows from about 190 ms to about 440 ms over a 10-minute session
-  while Unity runs (flat at 157 ms over 6 minutes with Unity closed). The robot then stops for "perception stale"
-  (1 s in trial 1, 34 s in trial 10). `TrialBatchPlay` caps batch rendering at 60 fps, which halved the slowdown;
-  the remaining cause is not identified.
+- Development results (dev seed 1, vision mode, 20 October 2026), three sessions of 10 trials:
+  `trials_development_Task2_20261020_140241` 10/10; `_163348` 9/10 (diagonals dropped; trial 8 aborted at J2:
+  YOLO misplaced the keypoints of a clearly shown RIGHT from the ask position and the repeat ask saw the same
+  image); `_164719` 10/10 after adding the new viewpoint before the second ask (reask_shift_m 0.4; it did not
+  trigger in this session, every junction was read at the first ask; it is tested in the simulator). Together
+  29/30 trials, 44/45 junctions, 0 collisions, closest approach to the worker 1.03 m, final distance from B
+  about 0.05 m. Gesture sweep (140 samples, five-direction classifier): per-frame accuracy 1.0 for the
+  directions at coverage 0.96-1.0; STOP read as FORWARD_LEFT in 3/100 frames (one 1.0 s hold accepted it).
+  People on the panorama: recall 0.86-0.91 at 0-3 m, 1.0 at 3-6 m, 0.52-0.58 at 6-9 m, 0 at 9-12 m; distance
+  error about +0.25 m.
+- Changes after seeing development results (all listed in the configs): FORWARD_LEFT / FORWARD_RIGHT dropped
+  (owner's decision, against the pre-declared keep criterion, which they passed); reask_shift_m added; batch
+  rendering capped at 60 fps (runner setting).
+- Frozen 2026-10-20: `hri_control.json` and `hri_perception.json` (frozen: true); hashes of these, gesture_hri,
+  roadmap, bridge and the two Unity configs in `configs/hri_frozen.json` (checked by `tests/test_hri_frozen.py`).
+  The final run sets `trials.json -> mode` to `final` (nothing else) and runs once.
+- Known issue: on the 8 GB Mac, panorama YOLO takes about 190 ms alone but 220-440 ms (up to 790 ms) while
+  Unity runs (flat at 157 ms over 6 minutes with Unity closed). The robot then stops for "perception stale":
+  up to 52 s in one dev trial (trial total 124 s of the 240 s limit). The cause is not identified.
 
 ## Status
 

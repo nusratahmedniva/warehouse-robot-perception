@@ -131,8 +131,8 @@ Specification: docs/project_flow.md
   6. Scenarios (done: TrialRunner, GoalSequence, TrialBatchPlay; roadmap.json
      must equal HriScenarioBuilder)
   7. Logging (done: hri_trials.py, hri_analysis.py, hri_eval_dev.py). Dev seed 1,
-     vision: 10/10 SUCCESS, 15/15 junctions (hri_trials_20261020_141351). An
-     earlier interrupted session (trials_development_Task2_20261020_113942,
-     3 trials, 1 timeout from slow inference) is kept, not used.
-  Final: not run. Before it: freeze hri_control.json and the Unity configs,
-  decide on the diagonals, resolve the inference slowdown with Unity running.
+     vision: 10/10, 9/10, 10/10 (sessions _140241, _163348, _164719); see README.
+     An interrupted session (_113942, 3 trials) is kept, not used.
+  Frozen 2026-10-20 (configs/hri_frozen.json, tests/test_hri_frozen.py): diagonals
+  dropped, reask_shift_m 0.4. Final: not run; set trials.json mode to final and
+  run once.

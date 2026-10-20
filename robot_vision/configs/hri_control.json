@@ -1,7 +1,8 @@
 {
   "label": "Step 5 Python state machine and steering for the guided task (hri_control.py)",
   "declared": "2026-10-20, before any simulator or Unity run. Values from the spec (2.0 m approach, 1.0 s hold, ask once more, 0.3 m success) and from robot.json limits; not tuned on results.",
-  "frozen": false,
+  "frozen": true,
+  "frozen_note": "Frozen 2026-10-20 after the development sessions trials_development_Task2_20261020_140241 (10/10), _163348 (9/10, before reask_shift_m) and _164719 (10/10), all dev seed 1. Hashes in configs/hri_frozen.json.",
   "conventions": "Unity yaw in deg (0 = +z, 90 = +x, grows clockwise from above). Bearings + = right of the robot heading. Commands to Unity (protocol v2): omega in rad/s with omega > 0 = LEFT (REP-103), pan_deg > 0 = LEFT.",
   "drive": {
     "cruise_speed_mps": 0.8,
