@@ -37,8 +37,8 @@ DIRECTIONS = ("LEFT", "FORWARD_LEFT", "FORWARD", "FORWARD_RIGHT", "RIGHT")
 def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
     cfg = json.loads(Path(path).read_text(encoding="utf-8"))
     centres = cfg["gesture"]["direction_centres_deg"]
-    if set(centres) != set(DIRECTIONS):
-        raise ValueError(f"direction_centres_deg must name exactly {DIRECTIONS}")
+    if not {"LEFT", "FORWARD", "RIGHT"} <= set(centres) <= set(DIRECTIONS):   # the diagonals may be dropped
+        raise ValueError(f"direction_centres_deg must name LEFT, FORWARD, RIGHT and only names from {DIRECTIONS}")
     if 2 * cfg["gesture"]["direction_tolerance_deg"] >= min(
             abs(a - b) for a in centres.values() for b in centres.values() if a != b):
         raise ValueError("direction_tolerance_deg leaves no NONE band between neighbouring directions")

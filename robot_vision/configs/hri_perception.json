@@ -10,7 +10,8 @@
   "ported_to_protocol_v2": "2026-10-20: moved onto the team's Step 1-2 base (robot, cameras and bridge protocol v2 by Nusrat). Thresholds unchanged. The v1 development evaluation (hri_dev_eval_20261020_031217, dev seed 1, own camera pipeline: 512 px cube faces, horizon band, JPEG 90) does not carry over to the v2 pipeline (1024 px cube faces, full 2048 x 1024 panorama, JPEG 85, 360 at 5 Hz, camera height 1.6 m taken from each frame header), so frozen is false again until a development evaluation on v2 (dev seed only). The frozen record of v1 stays on branch anisha/bridge-health-check.",
   "changes_after_dev_eval": [
     "2026-10-20, after development evaluation hri_dev_eval_20261020_025237 (10 vision trials, dev seed 1): people recall 1.0 at 0-3 m but 0.09 at 3-6 m and 0 beyond; 7 of 10 trials aborted with 'no person found at J1' (worker 3.7 m away). Diagnosis on development captures (not on evaluation numbers alone): the panorama was downscaled to 1024 px and JPEG 75; at 1024 px YOLO found nobody beyond about 4 m, and JPEG 75 removed the 6 m detection that 2048 px gives.",
-    "Change (sensor/transfer, not a decision threshold): Unity sends only the horizon band +30..-60 deg of the panorama at its native 2048 px width with JPEG quality 90 (hri_config.json -> link), the band limits travel in the image entry, and people.imgsz is 2048 (was 1024). No gesture threshold changed. The dev trials were then run again with the same dev seed."
+    "Change (sensor/transfer, not a decision threshold): Unity sends only the horizon band +30..-60 deg of the panorama at its native 2048 px width with JPEG quality 90 (hri_config.json -> link), the band limits travel in the image entry, and people.imgsz is 2048 (was 1024). No gesture threshold changed. The dev trials were then run again with the same dev seed.",
+    "2026-10-20, after development evaluation hri_dev_eval_20261020_141423 on protocol v2 (gesture sweep 140 samples, 10 vision trials, dev seed 1): FORWARD_LEFT and FORWARD_RIGHT were dropped from direction_centres_deg (kept under dropped_directions for the record), so an arm within 15 deg of +-45 deg now reads NONE. This goes AGAINST the pre-declared criterion evaluation.diagonals_reliable_if, which the diagonals passed (FORWARD_LEFT accuracy 1.0 at coverage 1.0, FORWARD_RIGHT 1.0 at 0.963). Reason: the only safety-relevant error of the evaluation was STOP read as FORWARD_LEFT (3 of 100 STOP frames; one of 20 STOP samples accepted by the 1.0 s hold), and no junction of the roadmap has a diagonal branch (0 of 15 junction readings needed one). Decided by the owner. The sweep figures are for the five-direction classifier; after the change it was checked only by the development trials run afterwards."
   ],
 
   "paths": {"output_root": "outputs"},
@@ -49,7 +50,8 @@
     "imgsz": 736,
     "det_confidence": 0.4,
     "keypoint_confidence": 0.5,
-    "direction_centres_deg": {"LEFT": -90, "FORWARD_LEFT": -45, "FORWARD": 0, "FORWARD_RIGHT": 45, "RIGHT": 90},
+    "direction_centres_deg": {"LEFT": -90, "FORWARD": 0, "RIGHT": 90},
+    "dropped_directions": {"FORWARD_LEFT": -45, "FORWARD_RIGHT": 45},
     "direction_tolerance_deg": 15,
     "raised_max_abs_deg": 120,
     "max_segment_disagreement_deg": 45,

@@ -40,22 +40,36 @@ def read(**kw):
     return hpm.classify_gesture(*person(**kw), G)[0]
 
 
+# The classifier takes any set of centres; the five-direction set tests the bins, the shipped config has three.
+G5 = dict(G, direction_centres_deg={**G["direction_centres_deg"], **G["dropped_directions"]})
+
+
+def read5(**kw):
+    return hpm.classify_gesture(*person(**kw), G5)[0]
+
+
 class GestureTests(unittest.TestCase):
     def test_every_command_from_the_robots_point_of_view(self):
         # The worker's RIGHT arm, on the image left, sends the robot LEFT.
         self.assertEqual(read(right_arm_deg=-90), "LEFT")
-        self.assertEqual(read(right_arm_deg=-45), "FORWARD_LEFT")
         self.assertEqual(read(right_arm_deg=0), "FORWARD")
         self.assertEqual(read(left_arm_deg=0), "FORWARD")
-        self.assertEqual(read(left_arm_deg=45), "FORWARD_RIGHT")
         self.assertEqual(read(left_arm_deg=90), "RIGHT")
+        self.assertEqual(read5(right_arm_deg=-45), "FORWARD_LEFT")
+        self.assertEqual(read5(left_arm_deg=45), "FORWARD_RIGHT")
+
+    def test_diagonals_dropped_in_the_shipped_config(self):
+        self.assertEqual(set(G["direction_centres_deg"]), {"LEFT", "FORWARD", "RIGHT"})
+        for a in (-45, 45, -45 + G["direction_tolerance_deg"] - 0.5):
+            self.assertEqual(read(right_arm_deg=a), "NONE", a)
+            self.assertEqual(read(left_arm_deg=a), "NONE", a)
 
     def test_tolerance_band_and_none_between_directions(self):
         tol = G["direction_tolerance_deg"]
         self.assertEqual(read(right_arm_deg=-90 + tol - 0.5), "LEFT")
-        self.assertEqual(read(right_arm_deg=-45 - tol + 0.5), "FORWARD_LEFT")
+        self.assertEqual(read5(right_arm_deg=-45 - tol + 0.5), "FORWARD_LEFT")
         for between in (-67.5, -22.5, 22.5, 67.5, -90 + tol + 1, 45 - tol - 1):
-            self.assertEqual(read(right_arm_deg=between), "NONE", between)
+            self.assertEqual(read5(right_arm_deg=between), "NONE", between)
 
     def test_arms_down_or_missing_give_none(self):
         self.assertEqual(read(), "NONE")
@@ -88,7 +102,7 @@ class GestureTests(unittest.TestCase):
         self.assertAlmostEqual(abs(hpm.angle_diff_deg(170, -170)), 20.0)
 
     def test_config_keeps_a_none_band(self):
-        bad = dict(CFG, gesture=dict(G, direction_tolerance_deg=25))
+        bad = dict(CFG, gesture=dict(G, direction_tolerance_deg=45))   # half the 90 deg spacing: no NONE band left
         path = HERE / "outputs" / "_tmp_bad_cfg.json"
         path.parent.mkdir(exist_ok=True)
         try:
