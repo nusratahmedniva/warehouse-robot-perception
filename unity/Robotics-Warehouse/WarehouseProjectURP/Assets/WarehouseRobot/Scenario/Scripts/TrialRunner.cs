@@ -32,6 +32,8 @@ namespace WarehouseRobot.Scenario
     }
 
     [Serializable] class FrozenFlag { public bool frozen; }
+    [Serializable] class FrozenWeights { public string path = "", sha256 = ""; }
+    [Serializable] class FrozenRecord { public FrozenWeights pose_weights = new FrozenWeights(); }
     [Serializable] class RoadmapMeta { public string start = "A"; public string task1_goal = "E1"; }
 
     [Serializable]
@@ -132,10 +134,24 @@ namespace WarehouseRobot.Scenario
             else if (cfg.IsFinal && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
                 error = "final mode needs frozen hri_control.json and hri_perception.json";
             outRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
-            if (error == null && cfg.IsFinal && Directory.Exists(outRoot))
-                foreach (var d in Directory.GetDirectories(outRoot, "trials_final_*"))
-                    if (File.Exists(Path.Combine(d, "FINAL_DONE.json"))) error = "final trials already run: " + Path.GetFileName(d);
+            if (error == null && cfg.IsFinal)
+            {
+                // Each task's final runs once; another task's FINAL_DONE.json does not block it.
+                string earlier = FinalRunGuard.EarlierFinal(outRoot, cfg.task);
+                if (earlier != null) error = $"final trials of {cfg.task} already run: {earlier}";
+                else error = WeightsProblem();
+            }
             return error == null;
+        }
+
+        string WeightsProblem()
+        {
+            FrozenRecord rec;
+            try { rec = JsonUtility.FromJson<FrozenRecord>(File.ReadAllText(RepoFile("robot_vision/configs/hri_frozen.json"))); }
+            catch (Exception e) { return "cannot read robot_vision/configs/hri_frozen.json: " + e.Message; }
+            if (rec?.pose_weights == null || string.IsNullOrEmpty(rec.pose_weights.path))
+                return "no pose_weights entry in robot_vision/configs/hri_frozen.json";
+            return FinalRunGuard.WeightsProblem(RepoFile(rec.pose_weights.path), rec.pose_weights.sha256);
         }
 
         bool Frozen(string rel)
