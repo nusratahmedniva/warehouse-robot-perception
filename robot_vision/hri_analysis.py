@@ -2,7 +2,7 @@
 
 Writes a new folder <output_root>/hri_analysis_<time>/ with analysis.json, analysis.md, running_success.png and
 step_times.png: success ratio with its Wilson 95 % interval, failure reasons, success per goal, time per step,
-total time, stale-perception stops and moving time (total minus stale stops; see hri_trials.py) reported separately,
+total time, stale-perception stops, time excluding stale stops and time in motion (see hri_trials.py) separately,
 speed and turn rate, gesture shown vs read at the junctions, inference time per model, Unity-Python round trip,
 watchdog stops, collisions and the closest distance to a person. Every figure says over how many runs it is.
 
@@ -78,7 +78,10 @@ def analyse(runs: list[dict]) -> dict:
         "per_goal": {g: dict(c) for g, c in sorted(per_goal.items())},
         "total_s": stats([r["total_s"] for r in runs]),
         "stale_stop_s": stats([r.get("stale_stop_s") for r in runs]),
-        "moving_s": stats([r.get("moving_s") for r in runs]),
+        "time_excl_stale_stops_s": stats([r.get("time_excl_stale_stops_s") for r in runs]),
+        "in_motion_s": stats([r.get("in_motion_s") for r in runs]),
+        "in_motion_speed_threshold_mps": sorted({r["in_motion_speed_threshold_mps"] for r in runs
+                                                 if r.get("in_motion_speed_threshold_mps") is not None}),
         "step_s": {s: stats([r["step_s"].get(s) for r in runs]) for s in STEPS},
         "safety_stop_s": stats([r.get("safety_stop_s") for r in runs]),
         "travel_ratio": stats([r["travelled_m"] / r["straight_line_m"] for r in runs if r["straight_line_m"]]),
@@ -109,11 +112,13 @@ def markdown(a: dict) -> str:
     L += ["", "Time per step (s, over runs):", "", "| step | n | mean | median | max |", "|---|---|---|---|---|"]
     for k, v in list(a["step_s"].items()) + [("safety stop (any reason)", a["safety_stop_s"]),
                                              ("stale-perception stops", a["stale_stop_s"]), ("total", a["total_s"]),
-                                             ("moving (total minus stale stops)", a["moving_s"])]:
+                                             ("time excl. stale stops", a["time_excl_stale_stops_s"]),
+                                             ("in motion", a["in_motion_s"])]:
         if v.get("n"):
             L.append(f"| {k} | {v['n']} | {v['mean']} | {v['median']} | {v['max']} |")
-    L += ["", "Across machines: moving time is comparable; total time, stale-perception stops and inference times are "
-          "not (they depend on inference speed). Moving time still includes standing at junctions for scan, ask and gesture."]
+    L += ["", "Time excl. stale stops = total minus stale-perception stops (still includes scanning, asking and reading "
+          f"at junctions). In motion = Unity speed above {', '.join(map(str, a['in_motion_speed_threshold_mps']))} m/s. Across machines both are "
+          "comparable; total time, stale-perception stops and inference times are not (they depend on inference speed)."]
     j = a["junctions"]
     L += ["", f"Junctions: {j['correct']}/{j['n']} read as shown; asks per junction {j['asks']}.", "",
           "| shown \\ read | " + " | ".join(COMMANDS) + " |", "|---|" + "---|" * len(COMMANDS)]

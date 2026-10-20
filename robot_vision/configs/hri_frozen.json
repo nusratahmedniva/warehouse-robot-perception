@@ -15,9 +15,10 @@
   },
   "sha256_note": "Shared by all tasks (perception, gesture, state machine, roadmap, bridge, Unity robot and bridge). Exactly the values recorded for the Task 2 final; test_hri_frozen pins them.",
   "sha256_added_2026_10_21": {
-    "robot_vision/configs/robot.json": "ff8a6673a2965994568c2f8834752ae2157e6e61b685418fcf04d751623d8880"
+    "robot_vision/configs/robot.json": "ff8a6673a2965994568c2f8834752ae2157e6e61b685418fcf04d751623d8880",
+    "robot_vision/configs/hri_trials_metrics.json": "522f4a12e87b31b29732bec0e37f72a215bc0a42069e3b1a4a0a650b4b073b10"
   },
-  "sha256_added_note": "Added 2026-10-21 before the Task 1 final, not part of the Task 2 frozen set. robot.json was last changed in 0c2771d, an ancestor of the Task 2 final commit ce37a56 (git log ce37a56..HEAD -- robot_vision/configs/robot.json is empty), and its LF-normalised sha256 at ce37a56 equals this value.",
+  "sha256_added_note": "Added 2026-10-21 before the Task 1 final, not part of the Task 2 frozen set. hri_trials_metrics.json (in_motion_speed_threshold_mps 0.05, evaluation only) was declared 2026-10-21 before any Task 1 trial. robot.json was last changed in 0c2771d, an ancestor of the Task 2 final commit ce37a56 (git log ce37a56..HEAD -- robot_vision/configs/robot.json is empty), and its LF-normalised sha256 at ce37a56 equals this value.",
   "pose_weights": {
     "path": "robot_vision/models/yolo11s-pose.pt",
     "sha256": "1060bda4a27012060eca246f9b2adeea22eabb045a1e58f8d229be29b7ebc2ba",

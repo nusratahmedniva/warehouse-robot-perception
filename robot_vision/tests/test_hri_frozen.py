@@ -42,8 +42,10 @@ class FrozenConfigTests(unittest.TestCase):
         for rel, digest in {**FROZEN["sha256"], **FROZEN["sha256_added_2026_10_21"]}.items():
             self.assertEqual(file_sha256(rel), digest, f"{rel} changed after freezing (disclose and re-freeze)")
 
-    def test_robot_config_in_frozen_set(self):
-        self.assertIn("robot_vision/configs/robot.json", FROZEN["sha256_added_2026_10_21"])
+    def test_robot_and_metrics_configs_in_frozen_set(self):
+        for rel in ("robot_vision/configs/robot.json", "robot_vision/configs/hri_trials_metrics.json"):
+            self.assertIn(rel, FROZEN["sha256_added_2026_10_21"])
+        self.assertEqual(read_json("hri_trials_metrics.json")["in_motion_speed_threshold_mps"], 0.05)
 
     def test_flags_set(self):
         for name in ("hri_control.json", "hri_perception.json"):

@@ -1,0 +1,6 @@
+{
+  "label": "Trial timing metrics, read by robot_vision/hri_trials.py (evaluation code; not read by Unity or the bridge).",
+  "declared": "2026-10-21, before any Task 1 trial; not tuned. Hash in configs/hri_frozen.json -> sha256_added_2026_10_21.",
+  "in_motion_speed_threshold_mps": 0.05,
+  "why": "5 % of max_speed_mps 1.0 (configs/robot.json). in_motion_s = time whose speed |v_mps| in Unity's 0.1 s truth log (truth_run###.csv) is above this value; each row counts until the next row."
+}

@@ -207,7 +207,7 @@ at J1. It runs with exactly the settings frozen for Task 2. All changes below we
    - The Unity runner now also refuses a final if the local file's hash differs (`FinalRunGuard.WeightsProblem`).
 
 **No perception, gesture or state-machine setting changed.** `git diff ce37a56 -- robot_vision/configs` lists only
-`trials.json` (task, mode, mode note) and `hri_frozen.json`. hri_control.json, hri_perception.json, gesture_hri.json,
+`trials.json` (task, mode, mode note), `hri_frozen.json` and the new evaluation-only `hri_trials_metrics.json`. hri_control.json, hri_perception.json, gesture_hri.json,
 roadmap.json, bridge.json, robot.json and the two Unity configs are byte-identical to the Task 2 final.
 
 **Task 1 development runs only check that the pipeline works** (bridge, perception, trial runner and logging on the
@@ -217,18 +217,25 @@ the change is disclosed here and the frozen hashes are re-recorded before the Ta
 Notes:
 - Machine for the Task 1 final: to be recorded.
   - If it differs from the Task 2 machine:
-    - comparable between the tasks: success, gesture accuracy, distance travelled, and time spent moving
-      (excluding stale-perception stops);
+    - comparable between the tasks: success, gesture accuracy, distance travelled, `time_excl_stale_stops_s` and
+      `in_motion_s` (defined below);
     - not comparable: inference times, stale-perception stops, and total trial time (it includes those stops).
   - Development runs on Nusrat's PC are pipeline checks only.
-- **Moving time reported separately** (added 21 October 2026, before any Task 1 trial; reporting only, no setting
-  changed). `hri_trials.py` now writes per run `stale_stop_s` and `moving_s` next to `total_s`, and
-  `hri_analysis.py` reports all three.
-  - `stale_stop_s`: time Python held the robot because perception was stale. It comes from the decisions.csv
-    `safety` column, logged every 0.1 s.
-  - `moving_s` = `total_s` - `stale_stop_s`. It still includes standing at junctions for scan, ask and gesture.
-  - The Task 2 figures in section 2 give total time and stale-perception stops; its moving time can be
-    recomputed from the Task 2 session folders with the new `hri_trials.py`.
+- **Time measures reported separately** (added 21 October 2026, before any Task 1 trial; reporting only, no
+  perception, gesture or state-machine setting changed). `hri_trials.py` writes per run `total_s`,
+  `stale_stop_s`, `time_excl_stale_stops_s` and `in_motion_s`, and `hri_analysis.py` reports each separately.
+  Each 0.1 s log row counts until the next row of the trial.
+  - `stale_stop_s`: time Python held the robot because perception was stale (decisions.csv `safety` =
+    "perception stale").
+  - `time_excl_stale_stops_s` = `total_s` - `stale_stop_s`. It still includes scanning, asking and reading at
+    junctions.
+  - `in_motion_s`: time when the robot's speed `|v_mps|` in Unity's 0.1 s truth log (`truth_run###.csv`) is above
+    `in_motion_speed_threshold_mps` = 0.05 m/s (5 % of the 1.0 m/s maximum).
+  - **The threshold was set on 21 October 2026, before any Task 1 trial**, in `configs/hri_trials_metrics.json`.
+    That file is evaluation-only and its hash is in `hri_frozen.json` (`sha256_added_2026_10_21`).
+  - Older logs without a `safety` or `v_mps` column give None, not a guess.
+  - The Task 2 figures in section 2 give total time and stale-perception stops. Both new measures can be
+    recomputed from the Task 2 session folders with the new `hri_trials.py`; its logs have both columns.
 - The Unity EditMode tests are run locally; CI runs only the Python tests.
-- Checks on 21 October 2026 (Windows): Python 223 tests pass, including 11 in `test_hri_frozen.py` and the moving-time test in `test_trials.py`; Unity
-  EditMode 15/15 pass (10 earlier + 5 `FinalRunGuardTests`).
+- Checks on 21 October 2026 (Windows): Python 224 tests pass, including 11 in `test_hri_frozen.py` and the two time-measure tests in
+  `test_trials.py`; Unity EditMode 15/15 pass (10 earlier + 5 `FinalRunGuardTests`).
