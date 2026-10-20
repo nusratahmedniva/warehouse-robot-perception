@@ -465,7 +465,7 @@ class Controller:
                     return
                 ev = self.dialog.unclear()  # a direction with no branch here: same as unclear
             if ev == "ask_again":
-                self._ask(t, cmd)
+                self._reposition(inp, t, cmd)
             elif ev == "abort":
                 self._abort(f"gesture unclear after {self.dialog.asks} asks at {self.node}", t)
         elif self.state == "execute":
@@ -473,6 +473,25 @@ class Controller:
             cmd.omega, aligned = turn_toward(inp.x, inp.z, inp.yaw_deg, nx, nz, d, d["execute_align_deg"])
             if aligned:
                 self._navigate(self.next_node, t)
+
+    def _reposition(self, inp: TickInput, t: float, cmd: Command):
+        """Before asking again, move to a new viewpoint: reask_shift_m to the robot's right (as it faces the person),
+        projected back onto the approach_distance_m circle around the person, then turn to the person and ask. Asking
+        again from the same spot sees the same image, so a pose error tied to that view would only repeat."""
+        shift = self.g.get("reask_shift_m", 0.0)
+        if shift <= 0.0 or self.person is None:
+            self._ask(t, cmd)
+            return
+        px, pz = self.person
+        hx, hz = px - inp.x, pz - inp.z
+        n = math.hypot(hx, hz) or 1.0
+        cx, cz = inp.x + hz / n * shift, inp.z - hx / n * shift     # robot's right = (hz, -hx) for heading (hx, hz)
+        ax, az = cx - px, cz - pz
+        m = math.hypot(ax, az) or 1.0
+        r = self.g["approach_distance_m"]
+        self.approach_point = (px + ax / m * r, pz + az / m * r)
+        self.turning = False
+        self._set("approach", t)
 
     def _ask(self, t: float, cmd: Command):
         self.dialog.begin_ask(t)

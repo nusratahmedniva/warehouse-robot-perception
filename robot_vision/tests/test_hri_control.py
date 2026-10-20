@@ -154,6 +154,17 @@ class SimulatorTests(unittest.TestCase):
         self.assertIn("gesture unclear after 2 asks", r["abort_reason"])
         self.assertEqual(r["junctions"][0]["asks"], 2)
 
+    def test_second_ask_from_a_new_viewpoint(self):
+        # The first ask position at J1 (on the 2.0 m circle, on the line to the worker) is a blind spot.
+        wx, wz = ROAD.stand("J1")[:2]
+        jx, jz = ROAD.pos("J1")
+        n = math.hypot(jx - wx, jz - wz)
+        spot = {"x": wx + (jx - wx) / n * 2.0, "z": wz + (jz - wz) / n * 2.0, "r": 0.25}
+        r = run("E1", blind_spot=spot)
+        self.assertEqual(r["outcome"], "SUCCESS", (r["abort_reason"], r["trace"][-6:]))
+        self.assertEqual(r["junctions"][0]["asks"], 2)
+        self.assertEqual(sum(s.endswith(":approach") for s in r["trace"]), 2)   # moved before asking again
+
     def test_detector_that_sees_nobody_aborts_at_the_junction(self):
         r = run("E1", p_detect=0.0)
         self.assertEqual(r["failure_reason"], "aborted")

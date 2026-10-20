@@ -30,6 +30,8 @@
     "scan_timeout_s": 6.0,
     "prompt": "Which direction?",
     "why": "approach 2.0 m, hold 1.0 s, ask once more then abort: the spec. scan_min_s = two 360 frames at 5 Hz, so one missed panorama does not decide the scan.",
+    "reask_shift_m": 0.4,
+    "reask_note": "Before the second ask the robot moves 0.4 m to its right (facing the person), back onto the 2.0 m circle, turns to the person and asks again; 0 = ask again from the same spot. Fixed side, declared with the layout in mind: the worker stands ahead-right of the junction facing the arriving robot, so the right side moves toward the worker's front.",
     "max_none_gap_s": 0.3,
     "max_none_gap_note": "A NONE reading restarts the 1.0 s hold only if the candidate direction has not been seen for more than 0.3 s (3 pan-tilt frames at 10 Hz): one missed detection is not the worker changing the answer. A different direction always restarts the hold. 0 = strict."
   },
@@ -46,6 +48,7 @@
     "unknown_note": "A person vision sees but cannot range (no ankles, feet hidden) is placed this close for the safety check: conservative; it may stop the robot, it never lets it drive on."
   },
   "changes_during_development": [
-    "2026-10-20, after simulator tests (hri_sim.py; no Unity run, no evaluation): (1) the fixed 1.2 m person-in-path distance let the simulated robot hit a person who stepped into the lane (perception latency plus 0.5 m/s^2 braking need about 1.9 m at 0.8 m/s); replaced by the speed-dependent stop distance in safety. (2) With 80 % per-frame gesture coverage (FORWARD in the v1 sweep) the strict hold rule failed: any single NONE frame restarted the 1.0 s hold; added dialog.max_none_gap_s = 0.3 s. Both are design corrections, reported with strict-vs-tolerant numbers in the Step 4/5 report."
+    "2026-10-20, after simulator tests (hri_sim.py; no Unity run, no evaluation): (1) the fixed 1.2 m person-in-path distance let the simulated robot hit a person who stepped into the lane (perception latency plus 0.5 m/s^2 braking need about 1.9 m at 0.8 m/s); replaced by the speed-dependent stop distance in safety. (2) With 80 % per-frame gesture coverage (FORWARD in the v1 sweep) the strict hold rule failed: any single NONE frame restarted the 1.0 s hold; added dialog.max_none_gap_s = 0.3 s. Both are design corrections, reported with strict-vs-tolerant numbers in the Step 4/5 report.",
+    "2026-10-20, after the development recheck trials_development_Task2_20261020_163348 (dev seed 1, 9/10): trial 8 aborted at J2 because YOLO11s-pose misplaced the shoulders and wrist of a clearly shown RIGHT from the ask position (frame_pan_tilt_004500 of bridge_guide_20261020_163322), and the second ask from the same standstill saw the same image. Added dialog.reask_shift_m = 0.4 (new viewpoint before the second ask). A design change after seeing development results, chosen by the owner; no threshold changed. Checked with a simulator test and a new development session (dev seed only)."
   ]
 }

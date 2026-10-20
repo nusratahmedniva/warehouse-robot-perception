@@ -51,6 +51,7 @@ class SimConfig:
     max_angular_accel_radps2: float = 2.0
     stop_gesture: tuple | None = None   # (t_start, t_end): the worker shows STOP in this window
     intruder: dict | None = None        # {"t": s, "x", "z"}: a second person standing still from t on
+    blind_spot: dict | None = None      # {"x", "z", "r"}: gestures read NONE while the robot is within r of (x, z)
 
 
 def _ramp(cur: float, target: float, up: float, down: float, dt: float) -> float:
@@ -168,6 +169,8 @@ class Simulator:
         shown = worker["shown"]
         if cfg.stop_gesture and cfg.stop_gesture[0] <= t <= cfg.stop_gesture[1]:
             shown = "STOP"
+        if cfg.blind_spot and math.hypot(x - cfg.blind_spot["x"], z - cfg.blind_spot["z"]) <= cfg.blind_spot["r"]:
+            return "NONE"                           # a view where the pose model fails, as in dev trial 8
         dist = math.hypot(worker["x"] - x, worker["z"] - z)
         cam_yaw = yaw - pan_deg                     # pan > 0 = left
         if dist > cfg.gesture_range_m or abs(hc.wrap(hc.yaw_to(x, z, worker["x"], worker["z"]) - cam_yaw)) > cfg.gesture_half_fov_deg:
