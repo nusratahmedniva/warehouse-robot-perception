@@ -12,7 +12,8 @@ FROZEN = json.loads((REPO / "robot_vision" / "configs" / "hri_frozen.json").read
 class FrozenConfigTests(unittest.TestCase):
     def test_hashes_unchanged(self):
         for rel, digest in FROZEN["sha256"].items():
-            data = (REPO / rel).read_bytes()
+            # Hashes were taken with LF endings; a Windows checkout (core.autocrlf) has CRLF, same content.
+            data = (REPO / rel).read_bytes().replace(b"\r\n", b"\n")
             self.assertEqual(hashlib.sha256(data).hexdigest(), digest, f"{rel} changed after freezing (disclose and re-freeze)")
 
     def test_flags_set(self):
