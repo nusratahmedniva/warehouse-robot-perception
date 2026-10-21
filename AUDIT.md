@@ -586,3 +586,47 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
       the 5-trial check is to run under the run protocol.
     - Checks: Python 284 tests pass (13 new in `test_measurement_correction.py`); Unity EditMode 35/35 pass (5 new
       `CommandWatchdogTests`).
+18. **Verification: 5-trial Task 1 development session, ALL FOUR CRITERIA MET** (22 October 2026, 02:26-02:32;
+    `run_trials.ps1 -Task Task1 -UnityBatch -Trials 5`, commit e751ac6, dev seed 1;
+    `trials_development_Task1_20261022_022631`, `bridge_guide_20261022_022557`, `hri_trials_20261022_023210`,
+    `hri_analysis_20261022_023210`, `session_check_20261022_023213`). Nothing was adjusted on it.
+    - Run protocol: the runaway `cmd.exe` (PID 18312) was ended by Nusrat and other applications were closed before
+      the run (free memory before the start 5.5 GB, against 3.4 GB earlier); power mode Best performance, mains power
+      (`run_info.json -> machine_state`, no launcher warning). Chrome processes were still present: in the top 3 CPU
+      users in 24 of 369 resource samples.
+
+    | trial | outcome | stops visited | full interaction | asks C1/J1/C3 | shown > read | stale stops | watchdog (new rule) | old-rule stops | rtt max ms (network / queued) | Unity frames max / p99 ms, over 100 ms |
+    |---|---|---|---|---|---|---|---|---|---|---|
+    | 1 | SUCCESS 0.052 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 0 | 0 | 5.1 / 5.1 | 173.9 / 36.5, 8 |
+    | 2 | SUCCESS 0.036 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 0 | 0 | 44.9 / 44.9 | 165.3 / 34.6, 8 |
+    | 3 | SUCCESS 0.087 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 0 | 0 | 18.9 / 18.9 | 177.5 / 36.4, 7 |
+    | 4 | SUCCESS 0.041 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 0 | 0 | 6.4 / 6.4 | 167.3 / 34.0, 8 |
+    | 5 | SUCCESS 0.036 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 0 | 0 | 6.2 / 6.3 | 177.2 / 36.1, 8 |
+
+    - Criteria: (1) full interaction at every checkpoint: **met** (robot-worker distance at the ask 1.89-1.97 m, ask
+      to execute at least 1.45 s, speed in the last 1.0 s before every scan at most 0.35 m/s). (2) textured workers,
+      arm pose read: **met**. (3) 0 watchdog stops after start-up: **met (0)**; max round trip, all messages, under
+      100 ms: **met (44.9 ms)**. (4) every outcome recorded: **met**.
+    - Old and new measurements side by side (item 13 = 10-trial session, old Unity build, before the measurement
+      correction and with the runaway process running):
+
+    | measure | item 13 (10 trials) | this session (5 trials) |
+    |---|---|---|
+    | success; stops read FORWARD (coverage) | 10/10; 30/30, 7 at the second ask | 5/5; 15/15, all at the first ask |
+    | watchdog stops after start-up, new rule | not measured (old build) | **0** |
+    | watchdog stops after start-up, old wall-clock rule | 4 | 0 (stops 0 + Unity frame stalls 0) |
+    | start-up (before trial 1) | 2 watchdog stops | 0 stops; 1 Unity frame stall (449 ms gap, 456 ms frame) |
+    | max round trip, all messages: network thread | not measured | **44.9 ms** (mean 0.89 ms, 6672 of 6673) |
+    | max round trip, all messages: queued clock (old definition) | 257.1 ms (mean 2.04 ms, 14 497 of 14 499) | 44.9 ms (mean 0.91 ms) |
+    | Unity main-thread frames after start-up | 11 telemetry windows with a frame over 250 ms (full distribution not logged) | 18 107 frames: max 177.5 ms, p99 35.8 ms, 39 over 100 ms, 0 over 250 ms |
+    | Python event-loop lag | 51 over 50 ms, max 256 ms | 0 over 50 ms, max 37 ms |
+    | dropped frames Unity (360 / pan-tilt); Python gesture drops | 40 / 339; 853 | 0 / 27; 5 |
+    | STOP read while FORWARD shown | 3 single frames | 0 |
+    | closest approach to a worker | 1.30 m | 1.39 m |
+    | resources | not logged | free memory min 1979 MB (mean 2532); hard paging max 16 244 pages/s (mean 366); server CPU mean 95 % of one CPU, Unity 189 %; GPU mean 41 % |
+
+    - Reading: the old-rule count is also 0 here, so the pass does not come from the redefinition alone; the Unity
+      hitches over 250 ms and the Python stalls of item 13 did not recur. They disappeared together with the runaway
+      process and the memory pressure, which supports those as their cause, but one 5-trial session cannot prove it.
+      The criteria were not loosened; the Task 1 final and a Task 2 replication stay at 10 trials and must run under
+      the same run protocol.

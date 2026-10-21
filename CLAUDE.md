@@ -146,3 +146,7 @@ Specification: docs/project_flow.md
   server --task Task1); worker material recreated with a fixed GUID (Restore Worker Appearance)
   and an appearance check that refuses every session; complete perception warm-up plus
   perception_ready, which the trial runner waits for. Shared frozen hashes unchanged.
+  2026-10-22 (AUDIT.md section 9 items 15-18): FORWARD finger-vs-fist sweep -> fist kept (finger 0.848 < fist
+  0.854); measurement correction (watchdog stops only for unanswered sent telemetry, network-thread round trip, frame
+  times, resource log, run protocol, launcher -Trials N for development only); 5-trial Task 1 dev check: all 4
+  criteria met (bridge_guide_20261022_022557). Run protocol before every session: other apps closed, Best performance.
