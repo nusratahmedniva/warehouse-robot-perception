@@ -146,6 +146,13 @@ camera, not the panorama, so panorama misses do not reach it.
   190-450 ms with Unity running, up to 790 ms.
   - Stale-perception stops reached 52 s in one dev trial; in the final they stayed at most 6 s.
   - The cause is not identified.
+- **Brief false STOP readings (Task 1 development, added 22 October 2026).** In the 10-trial Task 1 development
+  session (`bridge_guide_20261021_215746`, section 9 item 13) MediaPipe read STOP (Open_Palm) on 3 single pan-tilt
+  frames while every worker showed FORWARD with a fist: frames 321 (trial 1, approach, score 0.573), 996 (trial 2,
+  navigating, 0.579) and 4767 (trial 7, approach, 0.616). The two during approach stopped the robot for one or two
+  0.1 s log rows; all 10 trials still succeeded. Likely source: the open hanging hand (**unverified**: those frames
+  were not among the sampled JPEGs, and in the FORWARD hand sweep's saved frames the hanging hand looks curled). No
+  STOP setting was changed.
 - **Re-ask viewpoint shift:** validated in the simulator only.
 - **Small samples:** 10 final trials (Wilson lower bound 0.72), with E3 (two junctions) once.
 - **Final-session perception metrics:** not_evaluated (by design).
@@ -504,3 +511,28 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
     - "Never read as STOP": 0 pan-tilt frames read STOP in all 20 finger samples (a single STOP frame fails).
     - Reported as well, not part of the rule: frames read NONE, the 1.0 s hold result per sample (strict), coverage.
     - Only the FORWARD hand changes; the arm angle and every other command are unchanged. No threshold changes.
+16. **FORWARD hand sweep: result, rule not met, the fist is kept** (22 October 2026; development, dev seed 1; nothing
+    adjusted on it). `forward_hand_sweep_development_20261022_015457` (Unity) + `bridge_guide_20261022_015430`
+    (Python, guide mode, vision, frozen perception) -> `hri_dev_eval_20261022_015719` (`hri_eval_dev.py
+    --forward-hands`). 20 placements, each showing FORWARD with both hands (40 samples, 731 pan-tilt frames).
+
+    | hand | samples | frames | read FORWARD | read NONE | read STOP | FORWARD rate (= coverage) | 1.0 s hold (strict) |
+    |---|---|---|---|---|---|---|---|
+    | fist | 20 | 363 | 310 | 53 | 0 | 0.854 | 17 correct, 3 none |
+    | index finger | 20 | 368 | 312 | 56 | 0 | 0.848 | 17 correct, 3 none |
+
+    - Rule (item 15): finger FORWARD rate >= fist: **no** (0.848 < 0.854); finger never read STOP: yes (0 of 368
+      frames). Decision: **keep the fist**. The difference is small (about 2 frames in 365), but the rule was
+      declared beforehand and is applied as written. No other command read in either hand (accuracy 1.0 on the
+      frames with a command).
+    - The poses rendered as intended: saved pan-tilt frames `frames/frame_pan_tilt_000020.jpg` (index finger up) and
+      `frame_pan_tilt_000060.jpg` (fist) of the bridge folder.
+    - Code added for the sweep (development only, defaults unchanged): `GestureWorker.forwardHand` (Fist /
+      IndexFinger; default Fist, so every trial still shows the fist), trial runner task `ForwardHandSweep` (refused
+      in final mode, run through a git-ignored `trials.local.json`, removed afterwards), seeded pair order
+      `ForwardHandSweepOrder`, `hri_eval_dev.py --forward-hands`. The gesture sweep keeps its placements (same random
+      draws in the same order).
+    - Not adopted, so the item "implement the finger pose for both tasks" was not carried out; Task 1 and the Task 2
+      replication keep the fist pose of the Task 2 final.
+    - Checks: Python 271 tests pass (1 new: the rule on synthetic frames); Unity EditMode 30/30 pass (3 new
+      `ForwardHandSweepTests`).

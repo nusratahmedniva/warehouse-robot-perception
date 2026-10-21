@@ -73,7 +73,9 @@ namespace WarehouseRobot.Scenario
     /// stopped, or on collision, timeout or getting stuck; it is then scored from ground truth. Output (new folder
     /// robot_vision/outputs/trials_mode_task_time/): session.json (git commit, seed, goal order), config_used/,
     /// truth_run###.json and truth_run###.csv (0.1 s), results_unity.csv. Task "GestureSweep" instead keeps the
-    /// robot still and has the worker show every command (truth_sweep.csv) for the development gesture evaluation.
+    /// robot still and has the worker show every command (truth_sweep.csv) for the development gesture evaluation; task
+    /// "ForwardHandSweep" (development only, 2026-10-22, AUDIT.md section 9 item 15) shows only FORWARD, once with the fist
+    /// and once with the index finger at each placement (truth_sweep.csv column hand).
     /// Since 2026-10-21: every session is refused while the worker does not render as the textured Humanoid avatar
     /// (WorkerAppearance); Task 1 adds the checkpoints of robot_vision/configs/task1_route.json to the roadmap for the
     /// session (Task1Route); trial 1 starts only after Python reports perception_ready, and only if Python's map
@@ -307,14 +309,15 @@ namespace WarehouseRobot.Scenario
 
             string mode = cfg.IsFinal ? "final" : "development";
             int seed = cfg.IsFinal ? cfg.final_seed : cfg.dev_seed;
-            bool sweep = string.Equals(cfg.task, "GestureSweep", StringComparison.OrdinalIgnoreCase);
+            bool handSweep = string.Equals(cfg.task, "ForwardHandSweep", StringComparison.OrdinalIgnoreCase);
+            bool sweep = handSweep || string.Equals(cfg.task, "GestureSweep", StringComparison.OrdinalIgnoreCase);
             if (sweep && cfg.IsFinal)
             {
-                Status = "not started: GestureSweep is development only";
+                Status = $"not started: {cfg.task} is development only";
                 yield break;
             }
 
-            SessionFolder = NewFolder(sweep ? "gestures_sweep_development" : $"trials_{mode}_{cfg.task}");
+            SessionFolder = NewFolder(handSweep ? "forward_hand_sweep_development" : sweep ? "gestures_sweep_development" : $"trials_{mode}_{cfg.task}");
             Directory.CreateDirectory(Path.Combine(SessionFolder, "config_used"));
             WriteNew(Path.Combine(SessionFolder, "config_used", cfgName), cfgText);
             WriteNew(Path.Combine(SessionFolder, "config_used", "roadmap.json"), roadText);
@@ -322,7 +325,8 @@ namespace WarehouseRobot.Scenario
             var endpoints = new List<string>();
             foreach (var kv in nodes) if (kv.Value.IsEndpoint) endpoints.Add(kv.Key);
             endpoints.Sort(StringComparer.Ordinal);
-            TrialTotal = sweep ? GestureSweepOrder.Commands.Length * cfg.gesture_sweep.repeats : Mathf.Max(1, cfg.trial_count);
+            TrialTotal = handSweep ? 2 * cfg.gesture_sweep.repeats
+                : sweep ? GestureSweepOrder.Commands.Length * cfg.gesture_sweep.repeats : Mathf.Max(1, cfg.trial_count);
             var preview = new List<string>();
             var gp = new GoalSequence(seed);
             for (int i = 0; i < TrialTotal && !sweep; i++)
@@ -375,7 +379,8 @@ namespace WarehouseRobot.Scenario
 
             yield return new WaitForSeconds(0.5f);
 
-            if (sweep) yield return Sweep(seed);
+            if (handSweep) yield return HandSweep(seed);
+            else if (sweep) yield return Sweep(seed);
             else yield return Trials(seed, mode, endpoints);
         }
 
@@ -614,46 +619,127 @@ namespace WarehouseRobot.Scenario
 
         // ---------------- gesture sweep (development) ----------------
 
-        IEnumerator Sweep(int seed)
+        /// <summary>One sweep placement: the robot at distance D and view angle View from J1's worker stand, facing the worker.</summary>
+        struct SweepPlace
+        {
+            public float D, View, Jitter, RobotYaw;
+            public Vector3 Worker, Robot;
+        }
+
+        const string PlaceHeader = "distance_m,view_angle_deg,worker_yaw_offset_deg,worker_x,worker_z,robot_x,robot_z,robot_yaw_deg";
+
+        SweepPlace NextPlace(GoalSequence rng, Vector3 w0, float baseYaw)
         {
             var s = cfg.gesture_sweep;
+            var p = new SweepPlace
+            {
+                D = rng.Uniform(s.distance_min_m, s.distance_max_m),
+                View = rng.Uniform(-s.view_angle_max_deg, s.view_angle_max_deg),
+                Jitter = rng.Uniform(-s.worker_yaw_jitter_deg, s.worker_yaw_jitter_deg),
+                Worker = w0,
+            };
+            Vector3 dir = Quaternion.Euler(0f, baseYaw + p.View, 0f) * Vector3.forward;
+            p.Robot = w0 + dir * p.D;
+            p.Robot.y = robot.transform.position.y;
+            p.RobotYaw = Quaternion.LookRotation(-dir).eulerAngles.y;
+            return p;
+        }
+
+        void Place(SweepPlace p, float baseYaw)
+        {
+            Teleport(p.Robot, p.RobotYaw);
+            worker.transform.SetPositionAndRotation(p.Worker, Quaternion.Euler(0f, baseYaw + p.View + p.Jitter, 0f));
+        }
+
+        static string PlaceCsv(SweepPlace p) => string.Join(",", F(p.D, "0.000"), F(p.View, "0.0"), F(p.Jitter, "0.0"),
+            F(p.Worker.x, "0.000"), F(p.Worker.z, "0.000"), F(p.Robot.x, "0.000"), F(p.Robot.z, "0.000"), F(p.RobotYaw, "0.0"));
+
+        void SweepStand(out Vector3 w0, out float baseYaw)
+        {
             var j1 = nodes.ContainsKey("J1") ? nodes["J1"] : null;
             Transform stand = j1 != null && j1.workerStand != null ? j1.workerStand : worker.transform;
-            Vector3 w0 = stand.position;
-            float baseYaw = stand.eulerAngles.y;
+            w0 = stand.position;
+            baseYaw = stand.eulerAngles.y;
             worker.faceTarget = null;
             bridge.TrialIndex = -1;
             bridge.TrialRunning = false;
+        }
+
+        IEnumerator Hold(SweepSettings s, Action<float, float> window)
+        {
+            float t0 = Time.time + s.settle_s;
+            while (Time.time < t0) yield return null;
+            float t1 = t0 + s.hold_s;
+            while (Time.time < t1) yield return null;
+            window(t0, t1);
+        }
+
+        IEnumerator Sweep(int seed)
+        {
+            var s = cfg.gesture_sweep;
+            SweepStand(out var w0, out float baseYaw);
             var order = GestureSweepOrder.Order(seed, s.repeats);
             var rng = new GoalSequence(seed ^ 0x5eed);
             using (var truth = NewWriter(Path.Combine(SessionFolder, "truth_sweep.csv")))
             {
-                truth.WriteLine("sample,gesture_shown,t_start,t_end,distance_m,view_angle_deg,worker_yaw_offset_deg,worker_x,worker_z,robot_x,robot_z,robot_yaw_deg");
+                truth.WriteLine("sample,gesture_shown,t_start,t_end," + PlaceHeader);
                 for (int i = 0; i < order.Count; i++)
                 {
                     TrialIndex = i + 1;
-                    float d = rng.Uniform(s.distance_min_m, s.distance_max_m);
-                    float view = rng.Uniform(-s.view_angle_max_deg, s.view_angle_max_deg);
-                    float jitter = rng.Uniform(-s.worker_yaw_jitter_deg, s.worker_yaw_jitter_deg);
-                    Vector3 dir = Quaternion.Euler(0f, baseYaw + view, 0f) * Vector3.forward;
-                    Vector3 rp = w0 + dir * d;
-                    rp.y = robot.transform.position.y;
-                    float ryaw = Quaternion.LookRotation(-dir).eulerAngles.y;
-                    Teleport(rp, ryaw);
-                    worker.transform.SetPositionAndRotation(w0, Quaternion.Euler(0f, baseYaw + view + jitter, 0f));
+                    var p = NextPlace(rng, w0, baseYaw);
+                    Place(p, baseYaw);
                     worker.Show(order[i]);
-                    Status = $"GestureSweep {i + 1}/{order.Count}: {order[i]} at {d:0.00} m";
-                    float t0 = Time.time + s.settle_s;
-                    while (Time.time < t0) yield return null;
-                    float t1 = t0 + s.hold_s;
-                    while (Time.time < t1) yield return null;
-                    truth.WriteLine(string.Join(",", (i + 1).ToString(Inv), order[i].ToString(), F(t0, "0.000"), F(t1, "0.000"), F(d, "0.000"),
-                        F(view, "0.0"), F(jitter, "0.0"), F(w0.x, "0.000"), F(w0.z, "0.000"), F(rp.x, "0.000"), F(rp.z, "0.000"), F(ryaw, "0.0")));
+                    Status = $"GestureSweep {i + 1}/{order.Count}: {order[i]} at {p.D:0.00} m";
+                    float t0 = 0f, t1 = 0f;
+                    yield return Hold(s, (a, b) => { t0 = a; t1 = b; });
+                    truth.WriteLine(string.Join(",", (i + 1).ToString(Inv), order[i].ToString(), F(t0, "0.000"), F(t1, "0.000"), PlaceCsv(p)));
                 }
             }
 
             worker.Show(GestureCommand.NONE);
             Status = "done: GestureSweep";
+            Debug.Log($"[TrialRunner] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
+        }
+
+        /// <summary>
+        /// FORWARD hand sweep (development, AUDIT.md section 9 item 15): 'repeats' placements drawn as in the gesture
+        /// sweep; at each, FORWARD is shown with the fist and with the index finger (seeded order), with the settle and
+        /// hold of the gesture sweep. The worker's own forwardHand is restored afterwards.
+        /// </summary>
+        IEnumerator HandSweep(int seed)
+        {
+            var s = cfg.gesture_sweep;
+            SweepStand(out var w0, out float baseYaw);
+            var hands = ForwardHandSweepOrder.Order(seed, s.repeats);
+            var rng = new GoalSequence(seed ^ 0x5eed);
+            var keep = worker.forwardHand;
+            var p = default(SweepPlace);
+            using (var truth = NewWriter(Path.Combine(SessionFolder, "truth_sweep.csv")))
+            {
+                truth.WriteLine("sample,pair,gesture_shown,hand,t_start,t_end," + PlaceHeader);
+                for (int i = 0; i < hands.Count; i++)
+                {
+                    TrialIndex = i + 1;
+                    if (i % 2 == 0)
+                    {
+                        p = NextPlace(rng, w0, baseYaw);
+                        Place(p, baseYaw);
+                    }
+
+                    string hand = ForwardHandSweepOrder.Label(hands[i]);
+                    worker.forwardHand = hands[i];
+                    worker.Show(GestureCommand.FORWARD);
+                    Status = $"ForwardHandSweep {i + 1}/{hands.Count}: FORWARD {hand} at {p.D:0.00} m";
+                    float t0 = 0f, t1 = 0f;
+                    yield return Hold(s, (a, b) => { t0 = a; t1 = b; });
+                    truth.WriteLine(string.Join(",", (i + 1).ToString(Inv), (i / 2 + 1).ToString(Inv), "FORWARD", hand,
+                        F(t0, "0.000"), F(t1, "0.000"), PlaceCsv(p)));
+                }
+            }
+
+            worker.forwardHand = keep;
+            worker.Show(GestureCommand.NONE);
+            Status = "done: ForwardHandSweep";
             Debug.Log($"[TrialRunner] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
         }
 

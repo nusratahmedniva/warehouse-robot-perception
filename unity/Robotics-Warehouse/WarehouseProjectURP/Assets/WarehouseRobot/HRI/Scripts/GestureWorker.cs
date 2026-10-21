@@ -11,10 +11,15 @@ namespace WarehouseHRI
     /// worker's RIGHT: LEFT = right arm level to the worker's right, FORWARD_LEFT = right arm 45 deg up to that
     /// side, FORWARD = right arm straight up, FORWARD_RIGHT / RIGHT = the left arm mirrored, STOP = right arm toward
     /// the robot with an open palm facing it. For every command except STOP the hands are curled into fists, so an
-    /// open hand is never shown by accident (MediaPipe would read it as STOP).
+    /// open hand is never shown by accident (MediaPipe would read it as STOP). <see cref="forwardHand"/> can instead
+    /// show FORWARD with the index finger extended along the raised arm (the other fingers stay curled; arm angle
+    /// unchanged).
     /// </summary>
     public class GestureWorker : MonoBehaviour
     {
+        /// <summary>Hand of the raised arm while showing FORWARD.</summary>
+        public enum ForwardHand { Fist = 0, IndexFinger = 1 }
+
         public Animator animator;
 
         [Header("Placeholder rig (used when there is no Humanoid Animator); local +z points along the arm")]
@@ -30,6 +35,8 @@ namespace WarehouseHRI
         public bool curlFingersForDirections = true;
         public float fingerCurlDeg = 75f;
         public float thumbCurlDeg = 40f;
+        [Tooltip("FORWARD: fist, or index finger extended along the raised arm (other fingers curled).")]
+        public ForwardHand forwardHand = ForwardHand.Fist;
         [Tooltip("Arms hanging down are this far out from the body (fraction of the side vector).")]
         public float restOutward = 0.12f;
 
@@ -190,11 +197,13 @@ namespace WarehouseHRI
         {
             ArmDirections(m_Current, out var dl, out var dr);
             bool stop = m_Current == GestureCommand.STOP;
-            PoseArm(m_Left, dl, false);
-            PoseArm(m_Right, dr, stop);
+            // FORWARD raises the right arm; only that hand can show the index finger.
+            bool finger = m_Current == GestureCommand.FORWARD && forwardHand == ForwardHand.IndexFinger;
+            PoseArm(m_Left, dl, false, false);
+            PoseArm(m_Right, dr, stop, finger);
         }
 
-        void PoseArm(Arm arm, Vector3 dir, bool openPalmTowardRobot)
+        void PoseArm(Arm arm, Vector3 dir, bool openPalmTowardRobot, bool extendIndex)
         {
             if (arm == null) return;
             if (!m_Humanoid)
@@ -224,7 +233,7 @@ namespace WarehouseHRI
                 Vector3 want = Vector3.ProjectOnPlane(-Vector3.up, dir);
                 if (want.sqrMagnitude < 1e-3f) want = arm.IsRight ? -r : r;          // arm vertical: palm inward
                 AlignPalm(arm, dir, want.normalized);
-                if (curlFingersForDirections) CurlFingers(arm);
+                if (curlFingersForDirections) CurlFingers(arm, extendIndex);
             }
         }
 
@@ -263,9 +272,10 @@ namespace WarehouseHRI
 
         /// <summary>
         /// Curl every finger toward the palm (a fist): each joint bends by its angle about one hand axis
-        /// (finger direction x palm normal), so the result does not depend on the rig's bone axes.
+        /// (finger direction x palm normal), so the result does not depend on the rig's bone axes. With
+        /// <paramref name="extendIndex"/> the index finger keeps its bind pose (straight, along the arm).
         /// </summary>
-        void CurlFingers(Arm arm)
+        void CurlFingers(Arm arm, bool extendIndex = false)
         {
             Vector3 fingerDir = arm.Fingers[2][0] != null ? (arm.Fingers[2][0].position - arm.Hand.position) : Vector3.zero;
             if (fingerDir.sqrMagnitude < 1e-8f) return;
@@ -276,6 +286,7 @@ namespace WarehouseHRI
             float sign = Vector3.Dot(Quaternion.AngleAxis(10f, axis) * fingerDir, palm) >= 0f ? 1f : -1f;
             for (int f = 0; f < arm.Fingers.Length; f++)
             {
+                if (extendIndex && f == 1) continue;
                 float deg = (f == 0 ? thumbCurlDeg : fingerCurlDeg) * sign;
                 var q = Quaternion.AngleAxis(deg, axis);
                 for (int j = 0; j < 3; j++)
