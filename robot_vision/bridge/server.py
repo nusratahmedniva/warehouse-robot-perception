@@ -30,9 +30,11 @@ import asyncio
 import json
 import math
 import platform
+import queue
 import socket
 import statistics
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -117,15 +119,75 @@ class PerceptionController:
         return reply
 
 
-class RunLog:
-    """messages.jsonl (one line per message), sampled frames and summary.json in one run folder."""
+FRAME_SAVE_QUEUE = 32  # sampled JPEGs waiting for the writer thread (infrastructure, not a bridge.json setting)
 
-    def __init__(self, out: Path, save_every_n_frames: int):
+
+class FrameWriter:
+    """Writes the sampled frame JPEGs on a background thread, so a slow file write (e.g. an antivirus scan of each new
+    file on Windows) never holds the asyncio loop that answers telemetry within Unity's 0.3 s watchdog. The queue is
+    bounded: when it is full the save is skipped and counted (summary.json -> frames_saved). Added 2026-10-21 after
+    3 of 5 unexplained watchdog stops on the PC directly followed a JPEG write (AUDIT.md section 9)."""
+
+    def __init__(self, folder: Path, max_queue: int = FRAME_SAVE_QUEUE, write=None):
+        self.folder = Path(folder)
+        self.max_queue = int(max_queue)
+        self._q: queue.Queue = queue.Queue(self.max_queue)
+        self._write = write or (lambda path, data: path.write_bytes(data))
+        self.saved = 0
+        self.skipped = 0
+        self.errors: list[str] = []
+        self._thread = threading.Thread(target=self._run, name="frame-writer", daemon=True)
+        self._thread.start()
+
+    def submit(self, name: str, data: bytes) -> bool:
+        """Queue one file (never blocks). False = queue full, the save is skipped and counted."""
+        try:
+            self._q.put_nowait((name, data))
+            return True
+        except queue.Full:
+            self.skipped += 1
+            return False
+
+    def _run(self) -> None:
+        while True:
+            item = self._q.get()
+            try:
+                if item is None:
+                    return
+                name, data = item
+                try:
+                    self._write(self.folder / name, data)
+                    self.saved += 1
+                except OSError as e:
+                    self.errors.append(f"frames/{name}: {e}")
+            finally:
+                self._q.task_done()
+
+    def wait(self) -> None:
+        """Block until every queued file is written (tests, close)."""
+        self._q.join()
+
+    def close(self, timeout_s: float = 60.0) -> None:
+        self._q.put(None)
+        self._thread.join(timeout=timeout_s)
+
+    def summary(self) -> dict:
+        return {"saved": self.saved, "skipped_queue_full": self.skipped, "write_errors": len(self.errors),
+                "queue_size": self.max_queue,
+                "note": "sampled frame JPEGs are written by a background thread; a save is skipped (and counted) "
+                        "only when queue_size files are already waiting"}
+
+
+class RunLog:
+    """messages.jsonl (one line per message), sampled frames (FrameWriter, off the event loop) and summary.json."""
+
+    def __init__(self, out: Path, save_every_n_frames: int, frame_write=None, frame_queue: int = FRAME_SAVE_QUEUE):
         self.out = out
         self.save_every = int(save_every_n_frames)
         self.t0 = time.monotonic()
         self.lines = (out / "messages.jsonl").open("w", encoding="utf-8")
         (out / "frames").mkdir()
+        self.frames = FrameWriter(out / "frames", frame_queue, frame_write)
         self.counts: dict[str, int] = {}
         self.rtts: list[float] = []
         self.rtt_seen: set[int] = set()
@@ -172,8 +234,10 @@ class RunLog:
         if direction == "in" and t in ("frame_360", "frame_pan_tilt") and self.save_every > 0 \
                 and h["frame_index"] % self.save_every == 0:
             name = f"{t}_{h['frame_index']:06d}.jpg"
-            (self.out / "frames" / name).write_bytes(attachments["image"])
-            line["saved_as"] = f"frames/{name}"
+            if self.frames.submit(name, attachments["image"]):
+                line["saved_as"] = f"frames/{name}"
+            else:
+                line["save_skipped"] = "writer queue full"
         self._write(line)
 
     def _write(self, obj: dict) -> None:
@@ -187,9 +251,9 @@ class RunLog:
             rtt.update(mean_ms=round(statistics.fmean(r), 3), median_ms=round(statistics.median(r), 3),
                        p95_ms=round(r[min(len(r) - 1, math.ceil(0.95 * len(r)) - 1)], 3), max_ms=round(r[-1], 3))
         return {"duration_s": self.now(), "connections": self.connections, "message_counts": dict(sorted(self.counts.items())),
-                "round_trip": rtt, "frames": self.frame_summary(),
+                "round_trip": rtt, "frames": self.frame_summary(), "frames_saved": self.frames.summary(),
                 "watchdog_count_reported_by_unity": self.watchdog_count, "estop_seen": self.estop_seen,
-                "errors": self.errors}
+                "errors": self.errors + self.frames.errors}
 
     def frame_summary(self) -> dict:
         """Drop rate per camera from Unity's counters (summed over connections) and frames Python received."""
@@ -207,6 +271,7 @@ class RunLog:
 
     def close(self) -> None:
         self.lines.close()
+        self.frames.close()   # writes what is still queued first
         dio.write_json(self.out / "summary.json", self.summary())
         dio.mark_complete(self.out)
 

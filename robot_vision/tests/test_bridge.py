@@ -247,6 +247,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         await self.send(w, telemetry(5))
         cmd = await self.recv(r)
         self.assertEqual(cmd.header["reply_to"], 5)  # first reply is the telemetry answer, frames get none
+        self.log.frames.wait()                       # files are written by the background writer
         saved = sorted(p.name for p in (self.log.out / "frames").iterdir())
         self.assertEqual(saved, ["frame_pan_tilt_000020.jpg"])
         self.assertEqual((self.log.out / "frames" / saved[0]).read_bytes(), JPEG)
@@ -347,6 +348,79 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.recv(r))
 
 
+class SlowFrameWriteTests(unittest.IsolatedAsyncioTestCase):
+    """Sampled frame JPEGs are written off the event loop (infrastructure, 2026-10-21): a slow disk write must not
+    delay the command replies that keep Unity's 0.3 s watchdog quiet."""
+
+    async def test_slow_write_does_not_delay_command_replies(self):
+        import time
+
+        def slow_write(path, data):
+            time.sleep(0.5)                       # simulated slow write (e.g. an antivirus scan of the new file)
+            path.write_bytes(data)
+
+        cfg, _ = S.load_config()
+        cfg = {**cfg, "host": "127.0.0.1"}
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            out.mkdir()
+            log = S.RunLog(out, 20, frame_write=slow_write)
+            server = S.BridgeServer(cfg, S.HelloController(cfg["hello_test"]), log, port=0, verbose=False)
+            port = await server.start()
+            r, w = await asyncio.open_connection("127.0.0.1", port)
+            limits = P.Limits.from_config(cfg)
+            try:
+                # Frame 20 (sampled: written slowly) followed at once by telemetry, as Unity sends them. The server
+                # shares this event loop, so a write on the loop would hold the replies for the whole 0.5 s.
+                t0 = time.perf_counter()
+                w.write(P.encode(frame_pan(0, 20), {"image": JPEG}) + P.encode(telemetry(1)))
+                await w.drain()
+                reply = await asyncio.wait_for(P.read_message(r, limits), 2)
+                first = time.perf_counter() - t0
+                self.assertEqual(reply.header["reply_to"], 1)
+                for seq in range(2, 6):            # more telemetry while the 0.5 s write is still in progress
+                    w.write(P.encode(telemetry(seq)))
+                    await w.drain()
+                    self.assertEqual((await asyncio.wait_for(P.read_message(r, limits), 2)).header["reply_to"], seq)
+                total = time.perf_counter() - t0
+                self.assertLess(first, 0.2, first)
+                self.assertLess(total, 0.4, total)   # all five answered before the write could finish
+            finally:
+                w.close()
+                await server.close()
+                log.close()                          # waits for the queued write
+            self.assertEqual((out / "frames" / "frame_pan_tilt_000020.jpg").read_bytes(), JPEG)
+            s = json.loads((out / "summary.json").read_text())["frames_saved"]
+            self.assertEqual((s["saved"], s["skipped_queue_full"], s["write_errors"]), (1, 0, 0))
+
+
+class FrameWriterTests(unittest.TestCase):
+    def test_full_queue_skips_and_counts(self):
+        import threading
+        release = threading.Event()
+        with tempfile.TemporaryDirectory() as tmp:
+            fw = S.FrameWriter(Path(tmp), max_queue=1, write=lambda p, d: (release.wait(5), p.write_bytes(d)))
+            results = [fw.submit(f"f{i}.jpg", b"x") for i in range(4)]
+            # the first is taken by the writer (blocked), the second waits in the queue, the rest are skipped
+            self.assertEqual(results.count(False), fw.skipped)
+            self.assertGreaterEqual(fw.skipped, 2)
+            release.set()
+            fw.wait()
+            fw.close()
+            self.assertEqual(fw.saved + fw.skipped, 4)
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()),
+                             [f"f{i}.jpg" for i, ok in enumerate(results) if ok])
+            self.assertEqual(fw.summary()["skipped_queue_full"], fw.skipped)
+
+    def test_write_error_is_counted_not_raised(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fw = S.FrameWriter(Path(tmp) / "missing_folder")
+            self.assertTrue(fw.submit("a.jpg", b"x"))
+            fw.wait()
+            fw.close()
+            self.assertEqual((fw.saved, len(fw.errors)), (0, 1))
+
+
 class RunFolderTests(unittest.IsolatedAsyncioTestCase):
     async def test_run_writes_portable_run_folder(self):
         cfg, cfg_path = S.load_config()
@@ -365,7 +439,9 @@ class RunFolderTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(info["bridge_config"], "{project_root}/configs/bridge.json")
             self.assertIn("bridge.json", info["config_sha256"])
             self.assertNotIn(str(ROOT), info_text)
-            self.assertEqual(json.loads((out / "summary.json").read_text())["round_trip"]["n"], 0)
+            summary = json.loads((out / "summary.json").read_text())
+            self.assertEqual(summary["round_trip"]["n"], 0)
+            self.assertEqual(summary["frames_saved"]["skipped_queue_full"], 0)
 
 
 class ConfigTests(unittest.TestCase):

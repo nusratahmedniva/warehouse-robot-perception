@@ -324,6 +324,35 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
      telemetry messages, summary.json; mean 1.6 ms, p95 1.5 ms; the 0.1 s decisions.csv sample shows 31.4 ms). The
      before figure 330.6 ms is over all messages too. One trial is a small sample; the full development session will
      tell.
-5. **Checks on 21 October 2026 (Windows):** Python 245 tests pass (21 new: task route, warm-up, perception ready,
+5. **Sample-image saving moved off the event loop: infrastructure fix** (no frozen setting changed: bridge.json,
+   save_every_n_frames and the saved files are the same).
+   - Why: 3 of the 5 unexplained watchdog stops above directly followed a sampled JPEG write, which ran
+     synchronously on the asyncio loop that answers telemetry.
+   - Fix: `bridge/server.py` `FrameWriter`, a background thread with a bounded queue (32 files). The same files are
+     saved; if the queue is full the save is skipped and counted (`summary.json -> frames_saved`:
+     saved, skipped_queue_full, write_errors). Write errors are counted instead of breaking the connection.
+   - Test (`test_bridge.py`): with a simulated 0.5 s write, a frame followed by telemetry is answered within 0.2 s
+     and five replies within 0.4 s. The same test run against the old in-loop write fails (first reply 0.508 s).
+     Two more tests: queue full -> skipped and counted; a write error is counted, not raised.
+   - Rerun of the 1-trial Task 1 development pipeline check (`trials_development_Task1_20261021_205126`,
+     `bridge_guide_20261021_204609`; 1/1 SUCCESS at C1, J1, C3, 0.035 m from B; nothing adjusted on it), against
+     the check before this fix (`bridge_guide_20261021_203057`), all telemetry messages:
+
+     | | before | after |
+     |---|---|---|
+     | watchdog stops during the trial | 1 | 2 |
+     | watchdog stops before trial 1 (start-up, trial waited) | 1 | 1 |
+     | max round trip during the trial | 194.9 ms | 39.0 ms |
+     | mean round trip (session) | 1.6 ms | 1.2 ms |
+     | sampled JPEGs saved / skipped | (not counted) | 55 / 0 |
+
+   - **The stops were not removed.** Neither stop in the rerun followed a JPEG write. One (Python silent 0.31 s, at
+     15.9 s) has no write and no slow perception frame near it; the other (1.03 s, at 54.8 s) coincides with one
+     YOLO gesture call that took 1.04 s (normally about 25 ms; warm-up already done, so not first-call work). The
+     JPEG write was therefore at most one contributor; the remaining stalls come from Python holding the event
+     loop or the GIL for 0.3-1 s at irregular times (sporadic slow model calls, cause not identified). One trial
+     per side is too few to tell 1 from 2 stops apart. Not changed further; the full development session will show
+     the rate.
+6. **Checks on 21 October 2026 (Windows):** Python 248 tests pass (after item 5; 245 before it) (21 new: task route, warm-up, perception ready,
    route in every command, per-task frozen record); Unity EditMode 26/26 pass (15 earlier + 4 `Task1RouteTests` +
    7 `WorkerAppearanceTests`).
