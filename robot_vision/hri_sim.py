@@ -11,6 +11,10 @@ worker's true position live only here; the controller sees them only through the
   the neighbouring direction), after gesture_latency_s.
 
 All randomness comes from one seeded generator, so a run is reproducible.
+
+Task 1 with standing workers (run(goal, workers=...), 2026-10-21): one worker per stop stands still for the whole
+trial (task_route.task1_worker_stands); every worker is a person to the 360 camera, and the pan-tilt camera reads the
+worker nearest to its optical axis within its field of view.
 """
 
 from __future__ import annotations
@@ -65,8 +69,10 @@ class Simulator:
         self.c, self.cfg = controller, cfg
         self.road = controller.road
         self.rng = random.Random(seed)
+        self.standing = None
 
-    def run(self, goal: str) -> dict:
+    def run(self, goal: str, workers: list | None = None) -> dict:
+        """workers: standing workers [(stop, x, z, ...)] (Task 1); None = the one worker moved to each junction."""
         cfg, road, c = self.cfg, self.road, self.c
         x, z = road.pos(road.start)
         first = road.only_next(road.start)
@@ -75,7 +81,11 @@ class Simulator:
         t = 0.0
         travelled = 0.0
         shown_at: dict[str, str] = {}
-        worker = self._place(first, goal, shown_at) if road.kind(first) == "junction" else None
+        self.standing = [{"x": wx, "z": wz, "shown": road.command_toward(j, goal), "junction": j}
+                         for j, wx, wz, *_ in workers] if workers else None
+        worker = None
+        if self.standing is None and road.kind(first) == "junction":
+            worker = self._place(first, goal, shown_at)
         pending_people, pending_gesture = [], []
         latest_people, latest_people_t, latest_gesture, latest_gesture_t = [], None, "NONE", None
         next_360, next_pan = 0.0, 0.0
@@ -115,7 +125,10 @@ class Simulator:
             if cmd.has_target:
                 for j in road.nodes:
                     if road.kind(j) == "junction" and j not in shown_at and math.hypot(cmd.target_x - road.pos(j)[0], cmd.target_z - road.pos(j)[1]) < 0.5:
-                        worker = self._place(j, goal, shown_at)
+                        if self.standing is None:
+                            worker = self._place(j, goal, shown_at)
+                        else:                       # standing workers: only record what the stop's worker shows
+                            shown_at[j] = road.command_toward(j, goal)
             # robot kinematics (robot.json limits); omega > 0 = left -> Unity yaw decreases
             v = _ramp(v, max(-cfg.max_speed_mps, min(cfg.max_speed_mps, cmd.v)), cfg.max_accel_mps2, cfg.decel_mps2, cfg.dt)
             w = _ramp(w, max(-cfg.max_angular_speed_radps, min(cfg.max_angular_speed_radps, cmd.omega)),
@@ -156,7 +169,10 @@ class Simulator:
         return {"x": sx, "z": sz, "shown": shown_at[junction], "junction": junction}
 
     def _people(self, t: float, worker) -> list:
-        out = [(worker["x"], worker["z"])] if worker else []
+        if self.standing is not None:
+            out = [(q["x"], q["z"]) for q in self.standing]
+        else:
+            out = [(worker["x"], worker["z"])] if worker else []
         it = self.cfg.intruder
         if it and t >= it["t"]:
             out.append((it["x"], it["z"]))
@@ -164,6 +180,9 @@ class Simulator:
 
     def _read(self, t: float, x: float, z: float, yaw: float, pan_deg: float, worker) -> str:
         cfg = self.cfg
+        if self.standing is not None:                # the standing worker nearest to the camera's optical axis
+            cam = yaw - pan_deg
+            worker = min(self.standing, key=lambda q: abs(hc.wrap(hc.yaw_to(x, z, q["x"], q["z"]) - cam)))
         if worker is None:
             return "NONE"
         shown = worker["shown"]

@@ -205,6 +205,16 @@ namespace WarehouseRobot.Bridge
         public int frames_360_dropped;
         public int frames_pan_tilt_sent;
         public int frames_pan_tilt_dropped;
+        // Optional diagnostics (2026-10-21, infrastructure; docs/protocol.md): Unity's real-time clock, the longest
+        // Unity frame since the previous telemetry (a Unity hitch also silences the watchdog clock's input), and every
+        // round trip measured since the previous telemetry (rtt_ms above is only the latest one, so a burst of late
+        // replies arriving in one frame showed only its last, fastest member).
+        public double realtime_s;
+        public float frame_ms_max;
+        public int rtt_window_n;
+        public float rtt_window_max_ms = -1f;
+        public float rtt_window_sum_ms;
+        public float watchdog_silent_ms_max;
     }
 
     [Serializable]

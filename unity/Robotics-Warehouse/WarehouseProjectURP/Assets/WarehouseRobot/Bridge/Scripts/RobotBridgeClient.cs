@@ -82,6 +82,10 @@ namespace WarehouseRobot.Bridge
         int rttSeq = -1;
         float rttMs = -1f, rttMaxMs, rttSumMs;
         int rttCount;
+        // Optional telemetry diagnostics (2026-10-21): every round trip since the previous telemetry (not only the
+        // latest), the longest Unity frame and the longest command silence seen by the watchdog in that window.
+        int rttWindowN;
+        float rttWindowMaxMs = -1f, rttWindowSumMs, frameMsWindowMax, silentMsWindowMax;
 
         readonly StreamState stream360 = new StreamState();
         readonly StreamState streamPan = new StreamState();
@@ -196,6 +200,7 @@ namespace WarehouseRobot.Bridge
             while (encoderPan.TryGetError(out var err)) LogErrorOnce("Pan-tilt frame encoding failed: " + err);
 
             CheckWatchdog();
+            frameMsWindowMax = Mathf.Max(frameMsWindowMax, Time.unscaledDeltaTime * 1000f);
 
             if (connection.Connected && Time.unscaledTime >= nextTelemetryTime)
             {
@@ -215,6 +220,9 @@ namespace WarehouseRobot.Bridge
             PythonRoute = "";
             PythonPerceptionReady = false;
             sentTelemetry.Clear();
+            rttWindowN = 0;
+            rttWindowMaxMs = -1f;
+            rttWindowSumMs = frameMsWindowMax = silentMsWindowMax = 0f;
             stream360.Reset();
             streamPan.Reset();
             var hello = new HelloMsg
@@ -290,6 +298,9 @@ namespace WarehouseRobot.Bridge
                 rttCount++;
                 rttSumMs += rttMs;
                 rttMaxMs = Mathf.Max(rttMaxMs, rttMs);
+                rttWindowN++;
+                rttWindowSumMs += rttMs;
+                rttWindowMaxMs = Mathf.Max(rttWindowMaxMs, rttMs);
             }
 
             if (!KeyboardOverride)
@@ -309,6 +320,7 @@ namespace WarehouseRobot.Bridge
         {
             if (!commandSeen || watchdogStopped || KeyboardOverride) return;
             double silent = (Stopwatch.GetTimestamp() - lastCommandTicks) / (double)Stopwatch.Frequency;
+            silentMsWindowMax = Mathf.Max(silentMsWindowMax, (float)(silent * 1000.0));
             if (silent <= cfg.Shared.watchdog_timeout_s) return;
             robot.Drive.Stop();
             watchdogStopped = true;
@@ -354,7 +366,16 @@ namespace WarehouseRobot.Bridge
                 frames_360_dropped = Volatile.Read(ref stream360.Dropped),
                 frames_pan_tilt_sent = Volatile.Read(ref streamPan.Sent),
                 frames_pan_tilt_dropped = Volatile.Read(ref streamPan.Dropped),
+                realtime_s = Time.realtimeSinceStartupAsDouble,
+                frame_ms_max = frameMsWindowMax,
+                rtt_window_n = rttWindowN,
+                rtt_window_max_ms = rttWindowMaxMs,
+                rtt_window_sum_ms = rttWindowSumMs,
+                watchdog_silent_ms_max = silentMsWindowMax,
             };
+            rttWindowN = 0;
+            rttWindowMaxMs = -1f;
+            rttWindowSumMs = frameMsWindowMax = silentMsWindowMax = 0f;
             connection.Send(BridgeProtocol.Frame(JsonUtility.ToJson(t)));
             long now = Stopwatch.GetTimestamp();
             sentTelemetry[t.seq] = now;

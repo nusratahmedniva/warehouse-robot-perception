@@ -36,8 +36,7 @@ namespace WarehouseRobot.Scenario
     [Serializable] class FrozenTask { public FrozenWeights route_config = new FrozenWeights(); }
     [Serializable] class FrozenTasks { public FrozenTask Task1 = new FrozenTask(); }
     [Serializable] class FrozenRecord { public FrozenWeights pose_weights = new FrozenWeights(); public FrozenTasks tasks = new FrozenTasks(); }
-    [Serializable] class WorkerStandMeta { public float corner_offset_m = 2.5f; }
-    [Serializable] class RoadmapMeta { public string start = "A"; public string task1_goal = "E1"; public WorkerStandMeta worker_stand = new WorkerStandMeta(); }
+    [Serializable] class RoadmapMeta { public string start = "A"; public string task1_goal = "E1"; }
 
     [Serializable]
     public class ShownRecord
@@ -77,8 +76,12 @@ namespace WarehouseRobot.Scenario
     /// robot still and has the worker show every command (truth_sweep.csv) for the development gesture evaluation.
     /// Since 2026-10-21: every session is refused while the worker does not render as the textured Humanoid avatar
     /// (WorkerAppearance); Task 1 adds the checkpoints of robot_vision/configs/task1_route.json to the roadmap for the
-    /// session (Task1Route; the worker is moved to each stop as in Task 2); trial 1 starts only after Python reports
-    /// perception_ready, and only if Python's map (command field route) is the map of this task.
+    /// session (Task1Route); trial 1 starts only after Python reports perception_ready, and only if Python's map
+    /// (command field route) is the map of this task. Task 1 workers (2026-10-21): one standing worker per stop, from
+    /// the scene group WarehouseHRI/Task1Workers (built inactive by Add Worker and Roadmap); a Task 1 session refuses to
+    /// start unless those workers stand exactly where task1_route.json puts them, activates them, hides the moved
+    /// Task 2 worker, and every Task 1 worker shows FORWARD (the command toward B from its stop) for the whole trial.
+    /// Task 2 and the gesture sweep keep the group inactive.
     /// </summary>
     public class TrialRunner : MonoBehaviour
     {
@@ -97,6 +100,9 @@ namespace WarehouseRobot.Scenario
         RobotRig robot;
         RobotBridgeClient bridge;
         GestureWorker worker;
+        readonly List<GestureWorker> workers = new List<GestureWorker>();          // the workers of this session
+        readonly Dictionary<string, GestureWorker> task1Workers = new Dictionary<string, GestureWorker>();
+        List<Task1WorkerStand> task1Stands;
         readonly Dictionary<string, RoadNode> nodes = new Dictionary<string, RoadNode>();
         TrialsConfig cfg;
         RoadmapMeta meta;
@@ -144,13 +150,23 @@ namespace WarehouseRobot.Scenario
             else if (cfg.dev_seed == cfg.final_seed) error = "dev_seed and final_seed must differ";
             else if (cfg.IsFinal && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
                 error = "final mode needs frozen hri_control.json and hri_perception.json";
+            workers.Clear();
+            if (error == null && IsTask1) error = AddTask1Checkpoints() ?? SetupTask1Workers();
+            else if (error == null)
+            {
+                var group = Task1Group();
+                if (group != null) group.gameObject.SetActive(false);    // Task 2 / sweep: never the Task 1 workers
+                workers.Add(worker);
+            }
             if (error == null)
             {
-                // Every session, every mode and task: the worker must render as the textured Humanoid avatar.
-                var look = WorkerAppearance.Problems(worker.gameObject);
-                if (look.Count > 0) error = "worker appearance: " + string.Join("; ", look) + ". " + WorkerAppearance.Fix;
+                // Every session, every mode and task: every worker must render as the textured Humanoid avatar.
+                foreach (var w in workers)
+                {
+                    var look = WorkerAppearance.Problems(w.gameObject);
+                    if (look.Count > 0) { error = $"worker appearance ({w.name}): " + string.Join("; ", look) + ". " + WorkerAppearance.Fix; break; }
+                }
             }
-            if (error == null && IsTask1) error = AddTask1Checkpoints();
             outRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
             if (error == null && cfg.IsFinal)
             {
@@ -169,14 +185,13 @@ namespace WarehouseRobot.Scenario
             {
                 routeText = File.ReadAllText(RepoFile(Task1RouteFile));
                 var rc = JsonUtility.FromJson<Task1RouteConfig>(routeText);
-                var stops = Task1Route.Apply(nodes[meta.start], rc, meta.worker_stand.corner_offset_m, out expectedRoute);
+                task1Stands = Task1Route.WorkerStands(nodes[meta.start], rc);     // from the scene roadmap, before Apply
+                var stops = Task1Route.Apply(nodes[meta.start], rc, out expectedRoute);
                 task1Stops.Clear();
                 foreach (var s in stops)
                 {
                     nodes[s.name] = s;
                     task1Stops.Add(s.name);
-                    string blocked = StandBlocked(s);
-                    if (blocked != null) return $"Task 1 stop {s.name}: the worker stand overlaps {blocked}";
                 }
 
                 var line = Task1Route.StraightLine(nodes[meta.start]);
@@ -191,14 +206,63 @@ namespace WarehouseRobot.Scenario
             }
         }
 
-        /// <summary>Name of a scene collider the worker would stand in at this stop (racks, walls), or null.</summary>
-        string StandBlocked(RoadNode stop)
+        /// <summary>The scene's Task 1 worker group (WarehouseHRI/Task1Workers, saved inactive), or null.</summary>
+        static Transform Task1Group()
         {
-            if (stop.workerStand == null) return "nothing: no worker stand";
+            foreach (var go in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+                if (go.name == "WarehouseHRI") return go.transform.Find(Task1Route.WorkersGroup);
+            return null;
+        }
+
+        /// <summary>
+        /// Task 1: the scene's Task 1 workers must be exactly those of task1_route.json (one per stop, at its stand), else
+        /// the scene is stale and the session is refused. Activates them and hides the moved Task 2 worker.
+        /// </summary>
+        string SetupTask1Workers()
+        {
+            const string rebuild = "run Tools > Warehouse HRI > Add Worker and Roadmap (edit mode), save the scene, press Play again";
+            var group = Task1Group();
+            if (group == null) return "Task 1: no WarehouseHRI/" + Task1Route.WorkersGroup + " in the scene: " + rebuild;
+            var names = new List<string>();
+            foreach (Transform c in group) names.Add(c.name);
+            var want = new List<string>();
+            foreach (var s in task1Stands) want.Add(Task1Route.WorkerName(s.Stop));
+            if (string.Join(",", names) != string.Join(",", want))
+                return $"Task 1 workers in the scene ({string.Join(", ", names)}) are not those of {Task1RouteFile} ({string.Join(", ", want)}): {rebuild}";
+            task1Workers.Clear();
+            foreach (var s in task1Stands)
+            {
+                var t = group.Find(Task1Route.WorkerName(s.Stop));
+                var gw = t.GetComponent<GestureWorker>();
+                Vector3 d = t.position - s.Position;
+                d.y = 0f;
+                if (gw == null) return $"Task 1 worker {t.name} has no GestureWorker: {rebuild}";
+                if (d.magnitude > 0.01f || Quaternion.Angle(t.rotation, s.Rotation) > 1f)
+                    return $"Task 1 worker {t.name} stands at ({t.position.x:0.00}, {t.position.z:0.00}), {Task1RouteFile} puts it at ({s.Position.x:0.00}, {s.Position.z:0.00}): {rebuild}";
+                task1Workers[s.Stop] = gw;
+            }
+
+            group.gameObject.SetActive(true);
+            worker.gameObject.SetActive(false);      // Task 1 has a standing worker per stop instead of the moved one
+            foreach (var s in task1Stands)
+            {
+                var gw = task1Workers[s.Stop];
+                workers.Add(gw);
+                string blocked = StandBlocked(gw);
+                if (blocked != null) return $"Task 1 worker at {s.Stop}: overlaps {blocked}";
+            }
+
+            Debug.Log($"[TrialRunner] Task 1 workers: {string.Join(", ", want)} (moved Task 2 worker hidden)");
+            return null;
+        }
+
+        /// <summary>Name of a scene collider this worker stands in (racks, walls), or null.</summary>
+        string StandBlocked(GestureWorker w)
+        {
             Physics.SyncTransforms();
-            Vector3 p = stop.workerStand.position;
+            Vector3 p = w.transform.position;
             foreach (var c in Physics.OverlapCapsule(p + Vector3.up * 0.4f, p + Vector3.up * 1.6f, 0.25f, ~0, QueryTriggerInteraction.Ignore))
-                if (!c.transform.IsChildOf(worker.transform) && !c.transform.IsChildOf(robot.transform)) return c.name;
+                if (!c.transform.IsChildOf(w.transform) && !c.transform.IsChildOf(robot.transform)) return c.name;
             return null;
         }
 
@@ -264,8 +328,15 @@ namespace WarehouseRobot.Scenario
             for (int i = 0; i < TrialTotal && !sweep; i++)
                 preview.Add(IsTask1 ? meta.task1_goal : endpoints[gp.NextGoalIndex(endpoints.Count)]);
             if (IsTask1) WriteNew(Path.Combine(SessionFolder, "config_used", "task1_route.json"), routeText);
-            var animator = worker.GetComponentInChildren<Animator>();
+            var animator = workers[0].GetComponentInChildren<Animator>();
             string boneMap = WorkerAppearance.BoneMap(animator);
+            var looks = new List<string>();
+            var placedWorkers = new List<string>();
+            foreach (var w in workers)
+            {
+                looks.Add(w.name + ": " + WorkerAppearance.Describe(w.gameObject));
+                placedWorkers.Add($"{w.name} ({w.transform.position.x.ToString("0.00", Inv)}, {w.transform.position.z.ToString("0.00", Inv)})");
+            }
             WriteNew(Path.Combine(SessionFolder, "session.json"),
                 "{\n" + $"  \"task\": \"{cfg.task}\",\n  \"mode\": \"{mode}\",\n  \"seed\": {seed},\n" +
                 $"  \"trials\": {TrialTotal},\n  \"endpoints\": [{Quote(endpoints)}],\n  \"goal_order\": [{Quote(preview)}],\n" +
@@ -276,7 +347,8 @@ namespace WarehouseRobot.Scenario
                 $"  \"worker_model_sha256\": \"{WorkerModelSha256()}\",\n" +
                 $"  \"worker_avatar_bone_map_sha256\": \"{WorkerAppearance.Sha256(boneMap)}\",\n" +
                 $"  \"worker_avatar_bones\": {boneMap.Split('\n').Length - 1},\n" +
-                $"  \"worker_appearance\": \"{JsonEscape(WorkerAppearance.Describe(worker.gameObject))}\",\n" +
+                $"  \"workers\": [{Quote(placedWorkers)}],\n" +
+                $"  \"worker_appearance\": \"{JsonEscape(string.Join(" | ", looks))}\",\n" +
                 "  \"note\": \"goal B lives only in Unity (this folder); Python never receives it\"\n}\n");
 
             Status = "waiting for the Python bridge";
@@ -350,7 +422,14 @@ namespace WarehouseRobot.Scenario
             bridge.ReachedEndPoint = false;
             var shown = new List<ShownRecord>();
             var placed = new HashSet<string>();
-            worker.faceTarget = robot.transform;
+            foreach (var w in workers) w.faceTarget = robot.transform;
+            if (IsTask1)
+                foreach (var st in task1Stands)              // standing workers: back to the stand, show the command toward B
+                {
+                    var w = task1Workers[st.Stop];
+                    w.transform.SetPositionAndRotation(st.Position, st.Rotation);
+                    w.Show(nodes[st.Stop].CommandToward(nodes[goal]));
+                }
             if (first != null && first.IsJunction) Place(first, goal, shown, placed);
             int collisionBase = robot.Collisions != null ? robot.Collisions.Records.Count : 0;
             var body = robot.GetComponent<Collider>();
@@ -388,10 +467,11 @@ namespace WarehouseRobot.Scenario
                 if (now >= nextTruth)
                 {
                     nextTruth += cfg.truth_interval_s;
-                    var w = worker.transform;
+                    var nw = NearestWorker(p);              // Task 1: the nearest of the standing workers
+                    var w = nw.transform;
                     truth.WriteLine(string.Join(",", F(now, "0.000"), F(p.x, "0.000"), F(p.z, "0.000"), F(robot.transform.eulerAngles.y, "0.0"),
                         F(robot.Drive.V, "0.000"), F(robot.Drive.Omega, "0.000"), F(w.position.x, "0.000"), F(w.position.z, "0.000"),
-                        F(w.eulerAngles.y, "0.0"), worker.Current.ToString(), F(hd, "0.000"),
+                        F(w.eulerAngles.y, "0.0"), nw.Current.ToString(), F(hd, "0.000"),
                         ((robot.Collisions != null ? robot.Collisions.Records.Count : 0) - collisionBase).ToString(Inv), Csv(bridge.State)));
                 }
 
@@ -464,13 +544,36 @@ namespace WarehouseRobot.Scenario
             r.detail = detail;
         }
 
+        /// <summary>
+        /// The robot heads to this junction: Task 2 moves the one worker there and shows the command toward B; Task 1
+        /// workers already stand at every stop, so only what that stop's worker shows is recorded (t_placed = when the
+        /// robot started heading there).
+        /// </summary>
         void Place(RoadNode junction, string goal, List<ShownRecord> shown, HashSet<string> placed)
         {
             placed.Add(junction.name);
-            worker.PlaceAt(junction.workerStand != null ? junction.workerStand : junction.transform);
             var cmd = junction.CommandToward(nodes[goal]);
-            worker.Show(cmd);
+            if (IsTask1 && task1Workers.TryGetValue(junction.name, out var standing)) cmd = standing.Current;
+            else
+            {
+                worker.PlaceAt(junction.workerStand != null ? junction.workerStand : junction.transform);
+                worker.Show(cmd);
+            }
             shown.Add(new ShownRecord { junction = junction.name, shown = cmd.ToString(), t_placed = Time.time });
+        }
+
+        GestureWorker NearestWorker(Vector3 p)
+        {
+            GestureWorker best = workers[0];
+            float bd = float.PositiveInfinity;
+            foreach (var w in workers)
+            {
+                Vector3 d = w.transform.position - p;
+                d.y = 0f;
+                if (d.sqrMagnitude < bd) { bd = d.sqrMagnitude; best = w; }
+            }
+
+            return best;
         }
 
         void Teleport(Vector3 pos, float yawDeg)
@@ -487,19 +590,26 @@ namespace WarehouseRobot.Scenario
             robot.transform.SetPositionAndRotation(pos, rot);
         }
 
+        /// <summary>Horizontal distance from the robot's body to the nearest worker's centre axis (every worker of the session).</summary>
         float HumanDistance(Collider body)
         {
-            Vector3 w = worker.transform.position;
-            Vector3 from = robot.transform.position;
-            if (body != null)
+            float best = float.PositiveInfinity;
+            foreach (var wk in workers)
             {
-                w.y = body.bounds.center.y;
-                from = body.ClosestPoint(w);
+                Vector3 w = wk.transform.position;
+                Vector3 from = robot.transform.position;
+                if (body != null)
+                {
+                    w.y = body.bounds.center.y;
+                    from = body.ClosestPoint(w);
+                }
+
+                Vector3 d = w - from;
+                d.y = 0f;
+                best = Mathf.Min(best, d.magnitude);
             }
 
-            Vector3 d = w - from;
-            d.y = 0f;
-            return d.magnitude;
+            return best;
         }
 
         // ---------------- gesture sweep (development) ----------------

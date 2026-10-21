@@ -356,3 +356,28 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
 6. **Checks on 21 October 2026 (Windows):** Python 248 tests pass (after item 5; 245 before it) (21 new: task route, warm-up, perception ready,
    route in every command, per-task frozen record); Unity EditMode 26/26 pass (15 earlier + 4 `Task1RouteTests` +
    7 `WorkerAppearanceTests`).
+7. **Acceptance criteria for the 10-trial Task 1 development session** (written 21 October 2026 before any test of the
+   changes in items 8 onward; set by Nusrat; not loosened afterwards). Over one 10-trial Task 1 development session on
+   Nusrat's PC:
+   - every trial visits every Task 1 checkpoint and performs the full interaction at each: slow down, scan, approach
+     to 2.0 m, ask, read FORWARD held 1.0 s, execute;
+   - every worker renders textured (no error shader), with the arm pose visible in the pan-tilt image;
+   - 0 watchdog stops after start-up; maximum round trip (all messages) under 100 ms;
+   - every trial outcome recorded.
+   If a criterion is not met, the result is reported as not met and work stops there.
+   Measurement definitions (`hri_session_check.py`, written with the criteria and before any test of the changes;
+   they say how each criterion is measured, they do not relax it):
+   - slow down: every speed command in the last 1.0 s of navigation before a stop's scan is at most the frozen
+     junction speed (0.35 m/s);
+   - approach to 2.0 m: the approach state ran and, at the start of the ask, the true distance robot centre -> that
+     stop's worker centre (Unity truth) is 2.0 +- 0.3 m (frozen approach tolerance 0.15 m + 0.15 m for the vision
+     distance estimate);
+   - FORWARD held 1.0 s: Python accepted FORWARD at that stop (its dialog accepts only after the frozen 1.0 s hold),
+     the worker showed FORWARD, and at least 1.0 s passed from the ask to the execute step;
+   - textured, arm pose visible: the trial runner's appearance check passed for every Task 1 worker (it refuses the
+     session otherwise; session.json lists each worker's material and texture) and FORWARD was read from the arm at
+     every stop;
+   - watchdog stops after start-up: increase of Unity's watchdog counter from the first telemetry of trial 1 to the
+     end of the session;
+   - round trip (all messages): every reply Unity measured (new telemetry fields rtt_window_*; before, Unity reported
+     only the latest reply of a frame, which hid stalls).

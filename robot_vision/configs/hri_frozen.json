@@ -41,11 +41,13 @@
       }
     },
     "Task1": {
-      "route": {"start": "A", "goal": "E1", "checkpoints": 3, "stops": ["C1", "J1", "C3"], "map": "Task1:C1,J1,C3"},
-      "route_note": "Straight A to B: B = roadmap task1_goal (E1) in every trial. Since 2026-10-21 (declared design change, before any Task 1 final run; AUDIT.md section 9) the straight line A -> J1 -> E1 has checkpoints from configs/task1_route.json (default 3: C1 (6.25, -5), J1, C3 (6.25, 5)); at every stop the one worker stands by the roadmap worker_stand rule and shows FORWARD. Python runs with bridge.server --task Task1 (map Task1:C1,J1,C3); the Unity trial runner refuses trials if Python's map differs. Before: one stop (J1). The trial settings are those of Task 2.",
+      "route": {"start": "A", "goal": "E1", "checkpoints": 3, "stops": ["C1", "J1", "C3"], "map": "Task1:C1,J1,C3",
+                "workers": [["C1", 8.75, -4.0, 180.0], ["J1", 8.75, 1.0, 180.0], ["C3", 8.75, 6.0, 180.0]]},
+      "route_note": "Straight A to B: B = roadmap task1_goal (E1) in every trial. Since 2026-10-21 (declared design change, before any Task 1 final run; AUDIT.md section 9) the straight line A -> J1 -> E1 has checkpoints from configs/task1_route.json (default 3: C1 (6.25, -5), J1, C3 (6.25, 5)). Workers (second declared change the same day, before any Task 1 final): one standing worker per stop (same avatar), 1.0 m ahead and 2.5 m right of the stop, facing the arriving robot, showing FORWARD; workers = [stop, x, z, yaw]. Before it: the one worker moved to each stop by the roadmap rule. Python runs with bridge.server --task Task1 (map Task1:C1,J1,C3); the Unity trial runner refuses trials if Python's map differs or the scene's Task 1 workers differ from task1_route.json. Before: one stop (J1). The trial settings are those of Task 2.",
       "route_config": {
         "path": "robot_vision/configs/task1_route.json",
-        "sha256": "ceb59d70e385a68f60bb0e2280fa9611274a605aca629bc120ec2ec20f554a5b",
+        "sha256": "0d8cfa6023ca5196ab4ad868cfb47ccd108d05c4054657bd1816c881ba3eec13",
+        "sha256_before": "ceb59d70e385a68f60bb0e2280fa9611274a605aca629bc120ec2ec20f554a5b (one moved worker; replaced 2026-10-21 before any Task 1 final)",
         "note": "Per-task (Task 1 only; Task 2 does not read it). LF-normalised sha256, like the shared hashes. The Unity trial runner refuses a Task 1 final if the local file differs."
       },
       "trials_fixed": {

@@ -2,6 +2,7 @@
 Unity trial runner (Task1Route.cs, pinned to the same positions in Task1RouteTests.cs). Pure Python, no Unity."""
 
 import copy
+import math
 import re
 import sys
 import unittest
@@ -22,6 +23,8 @@ UNITY_TESTS = (ROOT.parent / "unity" / "Robotics-Warehouse" / "WarehouseProjectU
 # Default (3 checkpoints): the stops in driving order; C2 falls on J1 and is J1. The same values are in
 # Task1RouteTests.cs.
 EXPECTED_STOPS = [("C1", 6.25, -5.0, False), ("J1", 6.25, 0.0, True), ("C3", 6.25, 5.0, False)]
+# One standing worker per stop (2026-10-21): 1.0 m ahead, 2.5 m right of the arrival direction, facing back (yaw 180).
+EXPECTED_WORKERS = [("C1", 8.75, -4.0, 180.0), ("J1", 8.75, 1.0, 180.0), ("C3", 8.75, 6.0, 180.0)]
 
 
 class StraightLineTests(unittest.TestCase):
@@ -90,10 +93,28 @@ class MapTests(unittest.TestCase):
         self.assertEqual(ROAD, hc.load_json("configs/roadmap.json"))
         self.assertNotIn("C1", ROAD["nodes"])
 
-    def test_worker_stands_follow_the_roadmap_rule(self):
-        r = hc.Roadmap(self.m)
-        self.assertEqual([r.stand(s)[:2] for s in self.m["task1_stops"]], [(8.75, -2.5), (8.75, 2.5), (8.75, 7.5)])
-        self.assertEqual(r.stand("J1"), hc.Roadmap(ROAD).stand("J1"))   # J1's stand is that of Task 2
+    def test_one_worker_per_stop_pinned(self):
+        self.assertEqual(tr.task1_worker_stands(ROAD, ROUTE), EXPECTED_WORKERS)
+        self.assertEqual([w[0] for w in EXPECTED_WORKERS], self.m["task1_stops"])
+        self.assertNotIn("workers", self.m)                     # scenario data never enters the controller's map
+
+    def test_own_worker_is_clearly_the_nearest_at_every_stop(self):
+        """The frozen scan approaches the nearest person: at each stop its own worker must win by a wide margin."""
+        stands = tr.task1_worker_stands(ROAD, ROUTE)
+        for stop, sx, sz, _ in tr.checkpoints(ROAD, 3, 0.5):
+            d = sorted((math.hypot(wx - sx, wz - sz), w) for w, wx, wz, _ in stands)
+            self.assertEqual(d[0][1], stop)
+            self.assertAlmostEqual(d[0][0], 2.693, places=3)
+            self.assertGreater(d[1][0] - d[0][0], 2.0, stop)            # 4.72 m against 2.69 m
+
+    def test_workers_clear_of_the_straight_path(self):
+        corridor = hc.load_json("configs/hri_control.json")["safety"]["corridor_half_width_m"]
+        for _, wx, _, _ in tr.task1_worker_stands(ROAD, ROUTE):
+            self.assertGreaterEqual(abs(wx - 6.25), 2.5)
+            self.assertGreater(abs(wx - 6.25), 3 * corridor)
+
+    def test_task2_stand_rule_unchanged(self):
+        self.assertEqual(hc.Roadmap(ROAD).stand("J1")[:2], (8.75, 2.5))
 
     def test_every_stop_leads_to_b_by_forward(self):
         r = hc.Roadmap(self.m)
@@ -101,11 +122,16 @@ class MapTests(unittest.TestCase):
             self.assertEqual(r.command_toward(s, ROAD["task1_goal"]), "FORWARD", s)
 
     def test_simulated_task1_asks_at_every_stop(self):
-        c = hc.Controller(hc.load_json("configs/hri_control.json"), hc.Roadmap(self.m))
-        out = hs.Simulator(c, hs.SimConfig(), seed=1).run(ROAD["task1_goal"])
-        self.assertEqual(out["outcome"], "SUCCESS", out)
-        self.assertEqual([(j["junction"], j["shown"], j["read"], j["asks"]) for j in out["junctions"]],
-                         [(s, "FORWARD", "FORWARD", 1) for s in ("C1", "J1", "C3")])
+        stands = tr.task1_worker_stands(ROAD, ROUTE)
+        for seed, kw in ((1, {}), (2, {"p_detect": 0.84, "distance_sigma_m": 0.2, "bearing_sigma_deg": 2.0})):
+            c = hc.Controller(hc.load_json("configs/hri_control.json"), hc.Roadmap(self.m))
+            out = hs.Simulator(c, hs.SimConfig(**kw), seed=seed).run(ROAD["task1_goal"], workers=stands)
+            self.assertEqual(out["outcome"], "SUCCESS", out)
+            self.assertEqual([(j["junction"], j["shown"], j["read"], j["asks"]) for j in out["junctions"]],
+                             [(s, "FORWARD", "FORWARD", 1) for s in ("C1", "J1", "C3")])
+            for j, (stop, wx, wz, _) in zip(out["junctions"], stands):   # it approached that stop's own worker
+                self.assertLess(math.hypot(j["person_x"] - wx, j["person_z"] - wz), 0.5, (seed, stop))
+            self.assertGreater(out["closest_person_m"], 1.5)
 
 
 class UnityPinnedTests(unittest.TestCase):
@@ -113,6 +139,11 @@ class UnityPinnedTests(unittest.TestCase):
         src = UNITY_TESTS.read_text(encoding="utf-8")
         found = re.findall(r'\("(\w+)", ([-\d.]+)f, ([-\d.]+)f, (true|false)\)', src)
         self.assertEqual([(n, float(x), float(z), e == "true") for n, x, z, e in found], EXPECTED_STOPS)
+
+    def test_unity_tests_pin_the_same_workers(self):
+        src = UNITY_TESTS.read_text(encoding="utf-8")
+        found = re.findall(r'\("(\w+)", ([-\d.]+)f, ([-\d.]+)f, ([-\d.]+)f\)', src)
+        self.assertEqual([(n, float(x), float(z), float(y)) for n, x, z, y in found], EXPECTED_WORKERS)
 
 
 if __name__ == "__main__":

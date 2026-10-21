@@ -17,6 +17,9 @@ namespace WarehouseHRI.EditorTools
     /// chase camera (FollowCamera, C cycles chase / top-down / gesture camera). It never edits the robot prefab, the
     /// bridge or the NavMesh; the robot and its pan-tilt camera are found by component type name (RobotRig,
     /// PanTiltCamera), so this editor assembly does not depend on theirs. Safe to run again (found by name).
+    /// Since 2026-10-21 it also builds the Task 1 workers (WarehouseHRI/Task1Workers, one instance of the same worker
+    /// per Task 1 stop, positions from robot_vision/configs/task1_route.json); the group is saved INACTIVE, so Task 2
+    /// and the gesture tools never see it, and the trial runner activates it only in Task 1 sessions.
     /// </summary>
     public static class HriScenarioBuilder
     {
@@ -81,6 +84,7 @@ namespace WarehouseHRI.EditorTools
             log.AppendLine("Roadmap: " + Describe(a) + " " + Describe(j1) + " " + Describe(j2));
 
             BuildWorker(root, j1, log);
+            BuildTask1Workers(root, a, log);
 
             var robot = FindByTypeName("RobotRig");
             if (robot != null) BuildViewCamera(root, robot, log);
@@ -238,10 +242,70 @@ namespace WarehouseHRI.EditorTools
             return $"{n.name}[{string.Join(", ", parts)}]";
         }
 
-        static void BuildWorker(GameObject root, RoadNode firstJunction, StringBuilder log)
+        static void BuildWorker(GameObject root, RoadNode firstJunction, StringBuilder log) =>
+            BuildWorkerAt(root, "Worker", firstJunction.workerStand.position, firstJunction.workerStand.rotation, log);
+
+        // ---------------- Task 1 workers (declared design change, 2026-10-21) ----------------
+
+        /// <summary>robot_vision/configs/task1_route.json, from the repository that contains this Unity project.</summary>
+        public static string Task1RouteConfigPath =>
+            Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".", "..", "..", "..", "robot_vision", "configs", "task1_route.json"));
+
+        /// <summary>
+        /// One worker per Task 1 stop under WarehouseHRI/Task1Workers (Task1Route.WorkerStands: worker_ahead_m ahead
+        /// and worker_right_m right of the stop, facing the arriving robot), built exactly like the scene's worker (same
+        /// FBX, material, collider). The group is left inactive; workers of stops no longer in the config are removed.
+        /// </summary>
+        static void BuildTask1Workers(GameObject root, RoadNode start, StringBuilder log)
         {
-            var go = Child(root, "Worker");
-            go.transform.SetPositionAndRotation(firstJunction.workerStand.position, firstJunction.workerStand.rotation);
+            Task1RouteConfig cfg;
+            try { cfg = JsonUtility.FromJson<Task1RouteConfig>(File.ReadAllText(Task1RouteConfigPath)); }
+            catch (System.Exception e)
+            {
+                log.AppendLine("WARNING: Task 1 workers not built: cannot read " + Task1RouteConfigPath + ": " + e.Message);
+                return;
+            }
+
+            var group = Child(root, Task1Route.WorkersGroup);
+            group.SetActive(true);                 // build while active, save inactive
+            var stands = Task1Route.WorkerStands(start, cfg);
+            var keep = new HashSet<string>();
+            var placed = new List<string>();
+            foreach (var s in stands)
+            {
+                string name = Task1Route.WorkerName(s.Stop);
+                keep.Add(name);
+                BuildWorkerAt(group, name, s.Position, s.Rotation, log);
+                placed.Add($"{s.Stop} ({s.Position.x:0.##}, {s.Position.z:0.##})");
+                Physics.SyncTransforms();
+                foreach (var c in Physics.OverlapCapsule(s.Position + Vector3.up * 0.4f, s.Position + Vector3.up * 1.6f, 0.25f, ~0, QueryTriggerInteraction.Ignore))
+                    if (!c.transform.IsChildOf(group.transform) && FindRobotRoot(c.transform) == null)
+                        log.AppendLine($"  WARNING Task 1 worker {name} overlaps {c.name}: move it (task1_route.json worker_ahead_m / worker_right_m).");
+            }
+
+            for (int i = group.transform.childCount - 1; i >= 0; i--)
+            {
+                var c = group.transform.GetChild(i);
+                if (!keep.Contains(c.name)) Object.DestroyImmediate(c.gameObject);
+            }
+
+            group.SetActive(false);
+            EditorUtility.SetDirty(group);
+            log.AppendLine($"Task 1 workers (inactive group {Task1Route.WorkersGroup}, active only in Task 1 sessions): {string.Join(", ", placed)}.");
+        }
+
+        static Transform FindRobotRoot(Transform t)
+        {
+            for (; t != null; t = t.parent)
+                foreach (var mb in t.GetComponents<MonoBehaviour>())
+                    if (mb != null && mb.GetType().Name == "RobotRig") return t;
+            return null;
+        }
+
+        static GestureWorker BuildWorkerAt(GameObject parent, string name, Vector3 position, Quaternion rotation, StringBuilder log)
+        {
+            var go = Child(parent, name);
+            go.transform.SetPositionAndRotation(position, rotation);
             var capsule = GetOrAdd<CapsuleCollider>(go);
             capsule.radius = 0.3f;
             capsule.height = 1.8f;
@@ -271,7 +335,7 @@ namespace WarehouseHRI.EditorTools
                 worker.leftArmPivot = null;
                 worker.rightArmPivot = null;
                 bool human = animator.avatar != null && animator.avatar.isHuman;
-                log.AppendLine(human ? "Worker: Mixamo model (Humanoid avatar)." : "Worker: model is not Humanoid; set Rig > Animation Type = Humanoid on worker.fbx.");
+                log.AppendLine(human ? name + ": Mixamo model (Humanoid avatar)." : name + ": model is not Humanoid; set Rig > Animation Type = Humanoid on worker.fbx.");
             }
             else
             {
@@ -292,6 +356,7 @@ namespace WarehouseHRI.EditorTools
             }
 
             EditorUtility.SetDirty(worker);
+            return worker;
         }
 
         /// <summary>
@@ -351,8 +416,8 @@ namespace WarehouseHRI.EditorTools
         {
             var log = new StringBuilder("[WarehouseHRI] Restore Worker Appearance\n");
             var mat = EnsureWorkerMaterial(log);
-            var worker = Object.FindObjectOfType<GestureWorker>(true);
-            if (worker == null)
+            var workers = Object.FindObjectsOfType<GestureWorker>(true);   // the scene's worker and the inactive Task 1 workers
+            if (workers.Length == 0)
             {
                 log.AppendLine("No GestureWorker in the open scene (open Assets/Scenes/WarehouseRobot.unity).");
                 return log.ToString();
@@ -360,7 +425,8 @@ namespace WarehouseHRI.EditorTools
 
             int changed = 0;
             if (mat != null)
-                foreach (var r in worker.GetComponentsInChildren<Renderer>(true))
+                foreach (var w in workers)
+                foreach (var r in w.GetComponentsInChildren<Renderer>(true))
                 {
                     var mats = r.sharedMaterials;
                     bool same = mats.Length > 0;
@@ -380,9 +446,13 @@ namespace WarehouseHRI.EditorTools
             }
             else log.AppendLine("The scene's worker already uses " + WorkerMaterialPath + " (no scene change).");
 
-            var problems = WorkerAppearance.Problems(worker.gameObject);
-            log.AppendLine(problems.Count == 0 ? "Check passed: " + WorkerAppearance.Describe(worker.gameObject)
-                : "Still wrong: " + string.Join("; ", problems));
+            foreach (var w in workers)
+            {
+                var problems = WorkerAppearance.Problems(w.gameObject);
+                log.AppendLine(problems.Count == 0 ? $"Check passed ({w.name}): " + WorkerAppearance.Describe(w.gameObject)
+                    : $"Still wrong ({w.name}): " + string.Join("; ", problems));
+            }
+
             return log.ToString();
         }
 

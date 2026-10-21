@@ -10,6 +10,16 @@ namespace WarehouseHRI
     {
         public int checkpoints = 3;
         public float merge_with_junction_m = 0.5f;
+        public float worker_ahead_m = 1f;
+        public float worker_right_m = 2.5f;
+    }
+
+    /// <summary>One Task 1 worker: the stop it stands at, its floor position and its facing.</summary>
+    public struct Task1WorkerStand
+    {
+        public string Stop;
+        public Vector3 Position;
+        public Quaternion Rotation;
     }
 
     public struct Task1Stop
@@ -31,8 +41,10 @@ namespace WarehouseHRI
     /// straight line (start, its only branch, then FORWARD at every junction, to an endpoint) is cut into
     /// checkpoints + 1 equal parts; the cut points are checkpoints C1..Cn; one within merge_with_junction_m of a
     /// junction on the line is that junction; every junction on the line is a stop. Apply() adds the checkpoints to the
-    /// scene's roadmap for the Play session only (each a junction with one FORWARD branch and a worker stand by the
-    /// roadmap rule) and links the stops in driving order. The one worker is moved to each stop as in Task 2.
+    /// scene's roadmap for the Play session only (each a junction with one FORWARD branch) and links the stops in
+    /// driving order. Workers (2026-10-21, second declared change before any Task 1 final): one standing worker per
+    /// stop, WorkerStands() (worker_ahead_m ahead, worker_right_m right of the arrival direction, facing back), built
+    /// into the scene by the scenario builder and checked against this rule by the trial runner.
     /// </summary>
     public static class Task1Route
     {
@@ -95,22 +107,48 @@ namespace WarehouseHRI
             return Prefix + string.Join(",", names);
         }
 
-        /// <summary>The roadmap worker stand: corner offset ahead and to the right of the arrival direction, facing back.</summary>
-        public static void StandPose(Vector3 node, Vector3 previous, float cornerOffsetM, out Vector3 position, out Quaternion rotation)
+        /// <summary>A worker stand: aheadM ahead of the node and rightM to the right of the arrival direction, facing back.</summary>
+        public static void StandPose(Vector3 node, Vector3 previous, float aheadM, float rightM, out Vector3 position, out Quaternion rotation)
         {
             Vector3 arrive = node - previous;
             arrive.y = 0f;
             arrive.Normalize();
             Vector3 right = Vector3.Cross(Vector3.up, arrive);
-            position = node + (arrive + right) * cornerOffsetM;
+            position = node + arrive * aheadM + right * rightM;
             rotation = Quaternion.LookRotation(-arrive, Vector3.up);
         }
+
+        /// <summary>
+        /// The Task 1 workers, one per stop in driving order (scenario side only; same rule as
+        /// task_route.task1_worker_stands). Reads the scene roadmap, changes nothing. Height: the start node's.
+        /// </summary>
+        public static List<Task1WorkerStand> WorkerStands(RoadNode start, Task1RouteConfig cfg)
+        {
+            var line = StraightLine(start);
+            var stops = Stops(line, cfg.checkpoints, cfg.merge_with_junction_m);
+            var result = new List<Task1WorkerStand>();
+            float y = start.Position.y;
+            Vector3 previous = start.Position;
+            foreach (var s in stops)
+            {
+                var node = new Vector3(s.Position.x, y, s.Position.y);
+                StandPose(node, previous, cfg.worker_ahead_m, cfg.worker_right_m, out var p, out var r);
+                result.Add(new Task1WorkerStand { Stop = s.Name, Position = p, Rotation = r });
+                previous = node;
+            }
+
+            return result;
+        }
+
+        /// <summary>Scene name of the Task 1 worker standing at a stop (under WarehouseHRI/Task1Workers).</summary>
+        public static string WorkerName(string stop) => "Worker_" + stop;
+        public const string WorkersGroup = "Task1Workers";
 
         /// <summary>
         /// Adds the checkpoints to the scene (siblings of the start node) and links start -> stops -> endpoint by FORWARD.
         /// Returns the stop nodes in driving order. Call once per Play session (the scene is not saved).
         /// </summary>
-        public static List<RoadNode> Apply(RoadNode start, Task1RouteConfig cfg, float cornerOffsetM, out string routeId)
+        public static List<RoadNode> Apply(RoadNode start, Task1RouteConfig cfg, out string routeId)
         {
             var line = StraightLine(start);
             var stops = Stops(line, cfg.checkpoints, cfg.merge_with_junction_m);
@@ -153,14 +191,6 @@ namespace WarehouseHRI
                     if (!set) node.branches.Add(new RoadBranch { command = GestureCommand.FORWARD, next = next });
                 }
 
-                if (i > 0 && created.Contains(node))
-                {
-                    var stand = new GameObject("WorkerStand").transform;
-                    stand.SetParent(node.transform, false);
-                    StandPose(node.Position, chain[i - 1].Position, cornerOffsetM, out var p, out var r);
-                    stand.SetPositionAndRotation(p, r);
-                    node.workerStand = stand;
-                }
             }
 
             return chain.GetRange(1, chain.Count - 2);

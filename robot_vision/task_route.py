@@ -7,6 +7,8 @@ from the map alone (start node, then FORWARD at every junction), never from goal
 
 route_id() names the map a run uses ("Task2", or "Task1:C1,J1,C3"); the bridge sends it with every command and the
 Unity trial runner refuses to start trials when it is not the map of its own task.
+
+task1_worker_stands() is scenario data (where the Task 1 workers stand); the bridge never uses it.
 """
 
 from __future__ import annotations
@@ -93,6 +95,26 @@ def task1_roadmap(road: dict, route: dict) -> dict:
     first = out["branches"][line[0]]
     out["branches"][line[0]] = {next(iter(first)): chain[1]}   # the start's only branch now leads to the first stop
     out["task1_stops"] = [s[0] for s in stops]
+    return out
+
+
+def task1_worker_stands(road: dict, route: dict) -> list[tuple[str, float, float, float]]:
+    """SCENARIO SIDE ONLY (Unity scene builder / trial runner, simulator, tests): the Task 1 workers, one per stop,
+    as (stop, x, z, facing yaw deg): worker_ahead_m ahead of the stop and worker_right_m to the right of the arrival
+    direction (previous stop -> stop), facing back toward the arriving robot. Never part of the controller's map:
+    the robot finds the workers by vision. Same rule as Task1Route.WorkerStand in Unity (pinned by both test suites)."""
+    stops = checkpoints(road, int(route["checkpoints"]), float(route["merge_with_junction_m"]))
+    ahead, right = float(route["worker_ahead_m"]), float(route["worker_right_m"])
+    prev = _pos(road, straight_line(road)[0])
+    out = []
+    for name, x, z, _ in stops:
+        dx, dz = x - prev[0], z - prev[1]
+        n = math.hypot(dx, dz)
+        fx, fz = dx / n, dz / n
+        rx, rz = fz, -fx                          # right of the arrival direction (Unity: yaw grows clockwise)
+        yaw = (math.degrees(math.atan2(-fx, -fz)) + 360.0) % 360.0
+        out.append((name, round(x + fx * ahead + rx * right, 6), round(z + fz * ahead + rz * right, 6), round(yaw, 6)))
+        prev = (x, z)
     return out
 
 

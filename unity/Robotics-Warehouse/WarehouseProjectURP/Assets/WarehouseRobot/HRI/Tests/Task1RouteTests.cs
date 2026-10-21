@@ -15,6 +15,15 @@ namespace WarehouseHRI.Tests
             ("C3", 6.25f, 5f, false),
         };
 
+        // One standing worker per stop (2026-10-21): stop, x, z, facing yaw; 1.0 m ahead, 2.5 m right, facing back.
+        // test_task_route.py pins the same list.
+        static readonly (string, float, float, float)[] k_ExpectedWorkers =
+        {
+            ("C1", 8.75f, -4f, 180f),
+            ("J1", 8.75f, 1f, 180f),
+            ("C3", 8.75f, 6f, 180f),
+        };
+
         readonly List<GameObject> m_Created = new List<GameObject>();
         RoadNode m_A, m_J1, m_J2, m_E1, m_E2;
 
@@ -91,7 +100,7 @@ namespace WarehouseHRI.Tests
         [Test]
         public void ApplyLinksTheStopsAndKeepsJ1sOtherBranches()
         {
-            var stops = Task1Route.Apply(m_A, new Task1RouteConfig(), 2.5f, out string id);   // created under Roadmap
+            var stops = Task1Route.Apply(m_A, new Task1RouteConfig(), out string id);   // created under Roadmap
             Assert.AreEqual("Task1:C1,J1,C3", id);
             Assert.AreEqual(new[] { "C1", "J1", "C3" }, stops.ConvertAll(n => n.name).ToArray());
             Assert.AreEqual(stops[0], m_A.OnlyNext);
@@ -105,13 +114,24 @@ namespace WarehouseHRI.Tests
                 Assert.IsTrue(s.IsJunction, s.name);
                 Assert.AreEqual(GestureCommand.FORWARD, s.CommandToward(m_E1), s.name);
             }
+            Assert.IsNull(stops[0].workerStand, "Task 1 workers stand by themselves; no moved-worker stand");
+        }
 
-            // Worker stands by the roadmap rule (2.5 m ahead and right of the arrival direction, facing back).
-            Assert.AreEqual(8.75f, stops[0].workerStand.position.x, 1e-4f);
-            Assert.AreEqual(-2.5f, stops[0].workerStand.position.z, 1e-4f);
-            Assert.AreEqual(8.75f, stops[2].workerStand.position.x, 1e-4f);
-            Assert.AreEqual(7.5f, stops[2].workerStand.position.z, 1e-4f);
-            Assert.AreEqual(-1f, stops[0].workerStand.forward.z, 1e-4f);
+        [Test]
+        public void OneStandingWorkerPerStopIsPinned()
+        {
+            var stands = Task1Route.WorkerStands(m_A, new Task1RouteConfig());
+            Assert.AreEqual(k_ExpectedWorkers.Length, stands.Count);
+            for (int i = 0; i < stands.Count; i++)
+            {
+                Assert.AreEqual(k_ExpectedWorkers[i].Item1, stands[i].Stop);
+                Assert.AreEqual(k_ExpectedWorkers[i].Item2, stands[i].Position.x, 1e-4f);
+                Assert.AreEqual(k_ExpectedWorkers[i].Item3, stands[i].Position.z, 1e-4f);
+                Assert.AreEqual(k_ExpectedWorkers[i].Item4, stands[i].Rotation.eulerAngles.y, 1e-3f);
+            }
+
+            Assert.AreEqual("Worker_C1", Task1Route.WorkerName("C1"));
+            Assert.AreEqual(5, m_A.transform.parent.childCount, "WorkerStands adds nothing to the scene (A, J1, J2, E1, E2)");
         }
     }
 }

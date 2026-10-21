@@ -20,9 +20,9 @@ Always active: an open palm (STOP) or a person stepping into the path stops the 
 
 Two tasks, each run many times automatically, give the results.
 
-- Task 1, straight A to B: the robot drives straight from A to B and stops at checkpoints along the way; at each one the worker signals FORWARD. The number of checkpoints is in `robot_vision/configs/task1_route.json` (default 3, evenly spaced on the straight line A -> J1 -> E1; the middle one falls on J1, so the stops are C1, J1, C3). This is the baseline for speed, timing and gesture reading. (Changed 21 October 2026 before any Task 1 final run, declared design change, AUDIT.md section 9; before: one stop, J1.)
+- Task 1, straight A to B: the robot drives straight from A to B and stops at checkpoints along the way; a worker stands at each one (the same avatar, one per checkpoint, 1.0 m ahead and 2.5 m to the right of the checkpoint, facing the arriving robot, clear of the robot's straight path) and signals FORWARD, so the robot reads it and drives on past. The number of checkpoints and the worker offsets are in `robot_vision/configs/task1_route.json` (default 3, evenly spaced on the straight line A -> J1 -> E1; the middle one falls on J1, so the stops are C1, J1, C3). This is the baseline for speed, timing and gesture reading. (Changed 21 October 2026 before any Task 1 final run, declared design changes, AUDIT.md section 9; before: one stop, J1, and then one worker moved from stop to stop.)
 - Task 2, guided route: a roadmap with 2 to 3 junctions and several possible end points; B changes every trial, and the workers at the junctions guide the robot to it.
-- One avatar: a single worker character is reused at every junction and always faces the arriving robot.
+- One avatar: a single worker character is used throughout and always faces the arriving robot; in Task 2 it is moved to each junction, in Task 1 one copy of it stands at each checkpoint.
 - Fair testing: thresholds are set on development trials (one random seed), then frozen; the final trials use a different seed and are run once.
 
 ## Metrics and data to record

@@ -127,6 +127,13 @@ camera, `dropped / (sent + dropped)`, to `summary.json` (`frames`).
 | `route` (optional, guide mode) | the map the state machine uses: `Task2` (roadmap.json) or `Task1:<stops>` (e.g. `Task1:C1,J1,C3`); the trial runner refuses trials when it is not the map of its task |
 | `perception_ready` (optional, guide mode) | true once the models are warmed up and one frame of each camera has been processed; the trial runner starts trial 1 only after it |
 
+Optional telemetry diagnostics (21 October 2026, infrastructure; absent from older Unity builds): `realtime_s`
+(Unity's real-time clock, s), `frame_ms_max` (longest Unity frame since the previous telemetry), `rtt_window_n`,
+`rtt_window_max_ms`, `rtt_window_sum_ms` (every round trip Unity measured since the previous telemetry; `rtt_ms`
+holds only the latest, so replies arriving together in one frame hid all but the last) and
+`watchdog_silent_ms_max` (longest command silence the watchdog saw in that window). Python logs them and reports
+`round_trip.all_messages`, `python_receive_lag` and `unity_frames` in summary.json.
+
 The two optional fields were added on 21 October 2026 (infrastructure; extra fields were already allowed, so
 `protocol_version` stays 2). Absent, Unity reads `""` and `false`.
 

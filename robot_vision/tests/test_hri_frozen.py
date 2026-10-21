@@ -103,6 +103,8 @@ class FrozenConfigTests(unittest.TestCase):
         self.assertEqual(route["stops"], road["task1_stops"])
         self.assertEqual(route["map"], map_id)
         self.assertEqual(route["goal"], tr.straight_line(read_json("roadmap.json"))[-1])
+        self.assertEqual([tuple(w) for w in route["workers"]],
+                         tr.task1_worker_stands(read_json("roadmap.json"), cfg))   # one standing worker per stop
 
     def test_routes_match_roadmap(self):
         roadmap = read_json("roadmap.json")

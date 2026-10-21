@@ -1,12 +1,20 @@
 """Step 2 TCP bridge server (docs/protocol.md): Unity connects, sends telemetry and camera frames, Python answers
 every telemetry message with a command.
 
-Run (from robot_vision/):
-    python -m bridge.server --mode hello [--config configs/bridge.json] [--duration-s 60] [--mute-after-s 5]
+Run (from robot_vision/). Trials: run_trials.ps1 / run_trials.sh, which run
+    python -m bridge.server --mode guide --perception vision --task Task1|Task2
+Bridge test only: python -m bridge.server --mode hello --allow-hello [--config configs/bridge.json] [--duration-s 60]
+    [--mute-after-s 5]   (hello mode is refused without --allow-hello so it cannot be used for trials by accident)
 
 --perception vision (optional): frame_360 and frame_pan_tilt also go to the Step 3 perception (bridge/perception.py,
-hri_perception.py; models on a background thread), whose latest reading is shown in screen_text and logged to
-perception.csv in the run folder. The commands themselves are unchanged (no decisions from vision yet: Step 5).
+hri_perception.py; models on two background threads, one per camera, latest frame only), whose latest reading is
+shown in screen_text and logged to perception.csv in the run folder. The asyncio loop never runs inference.
+
+Diagnostics (2026-10-21, bridge/diagnostics.py): after the models are warmed up the heap is frozen (gc.freeze), so a
+full garbage collection no longer stalls the reply loop for 0.2-0.3 s; every run logs event-loop lags
+(loop_lag.csv, stall_tracebacks.txt), garbage-collection pauses (gc_pauses.csv), thread counts and Unity's optional
+telemetry diagnostics (every round trip, Unity frame times) in summary.json. --exit-on-disconnect stops the server
+when Unity disconnects (headless sessions).
 
 Mode guide (Step 5): the hri_control state machine drives the robot (bridge/guide.py); trials are started by the Unity
 trial runner (telemetry trial_index / trial_running); use with --perception vision. Logs decisions.csv and
@@ -15,7 +23,7 @@ checkpoints of configs/task1_route.json on the straight line); default Task2 (ro
 the map id (route) and perception_ready; the Unity trial runner waits for perception_ready before trial 1 and refuses
 trials if the map is not that of its task.
 
-Mode hello: answers v = hello_test.v_mps (0.2), omega = 0, so the robot creeps forward while connected; it also
+Mode hello (needs --allow-hello): answers v = hello_test.v_mps (0.2), omega = 0, so the robot creeps forward while connected; it also
 requests a NavMesh path to a point target_ahead_m in front of the robot's first reported pose. --mute-after-s N stops
 answering N s after Unity connects while keeping the connection open, to test Unity's watchdog. Every server start
 writes a new folder outputs/bridge_<mode>_<timestamp>/ with run_info.json (git commit, config hash),
@@ -185,6 +193,16 @@ class RunLog:
         self.out = out
         self.save_every = int(save_every_n_frames)
         self.t0 = time.monotonic()
+        self.extra: dict = {}                    # more summary.json blocks (diagnostics), filled by run()
+        # Unity's optional diagnostics (protocol v2 extras, 2026-10-21): every round trip, Unity frame times, and the
+        # receive lag of each telemetry message (how much later than the earliest one Python read it).
+        self.rtt_window_max = -1.0
+        self.rtt_window_n = 0
+        self.rtt_window_sum = 0.0
+        self.unity_frame_ms_max = 0.0
+        self.unity_frames_over_250ms = 0
+        self.recv_offset: float | None = None
+        self.recv_lags: list[float] = []
         self.lines = (out / "messages.jsonl").open("w", encoding="utf-8")
         (out / "frames").mkdir()
         self.frames = FrameWriter(out / "frames", frame_queue, frame_write)
@@ -207,6 +225,7 @@ class RunLog:
         if kind == "connect":
             self.connections += 1
             self.frame_counters.append({})
+            self.recv_offset = None
         if kind in ("framing_error", "message_error"):
             self.errors.append(f"{kind}: {fields.get('error')}")
 
@@ -226,6 +245,7 @@ class RunLog:
                 self.rtts.append(float(h["rtt_ms"]))
             self.watchdog_count = max(self.watchdog_count, h["watchdog_count"])
             self.estop_seen |= h["estop"]
+            self._unity_diagnostics(h, line)
             if not self.frame_counters:
                 self.frame_counters.append({})
             self.frame_counters[-1] = {k: h[k] for k in FRAME_COUNTERS}
@@ -243,17 +263,47 @@ class RunLog:
     def _write(self, obj: dict) -> None:
         self.lines.write(json.dumps(obj, separators=(",", ":")) + "\n")
 
+    def _unity_diagnostics(self, h: dict, line: dict) -> None:
+        """Optional telemetry fields (absent from older Unity builds)."""
+        if isinstance(h.get("rtt_window_n"), int) and h["rtt_window_n"] > 0:
+            self.rtt_window_n += h["rtt_window_n"]
+            self.rtt_window_sum += float(h.get("rtt_window_sum_ms", 0.0))
+            self.rtt_window_max = max(self.rtt_window_max, float(h.get("rtt_window_max_ms", -1.0)))
+        if isinstance(h.get("frame_ms_max"), (int, float)):
+            self.unity_frame_ms_max = max(self.unity_frame_ms_max, float(h["frame_ms_max"]))
+            self.unity_frames_over_250ms += int(h["frame_ms_max"] > 250.0)
+        if isinstance(h.get("realtime_s"), (int, float)):
+            offset = line["t_wall_s"] - float(h["realtime_s"])
+            self.recv_offset = offset if self.recv_offset is None else min(self.recv_offset, offset)
+            lag_ms = (offset - self.recv_offset) * 1000.0
+            self.recv_lags.append(lag_ms)
+            line["recv_lag_ms"] = round(lag_ms, 2)
+
     def summary(self) -> dict:
         r = sorted(self.rtts)
         rtt = {"n": len(r), "coverage": f"{len(r)} of {self.n_telemetry} telemetry messages",
-               "note": "Unity-measured: telemetry queued -> answering command received"}
+               "note": "Unity-measured: telemetry queued -> answering command received. Before 2026-10-21 Unity "
+                       "reported only the latest reply of each frame, so late replies arriving together were missed; "
+                       "all_messages (when present) covers every reply"}
         if r:
             rtt.update(mean_ms=round(statistics.fmean(r), 3), median_ms=round(statistics.median(r), 3),
                        p95_ms=round(r[min(len(r) - 1, math.ceil(0.95 * len(r)) - 1)], 3), max_ms=round(r[-1], 3))
+        if self.rtt_window_n:
+            rtt["all_messages"] = {"n": self.rtt_window_n, "coverage": f"{self.rtt_window_n} replies to "
+                                   f"{self.n_telemetry} telemetry messages", "max_ms": round(self.rtt_window_max, 3),
+                                   "mean_ms": round(self.rtt_window_sum / self.rtt_window_n, 3)}
+        lags = sorted(self.recv_lags)
+        unity = {"frame_ms_max": round(self.unity_frame_ms_max, 2),
+                 "telemetry_windows_with_a_frame_over_250ms": self.unity_frames_over_250ms} if self.recv_lags else None
+        recv = {"n": len(lags), "max_ms": round(lags[-1], 2), "over_100ms": sum(1 for x in lags if x > 100.0),
+                "over_250ms": sum(1 for x in lags if x > 250.0),
+                "note": "how much later Python read each telemetry message than the earliest one (Unity real-time "
+                        "clock vs. Python's): Python's receive loop stalling shows here, a Unity hitch does not"} if lags else None
         return {"duration_s": self.now(), "connections": self.connections, "message_counts": dict(sorted(self.counts.items())),
-                "round_trip": rtt, "frames": self.frame_summary(), "frames_saved": self.frames.summary(),
+                "round_trip": rtt, "python_receive_lag": recv, "unity_frames": unity,
+                "frames": self.frame_summary(), "frames_saved": self.frames.summary(),
                 "watchdog_count_reported_by_unity": self.watchdog_count, "estop_seen": self.estop_seen,
-                "errors": self.errors + self.frames.errors}
+                **self.extra, "errors": self.errors + self.frames.errors}
 
     def frame_summary(self) -> dict:
         """Drop rate per camera from Unity's counters (summed over connections) and frames Python received."""
@@ -282,6 +332,7 @@ class BridgeServer:
     def __init__(self, cfg: dict, controller, log: RunLog | None = None, port: int | None = None, verbose: bool = True):
         self.cfg = cfg
         self.verbose = verbose
+        self.disconnected = asyncio.Event()      # set when a client that had connected goes away (--exit-on-disconnect)
         self.limits = P.Limits.from_config(cfg)
         self.controller = controller
         self.log = log
@@ -380,6 +431,7 @@ class BridgeServer:
                 self.log.event("disconnect", reason=reason)
             self._say(f"Unity disconnected ({reason})")
             writer.close()
+            self.disconnected.set()
 
 
 def make_perception_worker(out: Path, perception_config: str | Path):
@@ -392,7 +444,8 @@ def make_perception_worker(out: Path, perception_config: str | Path):
 
 async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
               perception: str = "off", perception_config: str = "configs/hri_perception.json",
-              task: str = "Task2") -> Path:
+              task: str = "Task2", exit_on_disconnect: bool = False) -> Path:
+    from bridge import diagnostics as diag
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
     used = [cfg_path]
     if perception == "vision":
@@ -417,10 +470,14 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         "mute_after_s": mute_after_s, "perception": perception, "task": task if mode == "guide" else None,
         "route": route})
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
+    gc_monitor = diag.GcMonitor(out)
     worker = None
     if perception == "vision":
         worker = make_perception_worker(out, perception_config)
         print(f"[bridge] perception: {worker.label}", flush=True)
+    log.extra["threads_at_start"] = diag.thread_info()
+    print(f"[bridge] threads: {log.extra['threads_at_start']['python_threads']} Python, "
+          f"{log.extra['threads_at_start'].get('process_threads')} in the process", flush=True)
     guide = None
     if mode == "guide":
         from bridge.guide import GuideController
@@ -433,20 +490,35 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         if worker is not None:
             controller = PerceptionController(controller, worker)
     server = BridgeServer(cfg, controller, log)
+    log.extra["gc_freeze"] = diag.freeze_heap()      # infrastructure: full collections no longer stall the loop
+    print(f"[bridge] heap frozen: {log.extra['gc_freeze']}", flush=True)
     port = await server.start()
+    lag = diag.LoopLagMonitor(out, t0=log.t0)
+    lag.start()
     print(f"[bridge] mode {mode}: listening on {cfg['host']}:{port}; run folder {out}", flush=True)
-    print("[bridge] press Ctrl+C to stop" + (f" (or wait {duration_s:g} s)" if duration_s else ""), flush=True)
+    print("[bridge] press Ctrl+C to stop" + (f" (or wait {duration_s:g} s)" if duration_s else "") +
+          (" (or when Unity disconnects)" if exit_on_disconnect else ""), flush=True)
     try:
-        if duration_s:
-            await asyncio.sleep(duration_s)
-        else:
-            await asyncio.Event().wait()
+        waits = [asyncio.create_task(asyncio.sleep(duration_s) if duration_s else asyncio.Event().wait())]
+        if exit_on_disconnect:
+            waits.append(asyncio.create_task(server.disconnected.wait()))
+        try:
+            await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for w in waits:
+                w.cancel()
     finally:
+        await lag.stop()
         await server.close()
         if guide is not None:
             guide.close()
         if worker is not None:
+            log.extra["perception"] = worker.summary() if hasattr(worker, "summary") else None
             worker.close()
+        gc_monitor.close()
+        log.extra["event_loop_lag"] = lag.summary()
+        log.extra["gc_pauses"] = gc_monitor.summary()
+        log.extra["threads_at_end"] = diag.thread_info()
         log.close()
         print(f"[bridge] stopped; summary in {out / 'summary.json'}", flush=True)
     return out
@@ -455,21 +527,33 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", default=DEFAULT_CONFIG)
-    ap.add_argument("--mode", choices=["hello", "guide"], default="hello")
+    ap.add_argument("--mode", choices=["hello", "guide"], required=True,
+                    help="guide: trials (use run_trials.ps1 / run_trials.sh). hello: bridge test only, needs --allow-hello")
+    ap.add_argument("--allow-hello", action="store_true",
+                    help="hello mode creeps forward at 0.2 m/s and never starts a trial; refused without this flag so "
+                         "it cannot be used for trials by accident")
+    ap.add_argument("--exit-on-disconnect", action="store_true",
+                    help="stop (writing summary.json) when Unity disconnects after a connection (batch-mode launcher)")
     ap.add_argument("--duration-s", type=float, default=None, help="stop after this many seconds")
     ap.add_argument("--mute-after-s", type=float, default=None,
                     help="stop answering this many seconds after Unity connects (watchdog test)")
     ap.add_argument("--perception", choices=["off", "vision"], default="off",
                     help="vision: run the Step 3 perception on the camera frames (needs the YOLO weights)")
     ap.add_argument("--perception-config", default="configs/hri_perception.json")
-    ap.add_argument("--task", choices=["Task1", "Task2"], default="Task2",
-                    help="guide mode: the map (Task2 = roadmap.json; Task1 = roadmap.json plus the checkpoints of "
-                         "configs/task1_route.json). The Unity trial runner refuses trials if it differs from its task.")
+    ap.add_argument("--task", choices=["Task1", "Task2"], default=None,
+                    help="guide mode (required there): the map (Task2 = roadmap.json; Task1 = roadmap.json plus the "
+                         "checkpoints of configs/task1_route.json). The Unity trial runner refuses trials if it differs "
+                         "from its task.")
     args = ap.parse_args(argv)
+    if args.mode == "hello" and not args.allow_hello:
+        ap.error("hello mode is a bridge test (0.2 m/s creep, no trials); it is refused without --allow-hello. "
+                 "For trials run run_trials.ps1 (Windows) or run_trials.sh (macOS) with the task.")
+    if args.mode == "guide" and args.task is None:
+        ap.error("guide mode needs --task Task1 or --task Task2 (the map must match the Unity trial runner's task)")
     cfg, cfg_path = load_config(args.config)
     try:
         asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
-                        args.perception_config, args.task))
+                        args.perception_config, args.task or "Task2", args.exit_on_disconnect))
     except KeyboardInterrupt:
         pass
 
