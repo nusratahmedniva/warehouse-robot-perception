@@ -487,3 +487,20 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
     replication will run with this server** (two perception threads, frozen heap, diagnostics, launcher, extra
     telemetry fields). That is a declared infrastructure difference from the original Task 2 final (ce37a56), whose
     result stands as recorded.
+15. **Declared before running: FORWARD pose decision rule** (22 October 2026, 01:48 BST; written before any
+    FORWARD finger-versus-fist sweep was run and before any of its frames were classified). Owner's rule:
+
+    > "FORWARD pose decision rule: adopt the index-finger pose (arm angle unchanged) for both tasks if, in the FORWARD
+    > gesture sweep (20 repeats each, distance and angle jitter), the finger is read as FORWARD at least as often as
+    > the fist and is never read as STOP. Otherwise keep the fist."
+
+    How it is measured (fixed with the rule, not after the results):
+    - Sweep: the development gesture sweep (dev seed 1, robot still, worker at J1's stand, frozen perception) showing
+      only FORWARD, 20 repeats with the fist and 20 with the index finger. Each repeat draws one distance (1.7-2.5 m),
+      view angle (+-25 deg) and worker yaw jitter (+-15 deg) from `trials.json -> gesture_sweep`, and both hands are
+      shown at that same placement (paired; the hand order within a pair is seeded). Settle 0.6 s, hold 2.0 s.
+    - "Read as FORWARD": FORWARD frames / all pan-tilt frames inside the 20 sample windows of that hand (frozen
+      classifier, `hri_eval_dev.py`). The finger passes this part if its rate is >= the fist's rate.
+    - "Never read as STOP": 0 pan-tilt frames read STOP in all 20 finger samples (a single STOP frame fails).
+    - Reported as well, not part of the rule: frames read NONE, the 1.0 s hold result per sample (strict), coverage.
+    - Only the FORWARD hand changes; the arm angle and every other command are unchanged. No threshold changes.
