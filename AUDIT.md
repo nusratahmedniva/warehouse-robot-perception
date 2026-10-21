@@ -319,8 +319,11 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
      and `bridge_guide_20261021_203057`, 1/1 SUCCESS at C1, J1, C3; run on the working tree just before this commit, so its session.json names the parent
      commit 4aeeed2; nothing adjusted on it): the slow first frames
      (up to 0.53 s) and one watchdog stop fell before trial 1, which waited for perception_ready. During the trial:
-     1 watchdog stop at 28 s while navigating (same kind as the 4 unexplained ones above), maximum round trip
-     31.4 ms (mean 1.1 ms). One trial is a small sample; the full development session will tell.
+     1 watchdog stop at 28 s while navigating (same kind as the 4 unexplained ones above; it too directly follows a
+     sampled JPEG write, so 3 of these 5 stops do), maximum round trip 194.9 ms at 12.1 s (all 1547 answered
+     telemetry messages, summary.json; mean 1.6 ms, p95 1.5 ms; the 0.1 s decisions.csv sample shows 31.4 ms). The
+     before figure 330.6 ms is over all messages too. One trial is a small sample; the full development session will
+     tell.
 5. **Checks on 21 October 2026 (Windows):** Python 245 tests pass (21 new: task route, warm-up, perception ready,
    route in every command, per-task frozen record); Unity EditMode 26/26 pass (15 earlier + 4 `Task1RouteTests` +
    7 `WorkerAppearanceTests`).
