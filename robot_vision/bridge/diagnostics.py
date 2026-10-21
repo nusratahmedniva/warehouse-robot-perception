@@ -74,6 +74,8 @@ class LoopLagMonitor:
             faulthandler.cancel_dump_traceback_later()
             self._dump.close()
             self._csv_file.close()
+            portable_tracebacks(Path(self._dump.name))
+
 
     def summary(self) -> dict:
         lags = sorted(lag for _, lag in self.events)
@@ -83,6 +85,30 @@ class LoopLagMonitor:
                 "worst": sorted(self.events, key=lambda e: -e[1])[:10],
                 "note": "event-loop lag = how late a 10 ms sleep woke up; a lag > 250 ms writes the stacks of all "
                         "threads to stall_tracebacks.txt (faulthandler, no GIL needed)"}
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def portable_tracebacks(path: Path) -> None:
+    """Run folders hold no absolute paths (CLAUDE.md): rewrite the file names of a faulthandler dump as
+    {project_root}/..., {python}/... (the interpreter's own files) or <outside configured roots>/<name>."""
+    import re
+    import sys
+
+    roots = [(PROJECT_ROOT, "{project_root}")] + [(Path(p).resolve(), "{python}") for p in {sys.base_prefix, sys.prefix}]
+
+    def repl(m):
+        p = Path(m.group(1))
+        for root, token in roots:
+            try:
+                return f'File "{token}/{p.resolve().relative_to(root).as_posix()}"'
+            except ValueError:
+                continue
+        return f'File "<outside configured roots>/{p.name}"'
+
+    text = path.read_text(encoding="utf-8", errors="replace")
+    path.write_text(re.sub(r'File "([^"]+)"', repl, text), encoding="utf-8")
 
 
 class GcMonitor:

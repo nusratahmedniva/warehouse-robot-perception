@@ -381,3 +381,109 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
      end of the session;
    - round trip (all messages): every reply Unity measured (new telemetry fields rtt_window_*; before, Unity reported
      only the latest reply of a frame, which hid stalls).
+8. **Diagnosis of the reported Unity run (21:14-21:16; operator / environment, nothing wrong in the frozen system).**
+   - `bridge_hello_20261021_211443`: the **hello** server ran (`run_info.json` mode hello, 1384 of 1395 commands
+     v = 0.2 m/s). Unity session `trials_development_Task1_20261021_211450` connected to it. Hello mode never sends
+     `perception_ready`, so trial 1 never started: no poses, no approach, no ask, robot creeping at 0.2 m/s. Only the
+     scene's one worker was visible (by design then).
+   - `bridge_guide_20261021_211625`: guide mode **without `--task Task1`** (map Task2). No connection was logged
+     (0 messages, no summary); had Unity connected, the trial runner would have refused the map. `_211417`: no server.
+   - Scene: not rebuilt after the first Task 1 change, which did not need it (checkpoints were added at Play). The
+     multi-worker layout was **not** in place (one worker was moved); it is now (item 10).
+   - Speed: guide mode cruises at the frozen `drive.cruise_speed_mps` 0.8 (hri_control.json, unchanged since
+     ce37a56); logs: max commanded 0.80 m/s (`bridge_guide_20261021_204609`), max 0.80 m/s in Unity truth. The
+     0.2 m/s was hello mode (`bridge.json hello_test.v_mps`). No speed was changed.
+9. **Safe launch: infrastructure fix.** `robot_vision/run_trials.ps1 -Task Task1|Task2 [-UnityBatch]` and
+   `run_trials.sh Task1|Task2 [--unity-batch]` always start `bridge.server --mode guide --perception vision --task
+   <task>` from the project venv and refuse a task other than the one in trials.json (or trials.local.json). Batch
+   mode also runs TrialBatchPlay, stops the server when Unity quits (`--exit-on-disconnect`) and runs
+   hri_trials.py, hri_analysis.py and hri_session_check.py. The server now needs `--mode`; guide mode needs
+   `--task`; hello mode is refused without `--allow-hello`. Tests: `test_bridge_diagnostics.py`,
+   `test_launch_and_session_check.py`.
+10. **Task 1 workers: declared design change** (Task 1 only, before any Task 1 final; owner's request).
+    - One standing worker per stop (same Mixamo avatar, same material), `task1_route.json` `worker_ahead_m` 1.0,
+      `worker_right_m` 2.5: C1 (8.75, -4), J1 (8.75, 1), C3 (8.75, 6), facing the arriving robot, showing FORWARD
+      the whole trial. Before: one worker moved to each stop by the roadmap rule (2.5 m ahead and right).
+    - Why not the roadmap rule: with 5 m between stops the worker just passed would be as far from the next stop as
+      that stop's worker (3.54 m both) and the frozen scan takes the nearest person. Now 2.69 m (own) vs 4.72 m
+      (previous); every worker at least 1.9 m from the robot's path after the read (corridor 0.6 m).
+    - Built by Tools > Warehouse HRI > Add Worker and Roadmap (rebuilt in batch mode: scene +545 lines, 0 removed,
+      no overlap warnings, NavMesh validation passed) into `WarehouseHRI/Task1Workers`, saved **inactive**: Task 2
+      and the gesture tools never see it. The trial runner activates it only in Task 1, hides the moved worker,
+      refuses Task 1 if the scene's workers differ from task1_route.json, and applies the appearance check to every
+      worker. Closest distance and the truth log use all workers.
+    - Same rule in `task_route.task1_worker_stands` and `Task1Route.WorkerStands`, pinned to the same list in both
+      test suites. Simulator (`hri_sim.py`, standing workers): SUCCESS, FORWARD read at C1, J1, C3, each time
+      approaching that stop's own worker, also with noisy perception (test).
+    - hri_frozen.json: `tasks.Task1.route.workers`, `route_config.sha256` 0d8cfa60...ec13 (was ceb59d70...4a5b).
+      Shared hashes unchanged.
+11. **Worker appearance and poses: checked, no pose change.** The magenta fix (item 1) and the error-shader /
+    missing-texture check are in place and now cover every Task 1 worker. Pose code is identical to ce37a56
+    (`git diff ce37a56 -- GestureWorker.cs GestureCommand.cs GesturePoseCycler.cs Characters/` is empty); no pose
+    bug. PNGs from the pan-tilt camera at 2.0 m: `outputs/gesture_pngs_20261021_215233/` (LEFT, FORWARD, RIGHT,
+    STOP; git-ignored).
+12. **Watchdog stops: measured, two infrastructure fixes.**
+    - Measured with `bridge.replay_client` (saved frames sent at live rates, no Unity) and new server diagnostics
+      (event-loop lag monitor with faulthandler stack dumps, GC pause timer, thread counts; Unity telemetry now
+      reports every round trip, its frame times and real-time clock).
+    - Earlier logs re-read: in the 1.0 s stall of `bridge_guide_20261021_204609` Unity kept sending (clock offset
+      constant) and Python read 20 telemetry messages at once, so Python stalled. Unity's reported maximum round trip
+      (39 ms) had missed it: Unity reported only the latest reply per frame (fixed: `rtt_window_*`).
+    - Cause found: **full garbage collections**. With the models loaded about 410 000 objects are tracked; a full
+      collection took 230-320 ms, holds the GIL and stops every thread. In the 180 s replay the only loop stall
+      (224 ms) was a 232 ms generation-2 collection on the perception thread.
+    - Thread counts: torch intra-op 1, inter-op 8, OpenCV 1, 75-76 process threads on 16 logical CPUs. No evidence
+      of CPU starvation, so **no thread caps**.
+    - Fix 1: `gc.freeze()` after warm-up (`diagnostics.freeze_heap`): full collection 280 ms -> 0.01 ms. No
+      computation changes.
+    - Fix 2: perception on two threads (360 people, gesture), latest frame only, drops counted. The asyncio loop
+      never runs inference; old results trigger the existing frozen stale-perception stop. Outputs are identical:
+      350/350 perception rows equal (old one-thread worker vs new) on 350 saved frames.
+    - Replay, 180 s, before -> after: max round trip 194.7 -> 31.0 ms; event-loop lag max 224 -> 22 ms (over 50 ms:
+      1 -> 0); frames dropped 13 -> 0.
+    - Tests: a 1.5 s perception call does not delay replies (worst reply < 0.1 s) and does not hold the gesture
+      thread; newest frame first with counted drops; stale stop exactly above the frozen 1.0 s; heap freeze; loop
+      lag monitor.
+13. **Verification: 10-trial Task 1 development session, NOT ACCEPTED** (`run_trials.ps1 -Task Task1 -UnityBatch`,
+    commit c96f9b2, dev seed 1; `trials_development_Task1_20261021_215821`, `bridge_guide_20261021_215746`,
+    `hri_trials_20261021_221120`, `hri_analysis_20261021_221121`, `session_check_20261021_221131`).
+    Nothing was adjusted on it.
+
+    | trial | outcome | stops visited | full interaction | asks C1/J1/C3 | shown > read | stale stops | watchdog | rtt max ms |
+    |---|---|---|---|---|---|---|---|---|
+    | 1 | SUCCESS 0.043 m | 3/3 | yes | 1/2/1 | FORWARD > FORWARD x3 | 0 | 1 | 119.2 |
+    | 2 | SUCCESS 0.061 m | 3/3 | yes | 1/2/1 | FORWARD > FORWARD x3 | 0 | 0 | 147.8 |
+    | 3 | SUCCESS 0.064 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 0 | 222.9 |
+    | 4 | SUCCESS 0.033 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 1 | 16.3 |
+    | 5 | SUCCESS 0.052 m | 3/3 | yes | 1/2/1 | FORWARD > FORWARD x3 | 0 | 0 | 121.4 |
+    | 6 | SUCCESS 0.037 m | 3/3 | yes | 1/2/1 | FORWARD > FORWARD x3 | 0 | 0 | 173.7 |
+    | 7 | SUCCESS 0.074 m | 3/3 | yes | 2/2/1 | FORWARD > FORWARD x3 | 0 | 0 | 150.4 |
+    | 8 | SUCCESS 0.054 m | 3/3 | yes | 2/1/1 | FORWARD > FORWARD x3 | 0 | 1 | 99.0 |
+    | 9 | SUCCESS 0.050 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 1 | 257.1 |
+    | 10 | SUCCESS 0.048 m | 3/3 | yes | 1/1/1 | FORWARD > FORWARD x3 | 0 | 0 | 74.4 |
+
+    - Session: 10/10 SUCCESS; 30/30 stops read FORWARD as shown (coverage 30/30; 7 needed the second ask: 5 at J1,
+      2 at C1); 0 collisions; closest approach 1.30 m; robot-worker distance at the ask 1.90-1.96 m; ask to execute
+      at least 1.43 s. Round trip, all messages: 14 497 replies to 14 499 telemetry, mean 2.04 ms, **max 257.1 ms**.
+      Watchdog stops: 6 in total, 2 at start-up, **4 after start-up**. Dropped frames: Unity 40 (360) / 339
+      (pan-tilt); Python 0 (360) / 853 (gesture, newest-frame-only drops). Stale-perception stops: 0.
+    - Criteria: (1) full interaction at every checkpoint: **met**. (2) textured workers, arm pose read: **met**.
+      (3) 0 watchdog stops after start-up: **not met (4)**; max round trip under 100 ms: **not met (257.1 ms)**.
+      (4) every outcome recorded: **met**.
+    - Where the remaining stops come from (from this session's diagnostics):
+      - 3 of the 4 in-trial stops (trials 1, 4, 8) are **Unity main-thread hitches** of 239-322 ms. Python read
+        every message within 16 ms, but Unity sent no telemetry during the long frame, so no command came back.
+        11 Unity frames over 250 ms in the session.
+      - 1 stop (trial 9) is a **Python stall** of 256 ms. The stack dump shows both perception threads idle and no
+        garbage collection (all collections over 10 ms happened at start-up, before the freeze).
+      - 51 event-loop lags over 50 ms (max 256 ms) with Unity running, against 0 over 50 ms in the replay without
+        Unity. This points to contention between the two processes on one machine (CPU, GPU or memory), not to
+        Python code. Cause not identified; process memory, paging and GPU load were not logged.
+    - Stopped here as instructed: no criterion loosened, nothing further changed.
+14. **No shared frozen setting changed** in items 8-13: hri_control.json, hri_perception.json, gesture_hri.json,
+    roadmap.json, bridge.json, robot.json, robot_unity.json, bridge_unity.json, the pose weights and model
+    precision are unchanged (`test_hri_frozen.py` passes with the ce37a56 hashes). Changed: Task 1's own
+    task1_route.json (declared, item 10), infrastructure (items 9 and 12) and measurement code. **A Task 2
+    replication will run with this server** (two perception threads, frozen heap, diagnostics, launcher, extra
+    telemetry fields). That is a declared infrastructure difference from the original Task 2 final (ce37a56), whose
+    result stands as recorded.

@@ -36,6 +36,8 @@ class LoopLagTests(unittest.IsolatedAsyncioTestCase):
             dump = (Path(tmp) / "stall_tracebacks.txt").read_text(encoding="utf-8")
             self.assertIn("test_blocking_call_on_the_loop_is_recorded_with_stacks", dump)   # where the loop was held
             self.assertIn("ended at t_wall_s", dump)
+            self.assertNotRegex(dump, r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]")              # no absolute paths
+            self.assertIn("{project_root}/tests/test_bridge_diagnostics.py", dump)
             self.assertEqual(len((Path(tmp) / "loop_lag.csv").read_text().splitlines()), 2)
 
     async def test_quiet_loop_records_nothing(self):
