@@ -1,0 +1,2 @@
+# Shell scripts must keep LF endings on every checkout (bash on macOS rejects CRLF).
+*.sh text eol=lf

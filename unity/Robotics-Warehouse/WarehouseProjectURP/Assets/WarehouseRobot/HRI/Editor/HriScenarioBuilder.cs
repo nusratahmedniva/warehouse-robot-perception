@@ -17,6 +17,9 @@ namespace WarehouseHRI.EditorTools
     /// chase camera (FollowCamera, C cycles chase / top-down / gesture camera). It never edits the robot prefab, the
     /// bridge or the NavMesh; the robot and its pan-tilt camera are found by component type name (RobotRig,
     /// PanTiltCamera), so this editor assembly does not depend on theirs. Safe to run again (found by name).
+    /// Since 2026-10-21 it also builds the Task 1 workers (WarehouseHRI/Task1Workers, one instance of the same worker
+    /// per Task 1 stop, positions from robot_vision/configs/task1_route.json); the group is saved INACTIVE, so Task 2
+    /// and the gesture tools never see it, and the trial runner activates it only in Task 1 sessions.
     /// </summary>
     public static class HriScenarioBuilder
     {
@@ -81,6 +84,7 @@ namespace WarehouseHRI.EditorTools
             log.AppendLine("Roadmap: " + Describe(a) + " " + Describe(j1) + " " + Describe(j2));
 
             BuildWorker(root, j1, log);
+            BuildTask1Workers(root, a, log);
 
             var robot = FindByTypeName("RobotRig");
             if (robot != null) BuildViewCamera(root, robot, log);
@@ -238,10 +242,70 @@ namespace WarehouseHRI.EditorTools
             return $"{n.name}[{string.Join(", ", parts)}]";
         }
 
-        static void BuildWorker(GameObject root, RoadNode firstJunction, StringBuilder log)
+        static void BuildWorker(GameObject root, RoadNode firstJunction, StringBuilder log) =>
+            BuildWorkerAt(root, "Worker", firstJunction.workerStand.position, firstJunction.workerStand.rotation, log);
+
+        // ---------------- Task 1 workers (declared design change, 2026-10-21) ----------------
+
+        /// <summary>robot_vision/configs/task1_route.json, from the repository that contains this Unity project.</summary>
+        public static string Task1RouteConfigPath =>
+            Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".", "..", "..", "..", "robot_vision", "configs", "task1_route.json"));
+
+        /// <summary>
+        /// One worker per Task 1 stop under WarehouseHRI/Task1Workers (Task1Route.WorkerStands: worker_ahead_m ahead
+        /// and worker_right_m right of the stop, facing the arriving robot), built exactly like the scene's worker (same
+        /// FBX, material, collider). The group is left inactive; workers of stops no longer in the config are removed.
+        /// </summary>
+        static void BuildTask1Workers(GameObject root, RoadNode start, StringBuilder log)
         {
-            var go = Child(root, "Worker");
-            go.transform.SetPositionAndRotation(firstJunction.workerStand.position, firstJunction.workerStand.rotation);
+            Task1RouteConfig cfg;
+            try { cfg = JsonUtility.FromJson<Task1RouteConfig>(File.ReadAllText(Task1RouteConfigPath)); }
+            catch (System.Exception e)
+            {
+                log.AppendLine("WARNING: Task 1 workers not built: cannot read " + Task1RouteConfigPath + ": " + e.Message);
+                return;
+            }
+
+            var group = Child(root, Task1Route.WorkersGroup);
+            group.SetActive(true);                 // build while active, save inactive
+            var stands = Task1Route.WorkerStands(start, cfg);
+            var keep = new HashSet<string>();
+            var placed = new List<string>();
+            foreach (var s in stands)
+            {
+                string name = Task1Route.WorkerName(s.Stop);
+                keep.Add(name);
+                BuildWorkerAt(group, name, s.Position, s.Rotation, log);
+                placed.Add($"{s.Stop} ({s.Position.x:0.##}, {s.Position.z:0.##})");
+                Physics.SyncTransforms();
+                foreach (var c in Physics.OverlapCapsule(s.Position + Vector3.up * 0.4f, s.Position + Vector3.up * 1.6f, 0.25f, ~0, QueryTriggerInteraction.Ignore))
+                    if (!c.transform.IsChildOf(group.transform) && FindRobotRoot(c.transform) == null)
+                        log.AppendLine($"  WARNING Task 1 worker {name} overlaps {c.name}: move it (task1_route.json worker_ahead_m / worker_right_m).");
+            }
+
+            for (int i = group.transform.childCount - 1; i >= 0; i--)
+            {
+                var c = group.transform.GetChild(i);
+                if (!keep.Contains(c.name)) Object.DestroyImmediate(c.gameObject);
+            }
+
+            group.SetActive(false);
+            EditorUtility.SetDirty(group);
+            log.AppendLine($"Task 1 workers (inactive group {Task1Route.WorkersGroup}, active only in Task 1 sessions): {string.Join(", ", placed)}.");
+        }
+
+        static Transform FindRobotRoot(Transform t)
+        {
+            for (; t != null; t = t.parent)
+                foreach (var mb in t.GetComponents<MonoBehaviour>())
+                    if (mb != null && mb.GetType().Name == "RobotRig") return t;
+            return null;
+        }
+
+        static GestureWorker BuildWorkerAt(GameObject parent, string name, Vector3 position, Quaternion rotation, StringBuilder log)
+        {
+            var go = Child(parent, name);
+            go.transform.SetPositionAndRotation(position, rotation);
             var capsule = GetOrAdd<CapsuleCollider>(go);
             capsule.radius = 0.3f;
             capsule.height = 1.8f;
@@ -271,7 +335,7 @@ namespace WarehouseHRI.EditorTools
                 worker.leftArmPivot = null;
                 worker.rightArmPivot = null;
                 bool human = animator.avatar != null && animator.avatar.isHuman;
-                log.AppendLine(human ? "Worker: Mixamo model (Humanoid avatar)." : "Worker: model is not Humanoid; set Rig > Animation Type = Humanoid on worker.fbx.");
+                log.AppendLine(human ? name + ": Mixamo model (Humanoid avatar)." : name + ": model is not Humanoid; set Rig > Animation Type = Humanoid on worker.fbx.");
             }
             else
             {
@@ -292,6 +356,7 @@ namespace WarehouseHRI.EditorTools
             }
 
             EditorUtility.SetDirty(worker);
+            return worker;
         }
 
         /// <summary>
@@ -300,46 +365,295 @@ namespace WarehouseHRI.EditorTools
         /// </summary>
         static void ApplyWorkerMaterial(GameObject model, StringBuilder log)
         {
-            if (!AssetDatabase.IsValidFolder(WorkerTextureDir))
-            {
-                var importer = AssetImporter.GetAtPath(WorkerModelPath) as ModelImporter;
-                AssetDatabase.CreateFolder(Path.GetDirectoryName(WorkerTextureDir)?.Replace('\\', '/'), Path.GetFileName(WorkerTextureDir));
-                bool ok = importer != null && importer.ExtractTextures(WorkerTextureDir);
-                AssetDatabase.Refresh();
-                log.AppendLine(ok ? "Worker: extracted the FBX textures to " + WorkerTextureDir + " (git-ignored)." : "Worker: no extractable textures.");
-            }
-
-            Texture2D diffuse = null;
-            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { WorkerTextureDir }))
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                if (path.IndexOf("diffuse", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    path.IndexOf("albedo", System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    diffuse = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-                    break;
-                }
-            }
-
-            string matPath = WorkerTextureDir + "/Worker_URP.mat";
-            var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
-            if (mat == null)
-            {
-                mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-                AssetDatabase.CreateAsset(mat, matPath);
-            }
-
-            mat.SetTexture("_BaseMap", diffuse);
-            mat.SetColor("_BaseColor", diffuse != null ? Color.white : new Color(0.25f, 0.35f, 0.55f));
-            mat.SetFloat("_Surface", 0f);
-            mat.SetFloat("_Smoothness", 0.25f);
-            EditorUtility.SetDirty(mat);
+            var mat = EnsureWorkerMaterial(log);
+            if (mat == null) return;
             foreach (var r in model.GetComponentsInChildren<Renderer>(true))
             {
                 var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
                 for (int i = 0; i < mats.Length; i++) mats[i] = mat;
                 r.sharedMaterials = mats;
             }
+        }
+
+        // ---------------- worker appearance (environment fix, 2026-10-21) ----------------
+
+        public const string WorkerMaterialPath = WorkerTextureDir + "/Worker_URP.mat";
+        /// <summary>
+        /// The committed scene references the worker material by this GUID (created by Add Worker and Roadmap on the
+        /// machine that built the scene). The material lives in the git-ignored texture folder, so on any other machine
+        /// the reference was missing and the worker rendered magenta. It is now created with this fixed GUID everywhere,
+        /// so the committed scene resolves on every machine without being changed.
+        /// </summary>
+        public const string WorkerMaterialGuid = "fececb7a5daa044cfabce1101932b943";
+
+        [MenuItem("Tools/Warehouse HRI/Restore Worker Appearance")]
+        public static void RestoreAppearanceMenu()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                EditorUtility.DisplayDialog("Warehouse HRI", "Leave Play mode first.", "OK");
+                return;
+            }
+
+            string msg = RestoreAppearance();
+            Debug.Log(msg);
+            EditorUtility.DisplayDialog("Warehouse HRI", msg.Length > 900 ? msg.Substring(0, 900) + " ..." : msg, "OK");
+        }
+
+        /// <summary>Batch mode: Unity -batchmode -quit -projectPath P -executeMethod WarehouseHRI.EditorTools.HriScenarioBuilder.BatchRestoreAppearance</summary>
+        public static void BatchRestoreAppearance()
+        {
+            EditorSceneManager.OpenScene(ScenePath);
+            Debug.Log(RestoreAppearance());
+        }
+
+        /// <summary>
+        /// Extracts the FBX textures (git-ignored), creates the URP Lit worker material with the fixed GUID and reports
+        /// whether the open scene's worker now renders correctly. Changes the scene only if one of its worker renderers
+        /// points at another material (then: save the scene); the committed scene needs no change.
+        /// </summary>
+        public static string RestoreAppearance()
+        {
+            var log = new StringBuilder("[WarehouseHRI] Restore Worker Appearance\n");
+            var mat = EnsureWorkerMaterial(log);
+            var workers = Object.FindObjectsOfType<GestureWorker>(true);   // the scene's worker and the inactive Task 1 workers
+            if (workers.Length == 0)
+            {
+                log.AppendLine("No GestureWorker in the open scene (open Assets/Scenes/WarehouseRobot.unity).");
+                return log.ToString();
+            }
+
+            int changed = 0;
+            if (mat != null)
+                foreach (var w in workers)
+                foreach (var r in w.GetComponentsInChildren<Renderer>(true))
+                {
+                    var mats = r.sharedMaterials;
+                    bool same = mats.Length > 0;
+                    foreach (var m in mats) same &= m == mat;
+                    if (same) continue;
+                    var fixedMats = new Material[Mathf.Max(1, mats.Length)];
+                    for (int i = 0; i < fixedMats.Length; i++) fixedMats[i] = mat;
+                    r.sharedMaterials = fixedMats;
+                    EditorUtility.SetDirty(r);
+                    changed++;
+                }
+
+            if (changed > 0)
+            {
+                EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+                log.AppendLine($"Re-assigned the worker material on {changed} renderer(s): save the scene.");
+            }
+            else log.AppendLine("The scene's worker already uses " + WorkerMaterialPath + " (no scene change).");
+
+            foreach (var w in workers)
+            {
+                var problems = WorkerAppearance.Problems(w.gameObject);
+                log.AppendLine(problems.Count == 0 ? $"Check passed ({w.name}): " + WorkerAppearance.Describe(w.gameObject)
+                    : $"Still wrong ({w.name}): " + string.Join("; ", problems));
+            }
+
+            return log.ToString();
+        }
+
+        /// <summary>Textures extracted from worker.fbx (git-ignored folder) and the worker material with the fixed GUID.</summary>
+        public static Material EnsureWorkerMaterial(StringBuilder log)
+        {
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(WorkerModelPath) == null)
+            {
+                log.AppendLine("worker.fbx not found at " + WorkerModelPath + " (git-ignored: copy it from the team drive / Mixamo first).");
+                return null;
+            }
+
+            if (!AssetDatabase.IsValidFolder(WorkerTextureDir))
+                AssetDatabase.CreateFolder(Path.GetDirectoryName(WorkerTextureDir)?.Replace('\\', '/'), Path.GetFileName(WorkerTextureDir));
+            var diffuse = FindDiffuse(log);
+            if (diffuse == null)
+            {
+                var importer = AssetImporter.GetAtPath(WorkerModelPath) as ModelImporter;
+                bool ok = importer != null && importer.ExtractTextures(WorkerTextureDir);
+                AssetDatabase.Refresh();
+                log.AppendLine(ok ? "Extracted the FBX textures to " + WorkerTextureDir + " (git-ignored)." : "worker.fbx has no extractable textures.");
+                diffuse = FindDiffuse(log);
+            }
+
+            string guidNow = AssetDatabase.AssetPathToGUID(WorkerMaterialPath);
+            if (!string.IsNullOrEmpty(guidNow) && guidNow != WorkerMaterialGuid && AssetDatabase.LoadAssetAtPath<Material>(WorkerMaterialPath) != null)
+            {
+                AssetDatabase.DeleteAsset(WorkerMaterialPath);
+                log.AppendLine($"Replaced {WorkerMaterialPath} (GUID {guidNow}) by one with the scene's GUID {WorkerMaterialGuid}.");
+            }
+
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(WorkerMaterialPath);
+            if (mat == null)
+            {
+                string other = AssetDatabase.GUIDToAssetPath(WorkerMaterialGuid);
+                if (!string.IsNullOrEmpty(other) && AssetDatabase.LoadMainAssetAtPath(other) != null)
+                {
+                    log.AppendLine($"GUID {WorkerMaterialGuid} already belongs to {other}; move or delete it, then run again.");
+                    return null;
+                }
+
+                // Create at a temporary path, then copy the file next to a .meta with the fixed GUID: Unity imports a new
+                // file with the GUID of its existing .meta.
+                string tmp = WorkerTextureDir + "/Worker_URP_tmp.mat";
+                AssetDatabase.CreateAsset(new Material(Shader.Find("Universal Render Pipeline/Lit")), tmp);
+                AssetDatabase.SaveAssets();
+                string projectDir = Path.GetDirectoryName(Application.dataPath);
+                File.Copy(Path.Combine(projectDir, tmp), Path.Combine(projectDir, WorkerMaterialPath), true);
+                File.WriteAllText(Path.Combine(projectDir, WorkerMaterialPath + ".meta"),
+                    "fileFormatVersion: 2\nguid: " + WorkerMaterialGuid + "\nNativeFormatImporter:\n  externalObjects: {}\n" +
+                    "  mainObjectFileID: 2100000\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n");
+                AssetDatabase.DeleteAsset(tmp);
+                AssetDatabase.ImportAsset(WorkerMaterialPath, ImportAssetOptions.ForceUpdate);
+                mat = AssetDatabase.LoadAssetAtPath<Material>(WorkerMaterialPath);
+                if (mat == null || AssetDatabase.AssetPathToGUID(WorkerMaterialPath) != WorkerMaterialGuid)
+                {
+                    log.AppendLine("Could not create " + WorkerMaterialPath + " with GUID " + WorkerMaterialGuid + ".");
+                    return null;
+                }
+
+                log.AppendLine($"Created {WorkerMaterialPath} with GUID {WorkerMaterialGuid} (git-ignored).");
+            }
+
+            if (mat.shader == null || mat.shader.name != "Universal Render Pipeline/Lit") mat.shader = Shader.Find("Universal Render Pipeline/Lit");
+            mat.name = "Worker_URP";   // the copy keeps the temporary asset's internal name otherwise
+            mat.SetTexture("_BaseMap", diffuse);
+            mat.SetColor("_BaseColor", diffuse != null ? Color.white : new Color(0.25f, 0.35f, 0.55f));
+            mat.SetFloat("_Surface", 0f);
+            mat.SetFloat("_Smoothness", 0.25f);
+            EditorUtility.SetDirty(mat);
+            AssetDatabase.SaveAssets();
+            log.AppendLine("Worker material: URP Lit, opaque, smoothness 0.25, base map " + (diffuse != null ? AssetDatabase.GetAssetPath(diffuse) : "NONE (no diffuse texture found)") + ".");
+            return mat;
+        }
+
+        /// <summary>The extracted diffuse (albedo) texture: name contains "diffuse" or "albedo" (as before 2026-10-21).</summary>
+        static Texture2D FindDiffuse(StringBuilder log)
+        {
+            var names = new List<string>();
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { WorkerTextureDir }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                names.Add(Path.GetFileName(path));
+                if (path.IndexOf("diffuse", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    path.IndexOf("albedo", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            }
+
+            if (names.Count > 0) log.AppendLine("Textures in " + WorkerTextureDir + " but none named diffuse/albedo: " + string.Join(", ", names));
+            return null;
+        }
+
+        // ---------------- worker check (import settings, avatar mapping) ----------------
+
+        [MenuItem("Tools/Warehouse HRI/Check Worker (import settings, avatar, appearance)")]
+        public static void CheckWorkerMenu()
+        {
+            string msg = CheckWorker(out string folder);
+            Debug.Log(msg);
+            EditorUtility.DisplayDialog("Warehouse HRI", (msg.Length > 900 ? msg.Substring(0, 900) + " ..." : msg) + "\n\nReport: " + folder, "OK");
+        }
+
+        /// <summary>Batch mode: -executeMethod WarehouseHRI.EditorTools.HriScenarioBuilder.BatchCheckWorker</summary>
+        public static void BatchCheckWorker()
+        {
+            EditorSceneManager.OpenScene(ScenePath);
+            Debug.Log(CheckWorker(out _));
+        }
+
+        /// <summary>
+        /// The worker.fbx import settings against the values committed in worker.fbx.meta (Humanoid, avatar created from
+        /// this model, mapping generated automatically), the Humanoid bone mapping Unity generated on this machine (the
+        /// .meta stores none, so it depends on the FBX file and the Unity version: compare its sha256 between machines),
+        /// the FBX sha256 and the scene worker's appearance. Writes robot_vision/outputs/worker_check_&lt;time&gt;/ (git-ignored).
+        /// </summary>
+        public static string CheckWorker(out string folder)
+        {
+            var log = new StringBuilder("[WarehouseHRI] Check Worker\n");
+            var json = new StringBuilder("{\n");
+            void Field(string k, string v, bool last = false) =>
+                json.Append($"  \"{k}\": \"{(v ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n")}\"{(last ? "" : ",")}\n");
+            string projectDir = Path.GetDirectoryName(Application.dataPath);
+            string repo = Path.GetFullPath(Path.Combine(projectDir, "..", "..", ".."));
+            folder = Path.Combine(repo, "robot_vision", "outputs", "worker_check_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+            Directory.CreateDirectory(folder);
+            Field("unity_version", Application.unityVersion);
+            Field("platform", SystemInfo.operatingSystem + " / " + SystemInfo.graphicsDeviceName);
+
+            string fbx = Path.Combine(projectDir, WorkerModelPath);
+            var importer = AssetImporter.GetAtPath(WorkerModelPath) as ModelImporter;
+            if (importer == null || !File.Exists(fbx))
+            {
+                log.AppendLine("worker.fbx missing: " + WorkerModelPath);
+                Field("error", "worker.fbx missing", true);
+                File.WriteAllText(Path.Combine(folder, "worker_check.json"), json.Append("}\n").ToString());
+                return log.ToString();
+            }
+
+            Field("worker_fbx_sha256", FinalRunGuard.Sha256File(fbx));
+            Field("worker_fbx_meta_sha256_lf", FinalRunGuard.Sha256TextLf(fbx + ".meta"));
+            var expected = new (string name, object got, object want)[]
+            {
+                ("animationType", importer.animationType, ModelImporterAnimationType.Human),
+                ("avatarSetup", importer.avatarSetup, ModelImporterAvatarSetup.CreateFromThisModel),
+                ("autoGenerateAvatarMappingIfUnspecified", importer.autoGenerateAvatarMappingIfUnspecified, true),
+                // The committed .meta stores no mapping ("human: []"): Unity generates it at import (the importer API
+                // then returns the generated bones, so the file is checked, not the API).
+                ("worker.fbx.meta stores a bone mapping", !File.ReadAllText(fbx + ".meta").Contains("    human: []"), false),
+                ("materialImportMode", importer.materialImportMode, ModelImporterMaterialImportMode.ImportViaMaterialDescription),
+                ("materialLocation", importer.materialLocation, ModelImporterMaterialLocation.InPrefab),
+                ("globalScale", importer.globalScale, 1f),
+                ("useFileUnits", importer.useFileUnits, true),
+                ("optimizeGameObjects", importer.optimizeGameObjects, false),
+                ("importAnimation", importer.importAnimation, true),
+            };
+            int bad = 0;
+            var lines = new List<string>();
+            foreach (var e in expected)
+            {
+                bool ok = Equals(e.got, e.want);
+                if (!ok) bad++;
+                lines.Add($"{e.name}: {e.got}{(ok ? "" : $" (committed .meta: {e.want})")}");
+            }
+
+            Field("import_settings", string.Join("\n", lines));
+            Field("import_settings_match_committed_meta", bad == 0 ? "yes" : $"no ({bad} differ)");
+            log.AppendLine(bad == 0 ? "Import settings: equal to the committed worker.fbx.meta (Humanoid, avatar from this model, mapping generated)."
+                : $"Import settings: {bad} differ from the committed .meta:\n  " + string.Join("\n  ", lines));
+
+            Avatar avatar = null;
+            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(WorkerModelPath))
+                if (o is Avatar a) avatar = a;
+            var map = new List<string>();
+            if (avatar != null)
+                foreach (var hb in avatar.humanDescription.human) map.Add(hb.humanName + "=" + hb.boneName);
+            map.Sort(System.StringComparer.Ordinal);
+            string mapText = string.Join("\n", map);
+            Field("avatar_valid_human", avatar != null && avatar.isValid && avatar.isHuman ? "yes" : "no");
+            Field("avatar_mapping_count", map.Count.ToString());
+            Field("avatar_mapping_sha256", WorkerAppearance.Sha256(mapText));
+            File.WriteAllText(Path.Combine(folder, "avatar_mapping.txt"), mapText + "\n");
+            log.AppendLine($"Avatar: {(avatar != null && avatar.isHuman ? "Humanoid" : "NOT Humanoid")}, {map.Count} bones mapped, mapping sha256 {WorkerAppearance.Sha256(mapText)} (compare with the other machine).");
+
+            var worker = Object.FindObjectOfType<GestureWorker>(true);
+            if (worker != null)
+            {
+                var problems = WorkerAppearance.Problems(worker.gameObject);
+                var animator = worker.GetComponentInChildren<Animator>(true);
+                string sceneMap = WorkerAppearance.BoneMap(animator);
+                Field("scene_worker_appearance", WorkerAppearance.Describe(worker.gameObject));
+                Field("scene_worker_problems", string.Join("; ", problems));
+                Field("scene_worker_bone_map_sha256", WorkerAppearance.Sha256(sceneMap));   // = session.json worker_avatar_bone_map_sha256
+                log.AppendLine(problems.Count == 0 ? "Scene worker: renders correctly (" + WorkerAppearance.Describe(worker.gameObject) + ")."
+                    : "Scene worker: " + string.Join("; ", problems));
+            }
+            else Field("scene_worker_problems", "no GestureWorker in the open scene");
+
+            Field("note", "Report only; nothing in the project was changed.", true);
+            File.WriteAllText(Path.Combine(folder, "worker_check.json"), json.Append("}\n").ToString());
+            log.AppendLine("Report: " + folder);
+            return log.ToString();
         }
 
         static Transform PlaceholderArm(GameObject parent, string name, float x)

@@ -124,6 +124,28 @@ camera, `dropped / (sent + dropped)`, to `summary.json` (`frames`).
 | `has_target`, `target_x`, `target_z` | target point for the next NavMesh path (`has_target: false` clears it) |
 | `state` | state-machine state name (shown in the bridge panel) |
 | `screen_text` | text shown on screen ("" = none), e.g. "Which direction?" |
+| `route` (optional, guide mode) | the map the state machine uses: `Task2` (roadmap.json) or `Task1:<stops>` (e.g. `Task1:C1,J1,C3`); the trial runner refuses trials when it is not the map of its task |
+| `perception_ready` (optional, guide mode) | true once the models are warmed up and one frame of each camera has been processed; the trial runner starts trial 1 only after it |
+
+Optional telemetry diagnostics (21 October 2026, infrastructure; absent from older Unity builds): `realtime_s`
+(Unity's real-time clock, s), `frame_ms_max` (longest Unity frame since the previous telemetry), `rtt_window_n`,
+`rtt_window_max_ms`, `rtt_window_sum_ms` (every round trip Unity measured since the previous telemetry; `rtt_ms`
+holds only the latest, so replies arriving together in one frame hid all but the last) and
+`watchdog_silent_ms_max` (longest command silence the watchdog saw in that window). Python logs them and reports
+`round_trip.all_messages`, `python_receive_lag` and `unity_frames` in summary.json.
+
+Measurement correction (22 October 2026, still version 2, all optional): `rtt_clock` = `network_thread`: the
+`rtt_window_*` round trips now run from the network thread's start of writing the telemetry to its receipt of the
+reply (before: telemetry queued on the main thread -> reply); `rtt_queue_window_n`, `rtt_queue_window_max_ms`,
+`rtt_queue_window_sum_ms` keep the earlier definition for comparison. `frame_ms_list`: every Unity frame duration since
+the previous telemetry. `watchdog_rule` = `unanswered_sent_telemetry`, `unity_frame_stall_count` (cumulative) and
+`watchdog_events` (list of `kind` watchdog_stop / unity_frame_stall, `cause` no_reply / not_written /
+no_telemetry_sent, `start_realtime_s`, `gap_ms`, `frame_ms_max`, `ended_by_disconnect`; each silence once, in the
+telemetry after it ended). Python reports `round_trip.all_messages_queued`, `unity_frames` (frames, p99, over 100 ms)
+and `watchdog` in summary.json.
+
+The two optional fields were added on 21 October 2026 (infrastructure; extra fields were already allowed, so
+`protocol_version` stays 2). Absent, Unity reads `""` and `false`.
 
 Every command carries the complete desired state; Unity keeps nothing
 from earlier commands.
@@ -146,17 +168,25 @@ contains a key named `goal`, `goal_point`, `goal_x`, `goal_z`, `end_point`,
   bridge and keyboard commands are ignored until it is released with two
   deliberate clicks ("Release stop...", then "Confirm release" within
   3 s). Engaging and releasing are logged; telemetry carries `estop`.
-- **Watchdog**: once a command has arrived, if no command arrives for
-  `watchdog_timeout_s` (0.3 s), Unity sets v = 0, omega = 0 (the drive
-  brakes at `decel_mps2`), logs a warning and counts it
-  (`watchdog_count`). The next command releases it.
+- **Watchdog**: once a command has arrived, if Python does not answer
+  telemetry Unity actually sent (the network thread started writing it)
+  within `watchdog_timeout_s` (0.3 s), i.e. no command arrives after that
+  write, Unity sets v = 0, omega = 0 (the drive brakes at `decel_mps2`),
+  logs a warning and counts it (`watchdog_count`). The same applies to a
+  telemetry message that could not be written for 0.3 s with no command
+  since it was queued (blocked socket). The next command releases it.
+  Since 22 October 2026 (`CommandWatchdog`); before, any 0.3 s without a
+  command stopped the robot, including a long Unity frame during which
+  Unity sent no telemetry. Such silences are now reported as
+  `unity_frame_stall` events and do not stop the robot.
 - **Disconnect**: when the connection drops, Unity stops the robot at
   once and logs it; it reconnects every `reconnect_interval_s`.
 
 ## Round-trip delay
 
 Unity measures each telemetry -> command round trip (above) and reports
-it in the next telemetry. The Python server writes one line per message
+it in the next telemetry. Since 22 October 2026 both time stamps are taken
+on Unity's network threads (write started -> reply received). The Python server writes one line per message
 to `messages.jsonl` in its run folder, including `rtt_ms`, and a summary
 (mean, median, 95th percentile, maximum, with coverage) in
 `summary.json`.

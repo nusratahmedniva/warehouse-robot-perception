@@ -3,6 +3,7 @@
 Inputs (a Unity session folder and the bridge run folder that served it):
     --sweep  outputs/gestures_sweep_development_X  outputs/bridge_guide_Y     gestures (pan-tilt camera)
     --trials outputs/trials_development_Task2_X    outputs/bridge_guide_Y     people (360 deg camera), trials
+    --forward-hands outputs/forward_hand_sweep_development_X outputs/bridge_guide_Y   FORWARD fist vs index finger
 Optional --simulate N: hri_sim.py trials with the measured rates (label "simulation", not Unity).
 
 Gestures, per pan-tilt frame inside each sweep sample: confusion matrix shown x read, per command coverage (frames
@@ -126,6 +127,57 @@ def eval_gestures(sweep: Path, bridge: Path, hold_s: float, gap_s: float) -> dic
             "by_distance": {f"{b} {s}": {"frames": c["frames"], "coverage": r3(c["covered"] / c["frames"]) if c["frames"] else None,
                                          "correct_rate": r3(c["correct"] / c["frames"]) if c["frames"] else None}
                             for (b, s), c in sorted(by_dist.items())}}
+
+
+def eval_forward_hands(sweep: Path, bridge: Path, hold_s: float) -> dict:
+    """FORWARD hand sweep (truth_sweep.csv with column hand; AUDIT.md section 9 item 15, declared before the run).
+
+    Per hand: pan-tilt frames read as each command inside the sample windows, the FORWARD rate (FORWARD / all frames),
+    STOP frames, and the strict 1.0 s hold result per sample. The rule: adopt the index finger if its FORWARD rate is
+    at least the fist's and no index-finger frame is read STOP.
+    """
+    truth = read_csv(sweep / "truth_sweep.csv")
+    if not truth or "hand" not in truth[0]:
+        raise SystemExit(f"{sweep.name}: truth_sweep.csv has no hand column (not a ForwardHandSweep session)")
+    frames = sorted(({"t": float(r["time_s"]), "read": r["gesture_read"] or "NONE"}
+                     for r in read_csv(bridge / "perception.csv") if r["type"] == "frame_pan_tilt" and num(r["time_s"]) is not None),
+                    key=lambda f: f["t"])
+    ts = [f["t"] for f in frames]
+    per = defaultdict(lambda: {"samples": 0, "reads": Counter(), "hold_strict": Counter(), "samples_with_stop": 0,
+                               "samples_without_frames": 0})
+    for t in truth:
+        e = per[t["hand"]]
+        win = frames[bisect.bisect_left(ts, float(t["t_start"])):bisect.bisect_right(ts, float(t["t_end"]))]
+        e["samples"] += 1
+        e["samples_without_frames"] += not win
+        e["samples_with_stop"] += any(f["read"] == "STOP" for f in win)
+        for f in win:
+            e["reads"][f["read"]] += 1
+        acc = hold_result(win, hold_s, 0.0)
+        e["hold_strict"]["correct" if acc == "FORWARD" else "none" if acc is None else "wrong"] += 1
+    out = {}
+    for hand, e in sorted(per.items()):
+        n = sum(e["reads"].values())
+        out[hand] = {"samples": e["samples"], "frames": n, "reads": dict(e["reads"]),
+                     "forward_rate": r3(e["reads"]["FORWARD"] / n) if n else None,
+                     "coverage": r3((n - e["reads"]["NONE"]) / n) if n else None,
+                     "stop_frames": e["reads"]["STOP"], "samples_with_stop": e["samples_with_stop"],
+                     "samples_without_frames": e["samples_without_frames"], "hold_strict": dict(e["hold_strict"])}
+    fi, fs = out.get("index_finger"), out.get("fist")
+    if fi and fs and fi["forward_rate"] is not None and fs["forward_rate"] is not None:
+        at_least = e_rate(fi) >= e_rate(fs)
+        never_stop = fi["stop_frames"] == 0
+        decision = "adopt index_finger" if at_least and never_stop else "keep fist"
+    else:
+        at_least = never_stop = None
+        decision = "not_evaluated (a hand has no frames)"
+    return {"per_hand": out, "hold_s": hold_s, "rule": {"finger_forward_rate_at_least_fist": at_least,
+                                                         "finger_never_read_stop": never_stop, "decision": decision}}
+
+
+def e_rate(e: dict) -> float:
+    """Unrounded FORWARD rate, so the comparison is not decided by rounding."""
+    return e["reads"].get("FORWARD", 0) / e["frames"]
 
 
 # ---------------------------------------------------------------- people
@@ -278,6 +330,17 @@ def markdown(rep: dict) -> str:
         for c in COMMANDS:
             L.append(f"| {c} | " + " | ".join(str(g["confusion"][c].get(x, 0)) for x in COMMANDS) + " |")
         L.append("")
+    fh = rep.get("forward_hands")
+    if fh:
+        L += ["## FORWARD hand sweep (AUDIT.md section 9 item 15)", "",
+              "| hand | samples | frames | FORWARD rate | coverage | STOP frames | samples with STOP | reads | 1.0 s hold strict |",
+              "|---|---|---|---|---|---|---|---|---|"]
+        for h, v in fh["per_hand"].items():
+            L.append(f"| {h} | {v['samples']} | {v['frames']} | {v['forward_rate']} | {v['coverage']} | {v['stop_frames']} | "
+                     f"{v['samples_with_stop']} | {v['reads']} | {v['hold_strict']} |")
+        r = fh["rule"]
+        L += ["", f"Rule: finger FORWARD rate >= fist: {r['finger_forward_rate_at_least_fist']}; finger never read STOP: "
+              f"{r['finger_never_read_stop']}; decision: **{r['decision']}**.", ""]
     p = rep.get("people")
     if p:
         L += ["## People on the 360 deg camera (trials)", "",
@@ -310,10 +373,12 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sweep", nargs=2, metavar=("UNITY_SWEEP", "BRIDGE_RUN"))
     ap.add_argument("--trials", nargs=2, metavar=("UNITY_TRIALS", "BRIDGE_RUN"))
+    ap.add_argument("--forward-hands", nargs=2, metavar=("UNITY_HAND_SWEEP", "BRIDGE_RUN"),
+                    help="FORWARD fist vs index finger sweep (forward_hand_sweep_development_*)")
     ap.add_argument("--simulate", type=int, default=0, help="simulated trials per setting with the measured rates")
     a = ap.parse_args(argv)
-    if not a.sweep and not a.trials:
-        raise SystemExit("give --sweep and/or --trials")
+    if not a.sweep and not a.trials and not a.forward_hands:
+        raise SystemExit("give --sweep, --trials and/or --forward-hands")
     ev = hpm.load_config()["evaluation"]
     ctl = hc.load_json("configs/hri_control.json")["dialog"]
     rep, inputs, bridges = {"label": "vision"}, {}, []
@@ -322,6 +387,12 @@ def main(argv=None) -> None:
         inputs["sweep"] = {"unity": s.name, "bridge": b.name, "session": guard_development(s)}
         rep["gestures"] = eval_gestures(s, b, ctl["gesture_hold_s"], ctl.get("max_none_gap_s", 0.3))
         bridges.append(b)
+    if a.forward_hands:
+        s, b = dio.resolve(a.forward_hands[0]), dio.resolve(a.forward_hands[1])
+        inputs["forward_hands"] = {"unity": s.name, "bridge": b.name, "session": guard_development(s)}
+        rep["forward_hands"] = eval_forward_hands(s, b, ctl["gesture_hold_s"])
+        if b not in bridges:
+            bridges.append(b)
     if a.trials:
         s, b = dio.resolve(a.trials[0]), dio.resolve(a.trials[1])
         inputs["trials"] = {"unity": s.name, "bridge": b.name, "session": guard_development(s)}

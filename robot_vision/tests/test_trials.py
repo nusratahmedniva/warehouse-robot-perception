@@ -87,6 +87,24 @@ class GuideTests(unittest.TestCase):
             rows = list(csv.DictReader((Path(d) / "decisions.csv").open()))
             self.assertEqual([x["state"] for x in rows], ["idle", "navigate", "idle"])
 
+    def test_every_reply_carries_route_and_perception_ready(self):
+        import task_route as tr
+        now = {"t": 0.0}
+        worker = FakeWorker(lambda: now["t"])
+        g = GuideController(hc.make_controller(), worker, None, route="Task2")
+        r = g.on_message(telemetry(1))
+        self.assertEqual((r["route"], r["perception_ready"]), ("Task2", False))   # no ready attribute: not ready
+        worker.ready = True
+        self.assertTrue(g.on_message(telemetry(2))["perception_ready"])
+        P.validate(P.Message({**r, "type": "command", "seq": 0, "reply_to": 1, "version": P.PROTOCOL_VERSION,
+                              "attachments": []}), P.TO_UNITY)   # extra fields are allowed: raises otherwise
+        road, route, _ = tr.map_for_task("Task1", hc.load_json)
+        g1 = GuideController(hc.Controller(hc.load_json("configs/hri_control.json"), hc.Roadmap(road)), worker, None, route=route)
+        g1.on_message(telemetry(1))
+        r = g1.on_message(telemetry(2, trial=1, running=True))
+        self.assertEqual(r["route"], "Task1:C1,J1,C3")
+        self.assertEqual((r["target_x"], r["target_z"]), (6.25, -5.0))    # the first checkpoint, C1
+
 
 def write_csv(p, rows):
     with p.open("w", newline="") as f:
@@ -208,6 +226,37 @@ class MergeAnalysisEvalTests(unittest.TestCase):
         frames = [{"t": 0.1 * i, "read": "NONE" if i == 5 else "FORWARD"} for i in range(15)]
         self.assertIsNone(he.hold_result(frames, 1.0, 0.0))          # the one missed frame breaks the strict hold
         self.assertEqual(he.hold_result(frames, 1.0, 0.3), "FORWARD")
+
+    def test_forward_hand_rule(self):
+        def run(finger_reads, fist_reads):
+            with tempfile.TemporaryDirectory() as d:
+                u, b = Path(d) / "u", Path(d) / "b"
+                u.mkdir(), b.mkdir()
+                truth, frames, t = [], [], 10.0
+                for i, (hand, reads) in enumerate((("fist", fist_reads), ("index_finger", finger_reads))):
+                    truth.append({"sample": i + 1, "pair": 1, "gesture_shown": "FORWARD", "hand": hand,
+                                  "t_start": t, "t_end": t + 2.0})
+                    for k, r in enumerate(reads):
+                        frames.append({"type": "frame_pan_tilt", "time_s": t + 0.1 * k, "gesture_read": r})
+                    t += 3.0
+                frames.append({"type": "frame_pan_tilt", "time_s": 99.0, "gesture_read": "STOP"})   # outside every window
+                write_csv(u / "truth_sweep.csv", truth)
+                write_csv(b / "perception.csv", frames)
+                return he.eval_forward_hands(u, b, 1.0)
+
+        r = run(["FORWARD"] * 20, ["FORWARD"] * 18 + [""] * 2)
+        self.assertEqual(r["per_hand"]["index_finger"]["forward_rate"], 1.0)
+        self.assertEqual(r["per_hand"]["fist"]["reads"], {"FORWARD": 18, "NONE": 2})
+        self.assertEqual(r["per_hand"]["index_finger"]["hold_strict"], {"correct": 1})
+        self.assertEqual(r["rule"]["decision"], "adopt index_finger")
+        r = run(["FORWARD"] * 19 + ["STOP"], ["FORWARD"] * 10 + [""] * 10)     # one STOP frame fails the rule
+        self.assertEqual((r["per_hand"]["index_finger"]["stop_frames"], r["rule"]["decision"]), (1, "keep fist"))
+        r = run(["FORWARD"] * 17 + [""] * 3, ["FORWARD"] * 18 + [""] * 2)     # finger read FORWARD less often
+        self.assertEqual(r["rule"]["decision"], "keep fist")
+        r = run(["FORWARD"] * 18 + [""] * 2, ["FORWARD"] * 18 + [""] * 2)     # equal rates: at least as often
+        self.assertEqual(r["rule"]["decision"], "adopt index_finger")
+        r = run([], ["FORWARD"] * 20)
+        self.assertTrue(r["rule"]["decision"].startswith("not_evaluated"))
 
 
 if __name__ == "__main__":

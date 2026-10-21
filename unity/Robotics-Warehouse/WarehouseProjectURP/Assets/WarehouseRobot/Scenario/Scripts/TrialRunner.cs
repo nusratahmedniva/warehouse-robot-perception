@@ -33,7 +33,9 @@ namespace WarehouseRobot.Scenario
 
     [Serializable] class FrozenFlag { public bool frozen; }
     [Serializable] class FrozenWeights { public string path = "", sha256 = ""; }
-    [Serializable] class FrozenRecord { public FrozenWeights pose_weights = new FrozenWeights(); }
+    [Serializable] class FrozenTask { public FrozenWeights route_config = new FrozenWeights(); }
+    [Serializable] class FrozenTasks { public FrozenTask Task1 = new FrozenTask(); }
+    [Serializable] class FrozenRecord { public FrozenWeights pose_weights = new FrozenWeights(); public FrozenTasks tasks = new FrozenTasks(); }
     [Serializable] class RoadmapMeta { public string start = "A"; public string task1_goal = "E1"; }
 
     [Serializable]
@@ -71,7 +73,17 @@ namespace WarehouseRobot.Scenario
     /// stopped, or on collision, timeout or getting stuck; it is then scored from ground truth. Output (new folder
     /// robot_vision/outputs/trials_mode_task_time/): session.json (git commit, seed, goal order), config_used/,
     /// truth_run###.json and truth_run###.csv (0.1 s), results_unity.csv. Task "GestureSweep" instead keeps the
-    /// robot still and has the worker show every command (truth_sweep.csv) for the development gesture evaluation.
+    /// robot still and has the worker show every command (truth_sweep.csv) for the development gesture evaluation; task
+    /// "ForwardHandSweep" (development only, 2026-10-22, AUDIT.md section 9 item 15) shows only FORWARD, once with the fist
+    /// and once with the index finger at each placement (truth_sweep.csv column hand).
+    /// Since 2026-10-21: every session is refused while the worker does not render as the textured Humanoid avatar
+    /// (WorkerAppearance); Task 1 adds the checkpoints of robot_vision/configs/task1_route.json to the roadmap for the
+    /// session (Task1Route); trial 1 starts only after Python reports perception_ready, and only if Python's map
+    /// (command field route) is the map of this task. Task 1 workers (2026-10-21): one standing worker per stop, from
+    /// the scene group WarehouseHRI/Task1Workers (built inactive by Add Worker and Roadmap); a Task 1 session refuses to
+    /// start unless those workers stand exactly where task1_route.json puts them, activates them, hides the moved
+    /// Task 2 worker, and every Task 1 worker shows FORWARD (the command toward B from its stop) for the whole trial.
+    /// Task 2 and the gesture sweep keep the group inactive.
     /// </summary>
     public class TrialRunner : MonoBehaviour
     {
@@ -90,10 +102,17 @@ namespace WarehouseRobot.Scenario
         RobotRig robot;
         RobotBridgeClient bridge;
         GestureWorker worker;
+        readonly List<GestureWorker> workers = new List<GestureWorker>();          // the workers of this session
+        readonly Dictionary<string, GestureWorker> task1Workers = new Dictionary<string, GestureWorker>();
+        List<Task1WorkerStand> task1Stands;
         readonly Dictionary<string, RoadNode> nodes = new Dictionary<string, RoadNode>();
         TrialsConfig cfg;
         RoadmapMeta meta;
         string repoRoot, outRoot, cfgText, roadText, cfgName = "trials.json";
+        string routeText, expectedRoute = "Task2";
+        readonly List<string> task1Stops = new List<string>();
+        bool IsTask1 => string.Equals(cfg.task, "Task1", StringComparison.OrdinalIgnoreCase);
+        const string Task1RouteFile = "robot_vision/configs/task1_route.json";
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         string RepoFile(string rel) => Path.GetFullPath(Path.Combine(repoRoot, rel));
@@ -133,15 +152,133 @@ namespace WarehouseRobot.Scenario
             else if (cfg.dev_seed == cfg.final_seed) error = "dev_seed and final_seed must differ";
             else if (cfg.IsFinal && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
                 error = "final mode needs frozen hri_control.json and hri_perception.json";
+            workers.Clear();
+            if (error == null && IsTask1) error = AddTask1Checkpoints() ?? SetupTask1Workers();
+            else if (error == null)
+            {
+                var group = Task1Group();
+                if (group != null) group.gameObject.SetActive(false);    // Task 2 / sweep: never the Task 1 workers
+                workers.Add(worker);
+            }
+            if (error == null)
+            {
+                // Every session, every mode and task: every worker must render as the textured Humanoid avatar.
+                foreach (var w in workers)
+                {
+                    var look = WorkerAppearance.Problems(w.gameObject);
+                    if (look.Count > 0) { error = $"worker appearance ({w.name}): " + string.Join("; ", look) + ". " + WorkerAppearance.Fix; break; }
+                }
+            }
             outRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
             if (error == null && cfg.IsFinal)
             {
                 // Each task's final runs once; another task's FINAL_DONE.json does not block it.
                 string earlier = FinalRunGuard.EarlierFinal(outRoot, cfg.task);
                 if (earlier != null) error = $"final trials of {cfg.task} already run: {earlier}";
-                else error = WeightsProblem();
+                else error = WeightsProblem() ?? (IsTask1 ? Task1RouteProblem() : null);
             }
             return error == null;
+        }
+
+        /// <summary>Task 1: the checkpoints of task1_route.json on the straight line, for this Play session.</summary>
+        string AddTask1Checkpoints()
+        {
+            try
+            {
+                routeText = File.ReadAllText(RepoFile(Task1RouteFile));
+                var rc = JsonUtility.FromJson<Task1RouteConfig>(routeText);
+                task1Stands = Task1Route.WorkerStands(nodes[meta.start], rc);     // from the scene roadmap, before Apply
+                var stops = Task1Route.Apply(nodes[meta.start], rc, out expectedRoute);
+                task1Stops.Clear();
+                foreach (var s in stops)
+                {
+                    nodes[s.name] = s;
+                    task1Stops.Add(s.name);
+                }
+
+                var line = Task1Route.StraightLine(nodes[meta.start]);
+                if (line[line.Count - 1].name != meta.task1_goal)
+                    return $"Task 1: the straight line ends at {line[line.Count - 1].name}, not at task1_goal {meta.task1_goal}";
+                Debug.Log($"[TrialRunner] Task 1 map {expectedRoute}: stops {string.Join(", ", task1Stops)}");
+                return null;
+            }
+            catch (Exception e)
+            {
+                return "Task 1 route (" + Task1RouteFile + "): " + e.Message;
+            }
+        }
+
+        /// <summary>The scene's Task 1 worker group (WarehouseHRI/Task1Workers, saved inactive), or null.</summary>
+        static Transform Task1Group()
+        {
+            foreach (var go in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+                if (go.name == "WarehouseHRI") return go.transform.Find(Task1Route.WorkersGroup);
+            return null;
+        }
+
+        /// <summary>
+        /// Task 1: the scene's Task 1 workers must be exactly those of task1_route.json (one per stop, at its stand), else
+        /// the scene is stale and the session is refused. Activates them and hides the moved Task 2 worker.
+        /// </summary>
+        string SetupTask1Workers()
+        {
+            const string rebuild = "run Tools > Warehouse HRI > Add Worker and Roadmap (edit mode), save the scene, press Play again";
+            var group = Task1Group();
+            if (group == null) return "Task 1: no WarehouseHRI/" + Task1Route.WorkersGroup + " in the scene: " + rebuild;
+            var names = new List<string>();
+            foreach (Transform c in group) names.Add(c.name);
+            var want = new List<string>();
+            foreach (var s in task1Stands) want.Add(Task1Route.WorkerName(s.Stop));
+            if (string.Join(",", names) != string.Join(",", want))
+                return $"Task 1 workers in the scene ({string.Join(", ", names)}) are not those of {Task1RouteFile} ({string.Join(", ", want)}): {rebuild}";
+            task1Workers.Clear();
+            foreach (var s in task1Stands)
+            {
+                var t = group.Find(Task1Route.WorkerName(s.Stop));
+                var gw = t.GetComponent<GestureWorker>();
+                Vector3 d = t.position - s.Position;
+                d.y = 0f;
+                if (gw == null) return $"Task 1 worker {t.name} has no GestureWorker: {rebuild}";
+                if (d.magnitude > 0.01f || Quaternion.Angle(t.rotation, s.Rotation) > 1f)
+                    return $"Task 1 worker {t.name} stands at ({t.position.x:0.00}, {t.position.z:0.00}), {Task1RouteFile} puts it at ({s.Position.x:0.00}, {s.Position.z:0.00}): {rebuild}";
+                task1Workers[s.Stop] = gw;
+            }
+
+            group.gameObject.SetActive(true);
+            worker.gameObject.SetActive(false);      // Task 1 has a standing worker per stop instead of the moved one
+            foreach (var s in task1Stands)
+            {
+                var gw = task1Workers[s.Stop];
+                workers.Add(gw);
+                string blocked = StandBlocked(gw);
+                if (blocked != null) return $"Task 1 worker at {s.Stop}: overlaps {blocked}";
+            }
+
+            Debug.Log($"[TrialRunner] Task 1 workers: {string.Join(", ", want)} (moved Task 2 worker hidden)");
+            return null;
+        }
+
+        /// <summary>Name of a scene collider this worker stands in (racks, walls), or null.</summary>
+        string StandBlocked(GestureWorker w)
+        {
+            Physics.SyncTransforms();
+            Vector3 p = w.transform.position;
+            foreach (var c in Physics.OverlapCapsule(p + Vector3.up * 0.4f, p + Vector3.up * 1.6f, 0.25f, ~0, QueryTriggerInteraction.Ignore))
+                if (!c.transform.IsChildOf(w.transform) && !c.transform.IsChildOf(robot.transform)) return c.name;
+            return null;
+        }
+
+        /// <summary>Task 1 final: task1_route.json must have the sha256 recorded in hri_frozen.json (LF-normalised).</summary>
+        string Task1RouteProblem()
+        {
+            FrozenRecord rec;
+            try { rec = JsonUtility.FromJson<FrozenRecord>(File.ReadAllText(RepoFile("robot_vision/configs/hri_frozen.json"))); }
+            catch (Exception e) { return "cannot read robot_vision/configs/hri_frozen.json: " + e.Message; }
+            var rc = rec?.tasks?.Task1?.route_config;
+            if (rc == null || string.IsNullOrEmpty(rc.sha256)) return "no tasks.Task1.route_config in robot_vision/configs/hri_frozen.json";
+            string got = FinalRunGuard.Sha256TextLf(RepoFile(rc.path));
+            return string.Equals(got, rc.sha256, StringComparison.OrdinalIgnoreCase) ? null
+                : $"{rc.path} has sha256 {got}, not the recorded {rc.sha256}";
         }
 
         string WeightsProblem()
@@ -172,14 +309,15 @@ namespace WarehouseRobot.Scenario
 
             string mode = cfg.IsFinal ? "final" : "development";
             int seed = cfg.IsFinal ? cfg.final_seed : cfg.dev_seed;
-            bool sweep = string.Equals(cfg.task, "GestureSweep", StringComparison.OrdinalIgnoreCase);
+            bool handSweep = string.Equals(cfg.task, "ForwardHandSweep", StringComparison.OrdinalIgnoreCase);
+            bool sweep = handSweep || string.Equals(cfg.task, "GestureSweep", StringComparison.OrdinalIgnoreCase);
             if (sweep && cfg.IsFinal)
             {
-                Status = "not started: GestureSweep is development only";
+                Status = $"not started: {cfg.task} is development only";
                 yield break;
             }
 
-            SessionFolder = NewFolder(sweep ? "gestures_sweep_development" : $"trials_{mode}_{cfg.task}");
+            SessionFolder = NewFolder(handSweep ? "forward_hand_sweep_development" : sweep ? "gestures_sweep_development" : $"trials_{mode}_{cfg.task}");
             Directory.CreateDirectory(Path.Combine(SessionFolder, "config_used"));
             WriteNew(Path.Combine(SessionFolder, "config_used", cfgName), cfgText);
             WriteNew(Path.Combine(SessionFolder, "config_used", "roadmap.json"), roadText);
@@ -187,23 +325,62 @@ namespace WarehouseRobot.Scenario
             var endpoints = new List<string>();
             foreach (var kv in nodes) if (kv.Value.IsEndpoint) endpoints.Add(kv.Key);
             endpoints.Sort(StringComparer.Ordinal);
-            TrialTotal = sweep ? GestureSweepOrder.Commands.Length * cfg.gesture_sweep.repeats : Mathf.Max(1, cfg.trial_count);
+            TrialTotal = handSweep ? 2 * cfg.gesture_sweep.repeats
+                : sweep ? GestureSweepOrder.Commands.Length * cfg.gesture_sweep.repeats : Mathf.Max(1, cfg.trial_count);
             var preview = new List<string>();
             var gp = new GoalSequence(seed);
             for (int i = 0; i < TrialTotal && !sweep; i++)
-                preview.Add(string.Equals(cfg.task, "Task1", StringComparison.OrdinalIgnoreCase) ? meta.task1_goal : endpoints[gp.NextGoalIndex(endpoints.Count)]);
+                preview.Add(IsTask1 ? meta.task1_goal : endpoints[gp.NextGoalIndex(endpoints.Count)]);
+            if (IsTask1) WriteNew(Path.Combine(SessionFolder, "config_used", "task1_route.json"), routeText);
+            var animator = workers[0].GetComponentInChildren<Animator>();
+            string boneMap = WorkerAppearance.BoneMap(animator);
+            var looks = new List<string>();
+            var placedWorkers = new List<string>();
+            foreach (var w in workers)
+            {
+                looks.Add(w.name + ": " + WorkerAppearance.Describe(w.gameObject));
+                placedWorkers.Add($"{w.name} ({w.transform.position.x.ToString("0.00", Inv)}, {w.transform.position.z.ToString("0.00", Inv)})");
+            }
             WriteNew(Path.Combine(SessionFolder, "session.json"),
                 "{\n" + $"  \"task\": \"{cfg.task}\",\n  \"mode\": \"{mode}\",\n  \"seed\": {seed},\n" +
                 $"  \"trials\": {TrialTotal},\n  \"endpoints\": [{Quote(endpoints)}],\n  \"goal_order\": [{Quote(preview)}],\n" +
                 $"  \"git_commit\": \"{commit}\",\n  \"git_branch\": \"{branch}\",\n  \"unity_version\": \"{Application.unityVersion}\",\n" +
                 $"  \"trials_config_sha256\": \"{Sha256(cfgText)}\",\n  \"roadmap_sha256\": \"{Sha256(roadText)}\",\n" +
+                (IsTask1 ? $"  \"task1_stops\": [{Quote(task1Stops)}],\n  \"task1_route_sha256_lf\": \"{Sha256(routeText.Replace("\r\n", "\n"))}\",\n" : "") +
+                $"  \"python_map_required\": \"{(sweep ? "" : expectedRoute)}\",\n" +
+                $"  \"worker_model_sha256\": \"{WorkerModelSha256()}\",\n" +
+                $"  \"worker_avatar_bone_map_sha256\": \"{WorkerAppearance.Sha256(boneMap)}\",\n" +
+                $"  \"worker_avatar_bones\": {boneMap.Split('\n').Length - 1},\n" +
+                $"  \"workers\": [{Quote(placedWorkers)}],\n" +
+                $"  \"worker_appearance\": \"{JsonEscape(string.Join(" | ", looks))}\",\n" +
                 "  \"note\": \"goal B lives only in Unity (this folder); Python never receives it\"\n}\n");
 
             Status = "waiting for the Python bridge";
             while (!bridge.Connected) yield return null;
+            // Trial 1 starts only when Python has warmed up its models and processed a frame of each camera
+            // (the first-call stalls otherwise hit the 0.3 s watchdog during trial 1; infrastructure, 2026-10-21).
+            float waitStart = Time.realtimeSinceStartup;
+            while (!bridge.PythonPerceptionReady)
+            {
+                Status = bridge.Connected ? $"waiting for Python: perception ready ({Time.realtimeSinceStartup - waitStart:0} s)" : "waiting for the Python bridge";
+                yield return null;
+            }
+
+            Debug.Log($"[TrialRunner] Python perception ready after {Time.realtimeSinceStartup - waitStart:0.0} s; Python map {bridge.PythonRoute}");
+            if (!sweep && bridge.PythonRoute != expectedRoute)
+            {
+                string why = $"Python's map is '{bridge.PythonRoute}' but {cfg.task} needs '{expectedRoute}': restart the server with " +
+                             $"python -m bridge.server --mode guide --perception vision --task {(IsTask1 ? "Task1" : "Task2")}";
+                Status = "not started: " + why;
+                Debug.LogError("[TrialRunner] " + why);
+                WriteNew(Path.Combine(SessionFolder, "NOT_STARTED.txt"), why + "\n");
+                yield break;
+            }
+
             yield return new WaitForSeconds(0.5f);
 
-            if (sweep) yield return Sweep(seed);
+            if (handSweep) yield return HandSweep(seed);
+            else if (sweep) yield return Sweep(seed);
             else yield return Trials(seed, mode, endpoints);
         }
 
@@ -250,7 +427,14 @@ namespace WarehouseRobot.Scenario
             bridge.ReachedEndPoint = false;
             var shown = new List<ShownRecord>();
             var placed = new HashSet<string>();
-            worker.faceTarget = robot.transform;
+            foreach (var w in workers) w.faceTarget = robot.transform;
+            if (IsTask1)
+                foreach (var st in task1Stands)              // standing workers: back to the stand, show the command toward B
+                {
+                    var w = task1Workers[st.Stop];
+                    w.transform.SetPositionAndRotation(st.Position, st.Rotation);
+                    w.Show(nodes[st.Stop].CommandToward(nodes[goal]));
+                }
             if (first != null && first.IsJunction) Place(first, goal, shown, placed);
             int collisionBase = robot.Collisions != null ? robot.Collisions.Records.Count : 0;
             var body = robot.GetComponent<Collider>();
@@ -288,10 +472,11 @@ namespace WarehouseRobot.Scenario
                 if (now >= nextTruth)
                 {
                     nextTruth += cfg.truth_interval_s;
-                    var w = worker.transform;
+                    var nw = NearestWorker(p);              // Task 1: the nearest of the standing workers
+                    var w = nw.transform;
                     truth.WriteLine(string.Join(",", F(now, "0.000"), F(p.x, "0.000"), F(p.z, "0.000"), F(robot.transform.eulerAngles.y, "0.0"),
                         F(robot.Drive.V, "0.000"), F(robot.Drive.Omega, "0.000"), F(w.position.x, "0.000"), F(w.position.z, "0.000"),
-                        F(w.eulerAngles.y, "0.0"), worker.Current.ToString(), F(hd, "0.000"),
+                        F(w.eulerAngles.y, "0.0"), nw.Current.ToString(), F(hd, "0.000"),
                         ((robot.Collisions != null ? robot.Collisions.Records.Count : 0) - collisionBase).ToString(Inv), Csv(bridge.State)));
                 }
 
@@ -364,13 +549,36 @@ namespace WarehouseRobot.Scenario
             r.detail = detail;
         }
 
+        /// <summary>
+        /// The robot heads to this junction: Task 2 moves the one worker there and shows the command toward B; Task 1
+        /// workers already stand at every stop, so only what that stop's worker shows is recorded (t_placed = when the
+        /// robot started heading there).
+        /// </summary>
         void Place(RoadNode junction, string goal, List<ShownRecord> shown, HashSet<string> placed)
         {
             placed.Add(junction.name);
-            worker.PlaceAt(junction.workerStand != null ? junction.workerStand : junction.transform);
             var cmd = junction.CommandToward(nodes[goal]);
-            worker.Show(cmd);
+            if (IsTask1 && task1Workers.TryGetValue(junction.name, out var standing)) cmd = standing.Current;
+            else
+            {
+                worker.PlaceAt(junction.workerStand != null ? junction.workerStand : junction.transform);
+                worker.Show(cmd);
+            }
             shown.Add(new ShownRecord { junction = junction.name, shown = cmd.ToString(), t_placed = Time.time });
+        }
+
+        GestureWorker NearestWorker(Vector3 p)
+        {
+            GestureWorker best = workers[0];
+            float bd = float.PositiveInfinity;
+            foreach (var w in workers)
+            {
+                Vector3 d = w.transform.position - p;
+                d.y = 0f;
+                if (d.sqrMagnitude < bd) { bd = d.sqrMagnitude; best = w; }
+            }
+
+            return best;
         }
 
         void Teleport(Vector3 pos, float yawDeg)
@@ -387,63 +595,151 @@ namespace WarehouseRobot.Scenario
             robot.transform.SetPositionAndRotation(pos, rot);
         }
 
+        /// <summary>Horizontal distance from the robot's body to the nearest worker's centre axis (every worker of the session).</summary>
         float HumanDistance(Collider body)
         {
-            Vector3 w = worker.transform.position;
-            Vector3 from = robot.transform.position;
-            if (body != null)
+            float best = float.PositiveInfinity;
+            foreach (var wk in workers)
             {
-                w.y = body.bounds.center.y;
-                from = body.ClosestPoint(w);
+                Vector3 w = wk.transform.position;
+                Vector3 from = robot.transform.position;
+                if (body != null)
+                {
+                    w.y = body.bounds.center.y;
+                    from = body.ClosestPoint(w);
+                }
+
+                Vector3 d = w - from;
+                d.y = 0f;
+                best = Mathf.Min(best, d.magnitude);
             }
 
-            Vector3 d = w - from;
-            d.y = 0f;
-            return d.magnitude;
+            return best;
         }
 
         // ---------------- gesture sweep (development) ----------------
 
-        IEnumerator Sweep(int seed)
+        /// <summary>One sweep placement: the robot at distance D and view angle View from J1's worker stand, facing the worker.</summary>
+        struct SweepPlace
+        {
+            public float D, View, Jitter, RobotYaw;
+            public Vector3 Worker, Robot;
+        }
+
+        const string PlaceHeader = "distance_m,view_angle_deg,worker_yaw_offset_deg,worker_x,worker_z,robot_x,robot_z,robot_yaw_deg";
+
+        SweepPlace NextPlace(GoalSequence rng, Vector3 w0, float baseYaw)
         {
             var s = cfg.gesture_sweep;
+            var p = new SweepPlace
+            {
+                D = rng.Uniform(s.distance_min_m, s.distance_max_m),
+                View = rng.Uniform(-s.view_angle_max_deg, s.view_angle_max_deg),
+                Jitter = rng.Uniform(-s.worker_yaw_jitter_deg, s.worker_yaw_jitter_deg),
+                Worker = w0,
+            };
+            Vector3 dir = Quaternion.Euler(0f, baseYaw + p.View, 0f) * Vector3.forward;
+            p.Robot = w0 + dir * p.D;
+            p.Robot.y = robot.transform.position.y;
+            p.RobotYaw = Quaternion.LookRotation(-dir).eulerAngles.y;
+            return p;
+        }
+
+        void Place(SweepPlace p, float baseYaw)
+        {
+            Teleport(p.Robot, p.RobotYaw);
+            worker.transform.SetPositionAndRotation(p.Worker, Quaternion.Euler(0f, baseYaw + p.View + p.Jitter, 0f));
+        }
+
+        static string PlaceCsv(SweepPlace p) => string.Join(",", F(p.D, "0.000"), F(p.View, "0.0"), F(p.Jitter, "0.0"),
+            F(p.Worker.x, "0.000"), F(p.Worker.z, "0.000"), F(p.Robot.x, "0.000"), F(p.Robot.z, "0.000"), F(p.RobotYaw, "0.0"));
+
+        void SweepStand(out Vector3 w0, out float baseYaw)
+        {
             var j1 = nodes.ContainsKey("J1") ? nodes["J1"] : null;
             Transform stand = j1 != null && j1.workerStand != null ? j1.workerStand : worker.transform;
-            Vector3 w0 = stand.position;
-            float baseYaw = stand.eulerAngles.y;
+            w0 = stand.position;
+            baseYaw = stand.eulerAngles.y;
             worker.faceTarget = null;
             bridge.TrialIndex = -1;
             bridge.TrialRunning = false;
+        }
+
+        IEnumerator Hold(SweepSettings s, Action<float, float> window)
+        {
+            float t0 = Time.time + s.settle_s;
+            while (Time.time < t0) yield return null;
+            float t1 = t0 + s.hold_s;
+            while (Time.time < t1) yield return null;
+            window(t0, t1);
+        }
+
+        IEnumerator Sweep(int seed)
+        {
+            var s = cfg.gesture_sweep;
+            SweepStand(out var w0, out float baseYaw);
             var order = GestureSweepOrder.Order(seed, s.repeats);
             var rng = new GoalSequence(seed ^ 0x5eed);
             using (var truth = NewWriter(Path.Combine(SessionFolder, "truth_sweep.csv")))
             {
-                truth.WriteLine("sample,gesture_shown,t_start,t_end,distance_m,view_angle_deg,worker_yaw_offset_deg,worker_x,worker_z,robot_x,robot_z,robot_yaw_deg");
+                truth.WriteLine("sample,gesture_shown,t_start,t_end," + PlaceHeader);
                 for (int i = 0; i < order.Count; i++)
                 {
                     TrialIndex = i + 1;
-                    float d = rng.Uniform(s.distance_min_m, s.distance_max_m);
-                    float view = rng.Uniform(-s.view_angle_max_deg, s.view_angle_max_deg);
-                    float jitter = rng.Uniform(-s.worker_yaw_jitter_deg, s.worker_yaw_jitter_deg);
-                    Vector3 dir = Quaternion.Euler(0f, baseYaw + view, 0f) * Vector3.forward;
-                    Vector3 rp = w0 + dir * d;
-                    rp.y = robot.transform.position.y;
-                    float ryaw = Quaternion.LookRotation(-dir).eulerAngles.y;
-                    Teleport(rp, ryaw);
-                    worker.transform.SetPositionAndRotation(w0, Quaternion.Euler(0f, baseYaw + view + jitter, 0f));
+                    var p = NextPlace(rng, w0, baseYaw);
+                    Place(p, baseYaw);
                     worker.Show(order[i]);
-                    Status = $"GestureSweep {i + 1}/{order.Count}: {order[i]} at {d:0.00} m";
-                    float t0 = Time.time + s.settle_s;
-                    while (Time.time < t0) yield return null;
-                    float t1 = t0 + s.hold_s;
-                    while (Time.time < t1) yield return null;
-                    truth.WriteLine(string.Join(",", (i + 1).ToString(Inv), order[i].ToString(), F(t0, "0.000"), F(t1, "0.000"), F(d, "0.000"),
-                        F(view, "0.0"), F(jitter, "0.0"), F(w0.x, "0.000"), F(w0.z, "0.000"), F(rp.x, "0.000"), F(rp.z, "0.000"), F(ryaw, "0.0")));
+                    Status = $"GestureSweep {i + 1}/{order.Count}: {order[i]} at {p.D:0.00} m";
+                    float t0 = 0f, t1 = 0f;
+                    yield return Hold(s, (a, b) => { t0 = a; t1 = b; });
+                    truth.WriteLine(string.Join(",", (i + 1).ToString(Inv), order[i].ToString(), F(t0, "0.000"), F(t1, "0.000"), PlaceCsv(p)));
                 }
             }
 
             worker.Show(GestureCommand.NONE);
             Status = "done: GestureSweep";
+            Debug.Log($"[TrialRunner] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
+        }
+
+        /// <summary>
+        /// FORWARD hand sweep (development, AUDIT.md section 9 item 15): 'repeats' placements drawn as in the gesture
+        /// sweep; at each, FORWARD is shown with the fist and with the index finger (seeded order), with the settle and
+        /// hold of the gesture sweep. The worker's own forwardHand is restored afterwards.
+        /// </summary>
+        IEnumerator HandSweep(int seed)
+        {
+            var s = cfg.gesture_sweep;
+            SweepStand(out var w0, out float baseYaw);
+            var hands = ForwardHandSweepOrder.Order(seed, s.repeats);
+            var rng = new GoalSequence(seed ^ 0x5eed);
+            var keep = worker.forwardHand;
+            var p = default(SweepPlace);
+            using (var truth = NewWriter(Path.Combine(SessionFolder, "truth_sweep.csv")))
+            {
+                truth.WriteLine("sample,pair,gesture_shown,hand,t_start,t_end," + PlaceHeader);
+                for (int i = 0; i < hands.Count; i++)
+                {
+                    TrialIndex = i + 1;
+                    if (i % 2 == 0)
+                    {
+                        p = NextPlace(rng, w0, baseYaw);
+                        Place(p, baseYaw);
+                    }
+
+                    string hand = ForwardHandSweepOrder.Label(hands[i]);
+                    worker.forwardHand = hands[i];
+                    worker.Show(GestureCommand.FORWARD);
+                    Status = $"ForwardHandSweep {i + 1}/{hands.Count}: FORWARD {hand} at {p.D:0.00} m";
+                    float t0 = 0f, t1 = 0f;
+                    yield return Hold(s, (a, b) => { t0 = a; t1 = b; });
+                    truth.WriteLine(string.Join(",", (i + 1).ToString(Inv), (i / 2 + 1).ToString(Inv), "FORWARD", hand,
+                        F(t0, "0.000"), F(t1, "0.000"), PlaceCsv(p)));
+                }
+            }
+
+            worker.forwardHand = keep;
+            worker.Show(GestureCommand.NONE);
+            Status = "done: ForwardHandSweep";
             Debug.Log($"[TrialRunner] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
         }
 
@@ -471,6 +767,15 @@ namespace WarehouseRobot.Scenario
         static string F(float x, string fmt = "0.###") => float.IsNaN(x) || float.IsInfinity(x) ? "" : x.ToString(fmt, Inv);
         static string Csv(string s) => s == null ? "" : s.IndexOfAny(new[] { ',', '"', '\n' }) >= 0 ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
         static string Quote(List<string> xs) => xs.Count == 0 ? "" : "\"" + string.Join("\", \"", xs) + "\"";
+        static string JsonEscape(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");
+
+        /// <summary>sha256 of the git-ignored worker.fbx, so sessions on different machines can be compared.</summary>
+        static string WorkerModelSha256()
+        {
+            string p = Path.Combine(Application.dataPath, "WarehouseRobot", "Characters", "worker.fbx");
+            try { return File.Exists(p) ? FinalRunGuard.Sha256File(p) : "missing"; }
+            catch (Exception e) { return "unreadable: " + JsonEscape(e.Message); }
+        }
 
         static string Sha256(string text)
         {

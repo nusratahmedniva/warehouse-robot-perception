@@ -185,5 +185,32 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual((a["time_s"], a["final_distance_m"]), (b["time_s"], b["final_distance_m"]))
 
 
+class StalePerceptionTests(unittest.TestCase):
+    """The existing stale-perception stop (frozen safety.people_stale_s, unchanged) is what old perception results
+    trigger now that inference runs on its own threads: exactly above the threshold, never at or below it."""
+
+    def tick(self, age_s: float) -> hc.Controller:
+        c = hc.make_controller()
+        c.begin(0.0)
+        self.assertEqual(c.state, "navigate")
+        t = 10.0
+        c.step(hc.TickInput(time_s=t, x=6.25, z=-10.0, yaw_deg=0.0, people=[], people_time_s=t - age_s))
+        return c
+
+    def test_stop_exactly_above_the_frozen_threshold(self):
+        limit = CFG["safety"]["people_stale_s"]
+        self.assertEqual(limit, 1.0)                              # frozen value (hri_frozen.json)
+        self.assertEqual(self.tick(limit).safety_reason, "")
+        self.assertEqual(self.tick(limit - 0.05).safety_reason, "")
+        self.assertEqual(self.tick(limit + 0.001).safety_reason, "perception stale")
+        self.assertEqual(self.tick(1.5).safety_reason, "perception stale")   # e.g. results held by a 1.5 s call
+
+    def test_no_result_at_all_is_stale(self):
+        c = hc.make_controller()
+        c.begin(0.0)
+        cmd = c.step(hc.TickInput(time_s=1.0, x=6.25, z=-10.0, yaw_deg=0.0, people_time_s=None))
+        self.assertEqual((c.safety_reason, cmd.v), ("perception stale", 0.0))
+
+
 if __name__ == "__main__":
     unittest.main()

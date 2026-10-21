@@ -21,14 +21,31 @@ Python handles perception and decisions; Unity runs the simulation.
    separately and place them in `Assets/WarehouseRobot/Characters/` as
    `worker.fbx`, `walking.fbx` and `idle.fbx`.
 
+## Running trials (launcher)
+
+Trials always run the bridge server in **guide** mode with **vision** perception for one task. Use the launcher
+(from `robot_vision/`); it refuses to start when `configs/trials.json` names another task:
+
+- Windows PowerShell: `.\run_trials.ps1 -Task Task1` (or `-Task Task2`), then press Play in the Unity Editor.
+  `.\run_trials.ps1 -Task Task1 -UnityBatch` runs the whole session headless and then merges, analyses and checks
+  it (`hri_trials.py`, `hri_analysis.py`, `hri_session_check.py`).
+- macOS Terminal: `./run_trials.sh Task1` (or `Task2`); `./run_trials.sh Task1 --unity-batch` for the headless
+  session.
+
+The server needs `--mode`; guide mode needs `--task`. Hello mode (0.2 m/s creep, never starts a trial) is a bridge
+test only and is refused unless `--allow-hello` is given, so it cannot be used for trials by accident. Every run
+folder records event-loop lags, garbage-collection pauses and thread counts (`summary.json`, `loop_lag.csv`,
+`gc_pauses.csv`, `stall_tracebacks.txt`); `python -m bridge.replay_client --frames outputs/<bridge run>/frames`
+replays saved frames to a running server without Unity to measure its reply times (AUDIT.md section 9).
+
 ## Perception and worker (Steps 3 and 4)
 
-- Python: `python -m bridge.server --mode hello --perception vision` (from robot_vision/, project venv) runs the
+- Python: `python -m bridge.server --mode hello --allow-hello --perception vision` (from robot_vision/, project venv) runs the
   Step 3 perception on the frames the bridge receives: YOLO11s-pose + ByteTrack people on `frame_360` (bearing from
   the column, distance from the ankles on the floor, camera height and pose from the frame header) and the arm
   direction (LEFT, FORWARD_LEFT, FORWARD, FORWARD_RIGHT, RIGHT, NONE) on `frame_pan_tilt`; STOP from the MediaPipe
   gesture adapter (Anisha's module unchanged; `configs/gesture_hri.json` maps only Open_Palm to STOP because the
-  worker points with fists). The models run on a background thread; commands are unchanged (hello test), the
+  worker points with fists). The models run on background threads (one per camera, latest frame only); commands are unchanged (hello test), the
   latest reading is shown in `screen_text` and logged to `perception.csv` in the run folder. Weights:
   `robot_vision/models/yolo11s-pose.pt` (git-ignored; from robot_vision/models:
   `python -c "from ultralytics import YOLO; YOLO('yolo11s-pose.pt')"`). Thresholds: `configs/hri_perception.json`
@@ -38,14 +55,26 @@ Python handles perception and decisions; Unity runs the simulation.
   on the AMR NavMesh) and a chase camera (`FollowCamera`, C: chase / top-down / gesture camera). It also disables
   the 12 upstream rack NavMeshObstacles whose carving boxes (cm values read as m) erased the whole NavMesh.
   **Tools > Warehouse HRI > Gesture Pose Test** (Play mode) cycles the six commands.
+  **Tools > Warehouse HRI > Restore Worker Appearance** recreates the git-ignored worker textures and material on a
+  new machine (the committed scene references the material by a fixed GUID; without it the worker is magenta);
+  **Check Worker** writes the import settings, avatar mapping and appearance to `outputs/worker_check_*`;
+  **Save Gesture PNGs (Play mode)** saves LEFT, FORWARD, RIGHT and STOP from the pan-tilt camera at 2.0 m to
+  `outputs/gesture_pngs_*`. Every trial session is refused while the worker is not the textured Humanoid avatar.
+- Task 1 (straight A to B): checkpoints from `configs/task1_route.json` (default 3: C1, J1, C3) with one standing
+  worker at each (the same avatar, 1.0 m ahead and 2.5 m right of the stop, facing the arriving robot, showing
+  FORWARD). Add Worker and Roadmap builds these workers into the scene (group `WarehouseHRI/Task1Workers`, saved
+  inactive; only Task 1 sessions activate it, Task 2 keeps its one moved worker); rerun it after changing
+  task1_route.json, or Task 1 sessions are refused. Python: `run_trials.ps1 -Task Task1` / `run_trials.sh Task1`.
+  The trial runner waits for Python's `perception_ready` and refuses trials if Python's map is not that of its task
+  (AUDIT.md section 9).
 
 ## State machine and trials (Steps 5 and 7, branch anisha/step5-7)
 
 - Step 5: `robot_vision/hri_control.py` (states idle, navigate, scan, approach, ask, read, execute, done/aborted;
   pure pursuit on the NavMesh corners; 1.0 s gesture hold with NONE gaps up to 0.3 s, one repeat ask, then abort;
   stops for STOP, a person in the path within the speed-dependent stopping distance, and perception older than
-  1.0 s). Simulator `robot_vision/hri_sim.py`; tests `tests/test_hri_control.py`. Live: `python -m bridge.server
-  --mode guide --perception vision`. Thresholds `configs/hri_control.json` (frozen 2026-10-20; two changes made
+  1.0 s). Simulator `robot_vision/hri_sim.py`; tests `tests/test_hri_control.py`. Live: the launcher above
+  (`python -m bridge.server --mode guide --perception vision --task Task2`). Thresholds `configs/hri_control.json` (frozen 2026-10-20; two changes made
   after simulator runs are listed in it).
 - Step 7: Unity `TrialRunner` (the only place goal B exists; seeded goal order, truth files) and
   `TrialBatchPlay.Run` for batch mode; Python `hri_trials.py` (run_###.json, results.csv), `hri_analysis.py`
