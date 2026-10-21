@@ -17,6 +17,16 @@ Measurement definitions (declared 2026-10-21 with the criteria, before any test 
   last telemetry of the session;
 - round trip (all messages): Unity's per-telemetry window of every reply (rtt_window_max_ms / _sum_ms / _n).
 
+Measurement correction (2026-10-22, AUDIT.md section 9; the criteria are unchanged):
+- watchdog stops: Unity's watchdog now stops only when Python does not answer telemetry Unity actually sent within
+  0.3 s (watchdog_rule unanswered_sent_telemetry); silences that only the old wall-clock rule caught are counted as
+  unity_frame_stall events. Reported side by side: stops (new rule, the criterion) and old-rule stops = stops + Unity
+  frame stalls (each stop also meets the old rule);
+- round trip: measured on Unity's network threads (telemetry write -> reply received; rtt_clock network_thread);
+  the earlier definition (queued on Unity's main thread -> reply) is reported beside it;
+- Unity main-thread frame times: every frame (frame_ms_list): count, max, p99, frames over 100 ms;
+- resources: resources.csv (bridge/resource_monitor.py) max / mean, when the server ran with --resource-log.
+
 Usage (from robot_vision/): python hri_session_check.py --unity outputs/trials_development_Task1_X --bridge outputs/bridge_guide_Y
 Writes outputs/session_check_<time>/ (session_check.json, session_check.md); exit 0 only if every criterion is met.
 """
@@ -26,6 +36,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -91,6 +102,46 @@ def first(states, name):
     return next((t for t, s in states if s == name), None)
 
 
+def frame_stats(ms: list[float]) -> dict | None:
+    if not ms:
+        return None
+    v = sorted(ms)
+    return {"frames": len(v), "max_ms": round(v[-1], 1), "p99_ms": round(v[min(len(v) - 1, math.ceil(0.99 * len(v)) - 1)], 1),
+            "over_100ms": sum(1 for x in v if x > 100.0)}
+
+
+def window_rtt(tel: list[dict], prefix: str) -> dict:
+    n = sum(h.get(f"{prefix}_n", 0) for h in tel)
+    mx = max((h.get(f"{prefix}_max_ms", -1.0) for h in tel if h.get(f"{prefix}_n", 0) > 0), default=None)
+    sm = sum(h.get(f"{prefix}_sum_ms", 0.0) for h in tel)
+    return {"n": n, "max": round(mx, 3) if mx is not None else None, "mean": round(sm / n, 3) if n else None}
+
+
+def increase(tel: list[dict], key: str):
+    v = [h[key] for h in tel if isinstance(h.get(key), int)]
+    return (max(v) - min(v)) if v else None
+
+
+def telemetry_measures(tel: list[dict]) -> dict:
+    """Watchdog (new and old rule), round trip (network-thread and queued clock), frame times of these telemetry."""
+    stops, stalls = increase(tel, "watchdog_count"), increase(tel, "unity_frame_stall_count")
+    events = [e for h in tel for e in (h.get("watchdog_events") or [])]
+    frames = [float(x) for h in tel for x in (h.get("frame_ms_list") or [])]
+    clock = next((h["rtt_clock"] for h in tel if h.get("rtt_clock")), None)
+    # Unity builds before 2026-10-22 had no rtt_clock: their rtt_window_* is the queued (main-thread) clock.
+    none = {"n": 0, "max": None, "mean": None}
+    network = window_rtt(tel, "rtt_window") if clock else none
+    queued = window_rtt(tel, "rtt_queue_window") if clock else window_rtt(tel, "rtt_window")
+    if not clock:                       # old build: its watchdog_count is the old wall-clock rule
+        stops, stalls, old = None, None, stops
+    else:
+        old = stops + stalls if stops is not None and stalls is not None else None
+    return {"watchdog_stops": stops, "unity_frame_stalls": stalls, "old_rule_stops": old,
+            "watchdog_events": [{k: (round(v, 1) if isinstance(v, float) else v) for k, v in e.items()} for e in events],
+            "round_trip_ms": network, "round_trip_queued_ms": queued, "rtt_clock": clock or "main_thread_queued (old build)",
+            "unity_frames": frame_stats(frames)}
+
+
 def check_trial(i: int, unity: Path, bridge: Path, stops: list[str], workers: dict, ctl: dict, telemetry: list[dict]) -> dict:
     truth = read_json(unity / f"truth_run{i:03d}.json")
     tcsv = read_csv(unity / f"truth_run{i:03d}.csv")
@@ -134,10 +185,7 @@ def check_trial(i: int, unity: Path, bridge: Path, stops: list[str], workers: di
         stale_events += int(cur == "perception stale" and prev != "perception stale")
         prev = cur
     tel = [h for h in telemetry if h.get("trial_index") == i]
-    wd = [h["watchdog_count"] for h in tel]
-    rn = sum(h.get("rtt_window_n", 0) for h in tel)
-    rmax = max((h.get("rtt_window_max_ms", -1.0) for h in tel if h.get("rtt_window_n", 0) > 0), default=None)
-    rsum = sum(h.get("rtt_window_sum_ms", 0.0) for h in tel)
+    m = telemetry_measures(tel)
     return {"trial": i, "outcome": truth.get("outcome"), "failure_reason": truth.get("failure_reason"),
             "detail": truth.get("detail"), "stops": per_stop,
             "checkpoints_visited": sum(s["visited"] for s in per_stop), "checkpoints": len(stops),
@@ -145,9 +193,7 @@ def check_trial(i: int, unity: Path, bridge: Path, stops: list[str], workers: di
             "asks": [s["asks"] for s in per_stop], "shown_vs_read": [f"{s['stop']}:{s['shown']}>{s['read']}" for s in per_stop],
             "stale_perception_stops": stale_events,
             "stale_perception_stop_s": round(sum(0.1 for r in dec if r.get("safety") == "perception stale"), 1),
-            "watchdog_stops": (max(wd) - min(wd)) if wd else None,
-            "round_trip_ms": {"n": rn, "max": round(rmax, 3) if rmax is not None else None,
-                              "mean": round(rsum / rn, 3) if rn else None}}
+            **m}
 
 
 def main(argv=None) -> int:
@@ -171,10 +217,12 @@ def main(argv=None) -> int:
     summary = read_json(bridge / "summary.json") if (bridge / "summary.json").exists() else {}
     running = [h for h in telemetry if h.get("trial_running")]
     after_start = None
+    session_m = telemetry_measures(telemetry[telemetry.index(running[0]):]) if running else None
     if running:
         k0 = telemetry.index(running[0])
         after_start = telemetry[-1]["watchdog_count"] - telemetry[k0]["watchdog_count"]
     allm = summary.get("round_trip", {}).get("all_messages")
+    queued = summary.get("round_trip", {}).get("all_messages_queued")
     looks = session.get("worker_appearance", "")
     appearance_ok = (len(workers) == len(stops) > 0 and all(f"Worker_{s}:" in looks for s in stops)
                      and looks.count("Universal Render Pipeline/Lit") == len(stops) and "missing" not in looks
@@ -191,7 +239,10 @@ def main(argv=None) -> int:
     result = {"unity_folder": unity.name, "bridge_folder": bridge.name, "task": session.get("task"),
               "mode": session.get("mode"), "seed": session.get("seed"), "trials_expected": n, "trials_recorded": len(trials),
               "stops": stops, "workers": workers, "worker_appearance": looks,
-              "session": {"round_trip_all_messages": allm, "round_trip_unity_latest_only": {
+              "session": {"round_trip_all_messages": allm, "round_trip_all_messages_queued_clock": queued,
+                          "after_start_up": session_m, "resources": summary.get("resources"),
+                          "watchdog_rule": (summary.get("watchdog") or {}).get("rule"),
+                          "round_trip_unity_latest_only": {
                               k: summary.get("round_trip", {}).get(k) for k in ("n", "mean_ms", "max_ms")},
                           "watchdog_stops_total": summary.get("watchdog_count_reported_by_unity"),
                           "watchdog_stops_after_start_up": after_start,
@@ -204,16 +255,26 @@ def main(argv=None) -> int:
     out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "session_check")
     dio.write_json(out / "session_check.json", result)
     md = [f"# Session check {unity.name} + {bridge.name}", "",
-          "| trial | outcome | checkpoints visited | full interaction | asks | shown>read | stale stops | watchdog | rtt max ms | rtt mean ms |",
-          "|---|---|---|---|---|---|---|---|---|---|"]
+          "| trial | outcome | checkpoints visited | full interaction | asks | shown>read | stale stops | watchdog (new rule) | "
+          "old-rule stops | rtt max ms (network) | rtt max ms (queued) | frames max / p99 ms, over 100 ms |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for t in trials:
+        uf = t["unity_frames"] or {}
         md.append(f"| {t['trial']} | {t['outcome']} {'' if t['failure_reason'] == 'none' else t['failure_reason']} | "
                   f"{t['checkpoints_visited']}/{t['checkpoints']} | {'yes' if t['full_interaction_at_every_stop'] else 'NO'} | "
                   f"{t['asks']} | {', '.join(t['shown_vs_read'])} | {t['stale_perception_stops']} ({t['stale_perception_stop_s']} s) | "
-                  f"{t['watchdog_stops']} | {t['round_trip_ms']['max']} | {t['round_trip_ms']['mean']} |")
-    md += ["", f"Session: round trip all messages {allm}; watchdog stops after start-up {after_start} "
-               f"(total {summary.get('watchdog_count_reported_by_unity')}); dropped frames Unity "
-               f"{result['session']['frames_dropped_by_unity']}, Python {result['session']['frames_dropped_by_python']}.", ""]
+                  f"{t['watchdog_stops']} | {t['old_rule_stops']} | {t['round_trip_ms']['max']} | {t['round_trip_queued_ms']['max']} | "
+                  f"{uf.get('max_ms')} / {uf.get('p99_ms')}, {uf.get('over_100ms')} |")
+    sm = session_m or {}
+    md += ["", f"Session: round trip all messages {allm}; queued clock {queued}; watchdog stops after start-up {after_start} "
+               f"(total {summary.get('watchdog_count_reported_by_unity')}); old-rule stops after start-up {sm.get('old_rule_stops')} "
+               f"(Unity frame stalls {sm.get('unity_frame_stalls')}); Unity frames after start-up {sm.get('unity_frames')}; "
+               f"dropped frames Unity {result['session']['frames_dropped_by_unity']}, Python "
+               f"{result['session']['frames_dropped_by_python']}.", ""]
+    for e in sm.get("watchdog_events") or []:
+        md.append(f"- event {e.get('kind')} ({e.get('cause')}): gap {e.get('gap_ms')} ms, longest Unity frame "
+                  f"{e.get('frame_ms_max')} ms, at Unity real time {e.get('start_realtime_s')} s")
+    md.append("")
     md += [f"- {k}: {'MET' if v else 'NOT MET'}" for k, v in criteria.items()]
     (out / "session_check.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     print("\n".join(md))

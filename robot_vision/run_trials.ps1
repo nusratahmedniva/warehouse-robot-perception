@@ -4,10 +4,16 @@
 
 .DESCRIPTION
   The only supported way to run trials. It always runs
-      python -m bridge.server --mode guide --perception vision --task <Task>
-  from robot_vision\.venv (hello mode, a 0.2 m/s bridge test, is never used here). It refuses to start when
-  configs\trials.json (or the git-ignored trials.local.json the Unity trial runner prefers) names another task,
-  because the Unity trial runner would then refuse the map.
+      python -m bridge.server --mode guide --perception vision --task <Task> --resource-log
+  from robot_vision\.venv (hello mode, a 0.2 m/s bridge test, is never used here). launch_prep.py first refuses a task
+  other than the one in configs\trials.json (or the git-ignored trials.local.json the Unity trial runner prefers),
+  because the Unity trial runner would then refuse the map, and prints the machine state (power mode, power source)
+  with run-protocol warnings (AUDIT.md section 9). The server records the same state in run_info.json and logs
+  resources once per second (resources.csv).
+
+  -Trials N (development only): run N trials instead of trial_count, through a launcher-written trials.local.json
+  that is removed after the session. Refused in final mode (and any mode other than development, so a replication
+  always runs its full trial_count).
 
   Without -UnityBatch: the server runs in this window; press Play in the Unity Editor (scene
   Assets/Scenes/WarehouseRobot.unity); Ctrl+C stops the server after the session.
@@ -18,12 +24,15 @@
   .\run_trials.ps1 -Task Task1
 .EXAMPLE
   .\run_trials.ps1 -Task Task1 -UnityBatch
+.EXAMPLE
+  .\run_trials.ps1 -Task Task1 -UnityBatch -Trials 5
 #>
 param(
     [Parameter(Mandatory = $true)][ValidateSet("Task1", "Task2")][string]$Task,
     [switch]$UnityBatch,
     [string]$UnityPath = $env:UNITY_EDITOR,
-    [int]$TrialTimeoutS = 3600
+    [int]$TrialTimeoutS = 3600,
+    [int]$Trials = 0
 )
 $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
@@ -31,18 +40,16 @@ $Python = Join-Path $Here ".venv\Scripts\python.exe"
 $Project = [System.IO.Path]::GetFullPath((Join-Path $Here "..\unity\Robotics-Warehouse\WarehouseProjectURP"))
 if (-not (Test-Path $Python)) { Write-Error "No project venv at $Python (see README: create robot_vision\.venv first)." }
 
-# The Unity trial runner reads trials.local.json if present, else trials.json; its task must be this task.
-$TrialsFile = Join-Path $Here "configs\trials.local.json"
-if (-not (Test-Path $TrialsFile)) { $TrialsFile = Join-Path $Here "configs\trials.json" }
-$Trials = Get-Content -Raw -Encoding UTF8 $TrialsFile | ConvertFrom-Json
-if ($Trials.task -ne $Task) {
-    Write-Error "$TrialsFile says task '$($Trials.task)' but you asked for $Task. Set ""task"" there (and ""mode"") first."
-}
-Write-Host "[run_trials] GUIDE mode, VISION perception, task $Task ($($Trials.mode), $(Split-Path -Leaf $TrialsFile))"
-
-$ServerArgs = @("-m", "bridge.server", "--mode", "guide", "--perception", "vision", "--task", $Task)
 Push-Location $Here
 try {
+    # Task check (trials.local.json if present, else trials.json), -Trials override, machine state.
+    $PrepArgs = @("launch_prep.py", "--task", $Task)
+    if ($Trials -gt 0) { $PrepArgs += @("--trials", "$Trials") }
+    & $Python @PrepArgs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Write-Host "[run_trials] GUIDE mode, VISION perception, task $Task"
+
+    $ServerArgs = @("-m", "bridge.server", "--mode", "guide", "--perception", "vision", "--task", $Task, "--resource-log")
     if (-not $UnityBatch) {
         Write-Host "[run_trials] when the server says 'listening', press Play in Unity. Ctrl+C stops the server."
         & $Python @ServerArgs
@@ -78,5 +85,6 @@ try {
     exit $LASTEXITCODE
 }
 finally {
+    if ($Trials -gt 0) { & $Python launch_prep.py --cleanup }
     Pop-Location
 }

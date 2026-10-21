@@ -7,6 +7,7 @@ using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Rendering;
+using WarehouseHRI;
 using Debug = UnityEngine.Debug;
 
 namespace WarehouseRobot.Bridge
@@ -16,8 +17,9 @@ namespace WarehouseRobot.Bridge
     /// encoding on FrameEncoder's thread; everything that touches Unity (robot, cameras, NavMesh, GPU readbacks)
     /// happens here on the main thread. Sends hello, telemetry at telemetry_hz and both camera streams at their
     /// configured rates; applies each received command (v, omega -> DiffDriveController, pan -> PanTiltCamera,
-    /// target -> NavMesh.CalculatePath); stops the robot when no command arrives for watchdog_timeout_s and when the
-    /// connection drops. While the debug keyboard control is on, commands are not applied (keyboard_override).
+    /// target -> NavMesh.CalculatePath); stops the robot when Python does not answer telemetry Unity actually sent within
+    /// watchdog_timeout_s (CommandWatchdog; before 2026-10-22: no command for watchdog_timeout_s of wall-clock time) and
+    /// when the connection drops. While the debug keyboard control is on, commands are not applied (keyboard_override).
     /// F3 shows/hides the bridge panel.
     /// </summary>
     [DisallowMultipleComponent]
@@ -60,10 +62,8 @@ namespace WarehouseRobot.Bridge
 
         // Command and watchdog state (main thread only).
         bool commandSeen;
-        long lastCommandTicks;
         int lastCommandSeq = -1;
-        bool watchdogStopped;
-        int watchdogCount;
+        CommandWatchdog watchdog;
         CommandMsg lastCommand;
 
         // Navigation.
@@ -77,8 +77,14 @@ namespace WarehouseRobot.Bridge
         int agentTypeId;
         bool agentResolved, agentFailed;
 
-        // Round-trip delay: telemetry seq -> Stopwatch timestamp when queued.
+        // Round-trip delay: telemetry seq -> Stopwatch timestamp when queued (main thread) and when the network thread
+        // started writing it (since 2026-10-22 the round trip runs from the write; the queued one is kept for comparison).
         readonly Dictionary<int, long> sentTelemetry = new Dictionary<int, long>();
+        readonly Dictionary<int, long> writtenTelemetry = new Dictionary<int, long>();
+        int rttQueueWindowN;
+        float rttQueueWindowMaxMs = -1f, rttQueueWindowSumMs;
+        readonly List<float> frameMsList = new List<float>();
+        const int MaxFrameList = 1000;
         int rttSeq = -1;
         float rttMs = -1f, rttMaxMs, rttSumMs;
         int rttCount;
@@ -134,6 +140,7 @@ namespace WarehouseRobot.Bridge
                 return;
             }
             navPath = new NavMeshPath();
+            watchdog = new CommandWatchdog(cfg.Shared.watchdog_timeout_s);
         }
 
         void Start()
@@ -187,6 +194,7 @@ namespace WarehouseRobot.Bridge
         void Update()
         {
             if (connection == null) return;
+            DrainTelemetryWrites();
             while (connection.TryDequeue(out var e))
             {
                 switch (e.Kind)
@@ -200,7 +208,9 @@ namespace WarehouseRobot.Bridge
             while (encoderPan.TryGetError(out var err)) LogErrorOnce("Pan-tilt frame encoding failed: " + err);
 
             CheckWatchdog();
-            frameMsWindowMax = Mathf.Max(frameMsWindowMax, Time.unscaledDeltaTime * 1000f);
+            float frameMs = Time.unscaledDeltaTime * 1000f;
+            frameMsWindowMax = Mathf.Max(frameMsWindowMax, frameMs);
+            if (connection.Connected && frameMsList.Count < MaxFrameList) frameMsList.Add(frameMs);
 
             if (connection.Connected && Time.unscaledTime >= nextTelemetryTime)
             {
@@ -216,13 +226,15 @@ namespace WarehouseRobot.Bridge
         {
             Debug.Log($"[RobotBridge] Connected to {endpoint}", this);
             commandSeen = false;
-            watchdogStopped = false;
+            watchdog.Reset();
             PythonRoute = "";
             PythonPerceptionReady = false;
             sentTelemetry.Clear();
-            rttWindowN = 0;
-            rttWindowMaxMs = -1f;
-            rttWindowSumMs = frameMsWindowMax = silentMsWindowMax = 0f;
+            writtenTelemetry.Clear();
+            frameMsList.Clear();
+            rttWindowN = rttQueueWindowN = 0;
+            rttWindowMaxMs = rttQueueWindowMaxMs = -1f;
+            rttWindowSumMs = rttQueueWindowSumMs = frameMsWindowMax = silentMsWindowMax = 0f;
             stream360.Reset();
             streamPan.Reset();
             var hello = new HelloMsg
@@ -242,7 +254,7 @@ namespace WarehouseRobot.Bridge
         {
             bool wasDriving = commandSeen;
             commandSeen = false;
-            watchdogStopped = false;
+            watchdog.Disconnected(SwNow());
             State = "disconnected";
             ScreenText = "";
             PythonRoute = "";
@@ -282,19 +294,26 @@ namespace WarehouseRobot.Bridge
             }
             lastCommand = cmd;
             lastCommandSeq = cmd.seq;
-            lastCommandTicks = receivedTicks;
             commandSeen = true;
-            if (watchdogStopped)
-            {
-                watchdogStopped = false;
+            DrainTelemetryWrites();      // write stamps up to this reply, before the watchdog sees the command
+            if (watchdog.CommandReceived(Sw(receivedTicks)))
                 Debug.Log("[RobotBridge] Commands resumed; watchdog released.", this);
-            }
 
-            if (cmd.reply_to >= 0 && sentTelemetry.TryGetValue(cmd.reply_to, out long sentTicks))
+            if (cmd.reply_to >= 0 && sentTelemetry.TryGetValue(cmd.reply_to, out long queuedTicks))
             {
                 sentTelemetry.Remove(cmd.reply_to);
+                float queuedMs = (float)((receivedTicks - queuedTicks) * 1000.0 / Stopwatch.Frequency);
+                rttQueueWindowN++;
+                rttQueueWindowSumMs += queuedMs;
+                rttQueueWindowMaxMs = Mathf.Max(rttQueueWindowMaxMs, queuedMs);
+            }
+
+            // Round trip on the network threads: write of the telemetry started -> reply received.
+            if (cmd.reply_to >= 0 && writtenTelemetry.TryGetValue(cmd.reply_to, out long writtenTicks))
+            {
+                writtenTelemetry.Remove(cmd.reply_to);
                 rttSeq = cmd.reply_to;
-                rttMs = (float)((receivedTicks - sentTicks) * 1000.0 / Stopwatch.Frequency);
+                rttMs = (float)((receivedTicks - writtenTicks) * 1000.0 / Stopwatch.Frequency);
                 rttCount++;
                 rttSumMs += rttMs;
                 rttMaxMs = Mathf.Max(rttMaxMs, rttMs);
@@ -316,16 +335,33 @@ namespace WarehouseRobot.Bridge
             PythonPerceptionReady = cmd.perception_ready;
         }
 
+        static double Sw(long ticks) => ticks / (double)Stopwatch.Frequency;
+        static double SwNow() => Sw(Stopwatch.GetTimestamp());
+
+        /// <summary>Network thread's write stamps of telemetry messages -> round trip and watchdog.</summary>
+        void DrainTelemetryWrites()
+        {
+            if (connection == null) return;
+            while (connection.TryDequeueTelemetryWrite(out int s, out long ticks))
+            {
+                if (!sentTelemetry.ContainsKey(s)) continue;     // from an earlier connection, or already answered
+                writtenTelemetry[s] = ticks;
+                watchdog.TelemetryWritten(s, Sw(ticks));
+            }
+        }
+
         void CheckWatchdog()
         {
-            if (!commandSeen || watchdogStopped || KeyboardOverride) return;
-            double silent = (Stopwatch.GetTimestamp() - lastCommandTicks) / (double)Stopwatch.Frequency;
-            silentMsWindowMax = Mathf.Max(silentMsWindowMax, (float)(silent * 1000.0));
-            if (silent <= cfg.Shared.watchdog_timeout_s) return;
+            if (!commandSeen || KeyboardOverride) return;
+            double now = SwNow();
+            if (!watchdog.Stopped)
+                silentMsWindowMax = Mathf.Max(silentMsWindowMax, (float)((now - watchdog.LastCommandS) * 1000.0));
+            string cause = watchdog.Check(now, Time.unscaledDeltaTime * 1000.0);
+            if (cause == null) return;
             robot.Drive.Stop();
-            watchdogStopped = true;
-            watchdogCount++;
-            Debug.LogWarning($"[RobotBridge] Watchdog: no command for {silent:F2} s (limit {cfg.Shared.watchdog_timeout_s:F2} s) -> v = 0, omega = 0 (stop #{watchdogCount}).", this);
+            string why = cause == "not_written" ? "a telemetry message could not be written" : "no reply to telemetry sent";
+            Debug.LogWarning($"[RobotBridge] Watchdog: {why} for more than {watchdog.TimeoutS:F2} s (no command for " +
+                             $"{now - watchdog.LastCommandS:F2} s) -> v = 0, omega = 0 (stop #{watchdog.StopCount}).", this);
         }
 
         // ---------------- telemetry and navigation ----------------
@@ -358,8 +394,8 @@ namespace WarehouseRobot.Bridge
                 last_command_seq = lastCommandSeq,
                 rtt_telemetry_seq = rttSeq,
                 rtt_ms = rttMs,
-                watchdog_stopped = watchdogStopped,
-                watchdog_count = watchdogCount,
+                watchdog_stopped = watchdog.Stopped,
+                watchdog_count = watchdog.StopCount,
                 keyboard_override = KeyboardOverride,
                 estop = drive.EmergencyStop,
                 frames_360_sent = Volatile.Read(ref stream360.Sent),
@@ -372,19 +408,37 @@ namespace WarehouseRobot.Bridge
                 rtt_window_max_ms = rttWindowMaxMs,
                 rtt_window_sum_ms = rttWindowSumMs,
                 watchdog_silent_ms_max = silentMsWindowMax,
+                rtt_queue_window_n = rttQueueWindowN,
+                rtt_queue_window_max_ms = rttQueueWindowMaxMs,
+                rtt_queue_window_sum_ms = rttQueueWindowSumMs,
+                frame_ms_list = new List<float>(frameMsList),
+                unity_frame_stall_count = watchdog.FrameStallCount,
             };
-            rttWindowN = 0;
-            rttWindowMaxMs = -1f;
-            rttWindowSumMs = frameMsWindowMax = silentMsWindowMax = 0f;
-            connection.Send(BridgeProtocol.Frame(JsonUtility.ToJson(t)));
+            double realNow = Time.realtimeSinceStartupAsDouble, swNow = SwNow();
+            foreach (var e in watchdog.TakeEvents())
+                t.watchdog_events.Add(new WatchdogEventMsg
+                {
+                    kind = e.Kind, cause = e.Cause, start_realtime_s = realNow - (swNow - e.StartS), gap_ms = (float)e.GapMs,
+                    frame_ms_max = (float)e.FrameMsMax, ended_by_disconnect = e.EndedByDisconnect,
+                });
+            rttWindowN = rttQueueWindowN = 0;
+            rttWindowMaxMs = rttQueueWindowMaxMs = -1f;
+            rttWindowSumMs = rttQueueWindowSumMs = frameMsWindowMax = silentMsWindowMax = 0f;
+            frameMsList.Clear();
+            connection.Send(BridgeProtocol.Frame(JsonUtility.ToJson(t)), false, t.seq);
             long now = Stopwatch.GetTimestamp();
             sentTelemetry[t.seq] = now;
+            watchdog.TelemetryQueued(t.seq, Sw(now));
             if (sentTelemetry.Count > 200) // unanswered entries older than 10 s
             {
                 var old = new List<int>();
                 foreach (var kv in sentTelemetry)
                     if (now - kv.Value > 10 * Stopwatch.Frequency) old.Add(kv.Key);
-                foreach (var k in old) sentTelemetry.Remove(k);
+                foreach (var k in old)
+                {
+                    sentTelemetry.Remove(k);
+                    writtenTelemetry.Remove(k);
+                }
             }
         }
 
@@ -651,7 +705,8 @@ namespace WarehouseRobot.Bridge
             Line($"Python map: {(PythonRoute.Length > 0 ? PythonRoute : "-")}   perception ready: {(PythonPerceptionReady ? "yes" : "no")}");
             Line(lastCommand != null ? $"Command #{lastCommand.seq}: v {lastCommand.v:F2}  omega {lastCommand.omega:F2}  pan {lastCommand.pan_deg:F0}" : "Command: none yet");
             Line(rttCount > 0 ? $"Round trip: last {rttMs:F1} ms  mean {rttSumMs / rttCount:F1}  max {rttMaxMs:F1}  (n {rttCount})" : "Round trip: -");
-            Line($"Watchdog stops: {watchdogCount}" + (watchdogStopped ? "  (holding stop)" : "") + (KeyboardOverride ? "  [keyboard override]" : ""));
+            Line($"Watchdog stops: {watchdog.StopCount}  Unity frame stalls: {watchdog.FrameStallCount}" +
+                 (watchdog.Stopped ? "  (holding stop)" : "") + (KeyboardOverride ? "  [keyboard override]" : ""));
             Line(robot.Drive.EmergencyStop ? "EMERGENCY STOP latched (commands ignored)" : "Emergency stop: off");
             Line($"Nav: {navStatus}" + (hasTarget ? $"  target ({target.x:F1}, {target.y:F1})  corners {navCorners.Count}" : ""));
             Line(hasTarget ? $"Nav snap: start {SnapText(navStartSnapM)}  target {SnapText(navTargetSnapM)}" : "Nav snap: -");

@@ -153,6 +153,18 @@ namespace WarehouseRobot.Bridge
         public float z;
     }
 
+    /// <summary>One command silence (CommandWatchdog.Event), sent once with the telemetry after it ended.</summary>
+    [Serializable]
+    public class WatchdogEventMsg
+    {
+        public string kind;            // watchdog_stop / unity_frame_stall
+        public string cause;           // no_reply / not_written / no_telemetry_sent
+        public double start_realtime_s; // Unity real-time clock (as realtime_s) of the last command before the silence
+        public float gap_ms;           // command silence
+        public float frame_ms_max;     // longest Unity frame during it
+        public bool ended_by_disconnect;
+    }
+
     [Serializable]
     public class HelloMsg
     {
@@ -215,6 +227,19 @@ namespace WarehouseRobot.Bridge
         public float rtt_window_max_ms = -1f;
         public float rtt_window_sum_ms;
         public float watchdog_silent_ms_max;
+        // Measurement correction (2026-10-22, AUDIT.md section 9): rtt_window_* above now run from the network thread's
+        // write of the telemetry to its receipt of the reply (rtt_clock "network_thread"); rtt_queue_window_* keep the
+        // earlier definition (telemetry queued on the main thread -> reply received) for comparison. frame_ms_list: every
+        // Unity frame duration since the previous telemetry. The watchdog stops only for telemetry actually sent
+        // (watchdog_rule); watchdog_events lists the silences that ended since the previous telemetry.
+        public string rtt_clock = "network_thread";
+        public float rtt_queue_window_max_ms = -1f;
+        public float rtt_queue_window_sum_ms;
+        public int rtt_queue_window_n;
+        public List<float> frame_ms_list = new List<float>();
+        public string watchdog_rule = "unanswered_sent_telemetry";
+        public int unity_frame_stall_count;
+        public List<WatchdogEventMsg> watchdog_events = new List<WatchdogEventMsg>();
     }
 
     [Serializable]

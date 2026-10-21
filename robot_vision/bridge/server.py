@@ -16,6 +16,13 @@ full garbage collection no longer stalls the reply loop for 0.2-0.3 s; every run
 telemetry diagnostics (every round trip, Unity frame times) in summary.json. --exit-on-disconnect stops the server
 when Unity disconnects (headless sessions).
 
+Measurement correction (2026-10-22, AUDIT.md section 9): Unity's round trip now runs on its network threads (write of
+the telemetry -> reply received; the earlier queued -> received figure is kept as all_messages_queued), Unity sends
+every frame duration (unity_frames: max, p99, frames over 100 ms) and its watchdog events (watchdog: stops for
+unanswered sent telemetry, unity_frame_stall silences that only the old wall-clock rule caught). --resource-log
+starts bridge/resource_monitor.py in its own process (resources.csv, once per second: memory, paging, CPU per process,
+GPU). run_info.json records the machine state (power mode, power source; bridge/machine_state.py).
+
 Mode guide (Step 5): the hri_control state machine drives the robot (bridge/guide.py); trials are started by the Unity
 trial runner (telemetry trial_index / trial_running); use with --perception vision. Logs decisions.csv and
 python_trial_###.json in the run folder. --task Task1 gives the controller the Task 1 map (task_route.py: the
@@ -201,6 +208,15 @@ class RunLog:
         self.rtt_window_sum = 0.0
         self.unity_frame_ms_max = 0.0
         self.unity_frames_over_250ms = 0
+        # 2026-10-22: every Unity frame duration, the queued-clock round trip and the watchdog events.
+        self.unity_frame_ms: list[float] = []
+        self.rtt_clock: str | None = None
+        self.rtt_queue_max = -1.0
+        self.rtt_queue_n = 0
+        self.rtt_queue_sum = 0.0
+        self.watchdog_events: list[dict] = []
+        self.watchdog_rule: str | None = None
+        self.unity_frame_stall_count = 0
         self.recv_offset: float | None = None
         self.recv_lags: list[float] = []
         self.lines = (out / "messages.jsonl").open("w", encoding="utf-8")
@@ -272,6 +288,21 @@ class RunLog:
         if isinstance(h.get("frame_ms_max"), (int, float)):
             self.unity_frame_ms_max = max(self.unity_frame_ms_max, float(h["frame_ms_max"]))
             self.unity_frames_over_250ms += int(h["frame_ms_max"] > 250.0)
+        if isinstance(h.get("frame_ms_list"), list):
+            self.unity_frame_ms += [float(x) for x in h["frame_ms_list"] if isinstance(x, (int, float))]
+        if isinstance(h.get("rtt_clock"), str):
+            self.rtt_clock = h["rtt_clock"]
+        if isinstance(h.get("rtt_queue_window_n"), int) and h["rtt_queue_window_n"] > 0:
+            self.rtt_queue_n += h["rtt_queue_window_n"]
+            self.rtt_queue_sum += float(h.get("rtt_queue_window_sum_ms", 0.0))
+            self.rtt_queue_max = max(self.rtt_queue_max, float(h.get("rtt_queue_window_max_ms", -1.0)))
+        if isinstance(h.get("watchdog_rule"), str):
+            self.watchdog_rule = h["watchdog_rule"]
+            self.unity_frame_stall_count = max(self.unity_frame_stall_count, int(h.get("unity_frame_stall_count", 0)))
+        for e in h.get("watchdog_events") or []:
+            if isinstance(e, dict):
+                self.watchdog_events.append({**e, "t_wall_s": line["t_wall_s"], "trial_index": h.get("trial_index"),
+                                             "trial_running": h.get("trial_running")})
         if isinstance(h.get("realtime_s"), (int, float)):
             offset = line["t_wall_s"] - float(h["realtime_s"])
             self.recv_offset = offset if self.recv_offset is None else min(self.recv_offset, offset)
@@ -291,10 +322,31 @@ class RunLog:
         if self.rtt_window_n:
             rtt["all_messages"] = {"n": self.rtt_window_n, "coverage": f"{self.rtt_window_n} replies to "
                                    f"{self.n_telemetry} telemetry messages", "max_ms": round(self.rtt_window_max, 3),
-                                   "mean_ms": round(self.rtt_window_sum / self.rtt_window_n, 3)}
+                                   "mean_ms": round(self.rtt_window_sum / self.rtt_window_n, 3),
+                                   "clock": self.rtt_clock or "main_thread_queued (Unity build before 2026-10-22)"}
+        if self.rtt_queue_n:
+            rtt["all_messages_queued"] = {
+                "n": self.rtt_queue_n, "max_ms": round(self.rtt_queue_max, 3),
+                "mean_ms": round(self.rtt_queue_sum / self.rtt_queue_n, 3),
+                "clock": "main_thread_queued: telemetry queued on Unity's main thread -> reply received on its network "
+                         "thread (the definition before 2026-10-22, kept for comparison)"}
         lags = sorted(self.recv_lags)
         unity = {"frame_ms_max": round(self.unity_frame_ms_max, 2),
                  "telemetry_windows_with_a_frame_over_250ms": self.unity_frames_over_250ms} if self.recv_lags else None
+        if unity is not None and self.unity_frame_ms:
+            unity.update(frame_stats(self.unity_frame_ms))
+        watchdog = None
+        if self.watchdog_rule:
+            kinds: dict[str, list[float]] = {}
+            for e in self.watchdog_events:
+                kinds.setdefault(e.get("kind", "?"), []).append(float(e.get("gap_ms", 0.0)))
+            watchdog = {"rule": self.watchdog_rule, "stops_reported_by_unity": self.watchdog_count,
+                        "unity_frame_stalls_reported_by_unity": self.unity_frame_stall_count,
+                        "events_by_kind": {k: {"n": len(v), "max_gap_ms": round(max(v), 1)} for k, v in sorted(kinds.items())},
+                        "events": self.watchdog_events,
+                        "note": "watchdog_stop: Python did not answer telemetry Unity actually sent within the timeout; "
+                                "unity_frame_stall: no command for the timeout of wall-clock time but no sent telemetry "
+                                "unanswered (Unity sent none: a long Unity frame); the old wall-clock rule stopped for both"}
         recv = {"n": len(lags), "max_ms": round(lags[-1], 2), "over_100ms": sum(1 for x in lags if x > 100.0),
                 "over_250ms": sum(1 for x in lags if x > 250.0),
                 "note": "how much later Python read each telemetry message than the earliest one (Unity real-time "
@@ -302,7 +354,8 @@ class RunLog:
         return {"duration_s": self.now(), "connections": self.connections, "message_counts": dict(sorted(self.counts.items())),
                 "round_trip": rtt, "python_receive_lag": recv, "unity_frames": unity,
                 "frames": self.frame_summary(), "frames_saved": self.frames.summary(),
-                "watchdog_count_reported_by_unity": self.watchdog_count, "estop_seen": self.estop_seen,
+                "watchdog_count_reported_by_unity": self.watchdog_count, "watchdog": watchdog,
+                "estop_seen": self.estop_seen,
                 **self.extra, "errors": self.errors + self.frames.errors}
 
     def frame_summary(self) -> dict:
@@ -324,6 +377,14 @@ class RunLog:
         self.frames.close()   # writes what is still queued first
         dio.write_json(self.out / "summary.json", self.summary())
         dio.mark_complete(self.out)
+
+
+def frame_stats(ms: list[float]) -> dict:
+    """Unity main-thread frame durations: count, max, p99 (nearest rank), frames over 100 ms and over 250 ms."""
+    v = sorted(ms)
+    return {"frames": len(v), "frame_ms_p99": round(v[min(len(v) - 1, math.ceil(0.99 * len(v)) - 1)], 2),
+            "frame_ms_max_all": round(v[-1], 2), "frames_over_100ms": sum(1 for x in v if x > 100.0),
+            "frames_over_250ms": sum(1 for x in v if x > 250.0)}
 
 
 class BridgeServer:
@@ -444,8 +505,9 @@ def make_perception_worker(out: Path, perception_config: str | Path):
 
 async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
               perception: str = "off", perception_config: str = "configs/hri_perception.json",
-              task: str = "Task2", exit_on_disconnect: bool = False) -> Path:
+              task: str = "Task2", exit_on_disconnect: bool = False, resource_log: bool = False) -> Path:
     from bridge import diagnostics as diag
+    from bridge import machine_state
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
     used = [cfg_path]
     if perception == "vision":
@@ -468,8 +530,14 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         "python": platform.python_version(), "platform": platform.platform(),
         "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION,
         "mute_after_s": mute_after_s, "perception": perception, "task": task if mode == "guide" else None,
-        "route": route})
+        "route": route, "machine_state": machine_state.read(), "resource_log": resource_log})
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
+    log.extra["clock_t0_unix_s"] = round(time.time() - (time.monotonic() - log.t0), 6)   # t_wall_s 0 in Unix time
+    monitor = None
+    if resource_log:
+        from bridge import resource_monitor
+        monitor = resource_monitor.start(out / "resources.csv")
+        print(f"[bridge] resource log: {out / 'resources.csv'} (own process, once per second)", flush=True)
     gc_monitor = diag.GcMonitor(out)
     worker = None
     if perception == "vision":
@@ -516,6 +584,10 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
             log.extra["perception"] = worker.summary() if hasattr(worker, "summary") else None
             worker.close()
         gc_monitor.close()
+        if monitor is not None:
+            from bridge import resource_monitor
+            resource_monitor.stop(monitor)
+            log.extra["resources"] = resource_monitor.summarise(out / "resources.csv")
         log.extra["event_loop_lag"] = lag.summary()
         log.extra["gc_pauses"] = gc_monitor.summary()
         log.extra["threads_at_end"] = diag.thread_info()
@@ -540,6 +612,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--perception", choices=["off", "vision"], default="off",
                     help="vision: run the Step 3 perception on the camera frames (needs the YOLO weights)")
     ap.add_argument("--perception-config", default="configs/hri_perception.json")
+    ap.add_argument("--resource-log", action="store_true",
+                    help="log memory, paging, CPU per process and GPU once per second (resources.csv, own process)")
     ap.add_argument("--task", choices=["Task1", "Task2"], default=None,
                     help="guide mode (required there): the map (Task2 = roadmap.json; Task1 = roadmap.json plus the "
                          "checkpoints of configs/task1_route.json). The Unity trial runner refuses trials if it differs "
@@ -553,7 +627,7 @@ def main(argv: list[str] | None = None) -> None:
     cfg, cfg_path = load_config(args.config)
     try:
         asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
-                        args.perception_config, args.task or "Task2", args.exit_on_disconnect))
+                        args.perception_config, args.task or "Task2", args.exit_on_disconnect, args.resource_log))
     except KeyboardInterrupt:
         pass
 

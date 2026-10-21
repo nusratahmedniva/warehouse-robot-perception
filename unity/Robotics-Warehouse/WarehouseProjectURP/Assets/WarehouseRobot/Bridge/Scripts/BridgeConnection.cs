@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Threading;
@@ -19,7 +20,9 @@ namespace WarehouseRobot.Bridge
     /// TCP client on background threads: one thread connects (and reconnects every reconnect interval) and reads
     /// messages; a second thread writes queued messages while connected. The main thread talks to it only through
     /// thread-safe queues: Send() to write, TryDequeue() to read events. No Unity API is called here except the
-    /// thread-safe JsonUtility inside BridgeProtocol.Read.
+    /// thread-safe JsonUtility inside BridgeProtocol.Read. Since 2026-10-22 the write thread time-stamps every telemetry
+    /// message when it starts writing it (TryDequeueTelemetryWrite), so the round trip and the watchdog use the time
+    /// Unity actually sent it, both stamps taken on the network threads.
     /// </summary>
     public sealed class BridgeConnection : IDisposable
     {
@@ -28,6 +31,7 @@ namespace WarehouseRobot.Bridge
         readonly int maxHeaderBytes, maxAttachmentBytes;
         readonly int reconnectMs, connectTimeoutMs;
         readonly ConcurrentQueue<BridgeEvent> events = new ConcurrentQueue<BridgeEvent>();
+        readonly ConcurrentQueue<KeyValuePair<int, long>> telemetryWrites = new ConcurrentQueue<KeyValuePair<int, long>>();
         readonly BlockingCollection<OutItem> outgoing = new BlockingCollection<OutItem>(new ConcurrentQueue<OutItem>());
         readonly Thread thread;
         volatile bool stopping;
@@ -58,12 +62,24 @@ namespace WarehouseRobot.Bridge
 
         public bool TryDequeue(out BridgeEvent e) => events.TryDequeue(out e);
 
-        /// <summary>Queue a framed message. Returns false (message dropped) if not connected. Frames count toward PendingFrames.</summary>
-        public bool Send(byte[] framed, bool isFrame = false)
+        /// <summary>(telemetry seq, Stopwatch timestamp when the write thread started writing it), in write order.</summary>
+        public bool TryDequeueTelemetryWrite(out int seq, out long ticks)
+        {
+            bool ok = telemetryWrites.TryDequeue(out var kv);
+            seq = kv.Key;
+            ticks = kv.Value;
+            return ok;
+        }
+
+        /// <summary>
+        /// Queue a framed message. Returns false (message dropped) if not connected. Frames count toward PendingFrames.
+        /// telemetrySeq >= 0 marks a telemetry message: its write start is time-stamped (TryDequeueTelemetryWrite).
+        /// </summary>
+        public bool Send(byte[] framed, bool isFrame = false, int telemetrySeq = -1)
         {
             if (!connected || stopping) return false;
             if (isFrame) Interlocked.Increment(ref pendingFrames);
-            outgoing.Add(new OutItem { Data = framed, IsFrame = isFrame });
+            outgoing.Add(new OutItem { Data = framed, IsFrame = isFrame, TelemetrySeq = telemetrySeq });
             return true;
         }
 
@@ -71,6 +87,7 @@ namespace WarehouseRobot.Bridge
         {
             public byte[] Data;
             public bool IsFrame;
+            public int TelemetrySeq;
         }
 
         void Run()
@@ -134,6 +151,8 @@ namespace WarehouseRobot.Bridge
                 while (!token.IsCancellationRequested)
                 {
                     var item = outgoing.Take(token);
+                    if (item.TelemetrySeq >= 0)
+                        telemetryWrites.Enqueue(new KeyValuePair<int, long>(item.TelemetrySeq, Stopwatch.GetTimestamp()));
                     stream.Write(item.Data, 0, item.Data.Length);
                     if (item.IsFrame) Interlocked.Decrement(ref pendingFrames);
                 }
@@ -148,6 +167,7 @@ namespace WarehouseRobot.Bridge
         void Drain()
         {
             while (outgoing.TryTake(out _)) { }
+            while (telemetryWrites.TryDequeue(out _)) { }
             Interlocked.Exchange(ref pendingFrames, 0);
         }
 

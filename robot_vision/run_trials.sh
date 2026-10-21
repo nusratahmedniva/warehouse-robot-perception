@@ -2,40 +2,55 @@
 # Trial launcher (macOS / Linux): starts the bridge server in GUIDE mode with VISION perception for one task.
 #
 # The only supported way to run trials. It always runs
-#     python -m bridge.server --mode guide --perception vision --task <Task>
-# from robot_vision/.venv (hello mode, a 0.2 m/s bridge test, is never used here). It refuses to start when
-# configs/trials.json (or the git-ignored trials.local.json the Unity trial runner prefers) names another task.
+#     python -m bridge.server --mode guide --perception vision --task <Task> --resource-log
+# from robot_vision/.venv (hello mode, a 0.2 m/s bridge test, is never used here). launch_prep.py first refuses a task
+# other than the one in configs/trials.json (or the git-ignored trials.local.json the Unity trial runner prefers) and
+# prints the machine state (power mode, power source) with run-protocol warnings (AUDIT.md section 9).
 #
-#   ./run_trials.sh Task1               server in this terminal; then press Play in the Unity Editor; Ctrl+C stops it
-#   ./run_trials.sh Task1 --unity-batch also runs the session headless (TrialBatchPlay), stops the server when Unity
-#                                       quits, then runs hri_trials.py, hri_analysis.py and hri_session_check.py
+#   ./run_trials.sh Task1                         server in this terminal; then press Play in the Unity Editor
+#   ./run_trials.sh Task1 --unity-batch           also runs the session headless (TrialBatchPlay), stops the server
+#                                                 when Unity quits, then runs hri_trials.py, hri_analysis.py and
+#                                                 hri_session_check.py
+#   ./run_trials.sh Task1 --unity-batch --trials 5   development only: 5 trials instead of trial_count (launcher-
+#                                                 written trials.local.json, removed afterwards; refused in final mode)
 # Unity: $UNITY_EDITOR, else /Applications/Unity/Hub/Editor/<ProjectVersion>/Unity.app/Contents/MacOS/Unity.
 set -euo pipefail
 
+usage() { echo "usage: $0 Task1|Task2 [--unity-batch] [--trials N]" >&2; exit 2; }
 TASK="${1:-}"
-BATCH="${2:-}"
-case "$TASK" in Task1|Task2) ;; *) echo "usage: $0 Task1|Task2 [--unity-batch]" >&2; exit 2 ;; esac
-case "$BATCH" in ""|--unity-batch) ;; *) echo "usage: $0 Task1|Task2 [--unity-batch]" >&2; exit 2 ;; esac
+case "$TASK" in Task1|Task2) ;; *) usage ;; esac
+shift
+BATCH=""
+TRIALS=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --unity-batch) BATCH=1 ;;
+    --trials) [ $# -ge 2 ] || usage; TRIALS="$2"; shift ;;
+    *) usage ;;
+  esac
+  shift
+done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY="$HERE/.venv/bin/python"
 PROJECT="$(cd "$HERE/../unity/Robotics-Warehouse/WarehouseProjectURP" && pwd)"
 [ -x "$PY" ] || { echo "No project venv at $PY (see README: create robot_vision/.venv first)." >&2; exit 1; }
 
-TRIALS="$HERE/configs/trials.local.json"
-[ -f "$TRIALS" ] || TRIALS="$HERE/configs/trials.json"
-CFG_TASK="$("$PY" -c 'import json,sys; c=json.load(open(sys.argv[1], encoding="utf-8")); print(c["task"], c["mode"])' "$TRIALS")"
-if [ "${CFG_TASK%% *}" != "$TASK" ]; then
-  echo "$TRIALS says task '${CFG_TASK%% *}' but you asked for $TASK. Set \"task\" there (and \"mode\") first." >&2
-  exit 1
-fi
-echo "[run_trials] GUIDE mode, VISION perception, task $TASK (${CFG_TASK#* }, $(basename "$TRIALS"))"
-
 cd "$HERE"
-SERVER_ARGS=(-m bridge.server --mode guide --perception vision --task "$TASK")
+PREP=(launch_prep.py --task "$TASK")
+if [ -n "$TRIALS" ]; then
+  PREP+=(--trials "$TRIALS")
+  trap '"$PY" launch_prep.py --cleanup' EXIT
+fi
+"$PY" "${PREP[@]}"
+echo "[run_trials] GUIDE mode, VISION perception, task $TASK"
+
+SERVER_ARGS=(-m bridge.server --mode guide --perception vision --task "$TASK" --resource-log)
 if [ -z "$BATCH" ]; then
   echo "[run_trials] when the server says 'listening', press Play in Unity. Ctrl+C stops the server."
-  exec "$PY" "${SERVER_ARGS[@]}"
+  set +e
+  "$PY" "${SERVER_ARGS[@]}"
+  exit $?
 fi
 
 if [ -z "${UNITY_EDITOR:-}" ]; then
@@ -66,4 +81,6 @@ echo "[run_trials] Unity: $TRIALS_DIR  Python: $BRIDGE_DIR"
 "$PY" hri_trials.py --unity "$TRIALS_DIR" --bridge "$BRIDGE_DIR" | tail -1
 "$PY" hri_analysis.py "$(newest 'hri_trials_*')" | tail -1
 rm -f "$MARK"
+set +e
 "$PY" hri_session_check.py --unity "$TRIALS_DIR" --bridge "$BRIDGE_DIR"
+exit $?

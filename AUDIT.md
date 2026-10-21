@@ -536,3 +536,53 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
       replication keep the fist pose of the Task 2 final.
     - Checks: Python 271 tests pass (1 new: the rule on synthetic frames); Unity EditMode 30/30 pass (3 new
       `ForwardHandSweepTests`).
+17. **Measurement correction before the 5-trial rerun** (22 October 2026, written before that session; infrastructure
+    and measurement, plus one declared change of the watchdog trigger in Unity code; no frozen setting changed:
+    bridge.json, bridge_unity.json and `watchdog_timeout_s` 0.3 s are byte-identical, `test_hri_frozen.py` passes).
+    - **Why.** In the 10-trial session (item 13) 3 of the 4 watchdog stops after start-up were Unity main-thread hitches
+      of 239-322 ms: Python read every message within 16 ms and answered at once, but Unity sent no telemetry during the
+      long frame, so no command came back, and the wall-clock rule ("no command for 0.3 s") stopped the robot. The
+      watchdog exists to stop the robot when Python is silent for 0.3 s; those stops measured Unity, not Python. The old
+      rule also gave no protection during the hitch itself: Unity's physics catch-up steps run before the check.
+    - **Watchdog (declared change of the trigger, `CommandWatchdog`, EditMode-tested).** It stops only if a command is
+      missing for telemetry Unity actually sent more than 0.3 s ago (the network thread started writing it, and no
+      command arrived after that). Backstop, also a stop: a telemetry message queued but not written for 0.3 s with no
+      command since it was queued (blocked socket: Python is not reading). A silence that only the old wall-clock rule
+      catches is logged as a `unity_frame_stall` event with its duration (command gap) and the longest Unity frame in
+      it; stops are `watchdog_stop` events (cause `no_reply` / `not_written`). The old-rule count is reported beside
+      the new one (old-rule stops = stops + Unity frame stalls). The Task 2 final (ce37a56) ran with the old rule; a
+      Task 2 replication will run with this one, a declared difference.
+    - **Round trip measured on Unity's network threads**: from the write thread starting to write the telemetry to the
+      read thread receiving the reply (before: queued on the main thread -> received). The old definition is still
+      sent (`rtt_queue_window_*`) and reported beside it.
+    - **Unity main-thread frame times recorded separately**: every frame duration (`frame_ms_list`); reported per
+      trial and per session as max, p99 and the number of frames over 100 ms.
+    - **Resource logging once per second** (`bridge/resource_monitor.py`, its own process, started by
+      `bridge.server --resource-log`, which both launchers pass): machine CPU, memory available, page-file use, hard
+      paging (pages read from disk per second), CPU / memory / page faults of the server and Unity, the 3 other
+      processes using most CPU, GPU utilisation and memory (nvidia-smi). Its own cost: about 2 % of one CPU.
+    - **Run protocol** (every development check, final and replication on this PC): other applications closed; Windows
+      power mode "Best performance"; charger connected (this PC is a desktop without a battery: mains power).
+      `launch_prep.py` prints the power mode and power source and warns when they differ; the server records them in
+      `run_info.json -> machine_state` (`bridge/machine_state.py`). Closing other applications is checked through the
+      resource log (top other processes).
+    - **Launcher option `-Trials N` / `--trials N`, development only**: writes a launcher-marked
+      `trials.local.json` (trial_count N), which the Unity runner copies into `config_used/`, and removes it after
+      the session. Refused unless trials.json's mode is `development` (so in final and replication mode), and refused
+      if a user's own trials.local.json exists (tested).
+    - **Acceptance criteria unchanged** (item 7, all four, measured by `hri_session_check.py`; criterion 3 now uses the
+      corrected watchdog count and the network-thread round trip; the old-definition figures are printed beside them).
+      **Development check reduced to 5 trials for time; finals and replication stay at 10.**
+    - **Smoke check of the instrumentation, not part of the acceptance** (`run_trials.ps1 -Task Task1 -UnityBatch
+      -Trials 1`; `trials_development_Task1_20261022_021648`, `bridge_guide_20261022_021624`; nothing adjusted on
+      it): 1/1 SUCCESS, all new fields logged, the override removed afterwards. Round trip max 41.2 ms (network
+      thread) / 41.3 ms (queued); watchdog stops 0, Unity frame stalls 0; Unity frames: max 238.8 ms, p99 48.6 ms,
+      6 over 100 ms in 3211.
+    - **Found by the resource log on this PC (left running; not part of this project, so not stopped by the AI):** a `cmd.exe` (PID 18312, started 21 October 20:22,
+      parent gone, command line not readable) used about 4 logical CPUs continuously (124 000 CPU-seconds by
+      02:00, so also during item 13's session); during the smoke trial available memory fell to 215 MB (mean 508 MB of
+      14.2 GB), hard paging reached 24 700 pages/s (mean 2 700), the server held about 3.1 GB and Unity about 2.0 GB of
+      private memory. Memory pressure and CPU contention are now a measured candidate cause of the stalls in item 13;
+      the 5-trial check is to run under the run protocol.
+    - Checks: Python 284 tests pass (13 new in `test_measurement_correction.py`); Unity EditMode 35/35 pass (5 new
+      `CommandWatchdogTests`).
