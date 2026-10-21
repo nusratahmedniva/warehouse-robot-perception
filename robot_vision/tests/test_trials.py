@@ -87,6 +87,24 @@ class GuideTests(unittest.TestCase):
             rows = list(csv.DictReader((Path(d) / "decisions.csv").open()))
             self.assertEqual([x["state"] for x in rows], ["idle", "navigate", "idle"])
 
+    def test_every_reply_carries_route_and_perception_ready(self):
+        import task_route as tr
+        now = {"t": 0.0}
+        worker = FakeWorker(lambda: now["t"])
+        g = GuideController(hc.make_controller(), worker, None, route="Task2")
+        r = g.on_message(telemetry(1))
+        self.assertEqual((r["route"], r["perception_ready"]), ("Task2", False))   # no ready attribute: not ready
+        worker.ready = True
+        self.assertTrue(g.on_message(telemetry(2))["perception_ready"])
+        P.validate(P.Message({**r, "type": "command", "seq": 0, "reply_to": 1, "version": P.PROTOCOL_VERSION,
+                              "attachments": []}), P.TO_UNITY)   # extra fields are allowed: raises otherwise
+        road, route, _ = tr.map_for_task("Task1", hc.load_json)
+        g1 = GuideController(hc.Controller(hc.load_json("configs/hri_control.json"), hc.Roadmap(road)), worker, None, route=route)
+        g1.on_message(telemetry(1))
+        r = g1.on_message(telemetry(2, trial=1, running=True))
+        self.assertEqual(r["route"], "Task1:C1,J1,C3")
+        self.assertEqual((r["target_x"], r["target_z"]), (6.25, -5.0))    # the first checkpoint, C1
+
 
 def write_csv(p, rows):
     with p.open("w", newline="") as f:

@@ -20,7 +20,7 @@ Always active: an open palm (STOP) or a person stepping into the path stops the 
 
 Two tasks, each run many times automatically, give the results.
 
-- Task 1, straight A to B: worker signals FORWARD and the robot drives straight to B. This is the baseline for speed, timing and gesture reading.
+- Task 1, straight A to B: the robot drives straight from A to B and stops at checkpoints along the way; at each one the worker signals FORWARD. The number of checkpoints is in `robot_vision/configs/task1_route.json` (default 3, evenly spaced on the straight line A -> J1 -> E1; the middle one falls on J1, so the stops are C1, J1, C3). This is the baseline for speed, timing and gesture reading. (Changed 21 October 2026 before any Task 1 final run, declared design change, AUDIT.md section 9; before: one stop, J1.)
 - Task 2, guided route: a roadmap with 2 to 3 junctions and several possible end points; B changes every trial, and the workers at the junctions guide the robot to it.
 - One avatar: a single worker character is reused at every junction and always faces the arriving robot.
 - Fair testing: thresholds are set on development trials (one random seed), then frozen; the final trials use a different seed and are run once.

@@ -141,3 +141,8 @@ Specification: docs/project_flow.md
   run-once guard per task (TrialRunner -> FinalRunGuard), per-task fields and the
   robot.json and pose-weights hashes in hri_frozen.json (AUDIT.md section 8). Task 1
   development runs only check the pipeline; nothing is adjusted on them.
+  2026-10-21 (AUDIT.md section 9, before any Task 1 final): Task 1 checkpoints
+  (configs/task1_route.json, default 3 -> stops C1, J1, C3; task_route.py / Task1Route.cs;
+  server --task Task1); worker material recreated with a fixed GUID (Restore Worker Appearance)
+  and an appearance check that refuses every session; complete perception warm-up plus
+  perception_ready, which the trial runner waits for. Shared frozen hashes unchanged.

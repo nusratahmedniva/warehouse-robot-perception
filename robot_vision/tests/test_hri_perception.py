@@ -184,6 +184,64 @@ class PanoramaBearingTests(unittest.TestCase):
         self.assertAlmostEqual(d, 4.0, delta=1e-6)
 
 
+class WarmUpTests(unittest.TestCase):
+    """The warm-up (infrastructure, 2026-10-21) runs the live calls on frames of the live sizes and leaves no tracker
+    state behind. No models: a stand-in records the calls."""
+
+    def test_sizes_are_the_unity_camera_sizes(self):
+        import json
+        unity = json.loads((HERE.parent / "unity" / "Robotics-Warehouse" / "WarehouseProjectURP" / "Assets" / "WarehouseRobot"
+                            / "Robot" / "Config" / "robot_unity.json").read_text(encoding="utf-8"))
+        c360, pt = unity["camera_360"], unity["pan_tilt_camera"]
+        self.assertEqual(hpm.WARM_UP_SIZES["frame_360"], (c360["height_px"], c360["width_px"]))
+        self.assertEqual(hpm.WARM_UP_SIZES["frame_pan_tilt"], (pt["height_px"], pt["width_px"]))
+
+    def test_warm_up_frame_has_the_size_and_content(self):
+        try:
+            import cv2  # noqa: F401
+            from ultralytics.utils import ASSETS  # noqa: F401
+        except ImportError:
+            self.skipTest("OpenCV / Ultralytics not installed")
+        img = hpm.warm_up_frame(530, 730)
+        self.assertEqual(img.shape, (530, 730, 3))
+        self.assertGreater(float(img.std()), 10.0)   # the sample photos are pasted in, not a blank frame
+
+    def test_warm_up_uses_the_live_calls_and_resets_the_tracker(self):
+        try:
+            import cv2  # noqa: F401
+            from ultralytics.utils import ASSETS  # noqa: F401
+        except ImportError:
+            self.skipTest("OpenCV / Ultralytics not installed")
+
+        class Tracker:
+            resets = 0
+
+            def reset(self):
+                Tracker.resets += 1
+
+        class Stand(hpm.HriPerception):
+            def __init__(self):            # no models
+                self.cfg = hpm.load_config(hpm.DEFAULT_CONFIG)
+                self.calls = []
+                self.pano_model = type("M", (), {"predictor": type("P", (), {"trackers": [Tracker()]})()})()
+
+            def people(self, bgr, heading_deg, top_deg=90.0, bottom_deg=-90.0, camera_height_m=None, centre_world_yaw_deg=0.0):
+                self.calls.append(("people", bgr.shape, Tracker.resets))
+                return [], 0.0
+
+            def gesture(self, bgr, timestamp):
+                self.calls.append(("gesture", bgr.shape, Tracker.resets))
+                return "NONE", 0.0, {}, {}
+
+        s = Stand()
+        s._warm_up()
+        self.assertEqual([c[0] for c in s.calls], ["people", "gesture"] * 3)
+        self.assertEqual({c[1] for c in s.calls if c[0] == "people"}, {(1024, 2048, 3)})
+        self.assertEqual({c[1] for c in s.calls if c[0] == "gesture"}, {(530, 730, 3)})
+        self.assertEqual({c[2] for c in s.calls}, {0})   # every call before the reset ...
+        self.assertEqual(Tracker.resets, 1)               # ... and the tracker reset once at the end
+
+
 class BandTests(unittest.TestCase):
     def test_band_rows_map_to_elevation_and_distance(self):
         # 2048 x 512 band from +30 to -60 deg: 90 deg over 512 rows, horizon at row 512 / 3.

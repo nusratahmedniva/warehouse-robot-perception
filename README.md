@@ -38,6 +38,15 @@ Python handles perception and decisions; Unity runs the simulation.
   on the AMR NavMesh) and a chase camera (`FollowCamera`, C: chase / top-down / gesture camera). It also disables
   the 12 upstream rack NavMeshObstacles whose carving boxes (cm values read as m) erased the whole NavMesh.
   **Tools > Warehouse HRI > Gesture Pose Test** (Play mode) cycles the six commands.
+  **Tools > Warehouse HRI > Restore Worker Appearance** recreates the git-ignored worker textures and material on a
+  new machine (the committed scene references the material by a fixed GUID; without it the worker is magenta);
+  **Check Worker** writes the import settings, avatar mapping and appearance to `outputs/worker_check_*`;
+  **Save Gesture PNGs (Play mode)** saves LEFT, FORWARD, RIGHT and STOP from the pan-tilt camera at 2.0 m to
+  `outputs/gesture_pngs_*`. Every trial session is refused while the worker is not the textured Humanoid avatar.
+- Task 1 (straight A to B): checkpoints from `configs/task1_route.json` (default 3: C1, J1, C3; the worker shows
+  FORWARD at each). Python: `python -m bridge.server --mode guide --perception vision --task Task1` (Task 2:
+  `--task Task2`, the default). The trial runner waits for Python's `perception_ready` and refuses trials if Python's
+  map is not that of its task (AUDIT.md section 9).
 
 ## State machine and trials (Steps 5 and 7, branch anisha/step5-7)
 

@@ -239,3 +239,88 @@ Notes:
 - The Unity EditMode tests are run locally; CI runs only the Python tests.
 - Checks on 21 October 2026 (Windows): Python 224 tests pass, including 11 in `test_hri_frozen.py` and the two time-measure tests in
   `test_trials.py`; Unity EditMode 15/15 pass (10 earlier + 5 `FinalRunGuardTests`).
+
+## 9. Task 1 blockers fixed (21 October 2026, before any Task 1 final run)
+
+Every fix is labelled **environment fix**, **infrastructure fix** or **declared design change**. **No shared frozen
+setting changed:** hri_control.json, hri_perception.json, gesture_hri.json, roadmap.json, bridge.json, robot.json and
+the two Unity configs are byte-identical to the Task 2 final (`test_hri_frozen.py` pins the shared hashes to the
+ce37a56 values and still passes). The pose code (`GestureWorker.cs`, `GestureCommand.cs`, `GesturePoseCycler.cs`) is
+unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no Task 2 final is rerun.
+
+1. **Worker rendered magenta on Nusrat's PC: environment fix.**
+   - Cause (found in the files, not guessed): the committed scene overrides the worker renderer's material with
+     `worker_textures/Worker_URP.mat`, GUID `fececb7a5daa044cfabce1101932b943`, created by Add Worker and Roadmap on
+     Anisha's Mac. That folder is git-ignored, so on any other machine the reference is missing and Unity draws the
+     renderer magenta. Shaders, the FBX import and the avatar were not the cause. `Check Worker` on the PC before the
+     fix: `Ch32 material 0: missing` (`outputs/worker_check_20261021_033452`).
+   - Fix: `Tools > Warehouse HRI > Restore Worker Appearance` (also run by Add Worker and Roadmap) extracts the FBX's
+     embedded textures into the git-ignored folder and creates the URP Lit material (opaque, smoothness 0.25, base map
+     `Ch32_1001_Diffuse`, the settings of the earlier code) **with that fixed GUID**, so the committed scene resolves
+     on every machine without being changed. No Mixamo texture, model or material is committed.
+   - After the fix (PC): `Ch32: Worker_URP [Universal Render Pipeline/Lit] Ch32_1001_Diffuse 4096x4096`, no problems
+     (`outputs/worker_check_20261021_202822`); the gesture PNGs show the textured orange worker.
+   - New check (infrastructure): `WorkerAppearance.Problems` refuses **every** trial session (development, final, any
+     task or seed; a Task 2 replication runs through the same runner) when a worker renderer has a missing material,
+     Unity's error shader, a shader with no pass for the active render pipeline, no base texture, or the worker is
+     not Humanoid. The message names the renderer and the fix. 7 EditMode tests.
+   - session.json now records `worker_model_sha256`, `worker_avatar_bone_map_sha256` and `worker_appearance`, so
+     sessions from different machines can be compared.
+2. **Gesture poses on the PC: checked, nothing changed.**
+   - Pose code identical to ce37a56. No pose bug was found, so the poses were not touched.
+   - Import settings equal the committed `worker.fbx.meta` (Humanoid, avatar created from this model, no stored bone
+     mapping: Unity generates it at import); the generated avatar is valid and Humanoid with 52 bones. On the PC
+     (Unity 2022.3.62f3): worker.fbx sha256 `d883783c...2c51`, avatar mapping sha256 `d9b9596d...f310`, scene bone
+     map sha256 `1bee2c43...b5a2`. **To be compared with Anisha's Mac** (run Check Worker there): the mapping is
+     generated from the FBX file, so equal hashes mean the same rig and the same poses.
+   - PNGs from the pan-tilt camera at 2.0 m, worker at J1's stand (`Save Gesture PNGs`):
+     `outputs/gesture_pngs_20261021_202856/` LEFT, FORWARD, RIGHT, STOP and capture.json (git-ignored).
+3. **Task 1 checkpoints: declared design change** (Task 1 only, before any Task 1 final run).
+   - Task 1 stays the straight run A to B (E1). The straight line A -> J1 -> E1 now has checkpoints from the new
+     per-task config `robot_vision/configs/task1_route.json` (default 3): the line is cut into checkpoints + 1 equal
+     parts, the cut points are stops, one that falls on a junction is that junction. Default stops: C1 (6.25, -5),
+     J1 (6.25, 0), C3 (6.25, 5). At every stop the robot asks as at a junction and the worker shows FORWARD. 0 or 1
+     checkpoint gives the previous Task 1 (one stop, J1).
+   - The **one worker** (the same avatar as in Task 2) is moved to each stop as the robot heads there, exactly as in
+     Task 2, and stands by the roadmap rule (2.5 m ahead and right, facing the robot). Workers standing at all stops
+     at once were rejected: with 5 m spacing the worker just passed is as close to the next stop as the next worker
+     (both 3.54 m), so the frozen nearest-person rule could pick the wrong one.
+   - Python: `task_route.py` builds the Task 1 map from roadmap.json (unchanged) and task1_route.json; the line is
+     found from the map (FORWARD branches), never from B. `bridge.server --task Task1` selects it (default Task2 =
+     roadmap.json); the run folder's `config_used/map_used.json` records it. Unity: `Task1Route` (same rule, pinned
+     to the same stops in both test suites) adds the checkpoints for the Play session only; the scene is not changed.
+     The trial runner refuses trials if Python's map (`route`, sent with every command) is not its task's map,
+     refuses a worker stand inside a collider, and refuses a Task 1 final if task1_route.json differs from its hash.
+   - hri_frozen.json: `tasks.Task1.route` (checkpoints 3, stops C1, J1, C3, map `Task1:C1,J1,C3`) and
+     `tasks.Task1.route_config` (task1_route.json sha256 `ceb59d70...4a5b`). The shared hashes are unchanged.
+   - Simulator (`hri_sim.py`, frozen controller): Task 1 SUCCESS, FORWARD read at C1, J1 and C3 at the first ask (test).
+4. **Watchdog stops and round-trip spikes on the PC: infrastructure fix.**
+   - Before: `bridge_guide_20261021_024850` (10 Task 1 development trials, old route): 9 watchdog stops in the
+     session, 8 during trials (trial 1: 5, trial 3: 2, trial 8: 1), maximum round trip 330.6 ms. (The figures 622.6 ms
+     and 7 stops quoted in the task are not in this folder's logs.) At each stop Python's receive loop paused
+     0.33-0.59 s while Unity's frame times stayed normal: Python stalled, not Unity.
+   - The 5 stops in the first 21 s of trial 1 (with the 157-331 ms round trips) coincide with first-call work in
+     perception: first pan-tilt frame 2.8 s, first panorama 9.2 s (8.9 s in YOLO), then 0.8 s and 1.3 s when the
+     tracker first saw a person. Cause in the code: the old warm-up called `predict()`, but Ultralytics rebuilds the
+     predictor when the `tracker` argument appears, so the live `track()` call set everything up again in trial 1;
+     the pan-tilt warm-up frame was 512 rows high instead of 530; no warm-up frame showed a person, so the tracker and
+     the MediaPipe crop path never ran. Part of that work holds the GIL, which stalls the server.
+   - The other 4 stops (one between trials 2 and 3, two in trial 3, one in trial 8) were **not** warm-up: no slow
+     perception frame around them; 2 of 4 directly follow a sampled JPEG write. Cause not identified; not changed.
+   - Fix: `HriPerception._warm_up` runs the live calls (`people()` with track/persist, `gesture()` with the MediaPipe
+     crop) three times on frames of the live sizes (2048 x 1024, 730 x 530) that show people (Ultralytics' bundled
+     sample photos), then resets the tracker; the bridge listens only after it. Python sends `perception_ready`
+     (true once one live frame of each camera has been processed) with every command, and the trial runner starts
+     trial 1 only after it (`docs/protocol.md`: optional fields `route`, `perception_ready`; protocol stays v2).
+   - Offline check on 80 + 80 saved PC frames (Unity closed): first frames 43 ms / 47 ms with no main-thread stall
+     above 6 ms, against 12.6 s / 1.3 s and a 226 ms stall without warm-up. Perception outputs (track ids, bearings,
+     distances, gestures) are identical with and without the warm-up on all 160 frames.
+   - After (live, PC, one Task 1 development pipeline-check trial on the new route, `trials_development_Task1_20261021_203226`
+     and `bridge_guide_20261021_203057`, 1/1 SUCCESS at C1, J1, C3; run on the working tree just before this commit, so its session.json names the parent
+     commit 4aeeed2; nothing adjusted on it): the slow first frames
+     (up to 0.53 s) and one watchdog stop fell before trial 1, which waited for perception_ready. During the trial:
+     1 watchdog stop at 28 s while navigating (same kind as the 4 unexplained ones above), maximum round trip
+     31.4 ms (mean 1.1 ms). One trial is a small sample; the full development session will tell.
+5. **Checks on 21 October 2026 (Windows):** Python 245 tests pass (21 new: task route, warm-up, perception ready,
+   route in every command, per-task frozen record); Unity EditMode 26/26 pass (15 earlier + 4 `Task1RouteTests` +
+   7 `WorkerAppearanceTests`).

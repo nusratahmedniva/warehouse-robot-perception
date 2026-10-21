@@ -25,9 +25,16 @@ DECISION_FIELDS = ["trial", "time_s", "state", "x", "z", "yaw_deg", "v", "omega"
 
 
 class GuideController:
-    def __init__(self, controller: hc.Controller, worker, out_dir: Path | None, log_every: int = 2):
+    """route: the id of the controller's map (task_route.route_id), sent with every command so the Unity trial
+    runner can refuse a session whose task needs another map. perception_ready (worker.ready) is sent with every
+    command too; Unity starts trial 1 only after it is true."""
+
+    def __init__(self, controller: hc.Controller, worker, out_dir: Path | None, log_every: int = 2,
+                 route: str = "Task2"):
         self.c = controller
         self.worker = worker
+        self.route = route
+        self.ready_logged = False
         self.out = Path(out_dir) if out_dir is not None else None
         self.log_every = max(1, int(log_every))
         self.trial = -1
@@ -97,7 +104,12 @@ class GuideController:
                 "gesture": inp.gesture, "gesture_time_s": inp.gesture_time_s, "safety": self.c.safety_reason if running else "",
                 "screen_text": cmd.screen_text, "rtt_ms": h.get("rtt_ms"), "watchdog_count": h.get("watchdog_count"),
                 "collision_count": h.get("collision_count")})
-        return cmd.to_message()
+        ready = bool(getattr(self.worker, "ready", False))
+        if ready and not self.ready_logged:
+            self.ready_logged = True
+            print(f"[bridge] perception ready (models warmed up, first frame of each camera processed); "
+                  f"Unity may start trials. Map: {self.route}", flush=True)
+        return {**cmd.to_message(), "route": self.route, "perception_ready": ready}
 
     def _write_trial(self) -> None:
         if self.trial < 0 or self.trial in self.written or self.out is None:

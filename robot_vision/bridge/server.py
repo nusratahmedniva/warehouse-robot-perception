@@ -10,7 +10,10 @@ perception.csv in the run folder. The commands themselves are unchanged (no deci
 
 Mode guide (Step 5): the hri_control state machine drives the robot (bridge/guide.py); trials are started by the Unity
 trial runner (telemetry trial_index / trial_running); use with --perception vision. Logs decisions.csv and
-python_trial_###.json in the run folder.
+python_trial_###.json in the run folder. --task Task1 gives the controller the Task 1 map (task_route.py: the
+checkpoints of configs/task1_route.json on the straight line); default Task2 (roadmap.json). Every command carries
+the map id (route) and perception_ready; the Unity trial runner waits for perception_ready before trial 1 and refuses
+trials if the map is not that of its task.
 
 Mode hello: answers v = hello_test.v_mps (0.2), omega = 0, so the robot creeps forward while connected; it also
 requests a NavMesh path to a point target_ahead_m in front of the robot's first reported pose. --mute-after-s N stops
@@ -323,7 +326,8 @@ def make_perception_worker(out: Path, perception_config: str | Path):
 
 
 async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
-              perception: str = "off", perception_config: str = "configs/hri_perception.json") -> Path:
+              perception: str = "off", perception_config: str = "configs/hri_perception.json",
+              task: str = "Task2") -> Path:
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
     used = [cfg_path]
     if perception == "vision":
@@ -331,12 +335,22 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         pcfg = dio.resolve(perception_config)
         used += [pcfg, dio.resolve(hpm.load_config(pcfg)["stop"]["adapter_config"])]
     hashes = dio.copy_configs(out, used)
+    road = route = None
+    if mode == "guide":
+        import hri_control as hc
+        import task_route as tr
+        road, route, road_files = tr.map_for_task(task, hc.load_json)
+        for extra in ["configs/hri_control.json"] + road_files:  # the exact configs of this run
+            (out / "config_used" / Path(extra).name).write_bytes(dio.resolve(extra).read_bytes())
+        dio.write_json(out / "config_used" / "map_used.json", road)
+        print(f"[bridge] task {task}: map {route}", flush=True)
     dio.write_json(out / "run_info.json", {
         "created": datetime.now().isoformat(timespec="seconds"), "mode": mode,
         "command": " ".join([Path(sys.executable).name] + sys.argv), "git": dio.git_info(),
         "python": platform.python_version(), "platform": platform.platform(),
         "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION,
-        "mute_after_s": mute_after_s, "perception": perception})
+        "mute_after_s": mute_after_s, "perception": perception, "task": task if mode == "guide" else None,
+        "route": route})
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
     worker = None
     if perception == "vision":
@@ -344,11 +358,9 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         print(f"[bridge] perception: {worker.label}", flush=True)
     guide = None
     if mode == "guide":
-        import hri_control as hc
         from bridge.guide import GuideController
-        for extra in ("configs/hri_control.json", "configs/roadmap.json"):  # the exact configs of this run
-            (out / "config_used" / Path(extra).name).write_bytes(dio.resolve(extra).read_bytes())
-        controller = guide = GuideController(hc.make_controller(), worker, out)
+        controller = guide = GuideController(hc.Controller(hc.load_json("configs/hri_control.json"), hc.Roadmap(road)),
+                                             worker, out, route=route)
         if worker is None:
             print("[bridge] WARNING: guide mode without --perception vision: no people, the robot will not move.", flush=True)
     else:
@@ -385,11 +397,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--perception", choices=["off", "vision"], default="off",
                     help="vision: run the Step 3 perception on the camera frames (needs the YOLO weights)")
     ap.add_argument("--perception-config", default="configs/hri_perception.json")
+    ap.add_argument("--task", choices=["Task1", "Task2"], default="Task2",
+                    help="guide mode: the map (Task2 = roadmap.json; Task1 = roadmap.json plus the checkpoints of "
+                         "configs/task1_route.json). The Unity trial runner refuses trials if it differs from its task.")
     args = ap.parse_args(argv)
     cfg, cfg_path = load_config(args.config)
     try:
         asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
-                        args.perception_config))
+                        args.perception_config, args.task))
     except KeyboardInterrupt:
         pass
 

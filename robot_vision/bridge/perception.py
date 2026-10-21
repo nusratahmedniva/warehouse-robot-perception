@@ -52,6 +52,13 @@ class PerceptionWorker:
     def label(self) -> str:
         return getattr(self.p, "label", "vision")
 
+    @property
+    def ready(self) -> bool:
+        """Perception ready: the models are loaded and warmed up (HriPerception does that before this worker exists)
+        and at least one live frame of each camera has been processed, so its first-call costs are paid. The guide
+        sends it with every command (perception_ready); the Unity trial runner starts trial 1 only after it."""
+        return self.processed["frame_360"] > 0 and self.processed["frame_pan_tilt"] > 0
+
     def submit(self, msg) -> None:
         """Queue a frame message (bridge.protocol.Message); a newer frame of the same camera replaces it."""
         if msg.type not in self._pending:

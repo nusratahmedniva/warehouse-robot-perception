@@ -1,0 +1,8 @@
+{
+  "label": "Task 1 route (straight A to B with checkpoints): read by Python (task_route.py, bridge.server --task Task1) and by the Unity trial runner (TrialRunner, Task1Route). Per-task config of Task 1; its sha256 is in configs/hri_frozen.json -> tasks.Task1.",
+  "declared": "2026-10-21, before any Task 1 final run (declared design change, AUDIT.md section 9). Task 2 does not read this file.",
+  "checkpoints": 3,
+  "merge_with_junction_m": 0.5,
+  "rule": "The straight line of the roadmap: from the start node, its only branch, then the FORWARD branch of each junction, until an endpoint (A -> J1 -> E1). That line is cut into checkpoints + 1 equal parts; the cut points are the checkpoints, named C1..Cn from the start. A checkpoint within merge_with_junction_m of a junction on the line is that junction (it keeps its name and its other branches). Every junction on the line is a stop as well. At every stop the one worker (the same avatar as in Task 2) stands by the roadmap worker_stand rule and shows FORWARD. Default 3: C1 (6.25, -5), J1 (6.25, 0), C3 (6.25, 5).",
+  "why": "More worker interactions per Task 1 trial (3 instead of 1) for the gesture-reading baseline, on the same straight A to B route and the same B. The checkpoints are stops on the robot's map, like junctions; they carry no information about B (every checkpoint has only a FORWARD branch, and J1 keeps its LEFT and RIGHT branches)."
+}

@@ -40,6 +40,21 @@ namespace WarehouseHRI
             }
         }
 
+        /// <summary>sha256 of a text file with CRLF read as LF, as the config hashes in hri_frozen.json are taken.</summary>
+        public static string Sha256TextLf(string path)
+        {
+            var bytes = File.ReadAllBytes(path);
+            var lf = new System.Collections.Generic.List<byte>(bytes.Length);
+            for (int i = 0; i < bytes.Length; i++)
+                if (!(bytes[i] == (byte)'\r' && i + 1 < bytes.Length && bytes[i + 1] == (byte)'\n')) lf.Add(bytes[i]);
+            using (var h = SHA256.Create())
+            {
+                var sb = new StringBuilder(64);
+                foreach (byte b in h.ComputeHash(lf.ToArray())) sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
+        }
+
         /// <summary>Null when the file exists and has the expected sha256; otherwise the reason to refuse.</summary>
         public static string WeightsProblem(string path, string expectedSha256)
         {

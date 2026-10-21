@@ -33,8 +33,11 @@ namespace WarehouseRobot.Scenario
 
     [Serializable] class FrozenFlag { public bool frozen; }
     [Serializable] class FrozenWeights { public string path = "", sha256 = ""; }
-    [Serializable] class FrozenRecord { public FrozenWeights pose_weights = new FrozenWeights(); }
-    [Serializable] class RoadmapMeta { public string start = "A"; public string task1_goal = "E1"; }
+    [Serializable] class FrozenTask { public FrozenWeights route_config = new FrozenWeights(); }
+    [Serializable] class FrozenTasks { public FrozenTask Task1 = new FrozenTask(); }
+    [Serializable] class FrozenRecord { public FrozenWeights pose_weights = new FrozenWeights(); public FrozenTasks tasks = new FrozenTasks(); }
+    [Serializable] class WorkerStandMeta { public float corner_offset_m = 2.5f; }
+    [Serializable] class RoadmapMeta { public string start = "A"; public string task1_goal = "E1"; public WorkerStandMeta worker_stand = new WorkerStandMeta(); }
 
     [Serializable]
     public class ShownRecord
@@ -72,6 +75,10 @@ namespace WarehouseRobot.Scenario
     /// robot_vision/outputs/trials_mode_task_time/): session.json (git commit, seed, goal order), config_used/,
     /// truth_run###.json and truth_run###.csv (0.1 s), results_unity.csv. Task "GestureSweep" instead keeps the
     /// robot still and has the worker show every command (truth_sweep.csv) for the development gesture evaluation.
+    /// Since 2026-10-21: every session is refused while the worker does not render as the textured Humanoid avatar
+    /// (WorkerAppearance); Task 1 adds the checkpoints of robot_vision/configs/task1_route.json to the roadmap for the
+    /// session (Task1Route; the worker is moved to each stop as in Task 2); trial 1 starts only after Python reports
+    /// perception_ready, and only if Python's map (command field route) is the map of this task.
     /// </summary>
     public class TrialRunner : MonoBehaviour
     {
@@ -94,6 +101,10 @@ namespace WarehouseRobot.Scenario
         TrialsConfig cfg;
         RoadmapMeta meta;
         string repoRoot, outRoot, cfgText, roadText, cfgName = "trials.json";
+        string routeText, expectedRoute = "Task2";
+        readonly List<string> task1Stops = new List<string>();
+        bool IsTask1 => string.Equals(cfg.task, "Task1", StringComparison.OrdinalIgnoreCase);
+        const string Task1RouteFile = "robot_vision/configs/task1_route.json";
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         string RepoFile(string rel) => Path.GetFullPath(Path.Combine(repoRoot, rel));
@@ -133,15 +144,75 @@ namespace WarehouseRobot.Scenario
             else if (cfg.dev_seed == cfg.final_seed) error = "dev_seed and final_seed must differ";
             else if (cfg.IsFinal && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
                 error = "final mode needs frozen hri_control.json and hri_perception.json";
+            if (error == null)
+            {
+                // Every session, every mode and task: the worker must render as the textured Humanoid avatar.
+                var look = WorkerAppearance.Problems(worker.gameObject);
+                if (look.Count > 0) error = "worker appearance: " + string.Join("; ", look) + ". " + WorkerAppearance.Fix;
+            }
+            if (error == null && IsTask1) error = AddTask1Checkpoints();
             outRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
             if (error == null && cfg.IsFinal)
             {
                 // Each task's final runs once; another task's FINAL_DONE.json does not block it.
                 string earlier = FinalRunGuard.EarlierFinal(outRoot, cfg.task);
                 if (earlier != null) error = $"final trials of {cfg.task} already run: {earlier}";
-                else error = WeightsProblem();
+                else error = WeightsProblem() ?? (IsTask1 ? Task1RouteProblem() : null);
             }
             return error == null;
+        }
+
+        /// <summary>Task 1: the checkpoints of task1_route.json on the straight line, for this Play session.</summary>
+        string AddTask1Checkpoints()
+        {
+            try
+            {
+                routeText = File.ReadAllText(RepoFile(Task1RouteFile));
+                var rc = JsonUtility.FromJson<Task1RouteConfig>(routeText);
+                var stops = Task1Route.Apply(nodes[meta.start], rc, meta.worker_stand.corner_offset_m, out expectedRoute);
+                task1Stops.Clear();
+                foreach (var s in stops)
+                {
+                    nodes[s.name] = s;
+                    task1Stops.Add(s.name);
+                    string blocked = StandBlocked(s);
+                    if (blocked != null) return $"Task 1 stop {s.name}: the worker stand overlaps {blocked}";
+                }
+
+                var line = Task1Route.StraightLine(nodes[meta.start]);
+                if (line[line.Count - 1].name != meta.task1_goal)
+                    return $"Task 1: the straight line ends at {line[line.Count - 1].name}, not at task1_goal {meta.task1_goal}";
+                Debug.Log($"[TrialRunner] Task 1 map {expectedRoute}: stops {string.Join(", ", task1Stops)}");
+                return null;
+            }
+            catch (Exception e)
+            {
+                return "Task 1 route (" + Task1RouteFile + "): " + e.Message;
+            }
+        }
+
+        /// <summary>Name of a scene collider the worker would stand in at this stop (racks, walls), or null.</summary>
+        string StandBlocked(RoadNode stop)
+        {
+            if (stop.workerStand == null) return "nothing: no worker stand";
+            Physics.SyncTransforms();
+            Vector3 p = stop.workerStand.position;
+            foreach (var c in Physics.OverlapCapsule(p + Vector3.up * 0.4f, p + Vector3.up * 1.6f, 0.25f, ~0, QueryTriggerInteraction.Ignore))
+                if (!c.transform.IsChildOf(worker.transform) && !c.transform.IsChildOf(robot.transform)) return c.name;
+            return null;
+        }
+
+        /// <summary>Task 1 final: task1_route.json must have the sha256 recorded in hri_frozen.json (LF-normalised).</summary>
+        string Task1RouteProblem()
+        {
+            FrozenRecord rec;
+            try { rec = JsonUtility.FromJson<FrozenRecord>(File.ReadAllText(RepoFile("robot_vision/configs/hri_frozen.json"))); }
+            catch (Exception e) { return "cannot read robot_vision/configs/hri_frozen.json: " + e.Message; }
+            var rc = rec?.tasks?.Task1?.route_config;
+            if (rc == null || string.IsNullOrEmpty(rc.sha256)) return "no tasks.Task1.route_config in robot_vision/configs/hri_frozen.json";
+            string got = FinalRunGuard.Sha256TextLf(RepoFile(rc.path));
+            return string.Equals(got, rc.sha256, StringComparison.OrdinalIgnoreCase) ? null
+                : $"{rc.path} has sha256 {got}, not the recorded {rc.sha256}";
         }
 
         string WeightsProblem()
@@ -191,16 +262,45 @@ namespace WarehouseRobot.Scenario
             var preview = new List<string>();
             var gp = new GoalSequence(seed);
             for (int i = 0; i < TrialTotal && !sweep; i++)
-                preview.Add(string.Equals(cfg.task, "Task1", StringComparison.OrdinalIgnoreCase) ? meta.task1_goal : endpoints[gp.NextGoalIndex(endpoints.Count)]);
+                preview.Add(IsTask1 ? meta.task1_goal : endpoints[gp.NextGoalIndex(endpoints.Count)]);
+            if (IsTask1) WriteNew(Path.Combine(SessionFolder, "config_used", "task1_route.json"), routeText);
+            var animator = worker.GetComponentInChildren<Animator>();
+            string boneMap = WorkerAppearance.BoneMap(animator);
             WriteNew(Path.Combine(SessionFolder, "session.json"),
                 "{\n" + $"  \"task\": \"{cfg.task}\",\n  \"mode\": \"{mode}\",\n  \"seed\": {seed},\n" +
                 $"  \"trials\": {TrialTotal},\n  \"endpoints\": [{Quote(endpoints)}],\n  \"goal_order\": [{Quote(preview)}],\n" +
                 $"  \"git_commit\": \"{commit}\",\n  \"git_branch\": \"{branch}\",\n  \"unity_version\": \"{Application.unityVersion}\",\n" +
                 $"  \"trials_config_sha256\": \"{Sha256(cfgText)}\",\n  \"roadmap_sha256\": \"{Sha256(roadText)}\",\n" +
+                (IsTask1 ? $"  \"task1_stops\": [{Quote(task1Stops)}],\n  \"task1_route_sha256_lf\": \"{Sha256(routeText.Replace("\r\n", "\n"))}\",\n" : "") +
+                $"  \"python_map_required\": \"{(sweep ? "" : expectedRoute)}\",\n" +
+                $"  \"worker_model_sha256\": \"{WorkerModelSha256()}\",\n" +
+                $"  \"worker_avatar_bone_map_sha256\": \"{WorkerAppearance.Sha256(boneMap)}\",\n" +
+                $"  \"worker_avatar_bones\": {boneMap.Split('\n').Length - 1},\n" +
+                $"  \"worker_appearance\": \"{JsonEscape(WorkerAppearance.Describe(worker.gameObject))}\",\n" +
                 "  \"note\": \"goal B lives only in Unity (this folder); Python never receives it\"\n}\n");
 
             Status = "waiting for the Python bridge";
             while (!bridge.Connected) yield return null;
+            // Trial 1 starts only when Python has warmed up its models and processed a frame of each camera
+            // (the first-call stalls otherwise hit the 0.3 s watchdog during trial 1; infrastructure, 2026-10-21).
+            float waitStart = Time.realtimeSinceStartup;
+            while (!bridge.PythonPerceptionReady)
+            {
+                Status = bridge.Connected ? $"waiting for Python: perception ready ({Time.realtimeSinceStartup - waitStart:0} s)" : "waiting for the Python bridge";
+                yield return null;
+            }
+
+            Debug.Log($"[TrialRunner] Python perception ready after {Time.realtimeSinceStartup - waitStart:0.0} s; Python map {bridge.PythonRoute}");
+            if (!sweep && bridge.PythonRoute != expectedRoute)
+            {
+                string why = $"Python's map is '{bridge.PythonRoute}' but {cfg.task} needs '{expectedRoute}': restart the server with " +
+                             $"python -m bridge.server --mode guide --perception vision --task {(IsTask1 ? "Task1" : "Task2")}";
+                Status = "not started: " + why;
+                Debug.LogError("[TrialRunner] " + why);
+                WriteNew(Path.Combine(SessionFolder, "NOT_STARTED.txt"), why + "\n");
+                yield break;
+            }
+
             yield return new WaitForSeconds(0.5f);
 
             if (sweep) yield return Sweep(seed);
@@ -471,6 +571,15 @@ namespace WarehouseRobot.Scenario
         static string F(float x, string fmt = "0.###") => float.IsNaN(x) || float.IsInfinity(x) ? "" : x.ToString(fmt, Inv);
         static string Csv(string s) => s == null ? "" : s.IndexOfAny(new[] { ',', '"', '\n' }) >= 0 ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
         static string Quote(List<string> xs) => xs.Count == 0 ? "" : "\"" + string.Join("\", \"", xs) + "\"";
+        static string JsonEscape(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");
+
+        /// <summary>sha256 of the git-ignored worker.fbx, so sessions on different machines can be compared.</summary>
+        static string WorkerModelSha256()
+        {
+            string p = Path.Combine(Application.dataPath, "WarehouseRobot", "Characters", "worker.fbx");
+            try { return File.Exists(p) ? FinalRunGuard.Sha256File(p) : "missing"; }
+            catch (Exception e) { return "unreadable: " + JsonEscape(e.Message); }
+        }
 
         static string Sha256(string text)
         {

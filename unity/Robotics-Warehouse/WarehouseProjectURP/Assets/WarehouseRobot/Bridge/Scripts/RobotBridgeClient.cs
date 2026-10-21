@@ -98,6 +98,9 @@ namespace WarehouseRobot.Bridge
         public Vector2 Target => target;
         public string State { get; private set; } = "";
         public string ScreenText { get; private set; } = "";
+        /// <summary>From the last command of this connection: Python's map id ("" if not sent) and perception ready.</summary>
+        public string PythonRoute { get; private set; } = "";
+        public bool PythonPerceptionReady { get; private set; }
         public bool Connected => connection != null && connection.Connected;
         public float LastRoundTripMs => rttMs;
 
@@ -209,6 +212,8 @@ namespace WarehouseRobot.Bridge
             Debug.Log($"[RobotBridge] Connected to {endpoint}", this);
             commandSeen = false;
             watchdogStopped = false;
+            PythonRoute = "";
+            PythonPerceptionReady = false;
             sentTelemetry.Clear();
             stream360.Reset();
             streamPan.Reset();
@@ -232,6 +237,8 @@ namespace WarehouseRobot.Bridge
             watchdogStopped = false;
             State = "disconnected";
             ScreenText = "";
+            PythonRoute = "";
+            PythonPerceptionReady = false;
             if (robot != null && !KeyboardOverride) robot.Drive.Stop();
             Debug.LogWarning($"[RobotBridge] Disconnected ({reason}); " + (wasDriving ? "robot stopped (v = 0, omega = 0)." : "robot idle."), this);
         }
@@ -294,6 +301,8 @@ namespace WarehouseRobot.Bridge
             target = new Vector2(cmd.target_x, cmd.target_z);
             State = cmd.state ?? "";
             ScreenText = cmd.screen_text ?? "";
+            PythonRoute = cmd.route ?? "";
+            PythonPerceptionReady = cmd.perception_ready;
         }
 
         void CheckWatchdog()
@@ -606,7 +615,7 @@ namespace WarehouseRobot.Bridge
 
             const float line = 20f, pad = 8f, width = 360f;
             float x = Screen.width - width - pad, y = pad;
-            GUI.Box(new Rect(x - pad, y, width + pad, 14f * line + 2f * pad), GUIContent.none);
+            GUI.Box(new Rect(x - pad, y, width + pad, 15f * line + 2f * pad), GUIContent.none);
             y += pad;
             void Line(string text)
             {
@@ -618,6 +627,7 @@ namespace WarehouseRobot.Bridge
                 : "connecting to " + connection.Endpoint + (connection.LastConnectError != null ? " (" + connection.LastConnectError + ")" : "");
             Line("Bridge: " + status);
             Line($"State: {State}");
+            Line($"Python map: {(PythonRoute.Length > 0 ? PythonRoute : "-")}   perception ready: {(PythonPerceptionReady ? "yes" : "no")}");
             Line(lastCommand != null ? $"Command #{lastCommand.seq}: v {lastCommand.v:F2}  omega {lastCommand.omega:F2}  pan {lastCommand.pan_deg:F0}" : "Command: none yet");
             Line(rttCount > 0 ? $"Round trip: last {rttMs:F1} ms  mean {rttSumMs / rttCount:F1}  max {rttMaxMs:F1}  (n {rttCount})" : "Round trip: -");
             Line($"Watchdog stops: {watchdogCount}" + (watchdogStopped ? "  (holding stop)" : "") + (KeyboardOverride ? "  [keyboard override]" : ""));

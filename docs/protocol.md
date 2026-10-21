@@ -124,6 +124,11 @@ camera, `dropped / (sent + dropped)`, to `summary.json` (`frames`).
 | `has_target`, `target_x`, `target_z` | target point for the next NavMesh path (`has_target: false` clears it) |
 | `state` | state-machine state name (shown in the bridge panel) |
 | `screen_text` | text shown on screen ("" = none), e.g. "Which direction?" |
+| `route` (optional, guide mode) | the map the state machine uses: `Task2` (roadmap.json) or `Task1:<stops>` (e.g. `Task1:C1,J1,C3`); the trial runner refuses trials when it is not the map of its task |
+| `perception_ready` (optional, guide mode) | true once the models are warmed up and one frame of each camera has been processed; the trial runner starts trial 1 only after it |
+
+The two optional fields were added on 21 October 2026 (infrastructure; extra fields were already allowed, so
+`protocol_version` stays 2). Absent, Unity reads `""` and `false`.
 
 Every command carries the complete desired state; Unity keeps nothing
 from earlier commands.

@@ -79,6 +79,16 @@ class WorkerTests(unittest.TestCase):
         g = next(r for r in rows if r["type"] == "frame_pan_tilt")
         self.assertEqual((g["gesture_read"], g["right_arm_deg"]), ("LEFT", "-88.0"))
 
+    def test_ready_after_one_frame_of_each_camera(self):
+        w = PerceptionWorker(self.fake, None, verbose=False)
+        self.assertFalse(w.ready)
+        w.submit(frame("frame_360", 1))
+        self.assertTrue(wait_for(lambda: w.processed["frame_360"] == 1))
+        self.assertFalse(w.ready)                 # the pan-tilt camera has not been processed yet
+        w.submit(frame("frame_pan_tilt", 2))
+        self.assertTrue(wait_for(lambda: w.ready))
+        w.close()
+
     def test_only_the_newest_frame_is_processed(self):
         w = PerceptionWorker(self.fake, None, verbose=False)
         w._lock.acquire()          # hold the worker while three frames arrive

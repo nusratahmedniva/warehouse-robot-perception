@@ -217,11 +217,23 @@ class HriPerception:
         self._warm_up()
 
     def _warm_up(self):
-        """First calls compile kernels and load weights; done at start so the 0.3 s watchdog is not hit later."""
-        blank = np.zeros((self.cfg["people"]["imgsz"] // 4, self.cfg["people"]["imgsz"], 3), np.uint8)
-        self.pano_model.predict(blank, imgsz=self.cfg["people"]["imgsz"], device=self.device, verbose=False)
-        self.gesture_model.predict(blank[:530, :730], imgsz=self.cfg["gesture"]["imgsz"], device=self.device, verbose=False)
-        self.stop.detect(np.zeros((530, 730, 3), np.uint8), 0.0)
+        """First calls compile kernels, set up the predictors and import the tracker; done before the bridge listens
+        so the 0.3 s watchdog is not hit during the first trial (the GIL is held for part of that work, which stalls
+        the server). Runs the exact calls of a live frame: people() (track, persist, same arguments: a predict()
+        call would not do, Ultralytics rebuilds the predictor when the tracker argument appears) and gesture()
+        (YOLO and the MediaPipe person crop) on frames of the live sizes that show people (Ultralytics' bundled
+        sample images), so the detection, tracking and crop paths all run once. The results are discarded and
+        the tracker is reset afterwards, so the first live frame starts from the same state as without warm-up
+        (track ids from 1). Infrastructure only: no model, argument or threshold differs from a live frame."""
+        pano, gesture = warm_up_frame(*WARM_UP_SIZES["frame_360"]), warm_up_frame(*WARM_UP_SIZES["frame_pan_tilt"])
+        import cv2
+        for img in (pano, gesture):
+            self._decode(cv2.imencode(".jpg", img)[1].tobytes())
+        for i in range(3):   # first frame starts tracks, the next ones associate them
+            self.people(pano, 0.0, camera_height_m=self.cfg["people"]["camera_height_m"])
+            self.gesture(gesture, float(i))
+        for tracker in getattr(self.pano_model.predictor, "trackers", None) or []:
+            tracker.reset()
 
     def close(self):
         self.stop.close()
@@ -293,6 +305,31 @@ class HriPerception:
     @staticmethod
     def decode_jpeg(data: bytes):
         return HriPerception._decode(data)
+
+
+# (height, width) of the live frames: the 360 panorama (2048 x 1024) and the pan-tilt image (730 x 530) of
+# robot_unity.json (tests/test_hri_perception.py checks them). A frame of another size still works; its first call
+# is then slower (the first live frame of each camera is processed before the bridge reports perception ready).
+WARM_UP_SIZES = {"frame_360": (1024, 2048), "frame_pan_tilt": (530, 730)}
+
+
+def warm_up_frame(h: int, w: int):
+    """A grey frame of size (h, w) with Ultralytics' two bundled sample photos (people) pasted side by side at the
+    bottom, so that the warm-up calls find people. Never used for a decision."""
+    import cv2
+    from ultralytics.utils import ASSETS
+    canvas = np.full((h, w, 3), 90, np.uint8)
+    names = ("bus.jpg", "zidane.jpg")
+    slot = w // len(names)
+    for k, name in enumerate(names):
+        p = Path(ASSETS) / name
+        im = cv2.imdecode(np.frombuffer(p.read_bytes(), np.uint8), cv2.IMREAD_COLOR) if p.exists() else None
+        if im is None:
+            continue
+        s = min(h / im.shape[0], slot / im.shape[1])
+        im = cv2.resize(im, (max(1, int(im.shape[1] * s)), max(1, int(im.shape[0] * s))))
+        canvas[h - im.shape[0]:h, k * slot:k * slot + im.shape[1]] = im
+    return canvas
 
 
 def _r(x, default=None):

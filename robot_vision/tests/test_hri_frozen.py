@@ -85,6 +85,25 @@ class FrozenConfigTests(unittest.TestCase):
                          {"task": "Task2", "dev_seed": 1, "final_seed": 2, "trial_count": 10, "timeout_s": 240,
                           "stuck_s": 10, "stuck_min_progress_m": 0.25, "success_radius_m": 0.3})
 
+    def test_task1_route_config_frozen_per_task(self):
+        rc = FROZEN["tasks"]["Task1"]["route_config"]
+        self.assertEqual(file_sha256(rc["path"]), rc["sha256"], f"{rc['path']} changed (disclose and re-record)")
+        self.assertNotIn(rc["path"], FROZEN["sha256"])                       # per task, not a shared setting
+        self.assertNotIn("route_config", FROZEN["tasks"]["Task2"])           # Task 2 does not read it
+
+    def test_task1_recorded_stops_are_those_of_the_config(self):
+        import sys
+        sys.path.insert(0, str(REPO / "robot_vision"))
+        import hri_control as hc
+        import task_route as tr
+        route = FROZEN["tasks"]["Task1"]["route"]
+        cfg = read_json("task1_route.json")
+        self.assertEqual(route["checkpoints"], cfg["checkpoints"])
+        road, map_id, _ = tr.map_for_task("Task1", hc.load_json)
+        self.assertEqual(route["stops"], road["task1_stops"])
+        self.assertEqual(route["map"], map_id)
+        self.assertEqual(route["goal"], tr.straight_line(read_json("roadmap.json"))[-1])
+
     def test_routes_match_roadmap(self):
         roadmap = read_json("roadmap.json")
         endpoints = {n for n, v in roadmap["nodes"].items() if v["kind"] == "endpoint"}

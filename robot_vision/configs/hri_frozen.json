@@ -41,8 +41,13 @@
       }
     },
     "Task1": {
-      "route": {"start": "A", "goal": "E1"},
-      "route_note": "Straight A to B: B = roadmap task1_goal (E1) in every trial; the worker shows FORWARD at J1. Added 2026-10-21; the trial settings are those of Task 2.",
+      "route": {"start": "A", "goal": "E1", "checkpoints": 3, "stops": ["C1", "J1", "C3"], "map": "Task1:C1,J1,C3"},
+      "route_note": "Straight A to B: B = roadmap task1_goal (E1) in every trial. Since 2026-10-21 (declared design change, before any Task 1 final run; AUDIT.md section 9) the straight line A -> J1 -> E1 has checkpoints from configs/task1_route.json (default 3: C1 (6.25, -5), J1, C3 (6.25, 5)); at every stop the one worker stands by the roadmap worker_stand rule and shows FORWARD. Python runs with bridge.server --task Task1 (map Task1:C1,J1,C3); the Unity trial runner refuses trials if Python's map differs. Before: one stop (J1). The trial settings are those of Task 2.",
+      "route_config": {
+        "path": "robot_vision/configs/task1_route.json",
+        "sha256": "ceb59d70e385a68f60bb0e2280fa9611274a605aca629bc120ec2ec20f554a5b",
+        "note": "Per-task (Task 1 only; Task 2 does not read it). LF-normalised sha256, like the shared hashes. The Unity trial runner refuses a Task 1 final if the local file differs."
+      },
       "trials_fixed": {
         "task": "Task1",
         "dev_seed": 1,

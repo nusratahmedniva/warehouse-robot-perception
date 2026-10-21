@@ -262,6 +262,10 @@ namespace WarehouseRobot.Bridge
         public float target_z;
         public string state = "";
         public string screen_text = "";
+        // Optional (guide mode, 2026-10-21): the map Python's controller uses (e.g. "Task2", "Task1:C1,J1,C3") and
+        // whether its perception is warmed up; the trial runner waits for both before trial 1. Absent = "" / false.
+        public string route = "";
+        public bool perception_ready;
     }
 
     [Serializable]
