@@ -630,3 +630,39 @@ unchanged since ce37a56. The Task 2 final result (section 2) is unaffected; no T
       process and the memory pressure, which supports those as their cause, but one 5-trial session cannot prove it.
       The criteria were not loosened; the Task 1 final and a Task 2 replication stay at 10 trials and must run under
       the same run protocol.
+19. **10-trial Task 1 development rehearsal in the Unity Editor: pipeline check only** (22 October 2026, 02:56-03:09;
+    `run_trials.ps1 -Task Task1` without `-UnityBatch`, Play pressed in the Editor, full trial_count 10, commit a9441ca
+    (merge of 6cfa326 with no file change), dev seed 1; `trials_development_Task1_20261022_025616`,
+    `bridge_guide_20261022_025526`; checked afterwards with `session_check_20261022_160430`). It rehearses the final's
+    way of running (Editor, not batch). It is not an acceptance session and nothing was adjusted on it.
+    - Run protocol: power mode Best performance, mains power, no launcher warning (`run_info.json -> machine_state`).
+    - Result: 10/10 SUCCESS; 30/30 stops read FORWARD as shown, all at the first ask; 0 stale-perception stops;
+      0 watchdog stops (new rule) and 0 Unity frame stalls (old-rule stops 0) after start-up; maximum round trip
+      33.8 ms (trial 3, network thread; per-trial maxima 4.8-33.8 ms); Unity frames after start-up: 67 306, max
+      211.3 ms, p99 35.9 ms, 93 over 100 ms. Workers textured (URP/Lit, `Ch32_1001_Diffuse`) at C1, J1 and C3.
+    - **The bridge's summary.json is missing**: the server stopped without its shutdown step (the resource log ran on
+      for about a minute after the last message, then the process was gone; most likely the window was closed or the
+      server was interrupted twice). The session-wide figures that come only from summary.json (round trip over
+      every message including start-up and the pauses between trials, dropped frames, event-loop lag) are therefore
+      not available; the session check prints criterion 3b as NOT MET because that value is missing, not because a
+      round trip over 100 ms was measured. For the final: after the last trial, press Ctrl+C once in the server window
+      and wait for `[bridge] stopped; summary in ...` before closing it.
+    - `trials_development_Task1_20261022_025551` (session.json and config_used only, no trial; Play pressed 25 s after
+      the server started) is kept and not used.
+20. **Task 1 final: declared before it runs** (22 October 2026).
+    - Configuration: `configs/trials.json` "task": "Task1", "mode": "final" (commit 3ad244c, the only change in that
+      commit); final seed 2, 10 trials, timeout 240 s, stuck 10 s / 0.25 m, success radius 0.3 m, equal to
+      `hri_frozen.json -> tasks.Task1.trials_fixed`. Frozen settings unchanged (`test_hri_frozen.py` passes); pose
+      weights sha256 1060bda4...2ba (equal to `hri_frozen.json -> pose_weights`); no `trials_final_Task1_*` folder
+      exists.
+    - Preconditions checked before the commit: working tree clean; full Python suite passes; error-shader / texture
+      check passes (the 10-trial rehearsal, item 19, ran at a9441ca with all three Task 1 workers URP/Lit with
+      `Ch32_1001_Diffuse`; the trial runner applies the same check to the final session and refuses it otherwise).
+    - Machine: Nusrat's PC (Windows 11, NVIDIA RTX 3060 12 GB, 16 GB RAM), the machine of items 13-19.
+    - Way of running: Unity Editor (2022.3.62f3), started with `run_trials.ps1 -Task Task1` (guide mode, vision
+      perception, Task 1 map, resource log) and Play pressed in the Editor; after the last trial, Ctrl+C once in the
+      server window and wait for `[bridge] stopped; summary in ...` (item 19).
+    - Run protocol (item 17): other applications closed; Windows power mode Best performance; charger connected
+      (desktop: mains power). The server records the power state in `run_info.json -> machine_state`; closed
+      applications are checked through the resource log.
+    - The final runs once. Its result is reported as it comes out; nothing is rerun, adjusted or discarded.
