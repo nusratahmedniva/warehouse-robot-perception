@@ -63,8 +63,13 @@ replays saved frames to a running server without Unity to measure its reply time
 - Task 1 (straight A to B): checkpoints from `configs/task1_route.json` (default 3: C1, J1, C3) with one standing
   worker at each (the same avatar, 1.0 m ahead and 2.5 m right of the stop, facing the arriving robot, showing
   FORWARD). Add Worker and Roadmap builds these workers into the scene (group `WarehouseHRI/Task1Workers`, saved
-  inactive; only Task 1 sessions activate it, Task 2 keeps its one moved worker); rerun it after changing
+  inactive; only Task 1 sessions activate it); rerun it after changing
   task1_route.json, or Task 1 sessions are refused. Python: `run_trials.ps1 -Task Task1` / `run_trials.sh Task1`.
+- Task 2 (guided route): one standing worker per junction (since 22 October 2026, AUDIT.md section 12): the scene
+  worker at J1 and a copy of it, made by the trial runner at Play (`Worker_Task2_J2`), at J2, each at its roadmap
+  stand and showing the command toward B (NONE at a junction off the route). The scene is unchanged. Used for
+  demonstrations only: the Task 2 final and its replication ran with the earlier layout (one worker moved to each
+  junction), and no reported result uses this one.
   The trial runner waits for Python's `perception_ready` and refuses trials if Python's map is not that of its task
   (AUDIT.md section 9).
 

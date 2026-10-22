@@ -836,6 +836,43 @@ average with it.
      final (Mac) neither device nor precision was recorded; section 4 item 3 documents YOLO on MPS for the Mac
      sessions, and `select_device` picks MPS there when CUDA is absent.
 
+## 12. Task 2 workers: one standing copy per junction (22 October 2026, declared design change after results)
+
+**Declared design change for demonstrations only, made after both Task 2 runs** (the Task 2 final, section 2, and
+the Task 2 replication, section 13; owner's request, on watching the replication). **It affects no reported
+result:** both runs used the earlier layout (one worker moved to each junction), every figure in sections 2 and 13
+comes from them, and neither can run again (FINAL_DONE.json, REPLICATION_DONE.json). The standing-worker layout is
+**used for demonstrations only** (development-mode sessions shown to viewers); no result in this audit is produced
+with it, and none will be.
+
+- **Observed in the replication** (`trials_replication_Task2_20261022_180918`, truth logs): the one worker was moved
+  to the next junction as soon as Python's target became that junction. In run 3 it jumped from J1's stand (8.75, 2.5)
+  to J2's stand (-8.75, 2.5) at 111.4 s, while the robot was still executing the turn at J1, so it seemed to
+  disappear after giving the direction. In one-junction trials it stayed at J1 throughout. This was the specified
+  behaviour (`docs/project_flow.md`: "in Task 2 it is moved to each junction") and the same code as the original
+  final (ce37a56); it was not a fault.
+- **Change.** Only one worker is coded and kept in the scene (`Worker`, GestureWorker). For Task 2 the trial runner
+  copies it at Play (`Instantiate`: same avatar, material, poses and code) so that one worker stands at every
+  junction: the scene worker at J1, the copy `Worker_Task2_J2` at J2, each at its junction's `workerStand` (roadmap
+  rule, unchanged), facing the robot, showing the command toward B for the whole trial (NONE at a junction off the
+  route: J2 on E1 / E2 trials). `Task2Workers.cs` (WarehouseHRI), `TrialRunner.SetupTask2Workers`. The appearance
+  check and the stand-inside-a-collider check apply to every copy; closest-person distance, the truth log and the
+  collision scoring use all workers. The scene, roadmap.json and every frozen config are unchanged; the gesture
+  sweeps still use the one worker alone. Task 1 is unchanged.
+- **Why the frozen perception is not expected to be affected** (checked before any Unity session with it): the J2
+  copy is never closer than 15 m to the E1 and E2 routes (the 360 camera's recall was already 0.0 at 9-12 m,
+  section 3); on E3 / E4 it stands where the moved worker stood at J2. At each junction its own worker is the nearest person
+  (3.5 m against 15 m), so the frozen nearest-person scan picks it.
+- **Simulator** (`tests/test_task2_workers.py`, frozen controller, standing workers at J1 and J2): all four goals
+  SUCCESS with seed 1 (exact perception) and seed 2 (detection 0.84, distance noise 0.2 m, bearing 2 deg); every
+  junction read as shown at the first ask, each time approaching that junction's own worker (within 0.32 m);
+  closest pass at least 1.42 m.
+- **Unity Play evidence: none yet.** No Unity session has run with this layout; a demonstration session would be
+  development mode (trials.json) and is not a result.
+- Checks: Unity EditMode 43/43 pass in batch mode (4 new `Task2WorkersTests`: one worker per junction in name order,
+  junction without a stand refused, copy name counted as a person and distinct from the Task 1 workers' names, NONE at
+  a junction off the route); Python 300 tests pass (2 new in `test_task2_workers.py`).
+
 ## 13. Task 2 replication result (final seed 2, run once, commit 0e8269c, 22 October 2026)
 
 Run as declared in section 11: Nusrat's PC, Unity Editor 2022.3.62f3, `run_trials.ps1 -Task Task2`, Play in the
