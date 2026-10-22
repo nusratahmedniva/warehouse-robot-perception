@@ -1,0 +1,187 @@
+{
+  "label": "Run folders copied into the results archive by make_results_archive.py. Each entry: folder name under the output root (never modified, only copied), task, role (final, replication, development, validation, check), kind, session, and where it is described. Folders marked location 'teammate' are on Anisha's machine; the archive reports them as not present instead of failing.",
+  "declared": "2026-10-22, after all finals and the Task 2 replication had run; lists folders, changes no result.",
+  "machines": {
+    "nusrat_pc": "Nusrat's PC: Windows 11, NVIDIA RTX 3060 12 GB, 16 GB RAM (AUDIT.md section 9 item 20)",
+    "anisha_mac": "Anisha's Mac: macOS, 8 GB, YOLO on MPS (AUDIT.md sections 4 item 3, 6 and 11 item 4)"
+  },
+  "sessions": {
+    "task1_final": {
+      "task": "Task1", "role": "final", "seed": 2, "machine": "nusrat_pc", "audit": "AUDIT.md section 10",
+      "what": "Task 1 final (A to E1, checkpoints C1, J1, C3), final seed 2, run once: 10/10 SUCCESS, 30/30 stops read FORWARD.",
+      "device_note": "Not recorded at runtime for this run; reconstructed in AUDIT.md section 11 item 6: YOLO11s-pose on CUDA (RTX 3060), FP32; MediaPipe on CPU."
+    },
+    "task2_final": {
+      "task": "Task2", "role": "final", "seed": 2, "machine": "anisha_mac", "audit": "AUDIT.md section 2",
+      "what": "Original Task 2 final (guided route, seeded goal B), final seed 2, run once at commit ce37a56: 10/10 SUCCESS, 14/14 junctions.",
+      "device_note": "Not recorded; AUDIT.md section 4 item 3 documents YOLO on MPS for the Mac sessions, precision not recorded."
+    },
+    "task2_replication": {
+      "task": "Task2", "role": "replication", "seed": 2, "machine": "nusrat_pc", "audit": "AUDIT.md sections 11 and 13",
+      "what": "Declared replication of the Task 2 final on a different machine, final seed 2, run once: 10/10 SUCCESS, 14/14 junctions. Replaces nothing; reported beside the original."
+    },
+    "task2_dev": {
+      "task": "Task2", "role": "development", "seed": 1, "machine": "anisha_mac", "audit": "AUDIT.md section 3",
+      "what": "Task 2 development sessions, gesture sweep and development evaluations (dev seed 1)."
+    },
+    "task1_dev_old_route": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 4 (before)",
+      "what": "10 Task 1 development trials on the old route (one stop, J1); watchdog stops before the warm-up fix. Pipeline check only."
+    },
+    "task1_dev_warmup_check": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 4 (after)",
+      "what": "1-trial pipeline check after the perception warm-up fix (C1, J1, C3)."
+    },
+    "task1_dev_framewriter_check": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 5",
+      "what": "1-trial pipeline check after moving JPEG saving off the event loop."
+    },
+    "task1_dev_operator_runs": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 8",
+      "what": "Diagnosed operator / environment runs: hello server instead of guide (no trial started), guide server without --task, Unity without a server."
+    },
+    "task1_dev_replay": {
+      "task": "Task1", "role": "development", "seed": null, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 12",
+      "what": "Replay of saved frames at live rates without Unity (bridge.replay_client), before and after the GC freeze and two-thread perception."
+    },
+    "task1_dev_10trial": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 13",
+      "what": "10-trial Task 1 development session: 10/10 SUCCESS, NOT ACCEPTED (watchdog stops, round trip 257.1 ms)."
+    },
+    "task1_dev_uncited": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "not cited in AUDIT.md",
+      "what": "Task 1 development session at f2e6842 (1 trial recorded of 10, SUCCESS); not cited in AUDIT.md, nothing derived from it."
+    },
+    "task1_dev_forward_hand_sweep": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 items 15-16",
+      "what": "FORWARD hand sweep (fist vs index finger, 20 paired placements); declared rule not met, fist kept."
+    },
+    "task1_dev_smoke": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 17",
+      "what": "1-trial smoke check of the measurement correction (not part of the acceptance)."
+    },
+    "task1_dev_5trial": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 18",
+      "what": "5-trial Task 1 development check under the run protocol: all four criteria met."
+    },
+    "task1_dev_rehearsal": {
+      "task": "Task1", "role": "development", "seed": 1, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 19",
+      "what": "10-trial Editor rehearsal (pipeline check only); bridge summary.json missing (server not stopped cleanly). The second Unity folder holds no trial and is not used."
+    },
+    "task1_dev_gesture_pngs": {
+      "task": "Task1", "role": "development", "seed": null, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 items 2 and 11",
+      "what": "Pan-tilt camera PNGs of LEFT, FORWARD, RIGHT, STOP at 2.0 m (worker appearance and pose check)."
+    },
+    "environment_checks": {
+      "task": "environment", "role": "check", "seed": null, "machine": "nusrat_pc", "audit": "AUDIT.md section 9 item 1, section 11 items 3 and 6",
+      "what": "Worker appearance checks (before / after the material fix, before the replication) and the inference device check."
+    },
+    "thud_validation": {
+      "task": "THUD++", "role": "validation", "seed": null, "machine": "nusrat_pc", "audit": "robot_vision/README.md (Stages 1-2, Steps 4, 8, 9)",
+      "what": "THUD++ pipeline outputs: dataset audit, camera and depth checks, SegFormer, YOLO11n + ByteTrack, Step 4 fusion (reference-depth baseline), Step 8 motion (reference-depth and reference-camera-pose baseline), Step 9 decisions. Office/dynamic Capture_1 = development, Capture_2 = adjustment; final captures untouched."
+    }
+  },
+  "folders": [
+    {"folder": "trials_final_Task1_20261022_161544", "session": "task1_final", "kind": "unity"},
+    {"folder": "bridge_guide_20261022_161116", "session": "task1_final", "kind": "bridge"},
+    {"folder": "hri_trials_20261022_163150", "session": "task1_final", "kind": "hri_trials"},
+    {"folder": "hri_analysis_20261022_163151", "session": "task1_final", "kind": "hri_analysis"},
+    {"folder": "session_check_20261022_163207", "session": "task1_final", "kind": "session_check"},
+
+    {"folder": "trials_final_Task2_20261020_172445", "session": "task2_final", "kind": "unity", "location": "teammate"},
+    {"folder": "bridge_guide_20261020_172422", "session": "task2_final", "kind": "bridge", "location": "teammate"},
+    {"folder": "hri_trials_20261020_173421", "session": "task2_final", "kind": "hri_trials", "location": "teammate"},
+    {"folder": "hri_analysis_20261020_173421", "session": "task2_final", "kind": "hri_analysis", "location": "teammate"},
+
+    {"folder": "trials_replication_Task2_20261022_180918", "session": "task2_replication", "kind": "unity"},
+    {"folder": "bridge_guide_20261022_180710", "session": "task2_replication", "kind": "bridge"},
+    {"folder": "hri_trials_20261022_185958", "session": "task2_replication", "kind": "hri_trials"},
+    {"folder": "hri_analysis_20261022_185958", "session": "task2_replication", "kind": "hri_analysis"},
+    {"folder": "session_check_20261022_190002", "session": "task2_replication", "kind": "session_check",
+     "note": "hri_session_check.py was written for Task 1; criteria 1 and 2 do not apply to Task 2 (AUDIT.md section 13)."},
+
+    {"folder": "trials_development_Task2_20261020_113942", "session": "task2_dev", "kind": "unity", "location": "teammate", "note": "interrupted, 2/3; kept, not used"},
+    {"folder": "trials_development_Task2_20261020_140241", "session": "task2_dev", "kind": "unity", "location": "teammate"},
+    {"folder": "trials_development_Task2_20261020_163348", "session": "task2_dev", "kind": "unity", "location": "teammate"},
+    {"folder": "bridge_guide_20261020_163322", "session": "task2_dev", "kind": "bridge", "location": "teammate"},
+    {"folder": "trials_development_Task2_20261020_164719", "session": "task2_dev", "kind": "unity", "location": "teammate"},
+    {"folder": "gestures_sweep_development_20261020_112717", "session": "task2_dev", "kind": "sweep", "location": "teammate"},
+    {"folder": "bridge_guide_20261020_112702", "session": "task2_dev", "kind": "bridge", "location": "teammate"},
+    {"folder": "hri_dev_eval_20261020_141423", "session": "task2_dev", "kind": "dev_eval", "location": "teammate"},
+    {"folder": "hri_dev_eval_20261020_165909", "session": "task2_dev", "kind": "dev_eval", "location": "teammate"},
+
+    {"folder": "trials_development_Task1_20261021_025326", "session": "task1_dev_old_route", "kind": "unity"},
+    {"folder": "bridge_guide_20261021_024850", "session": "task1_dev_old_route", "kind": "bridge"},
+    {"folder": "trials_development_Task1_20261021_203226", "session": "task1_dev_warmup_check", "kind": "unity"},
+    {"folder": "bridge_guide_20261021_203057", "session": "task1_dev_warmup_check", "kind": "bridge"},
+    {"folder": "trials_development_Task1_20261021_205126", "session": "task1_dev_framewriter_check", "kind": "unity"},
+    {"folder": "bridge_guide_20261021_204609", "session": "task1_dev_framewriter_check", "kind": "bridge"},
+    {"folder": "session_check_20261021_215440", "session": "task1_dev_framewriter_check", "kind": "session_check"},
+    {"folder": "trials_development_Task1_20261021_211417", "session": "task1_dev_operator_runs", "kind": "unity", "note": "no server"},
+    {"folder": "trials_development_Task1_20261021_211450", "session": "task1_dev_operator_runs", "kind": "unity", "note": "connected to the hello server; trial 1 never started"},
+    {"folder": "bridge_hello_20261021_211443", "session": "task1_dev_operator_runs", "kind": "bridge", "note": "hello mode"},
+    {"folder": "trials_development_Task1_20261021_211635", "session": "task1_dev_operator_runs", "kind": "unity"},
+    {"folder": "bridge_guide_20261021_211625", "session": "task1_dev_operator_runs", "kind": "bridge", "note": "guide mode without --task; no connection logged"},
+    {"folder": "bridge_guide_20261021_213231", "session": "task1_dev_replay", "kind": "bridge", "note": "replay before the fixes"},
+    {"folder": "replay_20261021_213233", "session": "task1_dev_replay", "kind": "replay", "note": "replay before the fixes"},
+    {"folder": "bridge_guide_20261021_213747", "session": "task1_dev_replay", "kind": "bridge", "note": "replay after the fixes"},
+    {"folder": "replay_20261021_213749", "session": "task1_dev_replay", "kind": "replay", "note": "replay after the fixes"},
+    {"folder": "trials_development_Task1_20261021_215821", "session": "task1_dev_10trial", "kind": "unity"},
+    {"folder": "bridge_guide_20261021_215746", "session": "task1_dev_10trial", "kind": "bridge"},
+    {"folder": "hri_trials_20261021_221120", "session": "task1_dev_10trial", "kind": "hri_trials"},
+    {"folder": "hri_analysis_20261021_221121", "session": "task1_dev_10trial", "kind": "hri_analysis"},
+    {"folder": "session_check_20261021_221131", "session": "task1_dev_10trial", "kind": "session_check"},
+    {"folder": "session_check_20261022_021219", "session": "task1_dev_10trial", "kind": "session_check", "note": "re-check of the same session with the corrected measurement code"},
+    {"folder": "trials_development_Task1_20261021_235000", "session": "task1_dev_uncited", "kind": "unity"},
+    {"folder": "bridge_guide_20261021_234607", "session": "task1_dev_uncited", "kind": "bridge"},
+    {"folder": "forward_hand_sweep_development_20261022_015457", "session": "task1_dev_forward_hand_sweep", "kind": "sweep"},
+    {"folder": "bridge_guide_20261022_015430", "session": "task1_dev_forward_hand_sweep", "kind": "bridge"},
+    {"folder": "hri_dev_eval_20261022_015719", "session": "task1_dev_forward_hand_sweep", "kind": "dev_eval"},
+    {"folder": "trials_development_Task1_20261022_021648", "session": "task1_dev_smoke", "kind": "unity"},
+    {"folder": "bridge_guide_20261022_021624", "session": "task1_dev_smoke", "kind": "bridge"},
+    {"folder": "hri_trials_20261022_021820", "session": "task1_dev_smoke", "kind": "hri_trials"},
+    {"folder": "hri_analysis_20261022_021820", "session": "task1_dev_smoke", "kind": "hri_analysis"},
+    {"folder": "session_check_20261022_021825", "session": "task1_dev_smoke", "kind": "session_check"},
+    {"folder": "trials_development_Task1_20261022_022631", "session": "task1_dev_5trial", "kind": "unity"},
+    {"folder": "bridge_guide_20261022_022557", "session": "task1_dev_5trial", "kind": "bridge"},
+    {"folder": "hri_trials_20261022_023210", "session": "task1_dev_5trial", "kind": "hri_trials"},
+    {"folder": "hri_analysis_20261022_023210", "session": "task1_dev_5trial", "kind": "hri_analysis"},
+    {"folder": "session_check_20261022_023213", "session": "task1_dev_5trial", "kind": "session_check"},
+    {"folder": "trials_development_Task1_20261022_025551", "session": "task1_dev_rehearsal", "kind": "unity", "note": "no trial; kept, not used"},
+    {"folder": "trials_development_Task1_20261022_025616", "session": "task1_dev_rehearsal", "kind": "unity"},
+    {"folder": "bridge_guide_20261022_025526", "session": "task1_dev_rehearsal", "kind": "bridge", "note": "summary.json missing"},
+    {"folder": "session_check_20261022_160430", "session": "task1_dev_rehearsal", "kind": "session_check"},
+    {"folder": "gesture_pngs_20261021_202856", "session": "task1_dev_gesture_pngs", "kind": "images", "note": "after the material fix"},
+    {"folder": "gesture_pngs_20261021_215233", "session": "task1_dev_gesture_pngs", "kind": "images", "note": "standing Task 1 workers"},
+
+    {"folder": "worker_check_20261021_033452", "session": "environment_checks", "kind": "check", "note": "before the material fix: Ch32 material 0 missing"},
+    {"folder": "worker_check_20261021_202822", "session": "environment_checks", "kind": "check", "note": "after the material fix"},
+    {"folder": "worker_check_20261022_171211", "session": "environment_checks", "kind": "check", "note": "before the Task 2 replication"},
+    {"folder": "device_check_20261022_172022", "session": "environment_checks", "kind": "check", "note": "inference device and precision on this PC"},
+
+    {"folder": "audit_20261010_032459", "session": "thud_validation", "kind": "thud", "note": "dataset audit"},
+    {"folder": "camera_check_20261011_020146", "session": "thud_validation", "kind": "thud", "note": "camera streams (Office/dynamic Capture_1)"},
+    {"folder": "depth_check_20261011_031941", "session": "thud_validation", "kind": "thud", "note": "depth and intrinsics validation"},
+    {"folder": "seg_Office_dynamic_Capture_1_300f_20261010_032646", "session": "thud_validation", "kind": "thud", "note": "SegFormer-b0, Capture_1 (development), 300 frames"},
+    {"folder": "track_300f_20261011_020550", "session": "thud_validation", "kind": "thud", "note": "YOLO11n + ByteTrack, Capture_1"},
+    {"folder": "fuse_300f_20261011_042733", "session": "thud_validation", "kind": "thud", "note": "Step 4 fusion, Capture_1, reference-depth baseline"},
+    {"folder": "step4_supplement_20261013_205214", "session": "thud_validation", "kind": "thud", "note": "Step 4 report supplement (first run)"},
+    {"folder": "step4_supplement_20261013_214404", "session": "thud_validation", "kind": "thud", "note": "Step 4 report supplement (rerun, current code)"},
+    {"folder": "motion_300f_20261013_210331", "session": "thud_validation", "kind": "thud", "note": "Step 8 accepted baseline, Capture_1 (d247bba)"},
+    {"folder": "motion_300f_20261013_214008", "session": "thud_validation", "kind": "thud", "note": "Step 8 rerun reproducing the baseline (5948eff)"},
+    {"folder": "motion_supplement_20261013_214436", "session": "thud_validation", "kind": "thud", "note": "supplement of motion_300f_20261013_214008"},
+    {"folder": "seg_Office_dynamic_Capture_2_1388f_20261013_220700", "session": "thud_validation", "kind": "thud", "note": "SegFormer-b0, Capture_2 (adjustment), 1388 frames"},
+    {"folder": "track_1388f_20261013_221603", "session": "thud_validation", "kind": "thud", "note": "YOLO11n + ByteTrack, Capture_2"},
+    {"folder": "fuse_1388f_20261013_222006", "session": "thud_validation", "kind": "thud", "note": "Step 4 fusion, Capture_2"},
+    {"folder": "motion_1388f_20261013_223619", "session": "thud_validation", "kind": "thud", "note": "Step 8 frozen config (15821ff9...1625), Capture_2"},
+    {"folder": "motion_1388f_20261013_223951", "session": "thud_validation", "kind": "thud", "note": "k = 2 evidence run, Capture_2 (not adopted)"},
+    {"folder": "motion_1388f_20261013_224316", "session": "thud_validation", "kind": "thud", "note": "v1-equivalent config, Capture_2 (before run)"},
+    {"folder": "motion_300f_20261013_224748", "session": "thud_validation", "kind": "thud", "note": "v1-equivalent config, Capture_1"},
+    {"folder": "motion_300f_20261013_224918", "session": "thud_validation", "kind": "thud", "note": "frozen v2 config, Capture_1"},
+    {"folder": "motion_supplement_20261013_225146", "session": "thud_validation", "kind": "thud", "note": "supplement of motion_1388f_20261013_223619"},
+    {"folder": "motion_supplement_20261013_225153", "session": "thud_validation", "kind": "thud", "note": "supplement of motion_300f_20261013_224918"},
+    {"folder": "person_box_depth_511obs_20261015_220051", "session": "thud_validation", "kind": "thud", "note": "lower-bound person distances, Capture_2"},
+    {"folder": "decisions_scenarios_20261015_220230", "session": "thud_validation", "kind": "thud", "note": "Step 9 scenarios, 20/20 pass (5ffd04e)"},
+    {"folder": "decisions_replay_1388f_20261015_220231", "session": "thud_validation", "kind": "thud", "note": "Step 9 replay demo with placeholder passage and scripted gestures (not an evaluation)"}
+  ]
+}

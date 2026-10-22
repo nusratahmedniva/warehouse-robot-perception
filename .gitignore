@@ -30,6 +30,10 @@ huggingface/
 # Generated outputs and logs
 outputs/
 results/
+# ...except the committed summary tables and plots (make_results_archive.py)
+!/results/
+/results/*
+!/results/summary/
 runs/
 *.log
 logs/

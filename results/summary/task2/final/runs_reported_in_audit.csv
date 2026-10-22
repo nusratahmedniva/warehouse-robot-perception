@@ -1,0 +1,11 @@
+trial,b_name,outcome,final_distance_to_b_m,total_s,junctions_shown_vs_read,closest_human_m,source
+1,E1,SUCCESS,0.031,40.64,J1:FORWARD>FORWARD,1.127,AUDIT.md section 2 (raw folders on the teammate's machine)
+2,E2,SUCCESS,0.033,42.56,J1:RIGHT>RIGHT,1.132,AUDIT.md section 2 (raw folders on the teammate's machine)
+3,E4,SUCCESS,0.052,72.88,J1:LEFT>LEFT; J2:RIGHT>RIGHT,1.264,AUDIT.md section 2 (raw folders on the teammate's machine)
+4,E2,SUCCESS,0.05,42.78,J1:RIGHT>RIGHT,1.275,AUDIT.md section 2 (raw folders on the teammate's machine)
+5,E1,SUCCESS,0.05,40.06,J1:FORWARD>FORWARD,1.14,AUDIT.md section 2 (raw folders on the teammate's machine)
+6,E3,SUCCESS,0.048,76.62,J1:LEFT>LEFT; J2:FORWARD>FORWARD,1.033,AUDIT.md section 2 (raw folders on the teammate's machine)
+7,E4,SUCCESS,0.055,73.66,J1:LEFT>LEFT; J2:RIGHT>RIGHT,1.26,AUDIT.md section 2 (raw folders on the teammate's machine)
+8,E1,SUCCESS,0.048,40.22,J1:FORWARD>FORWARD,1.141,AUDIT.md section 2 (raw folders on the teammate's machine)
+9,E4,SUCCESS,0.058,74.6,J1:LEFT>LEFT; J2:RIGHT>RIGHT,1.262,AUDIT.md section 2 (raw folders on the teammate's machine)
+10,E1,SUCCESS,0.049,42.64,J1:FORWARD>FORWARD,1.075,AUDIT.md section 2 (raw folders on the teammate's machine)
