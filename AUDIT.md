@@ -19,7 +19,7 @@ and the scoring truth.
 | 7 | Logging and analysis | done | `hri_trials.py`, `hri_analysis.py`, `hri_eval_dev.py` |
 | Final | Final trials, seed 2, once | **done: 10/10** | `trials_final_Task2_20261020_172445` (FINAL_DONE.json) |
 | Final Task 1 | Task 1 final, seed 2, once (section 10) | **done: 10/10** | `trials_final_Task1_20261022_161544` (FINAL_DONE.json) |
-| Replication Task 2 | Declared replication of the Task 2 final, seed 2, once (section 11) | declared, not yet run | - |
+| Replication Task 2 | Declared replication of the Task 2 final, seed 2, once (sections 11, 13) | **done: 10/10** | `trials_replication_Task2_20261022_180918` (REPLICATION_DONE.json) |
 
 ## 2. Final result (final seed 2, run once, commit ce37a56)
 
@@ -835,3 +835,94 @@ average with it.
      on CPU because the adapter sets no delegate. The same applies to every earlier session. For the original Task 2
      final (Mac) neither device nor precision was recorded; section 4 item 3 documents YOLO on MPS for the Mac
      sessions, and `select_device` picks MPS there when CUDA is absent.
+
+## 13. Task 2 replication result (final seed 2, run once, commit 0e8269c, 22 October 2026)
+
+Run as declared in section 11: Nusrat's PC, Unity Editor 2022.3.62f3, `run_trials.ps1 -Task Task2`, Play in the
+Editor, server stopped with one Ctrl+C after the last trial (summary.json and COMPLETE written). Commit 0e8269c (no
+uncommitted changes, `run_info.json -> git`); trials.json Task2 / replication. Server from 18:07:10, session from
+18:09:18. The trial runner's final-rule checks passed and it wrote REPLICATION_DONE.json, so no second Task 2
+replication can run. Worker layout: the original one (one worker moved to each junction); the standing-worker
+layout of section 12 came after this run and is not in it. Analysed once with `hri_trials.py`, `hri_analysis.py` and
+`hri_session_check.py`; nothing was rerun, adjusted or discarded. **The original Task 2 final (section 2) stands as
+recorded; this result is reported beside it and replaces nothing.**
+
+Folders: `trials_replication_Task2_20261022_180918` (Unity), `bridge_guide_20261022_180710` (Python),
+`hri_trials_20261022_185958`, `hri_analysis_20261022_185958`, `session_check_20261022_190002`.
+
+Devices (`run_info.json -> inference_devices`, read at runtime): YOLO11s-pose panorama and gesture on CUDA NVIDIA
+GeForce RTX 3060, FP32; MediaPipe STOP on CPU (precision not exposed); torch 2.14.1+cu130, Ultralytics 8.4.175,
+MediaPipe 1.1.1. Original: Mac, YOLO on MPS (section 4 item 3), precision not recorded.
+
+**10/10 SUCCESS** (Wilson 95 %: 0.72-1.0); failures: none. Goal order E1 E2 E4 E2 E1 E3 E4 E1 E4 E1, equal to the
+original's (recomputed from the seed, matches).
+
+| run | goal B | outcome original / replication | distance to B (m) original / replication | junctions shown > read, replication (asks) | time (s) original / replication | closest to worker (m) original / replication |
+|---|---|---|---|---|---|---|
+| 1 | E1 | SUCCESS / SUCCESS | 0.031 / 0.029 | J1: FORWARD > FORWARD (1) | 40.64 / 39.84 | 1.127 / 1.067 |
+| 2 | E2 | SUCCESS / SUCCESS | 0.033 / 0.022 | J1: RIGHT > RIGHT (1) | 42.56 / 42.62 | 1.132 / 1.112 |
+| 3 | E4 | SUCCESS / SUCCESS | 0.052 / 0.031 | J1: LEFT > LEFT (1); J2: RIGHT > RIGHT (1) | 72.88 / 72.42 | 1.264 / 1.226 |
+| 4 | E2 | SUCCESS / SUCCESS | 0.050 / 0.040 | J1: RIGHT > RIGHT (1) | 42.78 / 42.34 | 1.275 / 1.221 |
+| 5 | E1 | SUCCESS / SUCCESS | 0.050 / 0.025 | J1: FORWARD > FORWARD (1) | 40.06 / 39.64 | 1.140 / 1.080 |
+| 6 | E3 | SUCCESS / SUCCESS | 0.048 / 0.022 | J1: LEFT > LEFT (1); J2: FORWARD > FORWARD (1) | 76.62 / 75.90 | 1.033 / 1.002 |
+| 7 | E4 | SUCCESS / SUCCESS | 0.055 / 0.030 | J1: LEFT > LEFT (1); J2: RIGHT > RIGHT (1) | 73.66 / 72.42 | 1.260 / 1.202 |
+| 8 | E1 | SUCCESS / SUCCESS | 0.048 / 0.023 | J1: FORWARD > FORWARD (1) | 40.22 / 39.76 | 1.141 / 1.088 |
+| 9 | E4 | SUCCESS / SUCCESS | 0.058 / 0.029 | J1: LEFT > LEFT (1); J2: RIGHT > RIGHT (1) | 74.60 / 72.54 | 1.262 / 1.231 |
+| 10 | E1 | SUCCESS / SUCCESS | 0.049 / 0.025 | J1: FORWARD > FORWARD (1) | 42.64 / 39.74 | 1.075 / 1.064 |
+
+The original's junction reads are those of section 2 (the same shown > read in every run, all at the first ask). Its
+per-run times are total times, which include its stale-perception stops; the replication had none, so its total
+equals its time excluding stale stops.
+
+Side by side (comparison plan of section 11 item 5):
+
+| measure | original Task 2 final (section 2) | replication (this section) |
+|---|---|---|
+| successes | 10/10 (Wilson 0.72-1.0) | 10/10 (Wilson 0.72-1.0) |
+| junctions read as shown (coverage) | 14/14, all at the first ask | 14/14 (coverage 14/14), all at the first ask |
+| gesture shown vs read at junctions | FORWARD 5/5, LEFT 4/4, RIGHT 5/5 | FORWARD 5/5, LEFT 4/4, RIGHT 5/5 |
+| collisions (with a person) | 0 (0) | 0 (0) |
+| final distance to B | mean 0.047 m, max 0.058 m | mean 0.028 m, max 0.040 m |
+| closest approach to the worker | min 1.033 m, mean 1.171 m | min 1.002 m, mean 1.129 m |
+| time excluding stale-perception stops, mean | 53.35 s (54.7 - 1.35, from the section 2 means; per run not available) | 53.72 s (max 75.9 s) |
+| time in motion (Unity speed > 0.05 m/s), mean | **not available** (not in AUDIT.md; the original's session folders are not on this PC) | 46.70 s (max 65.2 s) |
+| time per step, mean: navigate / scan / approach / ask / gesture / execute (s) | 39.8 / 0.95 / 9.2 / 0.73 / 1.73 / 2.16 | 39.49 / 0.61 / 9.16 / 0.74 / 1.55 / 2.15 |
+| speed average / max; turn rate max; travelled / straight line | 0.51 / 0.80 m/s; 51.6 deg/s; 1.30 | 0.516 / 0.80 m/s; 51.6 deg/s; 1.30 |
+| stale-perception stops, mean (max) | 1.35 s (5.8 s) | 0 s (0 s) |
+| total time, mean (max): **not comparable across machines** | 54.7 s (76.6 s) | 53.72 s (75.9 s) |
+| inference per frame, mean over runs: panorama YOLO / gesture YOLO / MediaPipe / JPEG decode / total: **not comparable across machines** | 256 / 62 / 21 / 5.9 / 177 ms | 68.7 / 37.7 / 23.7 / 4.9 / 69.8 ms |
+| watchdog stops | 0 (old wall-clock rule) | 0 (new rule); old-rule stops 0 (Unity frame stalls 0) |
+
+- **Gesture shown vs read, per frame** (replication, all 5520 processed pan-tilt frames of the session, all phases):
+  NONE 2817, FORWARD 1046, RIGHT 841, LEFT 816, STOP 0. No false STOP and no safety stop of any kind (decisions.csv).
+  The original's per-frame counts are not in AUDIT.md (not available).
+- **Round trip, all messages (network thread):** 11 140 replies to 11 141 telemetry, mean 1.07 ms, **max 238.2 ms**
+  (run 1); per-run maxima 2.3-51.3 ms in runs 2-10. The two telemetry windows over 60 ms are both in run 1: 238.2 ms
+  at 136.1 s and 212.6 ms at 151.0 s (Python clock). Each coincides with a Python event-loop lag (240 ms at 136.09 s,
+  194 ms at 151.03 s; receive lag max 248.7 ms), the first also with a 377 ms Unity frame. Both stayed under the
+  0.3 s watchdog limit, so no stop. Cause not identified: no stack dump (only lags over 250 ms are dumped), no
+  stale-perception stop. The original reported a Unity-measured mean of 0.78 ms (old definition); its maximum is not
+  in AUDIT.md.
+- **Unity frames after start-up:** 49 346, max 377.0 ms, p99 32.8 ms, 67 over 100 ms. Dropped frames: Unity 19 (360)
+  / 104 (pan-tilt); Python newest-frame-only drops 1 (360) / 46 (gesture).
+- **Run protocol, as recorded:** power mode Best performance and mains power (`run_info.json -> machine_state`, no
+  launcher warning): met. "Other applications closed": **not fully met** according to the resource log (691
+  samples): Task Manager among the top 3 other CPU users in 461 samples, VS Code in 226, `cmd` in 87. Free memory min
+  154 MB, mean 514 MB (Task 1 final: min 13 MB, mean 498 MB); hard paging max 40 134 pages/s, mean 810. Around the two
+  run-1 stalls free memory was 180-415 MB with Windows memory compression active.
+- **Resource log, Unity columns not usable:** the monitor matched a process of about 2 MB resident (not the Editor),
+  so Unity's CPU and memory figures for this session are not reported.
+- **`hri_session_check.py`** was written for Task 1 (its criteria of section 9 item 7 count Task 1 checkpoints); on
+  this Task 2 session it finds 0 checkpoints, so criteria 1 and 2 do not apply here (it prints 1 MET and 2 NOT MET on
+  empty lists). For information: 3a, 0 watchdog stops after start-up: met; 3b, maximum round trip under 100 ms: **not
+  met (238.2 ms)**; 4, every outcome recorded: met. These were the Task 1 development acceptance criteria, not part of
+  this replication's comparison plan.
+- Perception against truth (recall, distance error): **not_evaluated** (`hri_eval_dev.py` refuses non-development
+  sessions by design).
+
+Reading: on a different machine and with the declared infrastructure differences (section 11 item 4), the
+replication reproduces the original's outcome exactly: 10/10, the same 14 junction reads all at the first ask,
+0 collisions. It stopped closer to B (mean 0.028 m against 0.047 m) and passed the worker slightly closer (min 1.002 m
+against 1.033 m; both above 1.0 m). Time excluding stale stops is about the same (53.72 s against 53.35 s); the
+original lost 1.35 s per run to stale-perception stops and the replication none, consistent with its faster
+inference, which is not comparable across machines. One 10-trial sample per side.
