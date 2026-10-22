@@ -1,0 +1,15 @@
+trial,b_name,junction,shown,read,asks,result
+1,E1,J1,FORWARD,FORWARD,1,accepted
+2,E2,J1,RIGHT,RIGHT,1,accepted
+3,E4,J1,LEFT,LEFT,1,accepted
+3,E4,J2,RIGHT,RIGHT,1,accepted
+4,E2,J1,RIGHT,RIGHT,1,accepted
+5,E1,J1,FORWARD,FORWARD,1,accepted
+6,E3,J1,LEFT,LEFT,1,accepted
+6,E3,J2,FORWARD,FORWARD,1,accepted
+7,E4,J1,LEFT,LEFT,1,accepted
+7,E4,J2,RIGHT,RIGHT,1,accepted
+8,E1,J1,FORWARD,FORWARD,1,accepted
+9,E4,J1,LEFT,LEFT,1,accepted
+9,E4,J2,RIGHT,RIGHT,1,accepted
+10,E1,J1,FORWARD,FORWARD,1,accepted

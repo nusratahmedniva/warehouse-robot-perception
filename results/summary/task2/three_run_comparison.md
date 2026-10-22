@@ -1,0 +1,27 @@
+# Three-run comparison
+
+Columns: **Task 2 final (original)**; **Task 2 replication**; **Task 1 final**.
+Comparable across machines per AUDIT.md section 8: success, reads, collisions, distances, time excluding stale-perception stops, time in motion; not comparable: inference times, stale-perception stops, total time. Task 1 is a different task (straight route with three stops), shown beside the two Task 2 runs, not a replication.
+
+| measure | comparable across machines | Task 2 final (original) | Task 2 replication | Task 1 final | note |
+|---|---|---|---|---|---|
+| task | - | Task 2: guided route, goal B seeded | Task 2: guided route, goal B seeded | Task 1: straight A to E1, stops C1, J1, C3 |  |
+| source of the figures | - | AUDIT.md section 2 (the original's session folders are on Anisha's machine; figures transcribed from AUDIT.md, not recomputed) | regenerated from the copied raw data (trials_replication_Task2_20261022_180918, bridge_guide_20261022_180710) | regenerated from the copied raw data (trials_final_Task1_20261022_161544, bridge_guide_20261022_161116) |  |
+| machine; inference device | - | Anisha's Mac; YOLO on MPS (AUDIT.md section 4 item 3; precision not recorded) | Nusrat's PC; yolo11s-pose/cam360: CUDA NVIDIA GeForce RTX 3060; yolo11s-pose/gesture: CUDA NVIDIA GeForce RTX 3060; mediapipe/stop: CPU (yolo11s-pose/cam360: FP32; yolo11s-pose/gesture: FP32; mediapipe/stop: unknown) | Nusrat's PC; Not recorded at runtime for this run; reconstructed in AUDIT.md section 11 item 6: YOLO11s-pose on CUDA (RTX 3060), FP32; MediaPipe on CPU. |  |
+| commit | - | ce37a56 | 0e8269c | 5440781 |  |
+| seed; trials | - | 2; 10 | 2; 10 | 2; 10 |  |
+| successes (Wilson 95 %) | yes | 10/10 (0.7225-1.0) | 10/10 (0.7225-1.0) | 10/10 (0.7225-1.0) |  |
+| junctions / stops read as shown (coverage) | yes | 14/14 (coverage 14/14) | 14/14 (coverage 14/14) | 30/30 (coverage 30/30) |  |
+| read at the first ask | yes | 14/14 (AUDIT.md section 2: all at the first ask; asks per junction not in its per-run table) | 14/14 | 30/30 |  |
+| gesture shown vs read, per command | yes | FORWARD 5/5, LEFT 4/4, RIGHT 5/5 | FORWARD 5/5, LEFT 4/4, RIGHT 5/5 | FORWARD 30/30 |  |
+| collisions (with a person) | yes | 0 (0) | 0 (0) | 0 (0) |  |
+| final distance to B (m) | yes | mean 0.047, max 0.058 | mean 0.028, max 0.040 | mean 0.036, max 0.082 |  |
+| closest approach to a worker (m) | yes | min 1.033, mean 1.171 | min 1.002, mean 1.129 | min 1.352, mean 1.376 |  |
+| time excluding stale-perception stops (s) | yes | mean 53.35 | mean 53.72, max 75.90 | mean 65.86, max 66.14 | Task 2 final (original): 54.7 - 1.35 from the section 2 means (AUDIT.md section 13); per run not available |
+| time in motion, Unity speed > 0.05 m/s (s) | yes | not available | mean 46.70, max 65.20 | mean 48.22, max 48.32 |  |
+| time per step, mean: navigate / scan / approach / ask / gesture / execute (s) | yes | 39.8 / 0.95 / 9.2 / 0.73 / 1.73 / 2.16 | 39.494 / 0.605 / 9.158 / 0.739 / 1.546 / 2.146 | 40.201 / 1.281 / 14.898 / 1.579 / 3.11 / 4.745 |  |
+| speed average / max (m/s); turn rate max (deg/s); travelled / straight line | yes | 0.51 / 0.8; 51.6; 1.3 | 0.516 / 0.8; 51.566; 1.3 | 0.33 / 0.8; 51.566; 1.086 |  |
+| stale-perception stops (s) | no | mean 1.35 | mean 0.00, max 0.00 | mean 0.00, max 0.00 |  |
+| total time (s) | no | mean 54.67, max 76.62 | mean 53.72, max 75.90 | mean 65.86, max 66.14 | includes stale-perception stops |
+| inference per frame, mean over runs: panorama YOLO / gesture YOLO / MediaPipe / JPEG decode / total (ms) | no | 256 / 62 / 21 / 5.9 / 177 | 68.666 / 37.65 / 23.746 / 4.939 / 69.802 | 95.451 / 57.324 / 28.466 / 5.223 / 96.678 |  |
+| watchdog stops (decisions.csv counter) | no | 0 (old wall-clock rule) | 0 | 0 | watchdog trigger changed before the Task 1 final and the replication (AUDIT.md section 9 item 17) |

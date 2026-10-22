@@ -1,0 +1,53 @@
+{
+  "label": "Results archive (make_results_archive.py): copies of run folders for the supervisor and the paper. Read-only towards the run folders. Paths are relative to the robot_vision folder unless noted.",
+  "archive_root": "../../RobotVisionResults",
+  "archive_root_note": "Outside the repository (a folder next to it). Override with --archive-root or archive_root in configs/results_archive.local.json (git-ignored). Each build writes a new results_archive_<time>/ and its zip; nothing is overwritten.",
+  "output_root": "outputs",
+  "manifest": "configs/results_manifest.json",
+  "audit": "../AUDIT.md",
+  "repo_summary_dir": "../results/summary",
+  "unity_project_version": "../unity/Robotics-Warehouse/WarehouseProjectURP/ProjectSettings/ProjectVersion.txt",
+  "repo_root": "..",
+  "frozen_records": ["configs/hri_frozen.json", "configs/motion_frozen.json"],
+  "frozen_extra_configs": [
+    {"path": "robot_vision/configs/trials.json", "note": "not hashed: task and mode switch between runs; its fixed trial settings are checked against hri_frozen.json -> tasks.<task>.trials_fixed"},
+    {"path": "robot_vision/configs/motion_office.json", "expected_from": "configs/motion_frozen.json", "key": "sha256", "note": "Step 8 frozen motion config"}
+  ],
+  "metrics_config": "configs/hri_trials_metrics.json",
+  "control_config": "configs/hri_control.json",
+  "models": [
+    {"name": "yolo11s-pose (people, arm direction)", "path": "models/yolo11s-pose.pt", "expected_from": "configs/hri_frozen.json", "key": "pose_weights.sha256"},
+    {"name": "yolo11n (THUD++ tracking)", "path": "models/yolo11n.pt", "expected_from": "outputs/track_1388f_20261013_221603/tracking_summary.json", "key": "detector.weights_sha256"},
+    {"name": "MediaPipe gesture_recognizer.task (STOP)", "path": "../external/media_pipe_gesture/gesture_recognizer.task", "expected_from": "configs/gesture_hri.json", "key": "model.sha256"},
+    {"name": "SegFormer-b0 ADE20K (THUD++ segmentation)", "hf_repo": "nvidia/segformer-b0-finetuned-ade-512-512", "hf_revision": "489d5cd81a0b59fab9b7ea758d3548ebe99677da", "hf_files": ["model.safetensors", "pytorch_model.bin"]}
+  ],
+  "exclude": {
+    "suffixes": [".pt", ".pth", ".ckpt", ".onnx", ".safetensors", ".bin", ".task", ".tflite", ".engine", ".fbx", ".tga", ".unitypackage"],
+    "dir_names": ["_path_migration_backup", "worker_textures", "__pycache__"],
+    "name_contains": ["mixamo"],
+    "note": "Model weights and Mixamo files are never archived (licence; weights are identified by SHA-256 in environment/models.csv). _path_migration_backup holds pre-migration copies with this machine's absolute paths (see each folder's path_migration.json)."
+  },
+  "no_compress_suffixes": [".png", ".jpg", ".jpeg", ".mp4", ".zip", ".gz"],
+  "repo_summary_suffixes": [".csv", ".md", ".png"],
+  "comparability": {
+    "source": "AUDIT.md section 8 (Notes) and section 11 item 5",
+    "comparable": ["success", "junction / stop reads (gesture accuracy) with coverage", "collisions", "final distance to B", "closest approach", "distance travelled", "time excluding stale-perception stops", "time in motion", "time per step", "speed and turn rate"],
+    "not_comparable": ["inference time per model", "stale-perception stops", "total trial time (includes stale-perception stops)", "round trip and watchdog figures (watchdog rule changed, AUDIT.md section 9 item 17)"]
+  },
+  "task2_original_reported": {
+    "source": "AUDIT.md section 2 (the original's session folders are on Anisha's machine; figures transcribed from AUDIT.md, not recomputed)",
+    "commit": "ce37a56",
+    "junctions_at_first_ask": "14/14 (AUDIT.md section 2: all at the first ask; asks per junction not in its per-run table)",
+    "collisions": 0, "human_collisions": 0,
+    "step_s_mean": {"navigate": 39.8, "scan": 0.95, "approach": 9.2, "ask": 0.73, "gesture": 1.73, "execute": 2.16},
+    "stale_stop_s_mean": 1.35, "stale_stop_s_max": 5.8,
+    "total_s_mean": 54.7, "total_s_max": 76.6,
+    "time_excl_stale_stops_s_mean": 53.35,
+    "time_excl_stale_stops_note": "54.7 - 1.35 from the section 2 means (AUDIT.md section 13); per run not available",
+    "in_motion_s_mean": null,
+    "avg_speed_mps": 0.51, "max_speed_mps": 0.80, "max_turn_dps": 51.6, "travel_ratio": 1.30,
+    "inference_ms_mean": {"yolo11s-pose/cam360": 256, "yolo11s-pose/gesture": 62, "mediapipe/stop": 21, "jpeg_decode": 5.9, "total_per_frame": 177},
+    "watchdog_stops": "0 (old wall-clock rule)",
+    "round_trip_ms": "mean 0.78 (Unity-measured, old definition); max not in AUDIT.md"
+  }
+}

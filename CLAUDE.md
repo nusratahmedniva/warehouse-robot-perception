@@ -155,3 +155,14 @@ Specification: docs/project_flow.md
   (trials_final_Task1_20261022_161544, FINAL_DONE.json; AUDIT.md section 10). Disclosed: one false STOP (run 8,
   MediaPipe, 0.052 s stop); run protocol not fully met (other apps in the resource log, low free memory).
   No further Task 1 final runs. Editor runs: stop the server with one Ctrl+C so summary.json is written.
+  Task 2 replication run once 2026-10-22 (declared beforehand, AUDIT.md section 11; seed 2, 0e8269c, Nusrat's PC,
+  CUDA FP32, Unity Editor): 10/10 SUCCESS, 14/14 junctions read as shown at the first ask, same goal order, 0
+  collisions, closest 1.00 m (trials_replication_Task2_20261022_180918, REPLICATION_DONE.json; AUDIT.md section 13).
+  It replaces nothing: the original Task 2 final (Anisha's Mac, ce37a56) stands as recorded. Declared differences:
+  machine, decoupled server, corrected watchdog trigger, Editor not batch. Disclosed: round trip max 238.2 ms in
+  run 1 (no stop); run protocol not fully met. No further Task 2 replication runs.
+  Post-results worker layout (AUDIT.md section 12, declared design change after both Task 2 runs): the Task 2 trial
+  runner copies the one worker at Play so one stands at each junction (Worker_Task2_J2 at J2); demonstrations only
+  (development mode). No reported result uses it; both Task 2 runs used the moved-worker layout.
+  Results archive: robot_vision/make_results_archive.py (configs/results_archive.json, results_manifest.json) copies
+  the run folders outside the repo with checksums and a zip; summary tables and plots go to results/summary/.

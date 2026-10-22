@@ -1,0 +1,4 @@
+trial,b_name,junction,shown,read,asks,result
+1,E1,C1,FORWARD,FORWARD,1,accepted
+1,E1,J1,FORWARD,FORWARD,1,accepted
+1,E1,C3,FORWARD,FORWARD,1,accepted
