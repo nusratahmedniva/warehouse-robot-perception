@@ -19,6 +19,7 @@ and the scoring truth.
 | 7 | Logging and analysis | done | `hri_trials.py`, `hri_analysis.py`, `hri_eval_dev.py` |
 | Final | Final trials, seed 2, once | **done: 10/10** | `trials_final_Task2_20261020_172445` (FINAL_DONE.json) |
 | Final Task 1 | Task 1 final, seed 2, once (section 10) | **done: 10/10** | `trials_final_Task1_20261022_161544` (FINAL_DONE.json) |
+| Replication Task 2 | Declared replication of the Task 2 final, seed 2, once (section 11) | declared, not yet run | - |
 
 ## 2. Final result (final seed 2, run once, commit ce37a56)
 
@@ -747,3 +748,66 @@ Infrastructure (bridge summary.json, resources.csv):
 - Compared with the Task 2 final (section 2, different task, run under the old watchdog rule and before the
   infrastructure changes of section 9): junction reads 14/14 there, 30/30 here, all at the first ask in both; 0
   collisions in both; closest approach 1.03 m there, 1.35 m here.
+
+## 11. Declared replication of the Task 2 final (22 October 2026, written before it runs)
+
+Declared at 17:15 BST on 22 October 2026, before any replication trial and before any replication session folder
+exists. The original Task 2 final (section 2, `trials_final_Task2_20261020_172445`, commit ce37a56) **stands as
+recorded**. The replication's results are reported beside it **whatever they are**; they do not replace, correct or
+average with it.
+
+1. **What runs.**
+   - `configs/trials.json`: "task": "Task2", "mode": "replication" (its own commit, the only change in it). Final seed
+     2, 10 trials, timeout 240 s, stuck 10 s / 0.25 m, success radius 0.3 m, equal to
+     `hri_frozen.json -> tasks.Task2.trials_fixed` (`test_hri_frozen.py`). Same seed, so the same goal order as the
+     original (E1 E2 E4 E2 E1 E3 E4 E1 E4 E1, recomputed by the runner and written to session.json).
+   - **Frozen settings unchanged.** hri_control.json, hri_perception.json, gesture_hri.json, roadmap.json, bridge.json,
+     robot.json, robot_unity.json and bridge_unity.json are byte-identical to the Task 2 final; `test_hri_frozen.py`
+     pins the shared hashes to the ce37a56 values and passes. Pose weights `models/yolo11s-pose.pt` sha256
+     1060bda4...c2ba, equal to `hri_frozen.json -> pose_weights` (checked 22 October 2026, 17:10).
+   - **Replication mode** (commit b587c73, infrastructure, before this declaration): the Unity trial runner applies
+     the final's rules (final seed, trial_count, frozen hri_control / hri_perception, pose weights hash), writes
+     `trials_replication_Task2_<time>/` and `REPLICATION_DONE.json`, and refuses a second Task 2 replication. It never
+     writes or reads FINAL_DONE.json, so it cannot replace or block a final. Any mode other than development, final or
+     replication is now refused (before, an unknown mode silently ran as development with the dev seed).
+     EditMode tests `FinalRunGuardTests` (4 new, 39/39 pass); Python `test_hri_frozen.py` checks the mode.
+   - Runs **once**. Nothing is rerun, adjusted or discarded, whatever the result.
+2. **Machine and way of running.**
+   - Nusrat's PC: Windows 11, NVIDIA RTX 3060 12 GB, 16 GB RAM; the machine of the Task 1 final (section 10).
+   - Unity Editor 2022.3.62f3, started through the launcher `run_trials.ps1 -Task Task2` (guide mode, vision
+     perception, Task 2 map, resource log), Play pressed in the Editor; after the last trial one Ctrl+C in the server
+     window, then wait for `[bridge] stopped; summary in ...` (section 9 item 19).
+   - Run protocol (section 9 item 17): other applications closed; Windows power mode Best performance; mains power
+     (desktop). Recorded in `run_info.json -> machine_state` and checked through the resource log.
+3. **Preconditions checked before this declaration** (22 October 2026, 17:05-17:14): working tree clean at fb810ca;
+   full Python suite passes (284 tests; 285 with the new mode test); worker error-shader / texture check passes
+   (`Check Worker` in batch mode, `outputs/worker_check_20261022_171211`: scene worker `Ch32: Worker_URP [Universal
+   Render Pipeline/Lit] Ch32_1001_Diffuse 4096x4096`, no problems; worker.fbx sha256 d883783c...2c51, avatar mapping
+   sha256 d9b9596d...f310, both equal to section 9 item 2); the trial runner repeats the appearance check on the
+   session itself and refuses it otherwise; weights hash matches; no `REPLICATION_DONE.json` and no
+   `trials_replication_*` folder exists.
+4. **Declared differences from the original Task 2 final** (all made before this declaration; none is a frozen
+   setting):
+   - **Different machine.** Original: Anisha's Mac (8 GB; YOLO on MPS, section 4 item 3). Replication: Nusrat's PC,
+     CUDA (RTX 3060). Device and precision per model are recorded at runtime in `run_info.json` from this run on
+     (item 5).
+   - **Decoupled server** (section 9 items 4, 5, 12; infrastructure): complete perception warm-up and
+     `perception_ready` before trial 1; sampled JPEGs written on a background thread; heap frozen after warm-up
+     (`gc.freeze()`); perception on two threads (360 people, gesture), newest frame only, the asyncio loop never runs
+     inference. Outputs were shown identical on saved frames (section 9 item 12).
+   - **Corrected watchdog rule** (section 9 item 17, declared change of the trigger in Unity code; `watchdog_timeout_s`
+     0.3 s unchanged): the robot stops only if no command arrives for telemetry Unity actually sent more than 0.3 s
+     earlier (plus the not-written backstop). The original ran under the wall-clock rule; the old-rule count (stops +
+     Unity frame stalls) is reported beside the new one.
+   - **Way of running:** Unity Editor (as the Task 1 final), not the batch-mode command of section 7. TrialBatchPlay's
+     60 fps cap (section 4 item 3) applies only in batch mode.
+   - **Worker material** recreated on this PC with the fixed GUID (section 9 item 1); same FBX, same URP/Lit settings.
+   - **FORWARD pose unchanged** (the fist; section 9 item 16: the index finger was not adopted). Pose code identical
+     to ce37a56. Task 2's single moved worker and its placement rule are unchanged (the Task 1 workers stay inactive).
+   - Measurement added since the original (reporting only): network-thread round trip, Unity frame times, resource
+     log, `time_excl_stale_stops_s` and `in_motion_s` (section 8).
+5. **Comparison plan** (fixed now): side by side with section 2 — successes, junctions read as shown (with coverage),
+   collisions, final distance to B, gesture shown vs read, time excluding stale-perception stops, time in motion.
+   Inference time and total trial time are reported but marked **not comparable across machines**. Where a figure of
+   the original is not in AUDIT.md and its session folders are not on this PC, it is reported as not available, not
+   estimated.
