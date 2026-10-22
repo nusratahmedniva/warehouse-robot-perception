@@ -306,6 +306,69 @@ class HriPerception:
     def decode_jpeg(data: bytes):
         return HriPerception._decode(data)
 
+    def inference_devices(self) -> dict:
+        """Per model, the device and precision actually in use, read from the loaded models (after warm-up, so from
+        the live predictors), plus library versions. Logging only (run_info.json, check_inference_device.py)."""
+        return {"requested_device": self.device,
+                "models": {"yolo11s-pose/cam360": yolo_runtime(self.pano_model),
+                           "yolo11s-pose/gesture": yolo_runtime(self.gesture_model),
+                           "mediapipe/stop": self.stop.runtime()},
+                "versions": library_versions()}
+
+
+def _torch_module(yolo):
+    """The nn.Module that runs inference: the live predictor's (Ultralytics 8.4: predictor.model.backend.model),
+    else the loaded model (no predictor yet)."""
+    net = getattr(getattr(yolo, "predictor", None), "model", None)
+    for m, source in ((getattr(getattr(net, "backend", None), "model", None), "predictor model parameters"),
+                      (net, "predictor model parameters"),
+                      (getattr(yolo, "model", None), "loaded model parameters (no predictor yet)")):
+        if m is not None and hasattr(m, "parameters") and next(iter(m.parameters()), None) is not None:
+            return m, source
+    return None, "no parameters found"
+
+
+def yolo_runtime(yolo) -> dict:
+    """Device (CUDA GPU name, MPS or CPU) and precision (FP32 / FP16) of a YOLO model, from its parameters."""
+    import torch
+    net, source = _torch_module(yolo)
+    if net is None:
+        return {"device": "unknown", "precision": "unknown", "read_from": source}
+    kinds = {(p.device.type, p.device.index, p.dtype) for p in net.parameters()}
+    devices = {(t, i) for t, i, _ in kinds}
+    dtypes = {d for _, _, d in kinds}
+    out = {"read_from": source,
+           "torch_device": ", ".join(sorted(f"{t}:{i}" if i is not None else t for t, i in devices)),
+           "dtype": ", ".join(sorted(str(d).replace("torch.", "") for d in dtypes))}
+    if len(devices) == 1:
+        t, i = next(iter(devices))
+        out["device"] = (f"CUDA {torch.cuda.get_device_name(i or 0)}" if t == "cuda" else
+                         "MPS (Apple GPU)" if t == "mps" else "CPU" if t == "cpu" else t)
+    else:
+        out["device"] = "mixed"
+    names = {torch.float32: "FP32", torch.float16: "FP16", torch.bfloat16: "BF16"}
+    out["precision"] = names.get(next(iter(dtypes)), str(next(iter(dtypes)))) if len(dtypes) == 1 else "mixed"
+    return out
+
+
+def library_versions() -> dict:
+    """torch (and the CUDA / cuDNN it runs with), Ultralytics, MediaPipe, OpenCV, Python."""
+    import platform
+    out = {"python": platform.python_version()}
+    try:
+        import torch
+        out.update(torch=torch.__version__, torch_cuda_build=torch.version.cuda,
+                   cuda_available=torch.cuda.is_available(),
+                   cudnn=torch.backends.cudnn.version() if torch.cuda.is_available() else None)
+    except ImportError:
+        out["torch"] = None
+    for name in ("ultralytics", "mediapipe", "cv2"):
+        try:
+            out[name] = __import__(name).__version__
+        except (ImportError, AttributeError):
+            out[name] = None
+    return out
+
 
 # (height, width) of the live frames: the 360 panorama (2048 x 1024) and the pan-tilt image (730 x 530) of
 # robot_unity.json (tests/test_hri_perception.py checks them). A frame of another size still works; its first call

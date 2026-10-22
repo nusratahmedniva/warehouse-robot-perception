@@ -70,6 +70,10 @@ class FrozenConfigTests(unittest.TestCase):
         for k, v in FROZEN["tasks"][trials["task"]]["trials_fixed"].items():
             self.assertEqual(trials[k], v, k)
 
+    def test_trials_mode_known(self):
+        # The Unity runner refuses any other mode (2026-10-22); replication uses the final rules (FinalRunGuard).
+        self.assertIn(read_json("trials.json")["mode"], ("development", "final", "replication"))
+
     def test_each_task_names_itself(self):
         for task, spec in FROZEN["tasks"].items():
             self.assertEqual(spec["trials_fixed"]["task"], task)

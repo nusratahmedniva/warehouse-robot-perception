@@ -29,6 +29,8 @@ namespace WarehouseRobot.Scenario
         public string output_root = "outputs";
         public SweepSettings gesture_sweep = new SweepSettings();
         public bool IsFinal => string.Equals(mode, "final", StringComparison.OrdinalIgnoreCase);
+        /// <summary>final or replication: final seed, frozen checks, run once per task (FinalRunGuard).</summary>
+        public bool FinalRules => FinalRunGuard.FinalRules(mode);
     }
 
     [Serializable] class FrozenFlag { public bool frozen; }
@@ -84,6 +86,13 @@ namespace WarehouseRobot.Scenario
     /// start unless those workers stand exactly where task1_route.json puts them, activates them, hides the moved
     /// Task 2 worker, and every Task 1 worker shows FORWARD (the command toward B from its stop) for the whole trial.
     /// Task 2 and the gesture sweep keep the group inactive.
+    /// Task 2 workers (2026-10-22, declared design change after the Task 2 final and its replication, AUDIT.md section
+    /// 12): the one coded scene worker stands at J1 and a copy of it at every other junction (Task2Workers), each showing
+    /// the command toward B for the whole trial (NONE at a junction off the route); before, the one worker was moved to
+    /// each junction as the robot headed there. The sweeps still use the one worker alone.
+    /// Mode "replication" (2026-10-22): like final (final_seed, trial_count, frozen configs, pose weights, Task 1 route
+    /// hash), written to trials_replication_task_time/ with REPLICATION_DONE.json, run once per task; any other mode
+    /// than development, final or replication is refused.
     /// </summary>
     public class TrialRunner : MonoBehaviour
     {
@@ -103,7 +112,7 @@ namespace WarehouseRobot.Scenario
         RobotBridgeClient bridge;
         GestureWorker worker;
         readonly List<GestureWorker> workers = new List<GestureWorker>();          // the workers of this session
-        readonly Dictionary<string, GestureWorker> task1Workers = new Dictionary<string, GestureWorker>();
+        readonly Dictionary<string, GestureWorker> standingWorkers = new Dictionary<string, GestureWorker>();
         List<Task1WorkerStand> task1Stands;
         readonly Dictionary<string, RoadNode> nodes = new Dictionary<string, RoadNode>();
         TrialsConfig cfg;
@@ -112,6 +121,8 @@ namespace WarehouseRobot.Scenario
         string routeText, expectedRoute = "Task2";
         readonly List<string> task1Stops = new List<string>();
         bool IsTask1 => string.Equals(cfg.task, "Task1", StringComparison.OrdinalIgnoreCase);
+        bool IsSweep => string.Equals(cfg.task, "GestureSweep", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(cfg.task, "ForwardHandSweep", StringComparison.OrdinalIgnoreCase);
         const string Task1RouteFile = "robot_vision/configs/task1_route.json";
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
@@ -150,15 +161,18 @@ namespace WarehouseRobot.Scenario
             if (robot == null || robot.Drive == null || bridge == null || worker == null || !nodes.ContainsKey(meta.start))
                 error = "need RobotRig, RobotBridgeClient, GestureWorker and the roadmap (run Tools > Warehouse HRI > Add Worker and Roadmap)";
             else if (cfg.dev_seed == cfg.final_seed) error = "dev_seed and final_seed must differ";
-            else if (cfg.IsFinal && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
-                error = "final mode needs frozen hri_control.json and hri_perception.json";
+            else if (FinalRunGuard.Mode(cfg.mode) == null)
+                error = $"unknown mode '{cfg.mode}' in {cfgName} (development, final or replication)";
+            else if (cfg.FinalRules && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
+                error = $"{FinalRunGuard.Mode(cfg.mode)} mode needs frozen hri_control.json and hri_perception.json";
             workers.Clear();
             if (error == null && IsTask1) error = AddTask1Checkpoints() ?? SetupTask1Workers();
             else if (error == null)
             {
                 var group = Task1Group();
                 if (group != null) group.gameObject.SetActive(false);    // Task 2 / sweep: never the Task 1 workers
-                workers.Add(worker);
+                if (IsSweep) workers.Add(worker);                          // the sweeps place the one worker themselves
+                else error = SetupTask2Workers();
             }
             if (error == null)
             {
@@ -170,11 +184,13 @@ namespace WarehouseRobot.Scenario
                 }
             }
             outRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
-            if (error == null && cfg.IsFinal)
+            if (error == null && cfg.FinalRules)
             {
-                // Each task's final runs once; another task's FINAL_DONE.json does not block it.
-                string earlier = FinalRunGuard.EarlierFinal(outRoot, cfg.task);
-                if (earlier != null) error = $"final trials of {cfg.task} already run: {earlier}";
+                // Each task's final runs once, and so does its replication; another task's or the other mode's
+                // done file does not block it.
+                string mode = FinalRunGuard.Mode(cfg.mode);
+                string earlier = FinalRunGuard.EarlierRun(outRoot, mode, cfg.task);
+                if (earlier != null) error = $"{mode} trials of {cfg.task} already run: {earlier}";
                 else error = WeightsProblem() ?? (IsTask1 ? Task1RouteProblem() : null);
             }
             return error == null;
@@ -231,7 +247,7 @@ namespace WarehouseRobot.Scenario
             foreach (var s in task1Stands) want.Add(Task1Route.WorkerName(s.Stop));
             if (string.Join(",", names) != string.Join(",", want))
                 return $"Task 1 workers in the scene ({string.Join(", ", names)}) are not those of {Task1RouteFile} ({string.Join(", ", want)}): {rebuild}";
-            task1Workers.Clear();
+            standingWorkers.Clear();
             foreach (var s in task1Stands)
             {
                 var t = group.Find(Task1Route.WorkerName(s.Stop));
@@ -241,20 +257,47 @@ namespace WarehouseRobot.Scenario
                 if (gw == null) return $"Task 1 worker {t.name} has no GestureWorker: {rebuild}";
                 if (d.magnitude > 0.01f || Quaternion.Angle(t.rotation, s.Rotation) > 1f)
                     return $"Task 1 worker {t.name} stands at ({t.position.x:0.00}, {t.position.z:0.00}), {Task1RouteFile} puts it at ({s.Position.x:0.00}, {s.Position.z:0.00}): {rebuild}";
-                task1Workers[s.Stop] = gw;
+                standingWorkers[s.Stop] = gw;
             }
 
             group.gameObject.SetActive(true);
             worker.gameObject.SetActive(false);      // Task 1 has a standing worker per stop instead of the moved one
             foreach (var s in task1Stands)
             {
-                var gw = task1Workers[s.Stop];
+                var gw = standingWorkers[s.Stop];
                 workers.Add(gw);
                 string blocked = StandBlocked(gw);
                 if (blocked != null) return $"Task 1 worker at {s.Stop}: overlaps {blocked}";
             }
 
             Debug.Log($"[TrialRunner] Task 1 workers: {string.Join(", ", want)} (moved Task 2 worker hidden)");
+            return null;
+        }
+
+        /// <summary>
+        /// Task 2 (2026-10-22, declared design change, AUDIT.md section 12): one standing worker per junction. The one
+        /// coded scene worker stands at the first junction and a copy of it (Instantiate: same avatar, material, poses
+        /// and code) at every other, each at its junction's workerStand (roadmap rule, unchanged). Before: the one
+        /// worker was moved to each junction as the robot headed there (the Task 2 final and its replication).
+        /// </summary>
+        string SetupTask2Workers()
+        {
+            var junctions = Task2Workers.Junctions(nodes.Values, out string problem);
+            if (junctions == null) return "Task 2 workers: " + problem + " (run Tools > Warehouse HRI > Add Worker and Roadmap)";
+            standingWorkers.Clear();
+            for (int i = 0; i < junctions.Count; i++)
+            {
+                var j = junctions[i];
+                var gw = i == 0 ? worker : Instantiate(worker, worker.transform.parent);
+                if (i > 0) gw.name = Task2Workers.CopyName(worker.name, j.name);
+                gw.PlaceAt(j.workerStand);
+                standingWorkers[j.name] = gw;
+                workers.Add(gw);
+                string blocked = StandBlocked(gw);
+                if (blocked != null) return $"Task 2 worker at {j.name}: overlaps {blocked}";
+            }
+
+            Debug.Log($"[TrialRunner] Task 2 workers: {string.Join(", ", workers.ConvertAll(w => w.name))} (one per junction)");
             return null;
         }
 
@@ -307,11 +350,11 @@ namespace WarehouseRobot.Scenario
                 yield break;
             }
 
-            string mode = cfg.IsFinal ? "final" : "development";
-            int seed = cfg.IsFinal ? cfg.final_seed : cfg.dev_seed;
+            string mode = FinalRunGuard.Mode(cfg.mode);
+            int seed = cfg.FinalRules ? cfg.final_seed : cfg.dev_seed;
             bool handSweep = string.Equals(cfg.task, "ForwardHandSweep", StringComparison.OrdinalIgnoreCase);
             bool sweep = handSweep || string.Equals(cfg.task, "GestureSweep", StringComparison.OrdinalIgnoreCase);
-            if (sweep && cfg.IsFinal)
+            if (sweep && cfg.FinalRules)
             {
                 Status = $"not started: {cfg.task} is development only";
                 yield break;
@@ -412,7 +455,8 @@ namespace WarehouseRobot.Scenario
 
             string summary = $"{{\n  \"trials\": {TrialTotal},\n  \"successes\": {Successes},\n  \"mode\": \"{mode}\",\n  \"task\": \"{cfg.task}\",\n  \"seed\": {seed}\n}}\n";
             WriteNew(Path.Combine(SessionFolder, "summary_unity.json"), summary);
-            if (cfg.IsFinal) WriteNew(Path.Combine(SessionFolder, "FINAL_DONE.json"), summary);
+            string doneFile = FinalRunGuard.DoneFileFor(mode);      // FINAL_DONE.json / REPLICATION_DONE.json
+            if (doneFile != null) WriteNew(Path.Combine(SessionFolder, doneFile), summary);
             Status = $"done: {Successes}/{TrialTotal} SUCCESS";
             Debug.Log($"[TrialRunner] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
         }
@@ -431,9 +475,15 @@ namespace WarehouseRobot.Scenario
             if (IsTask1)
                 foreach (var st in task1Stands)              // standing workers: back to the stand, show the command toward B
                 {
-                    var w = task1Workers[st.Stop];
+                    var w = standingWorkers[st.Stop];
                     w.transform.SetPositionAndRotation(st.Position, st.Rotation);
                     w.Show(nodes[st.Stop].CommandToward(nodes[goal]));
+                }
+            else
+                foreach (var kv in standingWorkers)          // Task 2: each junction's worker at its stand (NONE off the route)
+                {
+                    kv.Value.PlaceAt(nodes[kv.Key].workerStand);
+                    kv.Value.Show(nodes[kv.Key].CommandToward(nodes[goal]));
                 }
             if (first != null && first.IsJunction) Place(first, goal, shown, placed);
             int collisionBase = robot.Collisions != null ? robot.Collisions.Records.Count : 0;
@@ -550,15 +600,15 @@ namespace WarehouseRobot.Scenario
         }
 
         /// <summary>
-        /// The robot heads to this junction: Task 2 moves the one worker there and shows the command toward B; Task 1
-        /// workers already stand at every stop, so only what that stop's worker shows is recorded (t_placed = when the
-        /// robot started heading there).
+        /// The robot heads to this junction. Task 1 and Task 2 workers already stand at every stop / junction (since
+        /// 2026-10-22 for Task 2), so only what that worker shows is recorded (t_placed = when the robot started heading
+        /// there); a junction without a standing worker gets the one worker moved there, as before.
         /// </summary>
         void Place(RoadNode junction, string goal, List<ShownRecord> shown, HashSet<string> placed)
         {
             placed.Add(junction.name);
             var cmd = junction.CommandToward(nodes[goal]);
-            if (IsTask1 && task1Workers.TryGetValue(junction.name, out var standing)) cmd = standing.Current;
+            if (standingWorkers.TryGetValue(junction.name, out var standing)) cmd = standing.Current;
             else
             {
                 worker.PlaceAt(junction.workerStand != null ? junction.workerStand : junction.transform);

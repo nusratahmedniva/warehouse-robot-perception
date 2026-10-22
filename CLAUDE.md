@@ -150,3 +150,8 @@ Specification: docs/project_flow.md
   0.854); measurement correction (watchdog stops only for unanswered sent telemetry, network-thread round trip, frame
   times, resource log, run protocol, launcher -Trials N for development only); 5-trial Task 1 dev check: all 4
   criteria met (bridge_guide_20261022_022557). Run protocol before every session: other apps closed, Best performance.
+  Task 1 final run once 2026-10-22 (seed 2, 5440781, Nusrat's PC, Unity Editor via run_trials.ps1): 10/10 SUCCESS,
+  30/30 stops read FORWARD at the first ask, 0 collisions, closest 1.35 m, all four criteria met
+  (trials_final_Task1_20261022_161544, FINAL_DONE.json; AUDIT.md section 10). Disclosed: one false STOP (run 8,
+  MediaPipe, 0.052 s stop); run protocol not fully met (other apps in the resource log, low free memory).
+  No further Task 1 final runs. Editor runs: stop the server with one Ctrl+C so summary.json is written.
