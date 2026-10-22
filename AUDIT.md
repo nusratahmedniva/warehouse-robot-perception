@@ -811,3 +811,27 @@ average with it.
    Inference time and total trial time are reported but marked **not comparable across machines**. Where a figure of
    the original is not in AUDIT.md and its session folders are not on this PC, it is reported as not available, not
    estimated.
+6. **Inference device and precision now recorded at runtime** (logging only, after the trials.json commit and before
+   the replication runs; no setting, model argument or device choice changed).
+   - `run_info.json -> inference_devices`, written by the server once the models are loaded and warmed up: per model
+     the device actually used (CUDA GPU name, MPS or CPU) and the precision (FP32 / FP16), read from the parameters of
+     the live predictors (`hri_perception.yolo_runtime`); for MediaPipe the delegate the recognizer was created with
+     (`GestureRecognizerAdapter.runtime`; MediaPipe does not expose its compute precision, so it is recorded as
+     `unknown`); and the torch (with its CUDA build and cuDNN), Ultralytics, MediaPipe, OpenCV and Python versions.
+     A reader error is written into the file instead of stopping the run.
+   - Rerunnable check script in the repository: `robot_vision/check_inference_device.py [--save]` (same loading,
+     warm-up and reader as the server; `--save` writes `outputs/device_check_<time>/`). On this PC
+     (`outputs/device_check_20261022_172022`): YOLO11s-pose panorama and gesture **CUDA NVIDIA GeForce RTX 3060,
+     FP32** (weights stored FP16 in the .pt, loaded as FP32); MediaPipe STOP **CPU** (delegate not set: MediaPipe's
+     default); torch 2.14.1+cu130 (CUDA 13.0, cuDNN 92400), Ultralytics 8.4.175, MediaPipe 1.1.1, OpenCV 5.0.0,
+     Python 3.12.14.
+   - Tests: `tests/test_inference_devices.py` (13: FP32 / FP16 / mixed precision, the live predictor preferred over
+     the loaded model, the real Ultralytics 8.4 layout when the weights are present, CUDA name when a GPU is present,
+     MediaPipe delegate, run_info.json written with nothing else changed, reader errors logged not raised).
+   - **The Task 1 final's device (section 10) was not recorded directly; it is reconstructed from logs and code:**
+     CUDA from `hri_perception.json` `device: auto` with `check_environment.select_device` (CUDA first) and
+     `bridge_guide_20261022_161116/summary.json -> threads_at_start.torch_cuda: true`; FP32 because the code passes
+     no `half` argument (Ultralytics' default is FP32) and the same code on the same PC reads FP32 today; MediaPipe
+     on CPU because the adapter sets no delegate. The same applies to every earlier session. For the original Task 2
+     final (Mac) neither device nor precision was recorded; section 4 item 3 documents YOLO on MPS for the Mac
+     sessions, and `select_device` picks MPS there when CUDA is absent.

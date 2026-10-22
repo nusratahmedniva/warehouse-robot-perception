@@ -341,6 +341,17 @@ class GestureRecognizerAdapter:
             min_hand_detection_confidence=rec["min_hand_detection_confidence"],
             min_hand_presence_confidence=rec["min_hand_presence_confidence"])
         self._rec = vision.GestureRecognizer.create_from_options(options)
+        self.delegate = options.base_options.delegate
+
+    def runtime(self) -> dict:
+        """Device of the recognizer, from the delegate it was created with (logging only). MediaPipe Tasks does not
+        report the precision it computes in, so that is 'unknown', not a guess."""
+        d = self.delegate
+        name = getattr(d, "name", None)
+        return {"device": "CPU" if d is None or name == "CPU" else str(name or d),
+                "delegate": "not set (MediaPipe default: CPU)" if d is None else str(name or d),
+                "precision": "unknown", "precision_note": "not exposed by MediaPipe Tasks",
+                "read_from": "BaseOptions.delegate of the created recognizer"}
 
     def _recognize(self, rgb) -> list[RawHand]:
         img = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))

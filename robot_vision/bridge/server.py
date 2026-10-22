@@ -503,6 +503,22 @@ def make_perception_worker(out: Path, perception_config: str | Path):
     return PerceptionWorker(hpm.HriPerception(cfg), out)
 
 
+def record_inference_devices(path: Path, info: dict, perception) -> dict | None:
+    """Adds the device and precision each model actually uses, read at runtime after warm-up, and the library
+    versions to run_info.json (logging only; nothing is selected or changed here)."""
+    if not hasattr(perception, "inference_devices"):
+        return None
+    try:
+        info["inference_devices"] = perception.inference_devices()
+    except Exception as e:   # logging must never stop a run
+        info["inference_devices"] = {"error": f"{type(e).__name__}: {e}"}
+    dio.write_json(path, info)
+    models = info["inference_devices"].get("models", {})
+    print("[bridge] inference devices: " + "; ".join(f"{k} {v.get('device')} {v.get('precision')}"
+                                                     for k, v in models.items()), flush=True)
+    return info["inference_devices"]
+
+
 async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
               perception: str = "off", perception_config: str = "configs/hri_perception.json",
               task: str = "Task2", exit_on_disconnect: bool = False, resource_log: bool = False) -> Path:
@@ -524,13 +540,14 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
             (out / "config_used" / Path(extra).name).write_bytes(dio.resolve(extra).read_bytes())
         dio.write_json(out / "config_used" / "map_used.json", road)
         print(f"[bridge] task {task}: map {route}", flush=True)
-    dio.write_json(out / "run_info.json", {
+    info = {
         "created": datetime.now().isoformat(timespec="seconds"), "mode": mode,
         "command": " ".join([Path(sys.executable).name] + sys.argv), "git": dio.git_info(),
         "python": platform.python_version(), "platform": platform.platform(),
         "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION,
         "mute_after_s": mute_after_s, "perception": perception, "task": task if mode == "guide" else None,
-        "route": route, "machine_state": machine_state.read(), "resource_log": resource_log})
+        "route": route, "machine_state": machine_state.read(), "resource_log": resource_log}
+    dio.write_json(out / "run_info.json", info)
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
     log.extra["clock_t0_unix_s"] = round(time.time() - (time.monotonic() - log.t0), 6)   # t_wall_s 0 in Unix time
     monitor = None
@@ -543,6 +560,7 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
     if perception == "vision":
         worker = make_perception_worker(out, perception_config)
         print(f"[bridge] perception: {worker.label}", flush=True)
+        record_inference_devices(out / "run_info.json", info, worker.p)
     log.extra["threads_at_start"] = diag.thread_info()
     print(f"[bridge] threads: {log.extra['threads_at_start']['python_threads']} Python, "
           f"{log.extra['threads_at_start'].get('process_threads')} in the process", flush=True)
