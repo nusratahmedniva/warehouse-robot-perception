@@ -1,8 +1,8 @@
 {
   "label": "Step 7 trials: read by the Unity trial runner (Assets/WarehouseRobot/Scenario) and by robot_vision/hri_trials.py. Declared 2026-10-20 before any trial; not tuned.",
-  "task": "Task1",
+  "task": "Task2",
   "task_note": "Task1 = A to B = roadmap task1_goal with FORWARD at the first junction (baseline); Task2 = guided route, goal B changes every trial (seeded); GestureSweep = development gesture evaluation (robot still, worker shows every command; truth_sweep.csv).",
-  "mode": "final",
+  "mode": "replication",
   "mode_note": "development uses dev_seed. final uses final_seed, runs once per task (refused if a trials_final_<same task>_* folder with FINAL_DONE.json exists; changed 2026-10-21, before it was any trials_final_*) and only when configs/hri_control.json and configs/hri_perception.json are frozen and the pose weights have the sha256 in configs/hri_frozen.json -> pose_weights.",
   "dev_seed": 1,
   "final_seed": 2,
