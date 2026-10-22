@@ -29,6 +29,8 @@ namespace WarehouseRobot.Scenario
         public string output_root = "outputs";
         public SweepSettings gesture_sweep = new SweepSettings();
         public bool IsFinal => string.Equals(mode, "final", StringComparison.OrdinalIgnoreCase);
+        /// <summary>final or replication: final seed, frozen checks, run once per task (FinalRunGuard).</summary>
+        public bool FinalRules => FinalRunGuard.FinalRules(mode);
     }
 
     [Serializable] class FrozenFlag { public bool frozen; }
@@ -84,6 +86,9 @@ namespace WarehouseRobot.Scenario
     /// start unless those workers stand exactly where task1_route.json puts them, activates them, hides the moved
     /// Task 2 worker, and every Task 1 worker shows FORWARD (the command toward B from its stop) for the whole trial.
     /// Task 2 and the gesture sweep keep the group inactive.
+    /// Mode "replication" (2026-10-22): like final (final_seed, trial_count, frozen configs, pose weights, Task 1 route
+    /// hash), written to trials_replication_task_time/ with REPLICATION_DONE.json, run once per task; any other mode
+    /// than development, final or replication is refused.
     /// </summary>
     public class TrialRunner : MonoBehaviour
     {
@@ -150,8 +155,10 @@ namespace WarehouseRobot.Scenario
             if (robot == null || robot.Drive == null || bridge == null || worker == null || !nodes.ContainsKey(meta.start))
                 error = "need RobotRig, RobotBridgeClient, GestureWorker and the roadmap (run Tools > Warehouse HRI > Add Worker and Roadmap)";
             else if (cfg.dev_seed == cfg.final_seed) error = "dev_seed and final_seed must differ";
-            else if (cfg.IsFinal && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
-                error = "final mode needs frozen hri_control.json and hri_perception.json";
+            else if (FinalRunGuard.Mode(cfg.mode) == null)
+                error = $"unknown mode '{cfg.mode}' in {cfgName} (development, final or replication)";
+            else if (cfg.FinalRules && !(Frozen("robot_vision/configs/hri_control.json") && Frozen("robot_vision/configs/hri_perception.json")))
+                error = $"{FinalRunGuard.Mode(cfg.mode)} mode needs frozen hri_control.json and hri_perception.json";
             workers.Clear();
             if (error == null && IsTask1) error = AddTask1Checkpoints() ?? SetupTask1Workers();
             else if (error == null)
@@ -170,11 +177,13 @@ namespace WarehouseRobot.Scenario
                 }
             }
             outRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
-            if (error == null && cfg.IsFinal)
+            if (error == null && cfg.FinalRules)
             {
-                // Each task's final runs once; another task's FINAL_DONE.json does not block it.
-                string earlier = FinalRunGuard.EarlierFinal(outRoot, cfg.task);
-                if (earlier != null) error = $"final trials of {cfg.task} already run: {earlier}";
+                // Each task's final runs once, and so does its replication; another task's or the other mode's
+                // done file does not block it.
+                string mode = FinalRunGuard.Mode(cfg.mode);
+                string earlier = FinalRunGuard.EarlierRun(outRoot, mode, cfg.task);
+                if (earlier != null) error = $"{mode} trials of {cfg.task} already run: {earlier}";
                 else error = WeightsProblem() ?? (IsTask1 ? Task1RouteProblem() : null);
             }
             return error == null;
@@ -307,11 +316,11 @@ namespace WarehouseRobot.Scenario
                 yield break;
             }
 
-            string mode = cfg.IsFinal ? "final" : "development";
-            int seed = cfg.IsFinal ? cfg.final_seed : cfg.dev_seed;
+            string mode = FinalRunGuard.Mode(cfg.mode);
+            int seed = cfg.FinalRules ? cfg.final_seed : cfg.dev_seed;
             bool handSweep = string.Equals(cfg.task, "ForwardHandSweep", StringComparison.OrdinalIgnoreCase);
             bool sweep = handSweep || string.Equals(cfg.task, "GestureSweep", StringComparison.OrdinalIgnoreCase);
-            if (sweep && cfg.IsFinal)
+            if (sweep && cfg.FinalRules)
             {
                 Status = $"not started: {cfg.task} is development only";
                 yield break;
@@ -412,7 +421,8 @@ namespace WarehouseRobot.Scenario
 
             string summary = $"{{\n  \"trials\": {TrialTotal},\n  \"successes\": {Successes},\n  \"mode\": \"{mode}\",\n  \"task\": \"{cfg.task}\",\n  \"seed\": {seed}\n}}\n";
             WriteNew(Path.Combine(SessionFolder, "summary_unity.json"), summary);
-            if (cfg.IsFinal) WriteNew(Path.Combine(SessionFolder, "FINAL_DONE.json"), summary);
+            string doneFile = FinalRunGuard.DoneFileFor(mode);      // FINAL_DONE.json / REPLICATION_DONE.json
+            if (doneFile != null) WriteNew(Path.Combine(SessionFolder, doneFile), summary);
             Status = $"done: {Successes}/{TrialTotal} SUCCESS";
             Debug.Log($"[TrialRunner] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
         }
