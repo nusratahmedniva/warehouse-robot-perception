@@ -1,133 +1,182 @@
 # Avatar-Mediated Human-Robot Interaction in Virtual Worlds
 
-A wheeled warehouse robot in a Unity simulation is guided to an unknown
-goal by human avatars: at each junction it finds the nearest worker, asks
-for a direction, reads a pointing gesture and takes the indicated way.
-Python handles perception and decisions; Unity runs the simulation.
+A robot in a virtual warehouse has to reach a goal it doesn't know.
+Workers standing along the way show it where to go with simple arm
+signals. The robot finds the nearest worker, drives up to them, asks
+"Which direction?", reads the signal, and follows it until it
+reaches the goal.
 
-## Repository layout
+Everything runs in a Unity simulation. Python does the "thinking":
+it looks at the robot's camera images, recognises people and their
+arm signals, and tells the robot how to drive.
 
-- `robot_vision/`: Python perception, decision rules, Unity bridge, evaluation
-- `unity/Robotics-Warehouse/WarehouseProjectURP/`: Unity project (2022.3.62f3, URP)
-- `external/media_pipe_gesture/`: gesture module by Anisha (git submodule)
+## Results
+
+| Task | What happens | Result |
+|---|---|---|
+| Task 1 | The robot drives straight from A to its goal, stopping at three workers who each signal "go straight" | 10 out of 10 runs reached the goal; at all 30 stops the signal was read correctly at the first ask; no collisions |
+| Task 2 | A route with junctions; the goal changes every run, and the workers guide the robot to it | 10 out of 10 runs reached the goal; all 14 junction signals were read correctly at the first ask; no collisions |
+
+Each final run happened once: 10 runs on a random seed that was not
+used during development, with all settings fixed beforehand.
+
+Task 2 was then repeated once on a second computer (the original ran
+on a Mac, the repeat on a Windows PC), with the same seed and settings
+and with the plan written down before it ran. It gave the same result:
+10 out of 10. The repeat is reported next to the original and does
+not replace it. Every detail, number and decision is recorded in
+[AUDIT.md](AUDIT.md).
+
+## How it works
+
+1. **Drive:** the robot follows the warehouse map towards the next
+   junction.
+2. **Look:** near a junction it slows down and uses its 360° camera
+   to find the nearest worker.
+3. **Approach:** it stops about 2 m in front of the worker.
+4. **Ask:** "Which direction?" appears on screen, and a second
+   camera turns towards the worker.
+5. **Read:** it reads the worker's arm signal. The same signal must
+   be held for 1 second before the robot accepts it.
+6. **Go:** it takes the direction it was shown and drives on.
+
+**Safety, always on:** an open palm (STOP) stops the robot at once,
+and if the Python side stops answering, the robot stops by itself.
+
+### The arm signals
+
+| Signal | What the worker does |
+|---|---|
+| LEFT | Arm straight out to the robot's left |
+| RIGHT | Arm straight out to the robot's right |
+| FORWARD | Arm straight up |
+| STOP | Open palm towards the robot |
+
+FORWARD is "arm up" on purpose: seen from a camera in front of the
+worker, a pointing-ahead arm would look almost the same as LEFT or
+RIGHT.
+
+## What's in this repository
+
+- `robot_vision/`: the Python code (seeing, deciding, steering,
+  logging, analysis); technical details are in
+  [robot_vision/README.md](robot_vision/README.md)
+- `unity/Robotics-Warehouse/WarehouseProjectURP/`: the Unity project
+- `external/media_pipe_gesture/`: Anisha's hand gesture module
+- `AUDIT.md`: the full record of every experiment and decision
+- `results/summary/`: result tables and plots
 
 ## Getting started
 
-1. `git clone --recurse-submodules <this repository's URL>`
-2. Python 3.12: create a virtual environment in `robot_vision/`, then
-   `pip install -r requirements.txt`
-3. Unity Hub: install Unity 2022.3.62f3, then add the project folder above
-4. Mixamo character files are not included (licence terms). Obtain them
-   separately and place them in `Assets/WarehouseRobot/Characters/` as
-   `worker.fbx`, `walking.fbx` and `idle.fbx`.
+**You need:** Unity 2022.3.62f3 and Python 3.12, on Windows 11 or
+macOS. The final runs used a Windows 11 PC with an NVIDIA RTX 3060
+(Task 1 and the Task 2 repeat) and a Mac (the original Task 2 final).
 
-## Running trials (launcher)
+1. Download the project, including the gesture module:
+   `git clone --recurse-submodules https://github.com/nusratahmedniva/warehouse-robot-perception.git`
+2. In `robot_vision/`, create a Python environment named `.venv`
+   (`python -m venv .venv`) and install the packages into it:
+   `pip install -r requirements.txt`. The launchers only use this
+   environment.
+3. Download `yolo11s-pose.pt` from Ultralytics into
+   `robot_vision/models/`. The code checks that it's the exact file
+   we used.
+4. Open `unity/Robotics-Warehouse/WarehouseProjectURP` in Unity Hub
+   with Unity 2022.3.62f3.
+5. The worker character isn't included, because its licence doesn't
+   allow sharing the files. Download it from Mixamo and place it in
+   `Assets/WarehouseRobot/Characters/` as `worker.fbx`,
+   `Walking.fbx`, `Idle.fbx` and `Stop.fbx`.
+6. In Unity, run **Tools > Warehouse HRI > Restore Worker
+   Appearance**. Without it the worker shows up magenta, and every
+   test session refuses to start.
 
-Trials always run the bridge server in **guide** mode with **vision** perception for one task. Use the launcher
-(from `robot_vision/`); it refuses to start when `configs/trials.json` names another task:
+## Running a test session
 
-- Windows PowerShell: `.\run_trials.ps1 -Task Task1` (or `-Task Task2`), then press Play in the Unity Editor.
-  `.\run_trials.ps1 -Task Task1 -UnityBatch` runs the whole session headless and then merges, analyses and checks
-  it (`hri_trials.py`, `hri_analysis.py`, `hri_session_check.py`).
-- macOS Terminal: `./run_trials.sh Task1` (or `Task2`); `./run_trials.sh Task1 --unity-batch` for the headless
-  session.
+From `robot_vision/` in PowerShell:
 
-The server needs `--mode`; guide mode needs `--task`. Hello mode (0.2 m/s creep, never starts a trial) is a bridge
-test only and is refused unless `--allow-hello` is given, so it cannot be used for trials by accident. Every run
-folder records event-loop lags, garbage-collection pauses and thread counts (`summary.json`, `loop_lag.csv`,
-`gc_pauses.csv`, `stall_tracebacks.txt`); `python -m bridge.replay_client --frames outputs/<bridge run>/frames`
-replays saved frames to a running server without Unity to measure its reply times (AUDIT.md section 9).
+    .\run_trials.ps1 -Task Task1
 
-## Perception and worker (Steps 3 and 4)
+Then open the `WarehouseRobot` scene in Unity and press Play. When
+the last run has finished, press Ctrl+C once in the PowerShell window
+so the summary is written.
 
-- Python: `python -m bridge.server --mode hello --allow-hello --perception vision` (from robot_vision/, project venv) runs the
-  Step 3 perception on the frames the bridge receives: YOLO11s-pose + ByteTrack people on `frame_360` (bearing from
-  the column, distance from the ankles on the floor, camera height and pose from the frame header) and the arm
-  direction (LEFT, FORWARD_LEFT, FORWARD, FORWARD_RIGHT, RIGHT, NONE) on `frame_pan_tilt`; STOP from the MediaPipe
-  gesture adapter (Anisha's module unchanged; `configs/gesture_hri.json` maps only Open_Palm to STOP because the
-  worker points with fists). The models run on background threads (one per camera, latest frame only); commands are unchanged (hello test), the
-  latest reading is shown in `screen_text` and logged to `perception.csv` in the run folder. Weights:
-  `robot_vision/models/yolo11s-pose.pt` (git-ignored; from robot_vision/models:
-  `python -c "from ultralytics import YOLO; YOLO('yolo11s-pose.pt')"`). Thresholds: `configs/hri_perception.json`
-  (frozen 2026-10-20 after the development evaluation; see below).
-- Unity: **Tools > Warehouse HRI > Add Worker and Roadmap** adds the Mixamo worker (`GestureWorker`; textures
-  extracted to the git-ignored `Characters/worker_textures/`), the roadmap A, J1, J2, E1-E4 (`RoadNode`, validated
-  on the AMR NavMesh) and a chase camera (`FollowCamera`, C: chase / top-down / gesture camera). It also disables
-  the 12 upstream rack NavMeshObstacles whose carving boxes (cm values read as m) erased the whole NavMesh.
-  **Tools > Warehouse HRI > Gesture Pose Test** (Play mode) cycles the six commands.
-  **Tools > Warehouse HRI > Restore Worker Appearance** recreates the git-ignored worker textures and material on a
-  new machine (the committed scene references the material by a fixed GUID; without it the worker is magenta);
-  **Check Worker** writes the import settings, avatar mapping and appearance to `outputs/worker_check_*`;
-  **Save Gesture PNGs (Play mode)** saves LEFT, FORWARD, RIGHT and STOP from the pan-tilt camera at 2.0 m to
-  `outputs/gesture_pngs_*`. Every trial session is refused while the worker is not the textured Humanoid avatar.
-- Task 1 (straight A to B): checkpoints from `configs/task1_route.json` (default 3: C1, J1, C3) with one standing
-  worker at each (the same avatar, 1.0 m ahead and 2.5 m right of the stop, facing the arriving robot, showing
-  FORWARD). Add Worker and Roadmap builds these workers into the scene (group `WarehouseHRI/Task1Workers`, saved
-  inactive; only Task 1 sessions activate it); rerun it after changing
-  task1_route.json, or Task 1 sessions are refused. Python: `run_trials.ps1 -Task Task1` / `run_trials.sh Task1`.
-- Task 2 (guided route): one standing worker per junction (since 22 October 2026, AUDIT.md section 12): the scene
-  worker at J1 and a copy of it, made by the trial runner at Play (`Worker_Task2_J2`), at J2, each at its roadmap
-  stand and showing the command toward B (NONE at a junction off the route). The scene is unchanged. Used for
-  demonstrations only: the Task 2 final and its replication ran with the earlier layout (one worker moved to each
-  junction), and no reported result uses this one.
-  The trial runner waits for Python's `perception_ready` and refuses trials if Python's map is not that of its task
-  (AUDIT.md section 9).
+Use `Task2` for the other task. Add `-Trials 5` for a shorter
+development test, or add `-UnityBatch` to run without opening the
+Unity window (Unity is looked for in the default Unity Hub folder;
+otherwise set `UNITY_EDITOR` to its path). On macOS, use
+`./run_trials.sh Task1` (with `--trials 5` or `--unity-batch`).
 
-## State machine and trials (Steps 5 and 7, branch anisha/step5-7)
+The official final runs are already done and protected, so they
+can't be run a second time by accident.
 
-- Step 5: `robot_vision/hri_control.py` (states idle, navigate, scan, approach, ask, read, execute, done/aborted;
-  pure pursuit on the NavMesh corners; 1.0 s gesture hold with NONE gaps up to 0.3 s, one repeat ask, then abort;
-  stops for STOP, a person in the path within the speed-dependent stopping distance, and perception older than
-  1.0 s). Simulator `robot_vision/hri_sim.py`; tests `tests/test_hri_control.py`. Live: the launcher above
-  (`python -m bridge.server --mode guide --perception vision --task Task2`). Thresholds `configs/hri_control.json` (frozen 2026-10-20; two changes made
-  after simulator runs are listed in it).
-- Step 7: Unity `TrialRunner` (the only place goal B exists; seeded goal order, truth files) and
-  `TrialBatchPlay.Run` for batch mode; Python `hri_trials.py` (run_###.json, results.csv), `hri_analysis.py`
-  (analysis.md, plots) and `hri_eval_dev.py` (development evaluation; refuses final sessions).
-- Development results (dev seed 1, vision mode, 20 October 2026), three sessions of 10 trials:
-  `trials_development_Task2_20261020_140241` 10/10; `_163348` 9/10 (diagonals dropped; trial 8 aborted at J2:
-  YOLO misplaced the keypoints of a clearly shown RIGHT from the ask position and the repeat ask saw the same
-  image); `_164719` 10/10 after adding the new viewpoint before the second ask (reask_shift_m 0.4; it did not
-  trigger in this session, every junction was read at the first ask; it is tested in the simulator). Together
-  29/30 trials, 44/45 junctions, 0 collisions, closest approach to the worker 1.03 m, final distance from B
-  about 0.05 m. Gesture sweep (140 samples, five-direction classifier): per-frame accuracy 1.0 for the
-  directions at coverage 0.96-1.0; STOP read as FORWARD_LEFT in 3/100 frames (one 1.0 s hold accepted it).
-  People on the panorama: recall 0.86-0.91 at 0-3 m, 1.0 at 3-6 m, 0.52-0.58 at 6-9 m, 0 at 9-12 m; distance
-  error about +0.25 m.
-- Changes after seeing development results (all listed in the configs): FORWARD_LEFT / FORWARD_RIGHT dropped
-  (owner's decision, against the pre-declared keep criterion, which they passed); reask_shift_m added; batch
-  rendering capped at 60 fps (runner setting).
-- Frozen 2026-10-20: `hri_control.json` and `hri_perception.json` (frozen: true); hashes of these, gesture_hri,
-  roadmap, bridge and the two Unity configs in `configs/hri_frozen.json` (checked by `tests/test_hri_frozen.py`).
-  The final run sets `trials.json -> mode` to `final` (nothing else) and runs once.
-- **Final result** (final seed 2, run once on 20 October 2026, commit ce37a56 = frozen 1a574cb + mode final;
-  vision mode): **10/10 SUCCESS** (Wilson 95 % 0.72-1.0), goal order E1 E2 E4 E2 E1 E3 E4 E1 E4 E1 (checked
-  against the seed), 14/14 junctions read as shown at the first ask, 0 collisions, 0 watchdog stops, closest
-  approach to the worker 1.03 m, final distance from B 0.047 m mean (max 0.058 m), total time 54.7 s mean
-  (max 76.6 s), stale-perception stops 1.4 s mean (max 6.0 s). Folders `trials_final_Task2_20261020_172445`
-  (FINAL_DONE.json), `bridge_guide_20261020_172422`, `hri_trials_20261020_173421`,
-  `hri_analysis_20261020_173421`. Perception metrics against truth (recall by distance, distance error) were
-  not computed for the final session: `hri_eval_dev.py` refuses final sessions by design (not_evaluated).
-- Known issue: on the 8 GB Mac, panorama YOLO takes about 190 ms alone but 220-440 ms (up to 790 ms) while
-  Unity runs (flat at 157 ms over 6 minutes with Unity closed). The robot then stops for "perception stale":
-  up to 52 s in one dev trial (trial total 124 s of the 240 s limit). The cause is not identified.
+## How we kept the results honest
 
-## Status
+- All thresholds and settings were fixed **before** the first final
+  run. They are byte-identical in all three reported runs, and a test
+  checks this.
+- Each final run, and the Task 2 repeat, was allowed to happen **only
+  once**.
+- Some rules were changed after we saw **development** results (for
+  example, the diagonal "forward-left" and "forward-right" signals
+  were dropped, even though they had passed the test we had set for
+  keeping them). These changes are listed in `AUDIT.md`. Nothing was
+  changed after seeing **final** results.
+- Code changes between runs (for example, a fix to when the safety
+  stop triggers, made before Task 1 and the Task 2 repeat) were
+  written down before those runs.
+- Every change, problem and limitation is written in `AUDIT.md`.
 
-Work in progress; final version due 22 October 2026.
+## Limitations
+
+- The "person walks into the robot's path" stop was only tested in a
+  Python simulation, not in Unity.
+- In one run, the robot mistook a hand for STOP for a split second
+  (0.05 s), then carried on.
+- Small samples: 10 runs per task, on one seed.
+- One worker character in one warehouse; the arm signals are a fixed
+  set of poses, not natural pointing.
+- Workers stand still; they don't walk around.
+- On the 8 GB Mac, person detection slowed down while Unity was
+  running, so the robot sometimes paused to wait for fresh images
+  (up to 6 s in the final). The cause wasn't found.
+- Our run checklist (other apps closed, enough free memory) wasn't
+  fully met in the Windows runs. Both runs record this.
+
+## Ideas for the future
+
+- Natural pointing gestures, read in 3D
+- Workers who move around the warehouse
+- Testing on a real robot
 
 ## Team
 
-Nusrat Ahmed Niva ([@nusratahmedniva](https://github.com/nusratahmedniva))
-and Anisha ([@anisha274](https://github.com/anisha274))
+- **Nusrat Ahmed Niva** ([@nusratahmedniva](https://github.com/nusratahmedniva)):
+  the robot and its cameras, the Unity–Python connection, the early
+  perception work on the THUD++ dataset, Task 1, and the results
+  archive.
+- **Anisha** ([@anisha274](https://github.com/anisha274)): the hand
+  gesture module, people and gesture recognition, the worker and the
+  warehouse map, the robot's step-by-step behaviour, the trial runner
+  and logging, and Task 2.
+
+## Use of AI tools
+
+We used Claude Code and GitHub Copilot to help write code. We
+reviewed and tested all results ourselves.
 
 ## Credits and licences
 
-- [Robotics-Warehouse](https://github.com/Unity-Technologies/Robotics-Warehouse),
-  Unity Technologies, Apache-2.0 (modified; see its MODIFICATIONS.md)
-- [media_pipe_gesture](https://github.com/anisha274/media_pipe_gesture), Anisha, MIT
-- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics), AGPL-3.0
-- [MediaPipe](https://github.com/google-ai-edge/mediapipe), Apache-2.0
-- THUD++ dataset: not included; see its project page for access and citation
+- [Robotics-Warehouse](https://github.com/Unity-Technologies/Robotics-Warehouse)
+  by Unity Technologies (Apache-2.0), modified; see its
+  `MODIFICATIONS.md`
+- [media_pipe_gesture](https://github.com/anisha274/media_pipe_gesture)
+  by Anisha (MIT)
+- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics)
+  (AGPL-3.0)
+- [MediaPipe](https://github.com/google-ai-edge/mediapipe) by Google
+  (Apache-2.0)
+- THUD++ dataset: not included; see its project page for access and
+  how to cite it
 
 This project is licensed under AGPL-3.0.
