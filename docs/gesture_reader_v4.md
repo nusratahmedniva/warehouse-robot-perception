@@ -83,7 +83,7 @@ A still hand with no raised arm is not a gesture (`NONE`). Whether a *still rais
 that distinguishes WAIT (index up) from a bystander resting a hand on the head; the facing and gesturing test for that
 is the commander rule (Phase 3), not this reader.
 
-## POINT: the direction angle
+## POINT: the direction angle (Phase 2 proposal, superseded by the Phase 3 geometry below)
 
 **(proposal)** Keep the v3 geometry, which was validated for five fixed directions, and make it continuous:
 
@@ -109,6 +109,42 @@ are both outside what this reader can resolve. **(open question 1.)**
 
 The quantity compared with the truth is `point_angle_deg` of `truth.jsonl` (hold-phase mean,
 `gesture_data.Clip.point_angle_hold_deg`); the angle error is the wrapped difference.
+
+## POINT, Phase 3 geometry (implemented in `gesture_motion.py`)
+
+Decided 2026-10-24 (see Decided): the pointed direction is a 3D direction, not the image-plane angle alone.
+
+1. **Rays.** For the shoulder and the wrist of the pointing arm take the pixel rays `((u - cx) / fx, (v - cy) / fy, 1)` of
+   the frame (intrinsics at render time, so zoom is handled). Put the shoulder at depth 1.
+2. **Arm length.** The full length of the arm is `arm_length_in_shoulder_widths` (1.4) times the shoulder width, measured in
+   the same units from the two shoulder rays (the metric shoulder width cancels out).
+3. **Depth of the wrist.** The wrist is at `Zw` along its ray with `|Zw * ray_wrist - ray_shoulder| = arm length`. This has two
+   roots: the arm points away from the camera (`away`, larger `Zw`) or toward it (`toward`). They are two physically possible
+   arms behind the same pixels; foreshortening is ill-conditioned near the image plane (a 10 per cent error in the arm length
+   ratio moves the wrist depth by up to 0.2 arm lengths), so the reader does not discard either. If no root is real the
+   wrist is taken at the shoulder's depth (one solution).
+4. **Direction.** `d = Zw * ray_wrist - ray_shoulder`; camera azimuth `atan2(d_x, d_z)`, elevation above horizontal. A
+   candidate steeper than `point_elevation_max_deg` has no ground direction and is dropped. The camera is assumed level
+   (`tilt_deg` is not used).
+5. **World direction.** Camera yaw = robot yaw minus `pan_deg` (pan > 0 = left); the world yaw of a candidate is the camera yaw
+   plus its azimuth. Averaged over the held stretch.
+6. **Roadmap resolution (`hri_control_v4.resolve_point`).** Each candidate goes to the nearest of the junction's branches and
+   the **arrival direction**. A candidate nearest to the arrival direction is dropped (the branch the robot came from is never
+   an answer); one farther than `branch_match_max_deg` (30) from its branch is dropped. One distinct branch left = the answer;
+   none = unclear; two = ambiguous = unclear (ask again, then abort).
+7. **Hand cross-check.** The MediaPipe hand world landmarks (index MCP to tip, or the hand axis when the index is not
+   extended) give an independent finger azimuth. It names the supported candidate (`prefers`). It is logged always and decides
+   a two-branch tie only with `use_hand_crosscheck_as_tiebreak` (off). Assumption to verify: world z increases away from the
+   camera (`hand_world_z_away_positive`).
+
+**What the simulation shows (tests/test_hri_sim_v4_trials.py; a property of the geometry, not a measurement).** The two
+candidates are mirror images about the image plane. LEFT and RIGHT (arm in the image plane) are their own mirrors. From a
+viewpoint along the arrival axis the mirror of FORWARD is the arrival direction, so all three branches resolve. From the
+viewpoint the v3 approach gives at the roadmap's worker stand (about 45 deg off that axis) the mirror of FORWARD lands on LEFT
+and the mirror of LEFT on FORWARD: those two are ambiguous for the roadmap alone and the robot fails safe (unclear, ask again,
+abort), never taking a wrong branch. A perfect hand cross-check as tie-break resolves them; a wrong one sends the robot the
+wrong way. To be measured in the development evaluation (`hri_eval_dev_v4.py`: ambiguous share, angle error of the better and
+of the resolved reading, correct-branch rate).
 
 ## WAIT (index finger up) versus STOP (open palm)
 
@@ -188,6 +224,26 @@ proposals for Anisha to confirm or replace. No value is chosen from test data or
 | 26 | `stop_hold_s` | how long a STOP reading must last to stop the robot (v3: 0.2) | s | development STOP clips: false-stop rate on non-STOP clips vs delay | |
 | 27 | `dialog_hold_s` | how long a POINT or WAIT reading must last to be accepted by the dialog | s | development clips: time to stable reading | |
 | 28 | `max_none_gap_s` | longest `NONE` gap inside a held reading before the hold restarts (v3 dialog) | s | development gaps inside correct readings | |
+
+## Decided
+
+- 2026-10-24 (Phase 2 review): 2 development looks + 1 test look; the `clip` field name and the clip definition (see
+  `docs/protocol_v3.md`, Decided); the simulator's default confusion table.
+- 2026-10-24: **POINT direction is not the image-plane angle alone.** (1) The out-of-plane component of the pointing arm is
+  estimated from foreshortening: the shoulder-to-wrist length in the image against the shoulder width (see "POINT,
+  Phase 3 geometry" below). (2) The remaining toward/away ambiguity is resolved with the roadmap: the branch the robot
+  arrived from is never a valid answer. (3) MediaPipe hand world landmarks are a cross-check on the finger direction
+  (the Phase 2 adapter does not expose them; `gesture_adapter_v4.py` does). The remaining ambiguity is reported as a
+  limitation and measured in the development evaluation (`hri_eval_dev_v4.py`).
+- 2026-10-24: WAIT timeout 20 s; after it the ask counts as unclear (ask again, then abort).
+
+## Phase 3: initial values
+
+The threshold table below stays empty for Anisha. The initial values the code runs with, each with its reasoning and the
+status "initial, to be set on development data", are in `configs/v4/gesture_reader.json` (window, keypoints, motion, POINT
+geometry, hand cues, decision), `configs/v4/commander.json` (facing, motion margin, 360 link), `configs/v4/control.json`
+(dialog hold, branch gap, WAIT, zoom) and `configs/v4/eval_dev.json` (matching and distance bins for the evaluation). Values
+inherited unchanged from v3 are marked as such. WAIT timeout 20 s and its action are decided, not initial.
 
 ## Open questions for Anisha
 

@@ -21,7 +21,8 @@ row per run, running success ratio), summary.json, the configs of both sides and
 
 v4 (docs/protocol_v3.md): when Unity's trial folder has a run_###/ subfolder for a run (grid.json, optimal_path.json,
 trail.csv, truth.jsonl, ...), its files are copied unchanged into <output>/run_###/ so hri_analysis.py finds them next
-to run_###.json. A v3 session has no such folders and its output is byte-identical to before.
+to run_###.json, and the session's leak_test/ folder (images and leak_test.json) into <output>/leak_test/. A v3 session
+has none of these and its output is byte-identical to before.
 
 Usage (from robot_vision/):  python hri_trials.py --unity outputs/trials_development_Task2_X --bridge outputs/bridge_guide_Y
                              [--metrics-config configs/hri_trials_metrics.json]
@@ -234,6 +235,16 @@ def copy_v4_run_files(unity: Path, out: Path, runs: list[dict]) -> list[str]:
     return copied
 
 
+def copy_v4_session_files(unity: Path, out: Path) -> list[str]:
+    """Copy Unity's session-level leak_test/ folder (image pairs and leak_test.json) to out/leak_test/, unchanged."""
+    import shutil
+    src = unity / "leak_test"
+    if not src.is_dir():
+        return []
+    shutil.copytree(src, out / "leak_test")
+    return ["leak_test"]
+
+
 def csv_row(r: dict) -> dict:
     row = {k: r.get(k) for k in COLUMNS if k in r}
     row.update(a_x=r["a"]["x"], a_z=r["a"]["z"], b_name=r["b"]["name"], b_x=r["b"]["x"], b_z=r["b"]["z"])
@@ -271,6 +282,7 @@ def main(argv=None) -> None:
     for r in runs:
         (out / f"run_{r['trial']:03d}.json").write_text(json.dumps(r, indent=2) + "\n", encoding="utf-8")
     copy_v4_run_files(unity, out, runs)
+    copy_v4_session_files(unity, out)
     with (out / "results.csv").open("x", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
         w.writeheader()

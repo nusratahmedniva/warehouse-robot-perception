@@ -153,7 +153,7 @@ class GuideController:
                   f"Unity may start trials. Map: {self.route}", flush=True)
         reply = {**cmd.to_message(), "route": self.route, "perception_ready": ready}
         if self.protocol_version >= 3:
-            reply["vertical_fov_deg"] = -1.0
+            reply["vertical_fov_deg"] = float(getattr(cmd, "vertical_fov_deg", -1.0))     # the v4 controller zooms
             reply["hud"] = self._hud(cmd, inp, snap=self.worker.snapshot() if self.worker is not None else {})
             self.log_out.append(self._summary(
                 "out", "command", msg.seq, f"{cmd.state} v {cmd.v:.2f} omega {cmd.omega:.2f}"

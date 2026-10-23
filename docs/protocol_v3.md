@@ -232,8 +232,22 @@ compression would make identical scenes differ.
 - 2026-10-23: the truth-to-frame join tolerance is 0.06 s (`truth_join_max_s` in `configs/v4/gesture_data.json`, the v3
   value of `configs/hri_perception.json`).
 
+- 2026-10-24 (Phase 2 review): 2 development looks + 1 test look accepted as the split structure; the optional `clip`
+  field of `truth.jsonl`, the clip definition (an uninterrupted stretch of rows of one worker with the same non-NONE
+  `true_command`, `arm` and `clip`) and the simulator's default confusion table (POINT to WAIT, WAIT to STOP, STOP to
+  WAIT) accepted.
+- 2026-10-24: the merged `hri_trials` output also carries the session's `leak_test/` (images and `leak_test.json`).
+- 2026-10-24 (Phase 3): the WAIT timeout is 20 s; when it expires without a POINT the ask counts as unclear (ask again,
+  then abort, as in v3).
+- 2026-10-24 (Phase 3): hud ids. `hud.people[].id` are 360-camera track ids. `commander_id` is the 360 track id linked to
+  the commander found in the pan-tilt view (by bearing), -1 when the commander cannot be linked to a 360 person.
+  `gesture` is the window decision (POINT/WAIT/STOP/NONE), `gesture_raw` the reader's per-frame class, `gesture_accepted`
+  the branch command the dialog accepted (or WAIT), `point_angle_deg` the resolved pointed angle relative to the robot's
+  forward axis (+ = right) or -1.
+
 ## Changes
 
+- 2026-10-24 (Phase 3, still version 3): the HUD fields left at -1/NONE in Phase 1 are filled by the v4 controller.
 - 2026-10-23 (Phase 2, still version 3): `truth.jsonl` and `trail.csv` times are Unity `Time.time`; `run_###/run.json`
   and the optional `clip` field of `truth.jsonl` are added. These are file formats, not bridge messages.
 - Version 3 (2026-10-23, Phase 1): `command` gains `vertical_fov_deg` and `hud`; `frame_pan_tilt` intrinsics are

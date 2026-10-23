@@ -244,6 +244,7 @@ class ClipTests(unittest.TestCase):
 
 class IsolationTests(unittest.TestCase):
     def test_only_evaluation_code_imports_gesture_data(self):
+        allowed = {"hri_eval_dev_v4.py"}                    # the v4 development evaluation (evaluation code)
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)
@@ -257,7 +258,7 @@ class IsolationTests(unittest.TestCase):
                 elif isinstance(n, ast.ImportFrom) and n.module:
                     mods.add(n.module.split(".")[0])
                     mods |= {a.name for a in n.names}
-            if "gesture_data" in mods:
+            if "gesture_data" in mods and rel.name not in allowed:
                 offenders.append(str(rel))
         self.assertEqual(offenders, [], "inference code must never import gesture_data.py (evaluation only)")
 
@@ -317,7 +318,9 @@ class TrialsCopyStepTests(unittest.TestCase):
                      "optimal_path.json": b"{}", "run.json": b'{"run_start_s": 1.0}'}
             for name, data in files.items():
                 (u / "run_001" / name).write_bytes(data)
-            (u / "leak_test").mkdir()                     # session level: not part of the per-run copy
+            (u / "leak_test").mkdir()                     # session level: copied separately
+            (u / "leak_test" / "cam360_on.png").write_bytes(b"png-on")
+            (u / "leak_test" / "leak_test.json").write_bytes(b'{"passed": true}')
             out = d / "out"
             out.mkdir()
             merge_main(u, b, out)
@@ -325,7 +328,10 @@ class TrialsCopyStepTests(unittest.TestCase):
             self.assertFalse((out / "run_002").exists())  # run 2 has no v4 folder
             self.assertEqual({p.name: p.read_bytes() for p in (out / "run_001").iterdir()}, files)
             # everything else is exactly the v3 output
-            rest = {k: v for k, v in tree_hashes(out).items() if not k.startswith("run_001/")}
+            self.assertEqual({p.name: p.read_bytes() for p in (out / "leak_test").iterdir()},
+                             {"cam360_on.png": b"png-on", "leak_test.json": b'{"passed": true}'})
+            rest = {k: v for k, v in tree_hashes(out).items()
+                    if not k.startswith(("run_001/", "leak_test/"))}
             self.assertEqual(rest, V3_TRIALS_SHA256)
 
     def test_copy_function_returns_what_it_copied(self):
