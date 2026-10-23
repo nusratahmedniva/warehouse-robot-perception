@@ -1,0 +1,26 @@
+{
+  "note": "v4 bridge config (protocol version 3, docs/protocol_v3.md). Rates and limits are those of the v3 study (configs/bridge.json), unchanged. Passing this file to bridge.server (--config configs/v4/bridge.json) is what selects protocol 3; configs/bridge.json stays version 2.",
+  "protocol_version": 3,
+  "host": "127.0.0.1",
+  "port": 5005,
+  "telemetry_hz": 20.0,
+  "frame_360_hz": 5.0,
+  "frame_pan_tilt_hz": 10.0,
+  "jpeg_quality": 85,
+  "watchdog_timeout_s": 0.3,
+  "max_header_bytes": 1048576,
+  "max_attachment_bytes": 33554432,
+  "max_pending_frames": 4,
+  "paths": {
+    "output_root": "outputs"
+  },
+  "logging": {
+    "save_every_n_frames": 20
+  },
+  "hud": {
+    "log_messages_per_direction": 15,
+    "log_note": "Each command carries the last N message summaries per direction (in and out), N chosen within the 10-20 range Anisha gave on 2026-10-23."
+  },
+  "intrinsics_rel_tol": 0.001,
+  "intrinsics_note": "frame_pan_tilt fx, fy, cx, cy must match vertical_fov_deg, width and height within this relative tolerance (float32 rounding in Unity). A consistency check, not a decision threshold."
+}

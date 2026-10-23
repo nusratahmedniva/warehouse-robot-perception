@@ -6,6 +6,11 @@ total time, stale-perception stops, time excluding stale stops and time in motio
 speed and turn rate, gesture shown vs read at the junctions, inference time per model, Unity-Python round trip,
 watchdog stops, collisions and the closest distance to a person. Every figure says over how many runs it is.
 
+v4 (docs/protocol_v3.md): when a run's folder <input folder>/run_###/ holds Unity's grid.json, optimal_path.json and
+trail.csv, the path measures of gt_path.py (trail length / optimal length, largest distance from the optimal line, share
+of the trail within one grid cell, final distance from B) are added to analysis.json ("path_measures") and analysis.md.
+Without those files nothing is added: v3 output is byte-identical.
+
 Usage (from robot_vision/):  python hri_analysis.py outputs/hri_trials_X [outputs/hri_trials_Y ...]
 """
 
@@ -101,6 +106,46 @@ def analyse(runs: list[dict]) -> dict:
     }
 
 
+def path_section(runs: list[dict], folders: list[Path], cfg: dict | None = None) -> dict | None:
+    """v4 path measures over the runs whose folder has the v4 files; None when no run has them (v3 sessions)."""
+    import gt_path
+    cfg = cfg if cfg is not None else gt_path.load_config()
+    by_name = {f.name: f for f in folders}
+    per_run = []
+    for r in runs:
+        run_dir = by_name[r["_folder"]] / f"run_{r['trial']:03d}"
+        if not gt_path.has_v4_files(run_dir):
+            continue
+        res = gt_path.evaluate_run(run_dir, cfg)
+        per_run.append({"session": r["_folder"], "trial": r["trial"], "outcome": r["outcome"], **res})
+    if not per_run:
+        return None
+    m = [x["measures"] for x in per_run]
+    return {"coverage": f"{len(per_run)} of {len(runs)} runs have the v4 files",
+            "optimal_path_matches": f"{sum(x['optimal_path_check']['match'] for x in per_run)} of {len(per_run)}",
+            "trail_over_optimal": stats([x["trail_over_optimal"] for x in m]),
+            "max_distance_from_optimal_m": stats([x["max_distance_from_optimal_m"] for x in m]),
+            "share_within_near_distance": stats([x["share_within_near_distance"] for x in m]),
+            "near_distance_m": sorted({x["near_distance_m"] for x in m}),
+            "final_distance_from_b_m": stats([x["final_distance_from_b_m"] for x in m]),
+            "runs": per_run}
+
+
+def path_markdown(sec: dict) -> str:
+    L = ["", "## Path measures (v4 ground truth)", "",
+         f"{sec['coverage']}; Unity's optimal path equals Python's A* in {sec['optimal_path_matches']}. "
+         f"Near = within {', '.join(map(str, sec['near_distance_m']))} m (one grid cell) of the optimal line.", "",
+         "| measure | n | mean | median | min | max |", "|---|---|---|---|---|---|"]
+    for k, label in (("trail_over_optimal", "trail length / optimal length"),
+                     ("max_distance_from_optimal_m", "largest distance from optimal line (m)"),
+                     ("share_within_near_distance", "share of trail within one cell"),
+                     ("final_distance_from_b_m", "final distance from B (m)")):
+        v = sec[k]
+        if v.get("n"):
+            L.append(f"| {label} | {v['n']} | {v['mean']} | {v['median']} | {v['min']} | {v['max']} |")
+    return "\n".join(L) + "\n"
+
+
 def markdown(a: dict) -> str:
     s = a["success"]
     L = [f"# Trial analysis ({', '.join(a['labels']['perception'])})", "",
@@ -181,12 +226,17 @@ def main(argv=None) -> None:
     if not runs:
         raise SystemExit("no run_*.json found")
     res = analyse(runs)
+    folders = [dio.resolve(f) for f in a.folders]
+    sec = path_section(runs, folders)
+    if sec is not None:
+        res["path_measures"] = sec
     out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "hri_analysis")
     dio.write_json(out / "analysis.json", res)
     dio.write_json(out / "run.json", {"git": dio.git_info(), "inputs": res["sessions"]})
-    (out / "analysis.md").write_text(markdown(res), encoding="utf-8")
+    md = markdown(res) + (path_markdown(sec) if sec is not None else "")
+    (out / "analysis.md").write_text(md, encoding="utf-8")
     plots(runs, out)
-    print(markdown(res))
+    print(md)
     print(f"Folder: {out.relative_to(HERE) if out.is_relative_to(HERE) else out}")
 
 

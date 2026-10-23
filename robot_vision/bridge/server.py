@@ -67,9 +67,11 @@ FRAME_COUNTERS = ("frames_360_sent", "frames_360_dropped", "frames_pan_tilt_sent
 def load_config(path: str | Path = DEFAULT_CONFIG) -> tuple[dict, Path]:
     p = dio.resolve(path)
     cfg = dio.read_json(p)
-    if cfg.get("protocol_version") != P.PROTOCOL_VERSION:
+    if cfg.get("protocol_version") not in P.SUPPORTED_VERSIONS:
         raise ValueError(f"{p}: protocol_version {cfg.get('protocol_version')} but bridge/protocol.py speaks "
-                         f"{P.PROTOCOL_VERSION}")
+                         f"{list(P.SUPPORTED_VERSIONS)}")
+    if cfg["protocol_version"] >= 3 and "hud" not in cfg:
+        raise ValueError(f"{p}: protocol version 3 needs a 'hud' block (log_messages_per_direction)")
     for key in ("host", "port", "telemetry_hz", "frame_360_hz", "frame_pan_tilt_hz", "watchdog_timeout_s",
                 "max_header_bytes", "max_attachment_bytes"):
         if key not in cfg:
@@ -429,7 +431,7 @@ class BridgeServer:
         """Validate and send one Python -> Unity message (header without version/seq/attachments)."""
         h = {**header, "seq": self.seq}
         self.seq += 1
-        P.validate(P.Message({**h, "version": self.limits.version, "attachments": []}), P.TO_UNITY)
+        P.validate(P.Message({**h, "version": self.limits.version, "attachments": []}), P.TO_UNITY, self.limits)
         writer.write(P.encode(h, version=self.limits.version))
         await writer.drain()
         if self.log:
@@ -471,7 +473,7 @@ class BridgeServer:
                     break
                 t0 = time.perf_counter()
                 try:
-                    P.validate(msg, P.FROM_UNITY)
+                    P.validate(msg, P.FROM_UNITY, self.limits)
                 except P.MessageError as e:
                     if self.log:
                         self.log.message("in", msg.header, msg.attachments)
@@ -544,7 +546,7 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         "created": datetime.now().isoformat(timespec="seconds"), "mode": mode,
         "command": " ".join([Path(sys.executable).name] + sys.argv), "git": dio.git_info(),
         "python": platform.python_version(), "platform": platform.platform(),
-        "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION,
+        "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": cfg["protocol_version"],
         "mute_after_s": mute_after_s, "perception": perception, "task": task if mode == "guide" else None,
         "route": route, "machine_state": machine_state.read(), "resource_log": resource_log}
     dio.write_json(out / "run_info.json", info)
@@ -568,7 +570,8 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
     if mode == "guide":
         from bridge.guide import GuideController
         controller = guide = GuideController(hc.Controller(hc.load_json("configs/hri_control.json"), hc.Roadmap(road)),
-                                             worker, out, route=route)
+                                             worker, out, route=route,
+                                             protocol_version=cfg["protocol_version"], hud_cfg=cfg.get("hud"))
         if worker is None:
             print("[bridge] WARNING: guide mode without --perception vision: no people, the robot will not move.", flush=True)
     else:
@@ -643,6 +646,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.mode == "guide" and args.task is None:
         ap.error("guide mode needs --task Task1 or --task Task2 (the map must match the Unity trial runner's task)")
     cfg, cfg_path = load_config(args.config)
+    if args.mode == "hello" and cfg["protocol_version"] >= 3:
+        ap.error("hello mode speaks protocol version 2 only; use --mode guide with a version 3 config")
     try:
         asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
                         args.perception_config, args.task or "Task2", args.exit_on_disconnect, args.resource_log))
