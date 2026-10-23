@@ -87,8 +87,19 @@ These files are written by Unity into the trial runner's session folder (`output
 folder that already holds `session.json` and `truth_run###.json`). **Per-run files go in the run's own subfolder
 `run_###/`** (`###` = trial number, zero-padded to 3, as in `truth_run###.json`); the session-level leak test goes in
 `leak_test/` at the session folder's top level. A file is created once and never overwritten. All numbers are Unity
-world metres, `x`-`z` ground plane, `yaw_deg` as in `protocol.md`. Python's inference code never reads any of them;
-`robot_vision/gt_path.py` and `hri_analysis.py` do.
+world metres, `x`-`z` ground plane, `yaw_deg` as in `protocol.md`. **Every `time_s` in these files is Unity `Time.time`**, the same clock as the `time_s` in
+telemetry and frame headers (decided 2026-10-23, below), so truth and trail rows join to frames without any offset.
+Python's inference code never reads any of them;
+`robot_vision/gt_path.py`, `robot_vision/gesture_data.py` and `hri_analysis.py` do.
+
+### `run_###/run.json`
+
+```json
+{"run_start_s": 123.456}
+```
+
+`run_start_s` is Unity `Time.time` at the start of the run, written once, for reference only. No evaluation step depends
+on it: every `time_s` in the run files is already on the frame clock.
 
 ### `run_###/grid.json`
 
@@ -148,8 +159,8 @@ time_s,x,z,yaw_deg
 0.100,6.250,-10.000,0.00
 ```
 
-Header exactly as above; `time_s` is Unity `Time.time` minus the run's start time (first row 0); `x`, `z`, `yaw_deg`
-from the robot root, 3 decimals. The last row is the final position of the run.
+Header exactly as above; `time_s` is Unity `Time.time` (absolute, not relative to the run start); `x`, `z`, `yaw_deg`
+from the robot root, 3 decimals. The first row is at the run start, the last row is the final position of the run.
 
 ### `run_###/truth.jsonl`
 
@@ -158,7 +169,7 @@ and always on every phase change). For every worker standing in the scene (bysta
 
 | field | type | meaning |
 |---|---|---|
-| `time_s` | number | Unity time since the run's start, same clock as `trail.csv` |
+| `time_s` | number | Unity `Time.time`, same clock as `trail.csv` and as the `time_s` of telemetry and frame headers |
 | `worker_id` | int | worker id in the scene (the same worker keeps the same id for the whole run) |
 | `look` | string | avatar look name (e.g. `look_03`); which looks are test looks is declared in `configs/v4/` |
 | `x`, `z` | number | worker position |
@@ -168,8 +179,15 @@ and always on every phase change). For every worker standing in the scene (bysta
 | `phase` | string | `idle`, `start_delay`, `gesturing`, `holding`, `returning` (the worker's own state; the list may be extended by agreement) |
 | `is_commander` | bool | true for the one worker who commands at this moment |
 
-These keys are allowed here because the file is not a bridge message. The clip name and the random gesture parameters
-(speed, size, start delay) of the run may be added as extra fields; extra fields are ignored.
+Optional field `clip` (string): the animation clip being played (empty or absent when none); it is what the clip split
+(`configs/v4/data_splits.json`) uses. The field name is a proposal, to be confirmed by Nusrat. The random gesture
+parameters of the run (speed, size, start delay) may be added as further extra fields; extra fields are ignored.
+
+These keys are allowed here because the file is not a bridge message. Python reads this file only in evaluation code
+(`robot_vision/gesture_data.py`): it checks every line against this table (types, `true_command` in POINT/WAIT/STOP/NONE,
+`arm` in left/right/none, `phase` in the list in `configs/v4/gesture_data.json`, `point_angle_deg` = -1 unless
+`true_command` is POINT, one `look` per `worker_id`, at most one commander per `time_s`) and refuses a bad line with its
+line number.
 
 ### `leak_test/` (once per session, before the first run)
 
@@ -196,14 +214,28 @@ compression would make identical scenes differ.
 3. **HUD panel**: draw `hud` in the game view only (state, screen text, people list with bearing and distance, gesture
    class with score, raw and accepted gesture, commander, POINT angle, the message log); invisible to both robot cameras.
 4. **Forbidden keys**: never put the six truth keys (or the goal keys) in any message to Python.
-5. **Run files**: `run_###/grid.json`, `optimal_path.json`, `trail.csv`, `truth.jsonl`, and the session `leak_test/`
+5. **Run files**: `run_###/run.json`, `grid.json`, `optimal_path.json`, `trail.csv`, `truth.jsonl` (all `time_s` in Unity
+   `Time.time`), and the session `leak_test/`
    with the layer-on/off image pairs, in the formats above; the A* in Unity must follow the stated rules exactly (8
    neighbours, diagonal cost sqrt(2), no corner cutting, widened blocked cells).
 6. **Leak-test guard**: no run starts unless the pairs are identical.
 7. Keep version 2 behaviour in the v3 scene configuration (v3 study scene) untouched.
 
+## Decided
+
+- 2026-10-23 (Phase 1 review): `intrinsics_rel_tol` 0.001 accepted (a consistency check on the camera intrinsics).
+- 2026-10-23: the `truth.jsonl` phase names `idle`, `start_delay`, `gesturing`, `holding`, `returning` accepted.
+- 2026-10-23: the leak-test image names `<camera>_on.png` / `<camera>_off.png` accepted.
+- 2026-10-23: `leak_test/` stays at the session level (once per session), not per run.
+- 2026-10-23 (Phase 2): `time_s` in `truth.jsonl` and `trail.csv` is Unity `Time.time` (the frame clock), not time since
+  the run start; `run_###/run.json` keeps `run_start_s` for reference only. Nusrat had not started the Unity side.
+- 2026-10-23: the truth-to-frame join tolerance is 0.06 s (`truth_join_max_s` in `configs/v4/gesture_data.json`, the v3
+  value of `configs/hri_perception.json`).
+
 ## Changes
 
+- 2026-10-23 (Phase 2, still version 3): `truth.jsonl` and `trail.csv` times are Unity `Time.time`; `run_###/run.json`
+  and the optional `clip` field of `truth.jsonl` are added. These are file formats, not bridge messages.
 - Version 3 (2026-10-23, Phase 1): `command` gains `vertical_fov_deg` and `hud`; `frame_pan_tilt` intrinsics are
   checked against `vertical_fov_deg`; truth keys are forbidden at any depth; per-run ground-truth files are specified.
   Version 2 peers are refused by a version 3 server and the reverse.
