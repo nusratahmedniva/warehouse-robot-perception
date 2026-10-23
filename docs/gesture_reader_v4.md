@@ -146,6 +146,23 @@ abort), never taking a wrong branch. A perfect hand cross-check as tie-break res
 wrong way. To be measured in the development evaluation (`hri_eval_dev_v4.py`: ambiguous share, angle error of the better and
 of the resolved reading, correct-branch rate).
 
+## Two-view study (simulator, `hri_sim_v4.two_view_study`; not a measurement)
+
+J1, no bystanders, 20 seeds per row, angle noise added per pan-tilt frame (the reader averages it over the held pose, so a
+systematic error such as a wrong arm-length ratio is NOT modelled). FORWARD and LEFT are ambiguous from the v3 viewpoint
+(the mirror of FORWARD is LEFT and the reverse); RIGHT never is.
+
+| angle noise (deg) | re-ask shift (m) | FORWARD: ambiguous asks, resolved right / wrong | LEFT: ambiguous asks, resolved right / wrong | RIGHT: ambiguous asks |
+|---|---|---|---|---|
+| 0, 3, 6 | 0.4, 0.8, 1.2 | 20 of 20: 20 / 0 | 20 of 20: 20 / 0 | 0 of 20 |
+| 10 | 0.4 | 20 of 20: 18 / 2 | 20 of 20: 18 / 2 | 0 of 20 |
+| 10 | 0.8, 1.2 | 20 of 20: 20 / 0 | 20 of 20: 20 / 0 | 0 of 20 |
+
+A 0.4 m shift at 2 m turns the camera by about 11 deg, so the mirror candidate moves by about 23 deg while the true direction
+stays put; with the 10 deg tolerance this stops separating them once the noise approaches 10 deg, and then a wrong branch can
+be accepted (2 of 40 here). A larger shift separates them with more noise. Anisha decides whether to raise `reask_shift_m`
+for v4 (it is a frozen v3 value for v3 and is not changed for v3).
+
 ## WAIT (index finger up) versus STOP (open palm)
 
 They must look clearly different (spec), so the reader uses three independent cues and requires them to agree:
@@ -236,6 +253,21 @@ proposals for Anisha to confirm or replace. No value is chosen from test data or
   (the Phase 2 adapter does not expose them; `gesture_adapter_v4.py` does). The remaining ambiguity is reported as a
   limitation and measured in the development evaluation (`hri_eval_dev_v4.py`).
 - 2026-10-24: WAIT timeout 20 s; after it the ask counts as unclear (ask again, then abort).
+- 2026-10-24 (Phase 3 review): `stop_requires_push` stays false: an open palm stops the robot without the push motion.
+- 2026-10-24: the hand cross-check tie-break stays off until the development evaluation has measured the cross-check.
+- 2026-10-24: **two-view POINT disambiguation.** When the two mirror candidates fit two different branches the robot does not
+  abort: after the candidates have been stable for `gesture_hold_s` it moves sideways by the re-ask shift (`reask_shift_m`,
+  0.4 m, to its right; a larger shift only after asking Anisha), reads again and accepts the candidate that is consistent
+  across both views within `view_consistency_deg` (10, initial). At most once per junction; the second view does not use up
+  an ask. Still unclear: ask again, then abort as before. Study below.
+- 2026-10-24: **approach the commander.** If the commander (linked by bearing to a 360-camera person) is not the person the
+  robot approached, it approaches the commander to 2.0 m and asks again, at most once per junction; this question does not use
+  up an ask. It needs the commander to be in the pan-tilt view while the robot faces the other person.
+- 2026-10-24: **commander timing.** A person counts as commander only if their gesture starts after "Which direction?" is
+  first shown at the junction: the arm must go up after that moment. A person whose arm was already up is ignored until it
+  has been lowered and raised again. (Re-asks do not move the reference time.) The earlier "whoever gestures first is
+  followed" test now applies to gestures that start after the question.
+- 2026-10-24: the dialog hold is 0.5 s (v3: 1.0 s); kept, and listed in AUDIT.md section 14 as a declared v4 difference for RQ1.
 
 ## Phase 3: initial values
 

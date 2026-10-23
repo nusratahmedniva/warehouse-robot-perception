@@ -49,9 +49,10 @@ class Resolution:
     used_crosscheck: bool = False
     rel_deg: float | None = None         # the chosen candidate's direction relative to the robot's forward axis
     gap_deg: float | None = None
+    views: int = 1                       # 2 when the answer rests on two viewpoints
 
     def to_dict(self) -> dict:
-        return {"command": self.command, "why": self.why, "ambiguous": self.ambiguous,
+        return {"command": self.command, "why": self.why, "ambiguous": self.ambiguous, "views": self.views,
                 "used_crosscheck": self.used_crosscheck, "rel_deg": self.rel_deg, "gap_deg": self.gap_deg,
                 "candidates": self.candidates}
 
@@ -100,6 +101,34 @@ def resolve_point(point, branch_yaws: dict, arrival_yaw: float | None, robot_yaw
             return Resolution(cmd, "two branches; the hand cross-check chose one", cands, True, True,
                               round(gm.wrap(w - robot_yaw), 2), round(gap, 2))
     return Resolution(None, "ambiguous: the candidates fit two different branches", cands, True)
+
+
+def resolve_two_views(view1: dict, cands2: dict, branch_yaws: dict, arrival_yaw: float | None, robot_yaw: float,
+                      max_gap_deg: float, tol_deg: float) -> Resolution:
+    """Two-view POINT disambiguation. view1 / cands2: {'away': world yaw | None, 'toward': ...} of the first and the
+    second viewpoint. The two depth readings of one view are mirror images about that view's image plane, so after the
+    robot has moved only the TRUE direction stays put: a pair (one candidate per view) agrees when the two world yaws
+    differ by at most tol_deg. The agreeing pairs (their circular means) are resolved with the roadmap as in
+    resolve_point; no agreeing pair = unclear."""
+    pairs, seen = [], set()
+    for w1 in view1.values():
+        for w2 in cands2.values():
+            if w1 is None or w2 is None or abs(gm.wrap(w1 - w2)) > tol_deg:
+                continue
+            key = (round(w1, 3), round(w2, 3))
+            if key not in seen:
+                seen.add(key)
+                pairs.append(gm.circular_mean([w1, w2]))
+    if not pairs:
+        return Resolution(None, "the two views do not agree on any direction", [], False, views=2)
+    pseudo = type("P", (), {})()
+    pseudo.world_deg = {"away": pairs[0], "toward": pairs[1] if len(pairs) > 1 else None}
+    pseudo.crosscheck = {}
+    res = resolve_point(pseudo, branch_yaws, arrival_yaw, robot_yaw, max_gap_deg, False)
+    res.views = 2
+    if res.command is None and res.ambiguous:
+        res.why = "two views: the agreeing candidates still fit two branches"
+    return res
 
 
 # ---------------------------------------------------------------- zoom
@@ -210,12 +239,36 @@ class ControllerV4(hc.Controller):
         self.frame_log: list[dict] = []                       # one row per new pan-tilt frame read in the READ state
         self._row: dict | None = None
         self.abort_note = ""
+        self.ask_serial = 0                                   # how many times the question was shown (re-asks, extra views)
+        self.free_asks = 0                                    # asks that do not use up an ask (second view, re-approach)
+        self.raised_since: dict[int, float] = {}              # pan-tilt person -> frame time since which the arm is raised
+        self._onset_frame: float | None = None
+        self._new_junction()
         if hasattr(self, "zoom"):
             self.zoom.reset()
 
+    def _new_junction(self) -> None:
+        self.view1: dict | None = None                        # candidate world yaws of the first view (two-view)
+        self.two_view_used = False
+        self.amb_frames: list[dict] = []
+        self.amb_since: float | None = None
+        self.approached_360: int | None = None
+        self.reapproached = False
+        self.commander_since: float | None = None
+
+    def _arrive(self, node, t):
+        super()._arrive(node, t)
+        if self.state == "scan":
+            self._new_junction()
+
     def _ask(self, t, cmd):
         super()._ask(t, cmd)
+        self.ask_serial += 1
+        if self.free_asks > 0:                                # a second view or a re-approach is not an unclear answer
+            self.free_asks -= 1
+            self.dialog.asks -= 1
         self.waiting, self.wait_since, self.last_persons_frame = False, None, None
+        self.amb_frames, self.amb_since = [], None
         if self.record is not None:
             self.record.setdefault("t_ask_first", round(t, 3))
 
@@ -239,10 +292,14 @@ class ControllerV4(hc.Controller):
     def _interpret(self, inp: TickInputV4) -> str:
         """Commander + reading of the newest frame -> a dialog label: a branch command, 'WAIT' or 'NONE'."""
         persons = self._fresh_persons(inp)
-        choice = cm.pick_commander(persons, self.ccfg, self.commander_pt)
+        t_ask = self.record.get("t_ask_first") if self.record else None
+        early = {p.track_id: "gesture started before the question was shown" for p in persons
+                 if p.reading.raised and t_ask is not None and self.raised_since.get(p.track_id, math.inf) < t_ask - 1e-9}
+        choice = cm.pick_commander(persons, self.ccfg, self.commander_pt, early)
         if choice.commander != self.commander_pt:
             self.commander_changes.append({"t": round(inp.time_s, 3), "from": self.commander_pt, "to": choice.commander,
                                            "reason": choice.reason})
+            self.commander_since = inp.persons_time_s
         self.choice, self.commander_pt = choice, choice.commander
         self.resolution = None
         if choice.commander is None:
@@ -254,10 +311,77 @@ class ControllerV4(hc.Controller):
         r = p.reading
         if r.command == "POINT" and r.point is not None:
             dirs, arrival = branch_directions(self.road, self.node)
-            self.resolution = resolve_point(r.point, dirs, arrival, inp.yaw_deg, self.v4["dialog"]["branch_match_max_deg"],
-                                            self.v4["dialog"]["use_hand_crosscheck_as_tiebreak"])
-            return self.resolution.command or "NONE"
+            dv = self.v4["dialog"]
+            res = resolve_point(r.point, dirs, arrival, inp.yaw_deg, dv["branch_match_max_deg"],
+                                dv["use_hand_crosscheck_as_tiebreak"])
+            if self.view1 is not None:                         # second view: only a direction both views agree on counts
+                res = resolve_two_views(self.view1, r.point.world_deg, dirs, arrival, inp.yaw_deg, dv["branch_match_max_deg"],
+                                        dv["view_consistency_deg"])
+            elif res.ambiguous and res.command is None and dv["two_view_enabled"] and not self.two_view_used:
+                self.amb_frames.append(dict(r.point.world_deg))
+                if self.amb_since is None:
+                    self.amb_since = inp.persons_time_s
+            else:
+                self.amb_frames, self.amb_since = [], None
+            self.resolution = res
+            return res.command or "NONE"
+        self.amb_frames, self.amb_since = [], None
         return "WAIT" if r.command == "WAIT" else "NONE"
+
+    def _track_onsets(self, inp: TickInputV4) -> None:
+        """When did each person's arm go up (continuously)? Needed for 'the gesture started after the question'."""
+        if inp.persons_time_s is None or inp.persons_time_s == self._onset_frame:
+            return
+        self._onset_frame = inp.persons_time_s
+        seen = {p.track_id for p in inp.persons}
+        for p in inp.persons:
+            if p.reading.raised:
+                self.raised_since.setdefault(p.track_id, inp.persons_time_s)
+            else:
+                self.raised_since.pop(p.track_id, None)
+        for k in [k for k in self.raised_since if k not in seen]:
+            del self.raised_since[k]
+
+    def _start_second_view(self, inp: TickInputV4, cmd) -> bool:
+        """The two depth readings fitted two branches for gesture_hold_s: remember them and look again from one re-ask
+        shift to the side (not an ask)."""
+        if self.amb_since is None or inp.persons_time_s - self.amb_since < self.g["gesture_hold_s"] - 1e-6:
+            return False
+        view = {}
+        for fam in ("away", "toward"):
+            vals = [f[fam] for f in self.amb_frames if f.get(fam) is not None]
+            view[fam] = gm.circular_mean(vals) if vals else None
+        self.view1, self.two_view_used = view, True
+        self.amb_frames, self.amb_since = [], None
+        self.free_asks += 1
+        self.trace.append(f"{inp.time_s:.2f}:second_view")
+        if self.record is not None:
+            self.record["second_view_t"] = round(inp.time_s, 3)
+        self._reposition(inp, inp.time_s, cmd)
+        return True
+
+    def _start_reapproach(self, inp: TickInputV4) -> bool:
+        """The commander is not the person the robot approached: go to the commander (once per junction)."""
+        dv = self.v4["dialog"]
+        if (not dv["reapproach_commander"] or self.reapproached or self.waiting or self.commander_360 is None
+                or self.approached_360 is None or self.commander_360 == self.approached_360 or self.commander_since is None
+                or inp.persons_time_s - self.commander_since < self.g["gesture_hold_s"] - 1e-6):
+            return False
+        tgt = next((q for q in self._fresh_people(inp) if q.get("track_id") == self.commander_360), None)
+        if tgt is None:
+            return False
+        px, pz = tgt["x"], tgt["z"]
+        ax, az = inp.x - px, inp.z - pz
+        n = math.hypot(ax, az) or 1.0
+        r = self.g["approach_distance_m"]
+        self.person, self.approach_point = (px, pz), (px + ax / n * r, pz + az / n * r)
+        if self.record is not None:
+            self.record["reapproach"] = {"from_360": self.approached_360, "to_360": self.commander_360, "t": round(inp.time_s, 3)}
+        self.approached_360, self.reapproached, self.turning = self.commander_360, True, False
+        self.free_asks += 1
+        self.trace.append(f"{inp.time_s:.2f}:reapproach")
+        self._set("approach", inp.time_s)
+        return True
 
     def _log_frame(self, inp: TickInputV4) -> dict:
         """Everything decided for this frame, so the evaluation can score the commander choice and the readings against
@@ -282,8 +406,13 @@ class ControllerV4(hc.Controller):
     def _tick(self, inp, cmd):
         if self.state == "read":
             self._read_tick(inp, cmd)
-        else:
-            super()._tick(inp, cmd)
+            return
+        before = self.state
+        super()._tick(inp, cmd)
+        if before == "scan" and self.state == "approach":      # remember whom the robot goes to (360-camera track id)
+            people = self._fresh_people(inp)
+            if people:
+                self.approached_360 = min(people, key=lambda q: q["distance_m"]).get("track_id")
 
     def _read_tick(self, inp: TickInputV4, cmd):
         t, dv = inp.time_s, self.v4["dialog"]
@@ -294,6 +423,8 @@ class ControllerV4(hc.Controller):
             self.last_persons_frame = inp.persons_time_s
             self.label = self._interpret(inp)
             self._row = self._log_frame(inp)
+            if self._start_reapproach(inp) or self._start_second_view(inp, cmd):
+                return
             if self.label == "WAIT":
                 if self.wait_since is None:
                     self.wait_since = inp.persons_time_s
@@ -318,7 +449,8 @@ class ControllerV4(hc.Controller):
                 if self.waiting:
                     self.waited_s += t - self.wait_start
                 self.waiting = False
-                self.record.update(t_accept=round(t, 3), waited_s=round(self.waited_s, 3),
+                self.record.update(t_accept=round(t, 3), waited_s=round(self.waited_s, 3), views=2 if self.view1 else 1,
+                                   reapproached=self.reapproached,
                                    point=self.resolution.to_dict() if self.resolution else None,
                                    commander_pt=self.commander_pt, commander_360=self.commander_360)
                 self._finish_record("accepted", t)
@@ -338,6 +470,7 @@ class ControllerV4(hc.Controller):
     # -- the tick --
     def step(self, inp: TickInputV4) -> CommandV4:
         # STOP of anybody in view stops the robot (the v3 rule reads TickInput.gesture)
+        self._track_onsets(inp)
         persons = self._fresh_persons(inp)
         stop = any(p.reading.command == "STOP" for p in persons)
         inp.gesture, inp.gesture_time_s = ("STOP" if stop else "NONE"), inp.persons_time_s

@@ -51,7 +51,7 @@ class EvaluationTests(unittest.TestCase):
         root = Path(cls.tmp.name)
         spec = sv.SceneSpec(**DEV)
         on = [tt.good("E2", spec, seed=1), tt.good("E4", spec, seed=3)]
-        off = [tt.trial("E2", spec, zoom=False, seed=4), tt.trial("E1", spec, zoom=False, seed=5)]   # E1: ambiguous, aborts
+        off = [tt.trial("E2", spec, zoom=False, seed=4), tt.trial("E1", spec, zoom=False, seed=5, two_view=False)]   # E1: ambiguous, aborts
         cls.pairs = [session(root, "on", on, True), session(root, "off", off, False)]
         cls.runs = ev.load_sessions(cls.pairs, GC)
         cls.res = ev.evaluate(cls.runs, EC, GC)
@@ -113,6 +113,18 @@ class EvaluationTests(unittest.TestCase):
         self.assertGreater(c["correct"], 30)
         self.assertTrue(0 < c["coverage"] <= 1)
         self.assertEqual(self.res["commander"]["without_bystanders"]["accuracy_of_decided"], ev.NOT_EVALUATED)
+
+    def test_second_view_and_reapproach_are_counted(self):
+        self.assertEqual(self.res["branch"]["second_view"]["asks_with_a_second_view"], 0)      # tie-break sessions need none
+        with tempfile.TemporaryDirectory() as d:
+            results = [tt.trial("E3", sv.SceneSpec(), seed=1), tt.trial("E2", sv.SceneSpec(), seed=2),
+                       tt.trial("E1", sv.SceneSpec(bystander_offsets_m=[(-1.95, -0.7)], bystander_looks=["placeholder_look_dev_2"]), seed=1)]
+            res = ev.evaluate(ev.load_sessions([session(Path(d), "tv", results, True)], GC), EC, GC)
+        b = res["branch"]
+        self.assertEqual((b["second_view"]["asks_with_a_second_view"], b["second_view"]["accepted_after_it"]), (2, 2))
+        self.assertEqual(b["reapproached"]["asks"], 1)
+        self.assertEqual((b["junction_asks"], b["accepted"], b["correct"]), (4, 4, 4))
+        self.assertIn("Second view", ev.markdown(res))
 
     def test_zoom_blocks_are_independent(self):
         on, off = self.res["per_zoom"]["zoom_on"], self.res["per_zoom"]["zoom_off"]

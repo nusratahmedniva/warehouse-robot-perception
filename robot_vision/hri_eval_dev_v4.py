@@ -280,7 +280,15 @@ def branch_block(runs: list, rows_by_run: dict, road: hc.Roadmap) -> dict:
             detail.append({"run": run.name, "junction": rec["junction"], "result": "accepted", "read": rec.get("read"),
                            "true_branch": true_branch, "correct": ok})
     scored = correct + wrong
-    return {"junction_asks": asked, "accepted": accepted, "answered_share": _ratio(accepted, asked), "scored": scored,
+    recs = [rec for run in runs for rec in run.junctions]
+    second = [rec for rec in recs if "second_view_t" in rec]
+    return {"second_view": {"asks_with_a_second_view": len(second),
+                            "accepted_after_it": sum(rec.get("result") == "accepted" for rec in second),
+                            "unresolved_after_it": sum(rec.get("result") != "accepted" for rec in second),
+                            "share_of_asks": _ratio(len(second), asked)},
+            "reapproached": {"asks": sum(1 for rec in recs if "reapproach" in rec), "share_of_asks": _ratio(
+                sum(1 for rec in recs if "reapproach" in rec), asked)},
+            "junction_asks": asked, "accepted": accepted, "answered_share": _ratio(accepted, asked), "scored": scored,
             "not_evaluated": unknown, "correct": correct, "correct_rate_of_scored": _ratio(correct, scored), "detail": detail}
 
 
@@ -363,8 +371,12 @@ def markdown(res: dict) -> str:
           f"Error of the roadmap-resolved reading (deg): {a['error_deg_resolved_reading']}.",
           f"Frames with a resolution {a['frames_with_a_resolution']}: resolved {a['resolved']}, ambiguous {a['ambiguous']} (share {a['ambiguous_share']}).", "", a["note"], ""]
     b = res["branch"]
+    sv, ra = b["second_view"], b["reapproached"]
     L += ["## Branch", "", f"Asks {b['junction_asks']}, accepted {b['accepted']} (answered share {b['answered_share']}); scored {b['scored']}, "
-          f"correct {b['correct']} (rate {b['correct_rate_of_scored']}); not evaluated {b['not_evaluated']}.", "", "## Commander", ""]
+          f"correct {b['correct']} (rate {b['correct_rate_of_scored']}); not evaluated {b['not_evaluated']}.",
+          f"Second view (two depth readings fitted two branches): {sv['asks_with_a_second_view']} asks (share {sv['share_of_asks']}), "
+          f"accepted after it {sv['accepted_after_it']}, unresolved {sv['unresolved_after_it']}. Re-approached the commander: {ra['asks']} asks.",
+          "", "## Commander", ""]
     for k, v in res["commander"].items():
         L.append(f"- {k}: {v['frames']} frames with a gesturing truth commander; correct {v['correct']}, wrong {v['wrong']}, "
                  f"none {v['no_commander']}; coverage {v['coverage']}, accuracy of decided {v['accuracy_of_decided']}.")

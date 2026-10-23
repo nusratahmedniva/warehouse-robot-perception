@@ -16,8 +16,14 @@
       "wait_hold_s": "INITIAL. How long a WAIT must be read before the robot holds position: same as gesture_hold_s.",
       "wait_timeout_s": "DECIDED 2026-10-24 (Anisha): 20 s. After it the ask counts as unclear: ask again (from a new viewpoint, reask_shift_m), then abort, as in v3.",
       "wait_text": "Screen text while waiting.",
-      "use_hand_crosscheck_as_tiebreak": "false until the development evaluation has measured the MediaPipe world-landmark cross-check: when the roadmap leaves two branches, the finger direction would decide. Off = the ask is unclear (ask again)."
-    }
+      "use_hand_crosscheck_as_tiebreak": "false until the development evaluation has measured the MediaPipe world-landmark cross-check: when the roadmap leaves two branches, the finger direction would decide. Off = the ask is unclear (ask again).",
+      "two_view_enabled": "DECIDED 2026-10-24 (Anisha). When the two depth readings of a POINT fit two different branches, the robot does not abort: it moves sideways by reask_shift_m (v3 value 0.4 m, to its right as it faces the person), reads again, and accepts the candidate that is consistent across both views. At most once per junction; the second view does not use up an ask. Still unclear -> ask again, then abort as before.",
+      "view_consistency_deg": "INITIAL. Two readings of the same pointed direction (world yaw) from the two viewpoints agree within this many degrees. A 0.4 m shift at 2.0 m turns the camera by about 11 deg, which moves the mirror candidate by about 23 deg while the true direction stays put; 10 deg therefore separates them only if the angle noise is under about 6 deg. A larger shift (reask_shift_m) would separate them with more noise (docs/gesture_reader_v4.md: two-view study); Anisha decides.",
+      "reapproach_commander": "DECIDED 2026-10-24 (Anisha). When the commander turns out to be another person than the one the robot approached (linked by bearing to a 360-camera person), the robot approaches the commander to approach_distance_m and asks again, at most once per junction; this ask does not use up an ask."
+    },
+    "two_view_enabled": true,
+    "view_consistency_deg": 10,
+    "reapproach_commander": true
   },
   "zoom": {
     "enabled": true,

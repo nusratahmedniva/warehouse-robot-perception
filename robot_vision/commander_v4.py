@@ -6,6 +6,8 @@ facing_shoulder_ratio_min of the torso length) and have a RAISED arm: the hand i
 the body because it is the same pose), with the MediaPipe hand attached when gesture_motion linked one. Among the
 candidates the commander is the one whose raised hand is MOVING (gesture_motion.Reading.moving); a person who is
 holding a recognised command (POINT / WAIT / STOP) counts too, so the commander does not drop out when the swing ends.
+A person whose gesture started BEFORE "Which direction?" was shown is not eligible (the caller passes `ineligible`);
+only a gesture that starts after the question counts.
 Rules, in order:
   1. nobody facing with a raised hand -> no commander (reason says why each person was left out);
   2. the previously chosen person, if still a candidate, is kept (the dialog watches the same person);
@@ -97,8 +99,10 @@ def _describe(p: PersonReading, why_out: str = "") -> dict:
             "path": round(p.raised_path(), 3), "left_out": why_out}
 
 
-def pick_commander(persons: list[PersonReading], ccfg: dict, previous: int | None = None) -> Choice:
-    """The commander among the people in view; see the module docstring for the rules."""
+def pick_commander(persons: list[PersonReading], ccfg: dict, previous: int | None = None,
+                   ineligible: dict | None = None) -> Choice:
+    """The commander among the people in view; see the module docstring for the rules. ineligible: {track id: reason}."""
+    ineligible = ineligible or {}
     desc: dict[int, dict] = {}
     movers, holders = [], []
     for p in persons:
@@ -107,6 +111,8 @@ def pick_commander(persons: list[PersonReading], ccfg: dict, previous: int | Non
             out = p.facing_why
         elif not r.raised:
             out = "no raised arm"
+        elif p.track_id in ineligible:
+            out = ineligible[p.track_id]
         elif r.moving:
             out = ""
             movers.append(p)

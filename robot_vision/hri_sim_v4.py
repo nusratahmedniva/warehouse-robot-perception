@@ -264,6 +264,7 @@ class SceneSpec:
     arm: str = "right"
     wait_first_s: float = 0.0                                    # the commander shows WAIT this long, then the POINT
     distractors: list = field(default_factory=list)              # (bystander index, command, seconds after the ask, world angle | None)
+    early_distractors: list = field(default_factory=list)        # (bystander index, command, seconds after the people appear, world angle | None, hold s)
     stop: dict | None = None                                     # {"who": "commander" | bystander index, "after_ask_s", "hold_s"}
 
 
@@ -448,11 +449,15 @@ class SimulatorV4:
                         scene = scenes[j]
                         shown_at[j] = road.command_toward(j, goal)
                         vision = ReaderLevelVision(scene, cfg, self.g, self.reader_cfg, rng_seed * 1000 + len(scenes))
+                        for bi, command, dt, angle, hold in self.spec.early_distractors:      # they gesture before any question
+                            scene.people[1 + bi].episode = Episode(
+                                command, t + dt, 0.2, 0.3, hold, 0.3, arm="left", clip=self.spec.clips[command],
+                                world_angle_deg=angle if command == "POINT" else None)
                         pend_people, pend_persons, latest_people, latest_persons = [], [], [], []
                         latest_people_t = latest_persons_t = None
                         next_360 = next_pan = next_truth = t
-            if c.state == "ask" and scene is not None and (c.node, c.dialog.asks) not in staged_asks:
-                staged_asks.add((c.node, c.dialog.asks))
+            if c.state == "ask" and scene is not None and (c.node, c.ask_serial) not in staged_asks:
+                staged_asks.add((c.node, c.ask_serial))
                 self._stage_ask(scene, t, c.node, goal)
             v = _ramp(v, max(-cfg.max_speed_mps, min(cfg.max_speed_mps, cmd.v)), cfg.max_accel_mps2, cfg.decel_mps2, cfg.dt)
             w = _ramp(w, max(-cfg.max_angular_speed_radps, min(cfg.max_angular_speed_radps, cmd.omega)),
@@ -517,3 +522,38 @@ def export_session(results: list[dict], out_root, zoom_enabled: bool, seed: int 
             summary = {k: r[k] for k in ("state", "abort_reason", "junctions", "step_s", "trace")}
             (b / f"python_trial_{i:03d}.json").write_text(json.dumps({**summary, "trial": i}), encoding="utf-8")
     return u, b
+
+
+def two_view_study(goals=("E1", "E2", "E3"), sigmas=(0.0,), shifts=(0.4,), seeds=range(1, 11), tolerance_deg=None,
+                   two_view: bool = True) -> list[dict]:
+    """Simulated trials at J1 (E1 = FORWARD, E2 = RIGHT, E3 = LEFT, no bystanders) for each angle noise (deg) and re-ask shift
+    (m): how many asks were ambiguous (the second view started), how many of those the second view resolved to the
+    right branch, to a wrong branch, or left unresolved (ask again, abort). A property of the simulator's geometry and
+    noise model, not a measurement."""
+    import commander_v4
+    rows = []
+    for sigma in sigmas:
+        for shift in shifts:
+            for goal in goals:
+                c = {"trials": 0, "ambiguous": 0, "resolved_right": 0, "resolved_wrong": 0, "unresolved": 0, "no_ambiguity_right": 0,
+                     "no_ambiguity_wrong": 0}
+                for seed in seeds:
+                    base, v4 = hv.load_control()
+                    base["dialog"]["reask_shift_m"] = shift
+                    v4["dialog"]["two_view_enabled"] = two_view
+                    if tolerance_deg is not None:
+                        v4["dialog"]["view_consistency_deg"] = tolerance_deg
+                    ctrl = hv.ControllerV4(base, v4, commander_v4.load_config(), hc.Roadmap(hc.load_json("configs/roadmap.json")))
+                    r = SimulatorV4(ctrl, SimConfig(), GestureSimConfig(point_angle_sigma_deg=sigma), SceneSpec(), seed).run(goal)
+                    j = r["junctions"][0] if r["junctions"] else {}
+                    ok = j.get("result") == "accepted" and j.get("read") == j.get("shown")
+                    wrong = j.get("result") == "accepted" and not ok
+                    c["trials"] += 1
+                    if any("second_view" in x for x in r["trace"]):
+                        c["ambiguous"] += 1
+                        c["resolved_right" if ok else "resolved_wrong" if wrong else "unresolved"] += 1
+                    else:
+                        c["no_ambiguity_right" if ok else "no_ambiguity_wrong"] += bool(ok or wrong)
+                rows.append({"goal": goal, "branch": {"E1": "FORWARD", "E2": "RIGHT", "E3": "LEFT"}.get(goal, goal),
+                             "sigma_deg": sigma, "shift_m": shift, **c})
+    return rows

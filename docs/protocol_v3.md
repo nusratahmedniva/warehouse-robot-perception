@@ -245,6 +245,12 @@ compression would make identical scenes differ.
   the branch command the dialog accepted (or WAIT), `point_angle_deg` the resolved pointed angle relative to the robot's
   forward axis (+ = right) or -1.
 
+- 2026-10-24 (Phase 3 review, recorded in Phase 4): STOP does not need the push motion; the hand cross-check tie-break stays
+  off until measured; the robot may move sideways for a second look at a POINT (two-view) and may approach the commander
+  again, neither using up an ask; only a gesture that starts after "Which direction?" counts (details in
+  `docs/gesture_reader_v4.md`, Decided). The question text can therefore be shown more than once per ask; nothing changes in
+  the messages. `screen_text` and the HUD fields are as before.
+
 ## Changes
 
 - 2026-10-24 (Phase 3, still version 3): the HUD fields left at -1/NONE in Phase 1 are filled by the v4 controller.

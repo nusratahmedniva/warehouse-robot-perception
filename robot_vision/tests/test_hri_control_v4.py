@@ -157,7 +157,7 @@ class Rig:
         c.last_t = 0.0
         c.node = "J1"
         c.person = (8.75, 2.5)
-        c.record = {"junction": "J1"}
+        c.record = {"junction": "J1", "t_ask_first": 0.0}
         c.dialog.reset()
         c.dialog.begin_ask(0.0)
         c.state, c.state_start = "read", 0.0
