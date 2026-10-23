@@ -250,6 +250,10 @@ def csv_row(r: dict) -> dict:
     return row
 
 
+def write_json_lf(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, indent=2, default=str) + "\n", encoding="utf-8", newline="\n")
+
+
 def main(argv=None) -> None:
     import decision_io as dio
 
@@ -266,10 +270,10 @@ def main(argv=None) -> None:
     (out / "config_used").mkdir()
     for d in (unity / "config_used", bridge / "config_used"):
         for f in d.glob("*.json"):
-            (out / "config_used" / f.name).write_bytes(f.read_bytes())
-    (out / "config_used" / metrics_path.name).write_bytes(metrics_path.read_bytes())
+            (out / "config_used" / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+    (out / "config_used" / metrics_path.name).write_text(metrics_path.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     for r in runs:
-        (out / f"run_{r['trial']:03d}.json").write_text(json.dumps(r, indent=2) + "\n", encoding="utf-8")
+        write_json_lf(out / f"run_{r['trial']:03d}.json", r)
     copy_v4_run_files(unity, out, runs)
     with (out / "results.csv").open("x", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
@@ -280,8 +284,8 @@ def main(argv=None) -> None:
     summary = {"trials": n, "successes": s, "success_ratio": round(s / n, 4), "task": runs[0]["task"], "mode": runs[0]["mode"],
                "seed": runs[0]["seed"], "perception": runs[0]["perception"], "unity_session": unity.name,
                "bridge_run": bridge.name, "unity_git_commit": meta["session"].get("git_commit"), **meta["check"]}
-    dio.write_json(out / "summary.json", summary)
-    dio.write_json(out / "run.json", {"git": dio.git_info(), "inputs": {"unity": unity.name, "bridge": bridge.name}})
+    write_json_lf(out / "summary.json", summary)
+    write_json_lf(out / "run.json", {"git": dio.git_info(), "inputs": {"unity": unity.name, "bridge": bridge.name}})
     print(json.dumps(summary, indent=2))
     print(f"Folder: {out.relative_to(HERE) if out.is_relative_to(HERE) else out}")
 
