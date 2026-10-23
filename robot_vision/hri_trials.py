@@ -261,6 +261,10 @@ def csv_row(r: dict) -> dict:
     return row
 
 
+def copy_json_lf(src: Path, dst: Path) -> None:
+    dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+
+
 def main(argv=None) -> None:
     import decision_io as dio
 
@@ -277,8 +281,8 @@ def main(argv=None) -> None:
     (out / "config_used").mkdir()
     for d in (unity / "config_used", bridge / "config_used"):
         for f in d.glob("*.json"):
-            (out / "config_used" / f.name).write_bytes(f.read_bytes())
-    (out / "config_used" / metrics_path.name).write_bytes(metrics_path.read_bytes())
+            copy_json_lf(f, out / "config_used" / f.name)
+    copy_json_lf(metrics_path, out / "config_used" / metrics_path.name)
     for r in runs:
         (out / f"run_{r['trial']:03d}.json").write_text(json.dumps(r, indent=2) + "\n", encoding="utf-8")
     copy_v4_run_files(unity, out, runs)
