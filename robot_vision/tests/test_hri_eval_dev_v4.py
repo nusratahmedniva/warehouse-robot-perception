@@ -51,7 +51,7 @@ class EvaluationTests(unittest.TestCase):
         root = Path(cls.tmp.name)
         spec = sv.SceneSpec(**DEV)
         on = [tt.good("E2", spec, seed=1), tt.good("E4", spec, seed=3)]
-        off = [tt.trial("E2", spec, zoom=False, seed=4), tt.trial("E1", spec, zoom=False, seed=5, two_view=False)]   # E1: ambiguous, aborts
+        off = [tt.trial("E2", spec, zoom=False, seed=4), tt.trial("E1", spec, zoom=False, seed=5, two_view=False, shift=0.4)]   # E1: ambiguous, aborts
         cls.pairs = [session(root, "on", on, True), session(root, "off", off, False)]
         cls.runs = ev.load_sessions(cls.pairs, GC)
         cls.res = ev.evaluate(cls.runs, EC, GC)

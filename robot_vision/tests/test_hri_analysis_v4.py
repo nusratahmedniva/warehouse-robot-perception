@@ -112,7 +112,7 @@ class AnalysisTests(unittest.TestCase):
         root = Path(cls.tmp.name)
         spec = sv.SceneSpec(**DEV)
         on = [tt.trial("E2", spec, seed=s) for s in (1, 2, 3)] + [tt.trial("E1", spec, seed=1)]
-        off = [tt.trial("E2", spec, zoom=False, seed=s) for s in (4, 5)] + [tt.trial("E1", spec, zoom=False, seed=5, two_view=False)]
+        off = [tt.trial("E2", spec, zoom=False, seed=s) for s in (4, 5)] + [tt.trial("E1", spec, zoom=False, seed=5, two_view=False, shift=0.4)]
         cls.u1, cls.b1 = sv.export_session(on, root, True, name="on")
         cls.u2, cls.b2 = sv.export_session(off, root, False, name="off")
         tgdir = root / "paths"

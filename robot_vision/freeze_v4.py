@@ -30,7 +30,9 @@ FROZEN_REL = f"{V4_DIR}/frozen.json"
 PLAN_REL = f"{V4_DIR}/final_plan.json"
 V3_DEPENDENCIES = [f"robot_vision/configs/{n}" for n in
                    ("hri_control.json", "hri_perception.json", "gesture_hri.json", "roadmap.json", "robot.json")]
-PLAN_BLANK_KEYS = ("task", "dev_seed", "final_seed", "runs_per_setting", "timeout_s", "success_radius_m")
+PLAN_BLANK_KEYS = ("task", "dev_seed", "final_seed", "runs_per_setting", "timeout_s", "success_radius_m",
+                   "test_assignment", "unity_files_and_guard", "acceptance_criteria")
+SPLITS_REL = f"{V4_DIR}/data_splits.json"
 
 
 def sha256_lf(p: Path) -> str:
@@ -73,7 +75,10 @@ def model_status(repo: Path = REPO) -> dict:
 
 def blanks(repo: Path = REPO) -> list[str]:
     plan = json.loads((repo / PLAN_REL).read_text(encoding="utf-8"))
-    return [f"final_plan.json: {k}" for k in PLAN_BLANK_KEYS if plan.get(k) is None]
+    out = [f"final_plan.json: {k}" for k in PLAN_BLANK_KEYS if plan.get(k) is None]
+    if json.loads((repo / SPLITS_REL).read_text(encoding="utf-8")).get("placeholder"):
+        out.append("data_splits.json: look and clip names are still placeholders")
+    return out
 
 
 def problems(repo: Path = REPO, require_models: bool = False) -> list[str]:

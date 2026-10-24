@@ -1,19 +1,48 @@
 {
   "label": "v4 final plan: the settings of the final runs and their fixed numbers. Frozen with the other v4 configs (configs/v4/frozen.json). Every null below is a BLANK that Anisha must fill before freezing; freeze_v4.py refuses to freeze while one is left. docs: AUDIT.md section 14.",
-  "status": "blanks open",
-  "blanks_note": "Numbers are chosen by Anisha, not by the code, and not from final results. Seeds must differ from the development seed.",
-  "task": null,
-  "dev_seed": null,
-  "final_seed": null,
-  "runs_per_setting": null,
-  "timeout_s": null,
-  "success_radius_m": null,
+  "status": "blanks open: test_assignment, unity_files_and_guard, acceptance_criteria (and the real look / clip names in data_splits.json)",
+  "blanks_note": "Numbers are chosen by Anisha, not by the code, and not from final results. freeze_v4.py refuses to freeze while a null below or a placeholder name in data_splits.json is left.",
+  "decided": "2026-10-24, by Anisha, before any v4 development or final data existed.",
+  "task": "Task2",
+  "dev_seed": 1,
+  "final_seed": 2,
+  "final_seed_note": "Seed 2 gives the same goal order as the v3 Task 2 final (E1 E2 E4 E2 E1 E3 E4 E1 E4 E1 for its first 10 runs), so research question 1 compares the same goals. The development seed is 1, as in v3.",
+  "runs_per_setting": 20,
+  "timeout_s": 240,
+  "timeout_s_source": "the v3 trial timeout: robot_vision/configs/trials.json timeout_s, pinned in configs/hri_frozen.json tasks.Task2.trials_fixed",
+  "success_radius_m": 0.3,
+  "success_radius_m_source": "the v3 success radius (same two files)",
+  "machine": "Nusrat's Windows PC with the NVIDIA RTX 3060, the same machine as the v3 Task 1 final (AUDIT.md section 10)",
+  "threshold_rule": "Each initial threshold is set on DEVELOPMENT data as the value with the highest development accuracy among those with coverage >= 0.8; ties go to the v3 value, or else to the more conservative value (the one that answers less often, rejects more). Decided 2026-10-24.",
+  "bootstrap": "2000 resamples, seed 1 (configs/v4/analysis.json): confirmed 2026-10-24.",
   "settings": {
-    "zoom_on": {"zoom": true, "bystanders": null, "note": "Zoom rule on; test looks and clips only."},
-    "zoom_off": {"zoom": false, "bystanders": null, "note": "Same runs as zoom_on with the zoom rule off (research question 3)."},
-    "bystanders": {"zoom": null, "bystanders": true, "note": "Several people at each junction, one commander (research question 2)."},
-    "unseen_look": {"zoom": null, "bystanders": null, "note": "An avatar look never used in development (research question 4)."}
+    "zoom_on": {
+      "zoom": true,
+      "bystanders": null,
+      "note": "Zoom rule on; test looks and clips only."
+    },
+    "zoom_off": {
+      "zoom": false,
+      "bystanders": null,
+      "note": "Same runs as zoom_on with the zoom rule off (research question 3)."
+    },
+    "bystanders": {
+      "zoom": null,
+      "bystanders": true,
+      "note": "Several people at each junction, one commander (research question 2)."
+    },
+    "unseen_look": {
+      "zoom": null,
+      "bystanders": null,
+      "note": "An avatar look never used in development (research question 4)."
+    }
   },
   "settings_note": "null = not constrained by the setting. Every final session must lie wholly in the test split (data_splits_v4.guard_run with --final-evaluation); a setting's own constraints are checked on top. Which setting uses which test looks and clips is part of the plan: fill the setting notes in AUDIT.md section 14.",
-  "run_once": "Each setting is run once. A setting with a FINAL_DONE.json in its evaluation folder or in a bridge run folder cannot be started or evaluated again (final_guard_v4.py)."
+  "run_once": "Each setting is run once. A setting with a FINAL_DONE.json in its evaluation folder or in a bridge run folder cannot be started or evaluated again (final_guard_v4.py).",
+  "test_assignment": null,
+  "test_assignment_note": "AUDIT.md B7: which test looks, clips and bystander layout each setting uses. BLANK, waiting for Nusrat's real looks and clips and for both of us.",
+  "unity_files_and_guard": null,
+  "unity_files_and_guard_note": "AUDIT.md B9: the Unity-side files of the v4 scene to freeze and the Unity final-run guard. BLANK, Nusrat.",
+  "acceptance_criteria": null,
+  "acceptance_criteria_note": "AUDIT.md B11: what counts as reliable for RQ1 to RQ4. BLANK, both of us."
 }

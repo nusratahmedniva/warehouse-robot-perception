@@ -966,7 +966,7 @@ inference, which is not comparable across machines. One 10-trial sample per side
 
 ## 14. v4 plan (written 24 October 2026; to be completed BEFORE any v4 final run)
 
-**Status: draft.** This section is the v4 counterpart of sections 2, 8 and 11: it fixes, before any final run, what is measured, how it
+**Status: draft. Decided 24 October 2026 (before any v4 development or final data existed): B1 to B6, B10, B12 and the bootstrap settings (14.13); open: B7, B8, B9, B11.** This section is the v4 counterpart of sections 2, 8 and 11: it fixes, before any final run, what is measured, how it
 is decided and how it is run. Everything not marked **BLANK** is decided or declared. A BLANK is a number or choice that only Anisha
 can make (they are collected in 14.13); none is chosen by the code, and none may be chosen after seeing final results. The v3 results
 (sections 2, 10, 13) are not touched: v3 is frozen as release `v1.0` and stays exactly reproducible.
@@ -1019,8 +1019,13 @@ Decided). "Initial" = proposed with reasoning, to be set on DEVELOPMENT data onl
    readings (toward / away from the camera) kept; resolved with the roadmap: each candidate goes to the nearest branch or the arrival
    direction, the arrival direction is never an answer, a candidate farther than 30 deg (initial) from its branch is dropped.
 4. **Hand cross-check tie-break** (decided): off until the development evaluation has measured the MediaPipe world-landmark cross-check.
-5. **Two-view disambiguation** (decided): if the two readings fit two different branches, move sideways by the v3 re-ask shift (0.4 m), read
+5. **Two-view disambiguation** (decided): if the two readings fit two different branches, move sideways by the re-ask shift (item 5a), read
    again and accept the candidate consistent across both views within 10 deg (initial); at most once per junction; not counted as an ask.
+   5a. **Re-ask shift 0.8 m** (`control.json` dialog.`reask_shift_m`; decided 24 Oct 2026 by Anisha as an INITIAL v4 value, to be confirmed on
+   development data). **Declared v4 difference for RQ1:** v3 moved 0.4 m (`hri_control.json`, frozen, unchanged; the v4 controller reads the value
+   from `control.json`). Reason: in the simulator two-view study (not a measurement; `docs/gesture_reader_v4.md`) at 10 deg angle noise a
+   0.4 m shift resolved 18 of 20 ambiguous asks (2 to a wrong branch) and 0.8 m resolved 20 of 20. A 0.8 m shift also moves the mirror
+   candidate by about 45 deg, so even a plain second ask from the new viewpoint is unambiguous in the simulator.
 6. **Approach the commander** (decided): if the commander is not the person approached, go to them (2.0 m) and ask again, once; not counted as an ask.
 7. **Commander timing** (decided): only a gesture that starts after "Which direction?" is shown counts; commander = facing the robot with a
    moving or held hand; none or a tie = no commander.
@@ -1031,15 +1036,16 @@ Decided). "Initial" = proposed with reasoning, to be set on DEVELOPMENT data onl
     pose to pass its cues in 70 % of the frames; the dialog adds 0.5 s of the same resolved branch.
 11. **Unchanged from v3:** approach distance 2.0 m, ask window 5 s, two asks, abort, safety stops, speeds (read from the frozen `hri_control.json`).
 12. **Differences between v3 and v4 listed under the RQ1 table** (`analysis.json`, `declared_differences`): gestures, reader, decision, the 0.5 s
-    hold, several people and the commander rule, zoom, avatar looks and clips, protocol 3 and the v4 scene, per-frame truth, runs / seeds /
-    machine. Any further difference found later is added there before the final runs.
+    hold, the 0.8 m re-ask shift, several people and the commander rule, zoom, avatar looks and clips, protocol 3 and the v4 scene,
+    per-frame truth, runs / seeds / machine. Any further difference found later is added there before the final runs.
 
 No rule is changed after seeing final results. A rule changed after seeing development results is listed in section 15 (to be added),
 with the reason, as in section 4.
 
 ### 14.5 Settings, seeds and runs
 
-Four final settings, each run once (`configs/v4/final_plan.json`):
+Decided 24 October 2026 by Anisha, before any v4 development or final data existed (`configs/v4/final_plan.json`). Four final settings,
+each run once:
 
 | setting | what it varies | RQ |
 |---|---|---|
@@ -1053,12 +1059,13 @@ data, or uses a name not in `configs/v4/data_splits.json`, is refused. Numbers:
 
 | item | value |
 |---|---|
-| task / route | **BLANK B1** |
-| development seed | **BLANK B2** |
-| final seed (different from the development seed) | **BLANK B3** |
-| runs per setting | **BLANK B4** |
-| trial timeout, success radius | **BLANK B5**, **BLANK B6** (v3: 240 s, 0.3 m) |
-| which test looks / clips / bystander layout each setting uses | **BLANK B7** |
+| task / route (B1) | Task2: the guided route with junctions, goal B changing every run (the v3 Task 2 route) |
+| development seed (B2) | 1 (as in v3) |
+| final seed (B3) | 2: the same goal order as the v3 Task 2 final (E1 E2 E4 E2 E1 E3 E4 E1 E4 E1 for its first 10 runs; `tests/test_v4_frozen.py` pins this), so RQ1 compares the same goals |
+| runs per setting (B4) | 20 (the first 10 goals are those of the v3 final; the full order is `hri_trials.goal_order(2, endpoints, 20)`, the same generator Unity uses) |
+| trial timeout (B5) | 240 s: the v3 value, `robot_vision/configs/trials.json` `timeout_s`, pinned in `configs/hri_frozen.json` `tasks.Task2.trials_fixed` |
+| success radius (B6) | 0.3 m: the v3 value (same two files) |
+| which test looks / clips / bystander layout each setting uses (B7) | **BLANK B7** (waiting for Nusrat's real looks and clips, then both of us) |
 
 ### 14.6 Data split
 
@@ -1079,7 +1086,8 @@ guard: **BLANK B9** (Nusrat lists them; they are added to the freeze the way sec
 
 Other apps closed, Windows power mode "Best performance" (as in section 9), enough free memory, the machine recorded; the leak test
 (ground-truth layer on / off render identical) passes before the first run (`python gt_path.py leak <leak_test folder>`); a resource
-log is kept (`--resource-log`). The machine for the finals: **BLANK B10**. Inference times and total times are not comparable across
+log is kept (`--resource-log`). The machine for the finals (B10, decided 24 Oct 2026): Nusrat's Windows PC with the NVIDIA RTX 3060, the same machine
+as the v3 Task 1 final (section 10), so inference times of the finals are comparable with that run (not with the Mac original of Task 2). Inference times and total times are not comparable across
 machines (14.3, RQ1 table).
 
 ### 14.9 Run-once guards
@@ -1100,8 +1108,10 @@ The v3 finals used four criteria (`hri_session_check.py`). Acceptance criteria f
 
 1. Nusrat sends the development recordings (v4 scene, development looks and clips) and the real names; `data_splits.json` is updated.
 2. Development evaluation: `hri_eval_dev_v4.py --session UNITY BRIDGE ...` (development data only; test data is refused).
-3. Thresholds are set on development data only, written to `configs/v4/` with the date and the rule used (**BLANK B12**: the selection rule for each
-   initial value), and the changes after seeing development results are disclosed in section 15.
+3. Thresholds are set on development data only, written to `configs/v4/` with the date and the rule used (B12, decided 24 Oct 2026: for each initial
+   threshold the value with the **highest development accuracy among those with coverage >= 0.8**; ties go to the v3 value, or else to the more
+   conservative value, i.e. the one that answers less often and rejects more), and the changes after seeing development results are
+   disclosed in section 15.
 4. Fill the BLANKs of `final_plan.json`; `python freeze_v4.py --freeze`; commit; `tests/test_v4_frozen.py` now pins everything.
 5. Final runs, one per setting, `--final-setting NAME`, on the machine and protocol of 14.8, with Nusrat's Unity final guard.
 6. `hri_eval_final_v4.py --setting NAME --session UNITY BRIDGE` per setting (once).
@@ -1114,9 +1124,28 @@ The v3 finals used four criteria (`hri_session_check.py`). Acceptance criteria f
 No threshold is tuned on test data or on final results. No final is repeated silently. No v3 file changes. The leak test must pass before a run.
 Anything done differently from this section is disclosed here, dated, before the next run.
 
-### 14.13 BLANKs Anisha must fill before the freeze
+### 14.13 The blanks
 
-B1 task / route; B2 development seed; B3 final seed; B4 runs per setting; B5 trial timeout; B6 success radius; B7 which test looks, clips and bystander layout
-each setting uses; B8 real look and clip names, counts, the unseen look, look styles (from Nusrat); B9 Unity-side files and the Unity final-run guard (Nusrat);
-B10 the machine for the finals; B11 v4 acceptance criteria; B12 the selection rule for each initial threshold (and `view_consistency_deg`, `reask_shift_m` if a
-larger shift is wanted). Also open: confirm 2000 resamples / seed 1 for the bootstrap.
+**Decided on 24 October 2026 by Anisha, before any v4 development or final data existed:**
+
+| | decision |
+|---|---|
+| B1 | Task2 |
+| B2 | development seed 1 |
+| B3 | final seed 2 (same goal order as the v3 final, for RQ1) |
+| B4 | 20 runs per setting |
+| B5 | 240 s, the v3 trial timeout (`configs/trials.json`, pinned in `configs/hri_frozen.json`) |
+| B6 | success radius 0.3 m (the v3 value) |
+| B10 | Nusrat's Windows PC with the RTX 3060 (same machine as the v3 Task 1 final) |
+| B12 | threshold rule: highest development accuracy with coverage >= 0.8; ties to the v3 value or the more conservative value |
+| bootstrap | 2000 resamples, seed 1 (confirmed) |
+| `reask_shift_m` | 0.8 m, an initial v4 value (14.4, item 5a), to be confirmed on development data |
+
+**Still open (the freeze is refused while any is blank; `final_plan.json` keys in brackets):**
+
+| | what | waiting for |
+|---|---|---|
+| B7 | which test looks, clips and bystander layout each setting uses (`test_assignment`) | Nusrat's real looks and clips, then both of us |
+| B8 | real look and clip names, their numbers, the unseen test look, the look styles (`data_splits.json` still has placeholders) | Nusrat |
+| B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`) | Nusrat |
+| B11 | v4 acceptance criteria for RQ1 to RQ4 (`acceptance_criteria`) | both of us |

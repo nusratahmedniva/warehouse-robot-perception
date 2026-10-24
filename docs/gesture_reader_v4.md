@@ -267,6 +267,9 @@ proposals for Anisha to confirm or replace. No value is chosen from test data or
   first shown at the junction: the arm must go up after that moment. A person whose arm was already up is ignored until it
   has been lowered and raised again. (Re-asks do not move the reference time.) The earlier "whoever gestures first is
   followed" test now applies to gestures that start after the question.
+- 2026-10-24 (Phase 4): `reask_shift_m` is 0.8 m for v4 (initial, to be confirmed on development data; v3: 0.4 m, unchanged in the frozen
+  v3 config): the two-view study below resolved 20 of 20 ambiguous asks at 10 deg noise with 0.8 m against 18 of 20 with 0.4 m. Threshold rule
+  for the development data: highest development accuracy with coverage >= 0.8, ties to the v3 value or the more conservative one.
 - 2026-10-24: the dialog hold is 0.5 s (v3: 1.0 s); kept, and listed in AUDIT.md section 14 as a declared v4 difference for RQ1.
 
 ## Phase 3: initial values

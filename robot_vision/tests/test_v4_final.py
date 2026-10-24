@@ -117,7 +117,12 @@ class SettingChecks(unittest.TestCase):
 
     def test_blanks_in_the_plan_are_reported(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertIn("final_plan.json: final_seed is blank", fg.check_setting("zoom_on", [object()], REPO_REAL))
+            repo = tfz.make_repo(Path(d), fill_plan=False)
+            plan = repo / fz.PLAN_REL
+            p = json.loads(plan.read_text())
+            p["final_seed"] = None
+            plan.write_text(json.dumps(p))
+            self.assertIn("final_plan.json: final_seed is blank", fg.check_setting("zoom_on", [object()], repo))
         self.assertEqual(fg.check_setting("nonsense", [], REPO_REAL), ["unknown setting 'nonsense'"])
 
 
@@ -195,16 +200,16 @@ class FinalEvaluationTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "mixes development and test"):
             ef.evaluate_final("bystanders", pairs, self.repo, self.out)
 
-    def test_placeholder_names_are_refused(self):
-        repo = tfz.make_repo(self.root / "p")                                         # a fresh repo whose split config is a placeholder
+    def test_placeholder_names_cannot_be_frozen_so_no_final_can_start(self):
+        repo = tfz.make_repo(self.root / "p")
+        sp = repo / fz.SPLITS_REL
+        d = json.loads(sp.read_text())
+        d["placeholder"] = True
+        sp.write_text(json.dumps(d))
         fz.refresh_list(repo)
-        plan = repo / fz.PLAN_REL
-        pd = json.loads(plan.read_text())
-        pd.update(runs_per_setting=2)
-        plan.write_text(json.dumps(pd))
-        fz.refresh_list(repo)
-        fz.freeze(repo)
         with self.assertRaisesRegex(SystemExit, "placeholders"):
+            fz.freeze(repo)
+        with self.assertRaisesRegex(SystemExit, "not frozen"):
             ef.evaluate_final("zoom_on", self.pairs(name="ph"), repo, self.out)
 
     def test_wrong_zoom_runs_seed_or_unity_mode_are_refused(self):

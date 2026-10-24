@@ -98,12 +98,18 @@ class CleanTrials(unittest.TestCase):
 class Ambiguity(unittest.TestCase):
     def test_forward_and_left_fail_safe_from_the_v3_viewpoint_without_the_second_view(self):
         for goal in ("E1", "E3", "E4"):
-            r = trial(goal, two_view=False)
+            r = trial(goal, two_view=False, shift=0.4)               # the v3 re-ask shift: the second ask sees nearly the same mirror
             self.assertEqual((r["outcome"], r["failure_reason"]), ("FAILURE", "aborted"), goal)
             self.assertIn("gesture unclear", r["abort_reason"])
             res = [row["resolution"] for row in r["frame_log"] if row["resolution"]]
             self.assertTrue(any(x["ambiguous"] for x in res), goal)
             self.assertTrue(all(x["command"] is None for x in res if x["ambiguous"]))
+
+    def test_with_the_v4_shift_of_0_8_m_even_a_plain_re_ask_resolves_them_by_geometry(self):
+        # from 0.8 m to the side the mirror of FORWARD lands between the branches and is dropped: the second ask is unambiguous
+        for goal in ("E1", "E3"):
+            r = trial(goal, two_view=False)
+            self.assertEqual((r["outcome"], r["junctions"][0]["asks"]), ("SUCCESS", 2), goal)
 
     def test_the_second_view_resolves_forward_and_left(self):
         for goal in ("E1", "E3", "E4"):
