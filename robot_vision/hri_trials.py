@@ -251,11 +251,7 @@ def csv_row(r: dict) -> dict:
 
 
 def write_json_lf(path: Path, data: dict) -> None:
-    path.write_bytes((json.dumps(data, indent=2, default=str) + "\n").encode("utf-8"))
-
-
-def copy_text_lf(src: Path, dst: Path) -> None:
-    dst.write_bytes(src.read_bytes().replace(b"\r\n", b"\n"))
+    path.write_text(json.dumps(data, indent=2, default=str) + "\n", encoding="utf-8", newline="\n")
 
 
 def main(argv=None) -> None:
@@ -274,8 +270,8 @@ def main(argv=None) -> None:
     (out / "config_used").mkdir()
     for d in (unity / "config_used", bridge / "config_used"):
         for f in d.glob("*.json"):
-            copy_text_lf(f, out / "config_used" / f.name)
-    copy_text_lf(metrics_path, out / "config_used" / metrics_path.name)
+            (out / "config_used" / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+    (out / "config_used" / metrics_path.name).write_text(metrics_path.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     for r in runs:
         write_json_lf(out / f"run_{r['trial']:03d}.json", r)
     copy_v4_run_files(unity, out, runs)
