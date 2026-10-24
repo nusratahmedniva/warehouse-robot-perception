@@ -1,0 +1,19 @@
+{
+  "label": "v4 final plan: the settings of the final runs and their fixed numbers. Frozen with the other v4 configs (configs/v4/frozen.json). Every null below is a BLANK that Anisha must fill before freezing; freeze_v4.py refuses to freeze while one is left. docs: AUDIT.md section 14.",
+  "status": "blanks open",
+  "blanks_note": "Numbers are chosen by Anisha, not by the code, and not from final results. Seeds must differ from the development seed.",
+  "task": null,
+  "dev_seed": null,
+  "final_seed": null,
+  "runs_per_setting": null,
+  "timeout_s": null,
+  "success_radius_m": null,
+  "settings": {
+    "zoom_on": {"zoom": true, "bystanders": null, "note": "Zoom rule on; test looks and clips only."},
+    "zoom_off": {"zoom": false, "bystanders": null, "note": "Same runs as zoom_on with the zoom rule off (research question 3)."},
+    "bystanders": {"zoom": null, "bystanders": true, "note": "Several people at each junction, one commander (research question 2)."},
+    "unseen_look": {"zoom": null, "bystanders": null, "note": "An avatar look never used in development (research question 4)."}
+  },
+  "settings_note": "null = not constrained by the setting. Every final session must lie wholly in the test split (data_splits_v4.guard_run with --final-evaluation); a setting's own constraints are checked on top. Which setting uses which test looks and clips is part of the plan: fill the setting notes in AUDIT.md section 14.",
+  "run_once": "Each setting is run once. A setting with a FINAL_DONE.json in its evaluation folder or in a bridge run folder cannot be started or evaluated again (final_guard_v4.py)."
+}

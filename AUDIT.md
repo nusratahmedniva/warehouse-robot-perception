@@ -963,3 +963,160 @@ replication reproduces the original's outcome exactly: 10/10, the same 14 juncti
 against 1.033 m; both above 1.0 m). Time excluding stale stops is about the same (53.72 s against 53.35 s); the
 original lost 1.35 s per run to stale-perception stops and the replication none, consistent with its faster
 inference, which is not comparable across machines. One 10-trial sample per side.
+
+## 14. v4 plan (written 24 October 2026; to be completed BEFORE any v4 final run)
+
+**Status: draft.** This section is the v4 counterpart of sections 2, 8 and 11: it fixes, before any final run, what is measured, how it
+is decided and how it is run. Everything not marked **BLANK** is decided or declared. A BLANK is a number or choice that only Anisha
+can make (they are collected in 14.13); none is chosen by the code, and none may be chosen after seeing final results. The v3 results
+(sections 2, 10, 13) are not touched: v3 is frozen as release `v1.0` and stays exactly reproducible.
+
+### 14.1 What v4 is
+
+v4 is a new study on top of v3, not a change to it (`docs/project_flow_v4.md`): fixed arm poses (v3) against natural, moving gestures
+(v4: POINT with any angle, WAIT, STOP), several people with one commander, a zoom onto the hand, and ground-truth files for scoring.
+v4 has its own configs (`robot_vision/configs/v4/`), its own protocol (version 3, `docs/protocol_v3.md`), its own scene, its own
+decision rules (below) and its own final runs. The server speaks protocol 3 only when given `--config configs/v4/bridge.json`.
+Rule kept from v3: no v3 config, frozen hash or v3 behaviour is changed for v4 (`tests/test_hri_frozen.py` still passes unchanged).
+
+### 14.2 Research questions
+
+1. **RQ1 moving vs fixed:** can the robot understand natural, moving gestures as reliably as v3's fixed poses?
+2. **RQ2 who commands:** can it tell which of several people is giving the command?
+3. **RQ3 zoom:** does zooming onto the hand improve recognition at a distance? (The same runs with zoom on and off.)
+4. **RQ4 new looks:** does it still work on avatar looks it never saw in development?
+
+### 14.3 Metrics (all reported with their coverage and the number of runs behind them)
+
+Computed by `hri_analysis_v4.py` (the numbers by `hri_eval_dev_v4.py` / `hri_eval_final_v4.py`):
+
+- **Outcome:** success rate with a Wilson 95 % interval over runs; failure reasons (collision, timeout, aborted, wrong goal).
+- **Gesture reading:** per command (POINT, WAIT, STOP): accuracy among the frames the reader answered and the coverage (share answered), each
+  with a Wilson interval (frame level, labelled as such) and a bootstrap interval over runs; the confusion matrix; false reads on frames
+  where nothing was shown. NONE and `insufficient_history` readings are coverage, not errors.
+- **POINT:** angle error against the true angle on held frames (median, 95th percentile, bootstrap intervals), for the better of the two
+  depth readings and for the reading the roadmap resolved; the share of ambiguous frames; the correct-branch rate; how many asks needed a
+  second look and how many a re-approach.
+- **Commander:** accuracy of the chosen commander against truth, with and without bystanders.
+- **Time:** from the first "Which direction?" to the accepted gesture (median, 95th percentile, bootstrap), also without WAIT time.
+- **Path:** trail length / optimal path length, largest distance from the optimal line, share of the trail within one grid cell, final
+  distance from B (`gt_path.py`; the optimal path is A* on Unity's grid and is checked against Unity's own).
+- **Safety and system:** collisions, closest approach to a person, inference time per model, Unity-measured round trip (machine-dependent).
+- **Groups:** per look, per look style, per distance bin, zoom on vs off.
+- **RQ1 table:** one table of v4 against the archived v3 results (`results/summary/`), with every declared difference listed under it
+  (14.4, item 12).
+
+Intervals: bootstrap over RUNS (frames within a run are not independent), 2000 resamples, seed 1, 95 % (`configs/v4/analysis.json`).
+
+### 14.4 Decision rules, declared in advance
+
+Values in `configs/v4/`, each with its reasoning in the file. "Decided" = decided by Anisha (dates in `docs/gesture_reader_v4.md`,
+Decided). "Initial" = proposed with reasoning, to be set on DEVELOPMENT data only (never on test looks or clips).
+
+1. **Reader** (`gesture_reader.json`): a 1.0 s window at 10 Hz; POINT and WAIT are read from a held pose, STOP on a 0.3 s window; initial values.
+2. **STOP** needs no push motion (decided): an open palm stops the robot; STOP of anyone in view stops it at once, also while driving.
+3. **POINT direction** (decided 24 Oct): a 3D direction from foreshortening (shoulder-to-wrist length against shoulder width, 1.4 initial), both depth
+   readings (toward / away from the camera) kept; resolved with the roadmap: each candidate goes to the nearest branch or the arrival
+   direction, the arrival direction is never an answer, a candidate farther than 30 deg (initial) from its branch is dropped.
+4. **Hand cross-check tie-break** (decided): off until the development evaluation has measured the MediaPipe world-landmark cross-check.
+5. **Two-view disambiguation** (decided): if the two readings fit two different branches, move sideways by the v3 re-ask shift (0.4 m), read
+   again and accept the candidate consistent across both views within 10 deg (initial); at most once per junction; not counted as an ask.
+6. **Approach the commander** (decided): if the commander is not the person approached, go to them (2.0 m) and ask again, once; not counted as an ask.
+7. **Commander timing** (decided): only a gesture that starts after "Which direction?" is shown counts; commander = facing the robot with a
+   moving or held hand; none or a tie = no commander.
+8. **WAIT** (decided): hold position and watch the same person; 20 s timeout counts as an unclear ask (ask again, then abort).
+9. **Zoom rule** (initial values): hand fills a share of the image height, never narrower than the arm fits, widen in steps when the hand is
+   lost, clamp 15-60 deg; switch on / off for the RQ3 runs.
+10. **Dialog hold 0.5 s** (decided; v3: 1.0 s). **Declared v4 difference for RQ1.** The reader already needs the arm still for 0.4 s and the
+    pose to pass its cues in 70 % of the frames; the dialog adds 0.5 s of the same resolved branch.
+11. **Unchanged from v3:** approach distance 2.0 m, ask window 5 s, two asks, abort, safety stops, speeds (read from the frozen `hri_control.json`).
+12. **Differences between v3 and v4 listed under the RQ1 table** (`analysis.json`, `declared_differences`): gestures, reader, decision, the 0.5 s
+    hold, several people and the commander rule, zoom, avatar looks and clips, protocol 3 and the v4 scene, per-frame truth, runs / seeds /
+    machine. Any further difference found later is added there before the final runs.
+
+No rule is changed after seeing final results. A rule changed after seeing development results is listed in section 15 (to be added),
+with the reason, as in section 4.
+
+### 14.5 Settings, seeds and runs
+
+Four final settings, each run once (`configs/v4/final_plan.json`):
+
+| setting | what it varies | RQ |
+|---|---|---|
+| `zoom_on` | zoom rule on, test looks and clips | RQ3 (with `zoom_off`), RQ1 |
+| `zoom_off` | the same runs with the zoom rule off | RQ3 |
+| `bystanders` | several people at each junction, one commander | RQ2 |
+| `unseen_look` | an avatar look never used in development | RQ4 |
+
+Every final session lies wholly in the TEST split (test looks and clips, never used in development); a session that mixes development and test
+data, or uses a name not in `configs/v4/data_splits.json`, is refused. Numbers:
+
+| item | value |
+|---|---|
+| task / route | **BLANK B1** |
+| development seed | **BLANK B2** |
+| final seed (different from the development seed) | **BLANK B3** |
+| runs per setting | **BLANK B4** |
+| trial timeout, success radius | **BLANK B5**, **BLANK B6** (v3: 240 s, 0.3 m) |
+| which test looks / clips / bystander layout each setting uses | **BLANK B7** |
+
+### 14.6 Data split
+
+Development looks and clips set every threshold; test looks and clips are used once, in the final runs. Names are PLACEHOLDERS in
+`data_splits.json` until Nusrat sends the real looks and clips: **BLANK B8** (real names, the number of looks and clips, which look is the unseen
+test look, and the look styles). A final evaluation is refused while the names are placeholders.
+
+### 14.7 Frozen hashes
+
+`configs/v4/frozen.json` (written by `freeze_v4.py --freeze`, by Anisha, after the development evaluation) records the SHA-256 (line endings
+normalised) of: every file in `configs/v4/` (bridge, commander, control, data_splits, eval_dev, analysis, final_plan, gesture_data,
+gesture_reader, gt_eval); the v3 files v4 reads (`hri_control.json`, `hri_perception.json`, `gesture_hri.json`, `roadmap.json`,
+`robot.json`); the pose weights and the MediaPipe model file. `tests/test_v4_frozen.py` fails if any changes. Until then `frozen` is false
+and final runs and final evaluations are refused. Unity-side files of the v4 scene (its bridge and robot configs) and the Unity final-run
+guard: **BLANK B9** (Nusrat lists them; they are added to the freeze the way section 8 item 2 did for v3).
+
+### 14.8 Run protocol (before every final session)
+
+Other apps closed, Windows power mode "Best performance" (as in section 9), enough free memory, the machine recorded; the leak test
+(ground-truth layer on / off render identical) passes before the first run (`python gt_path.py leak <leak_test folder>`); a resource
+log is kept (`--resource-log`). The machine for the finals: **BLANK B10**. Inference times and total times are not comparable across
+machines (14.3, RQ1 table).
+
+### 14.9 Run-once guards
+
+Python: `bridge.server --final-setting NAME` refuses unless the v4 configs are frozen with every hash matching and the setting has not been run
+(marker `FINAL_RUN_DONE.json` in the bridge folder once a trial finished); `hri_eval_final_v4.py` refuses unless frozen, the data is test-split
+only and is what the setting says (zoom, bystanders, number of runs, seed, task, Unity mode final), and writes `FINAL_DONE.json` last, after
+which the setting cannot be evaluated again. A started run or evaluation that did not finish writes no marker and does not block (as in v3).
+`hri_analysis_v4.py` only describes the data and may be re-run into a new folder. Unity: the final-run guard of the v4 trial runner is
+Nusrat's (**BLANK B9**). A repetition of a final must be declared here first.
+
+### 14.10 Acceptance and reporting
+
+The v3 finals used four criteria (`hri_session_check.py`). Acceptance criteria for v4 (what counts as "reliable" for RQ1, RQ2, RQ3, RQ4):
+**BLANK B11**. Results are reported whatever they are; intervals, coverage and the declared differences accompany every comparison.
+
+### 14.11 Procedure, from development recordings to the archived final results
+
+1. Nusrat sends the development recordings (v4 scene, development looks and clips) and the real names; `data_splits.json` is updated.
+2. Development evaluation: `hri_eval_dev_v4.py --session UNITY BRIDGE ...` (development data only; test data is refused).
+3. Thresholds are set on development data only, written to `configs/v4/` with the date and the rule used (**BLANK B12**: the selection rule for each
+   initial value), and the changes after seeing development results are disclosed in section 15.
+4. Fill the BLANKs of `final_plan.json`; `python freeze_v4.py --freeze`; commit; `tests/test_v4_frozen.py` now pins everything.
+5. Final runs, one per setting, `--final-setting NAME`, on the machine and protocol of 14.8, with Nusrat's Unity final guard.
+6. `hri_eval_final_v4.py --setting NAME --session UNITY BRIDGE` per setting (once).
+7. `hri_analysis_v4.py --final --session NAME UNITY BRIDGE ...` for the tables, intervals and the RQ1 comparison.
+8. Add the sessions to `configs/v4/archive/results_manifest.json`; `make_results_archive_v4.py --repo-summary ../results/summary/v4`; verify with `--verify`.
+9. Write the results into sections 16 onward (as sections 10 and 13 did for v3) and stop.
+
+### 14.12 What may not happen
+
+No threshold is tuned on test data or on final results. No final is repeated silently. No v3 file changes. The leak test must pass before a run.
+Anything done differently from this section is disclosed here, dated, before the next run.
+
+### 14.13 BLANKs Anisha must fill before the freeze
+
+B1 task / route; B2 development seed; B3 final seed; B4 runs per setting; B5 trial timeout; B6 success radius; B7 which test looks, clips and bystander layout
+each setting uses; B8 real look and clip names, counts, the unseen look, look styles (from Nusrat); B9 Unity-side files and the Unity final-run guard (Nusrat);
+B10 the machine for the finals; B11 v4 acceptance criteria; B12 the selection rule for each initial threshold (and `view_consistency_deg`, `reask_shift_m` if a
+larger shift is wanted). Also open: confirm 2000 resamples / seed 1 for the bootstrap.

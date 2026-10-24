@@ -68,6 +68,9 @@ class Run:
     zoom_on: bool
     looks: set = field(default_factory=set)
     clips: set = field(default_factory=set)
+    unity_dir: Path | None = None            # the Unity session folder (run_###/, truth_run###.json)
+    bridge_dir: Path | None = None           # the bridge run folder (decisions.csv, perception.csv, v4_log.jsonl)
+    setting: str = ""                        # label given on the command line (e.g. zoom_on)
 
     @property
     def bystanders(self) -> bool:
@@ -78,10 +81,12 @@ class Run:
         return f"{self.session}/run_{self.trial:03d}"
 
 
-def load_sessions(pairs, gcfg: dict, splits: dict | None = None) -> list[Run]:
-    """Read every run of every session and apply the development-only split guard BEFORE any metric is computed."""
+def load_sessions(pairs, gcfg: dict, splits: dict | None = None, final_evaluation: bool = False,
+                  settings: list | None = None) -> list[Run]:
+    """Read every run of every session and apply the split guard BEFORE any metric is computed: development data only
+    (final_evaluation False) or test data only (True, used by hri_eval_final_v4.py after the freeze check)."""
     runs: list[Run] = []
-    for unity, bridge in pairs:
+    for k, (unity, bridge) in enumerate(pairs):
         unity, bridge = Path(unity), Path(bridge)
         control = json.loads((bridge / "config_used" / "control.json").read_text(encoding="utf-8"))
         zoom_on = bool(control["zoom"]["enabled"])
@@ -95,11 +100,12 @@ def load_sessions(pairs, gcfg: dict, splits: dict | None = None) -> list[Run]:
             truth = gd.load_truth(run_dir / "truth.jsonl", gcfg)
             py = bridge / f"python_trial_{trial:03d}.json"
             junctions = json.loads(py.read_text(encoding="utf-8")).get("junctions", []) if py.exists() else []
-            run = Run(unity.name, trial, log.get(trial, []), junctions, truth, zoom_on)
+            run = Run(unity.name, trial, log.get(trial, []), junctions, truth, zoom_on, unity_dir=unity, bridge_dir=bridge,
+                      setting=(settings[k] if settings else ""))
             run.looks = {r.look for r in truth}
             run.clips = {c.clip for c in gd.build_clips(truth)}
             try:
-                ds.guard_run(run.looks, run.clips, final_evaluation=False, splits=splits)
+                ds.guard_run(run.looks, run.clips, final_evaluation=final_evaluation, splits=splits)
             except SystemExit as e:
                 raise SystemExit(f"{run.name}: {e}") from None
             runs.append(run)
@@ -223,8 +229,9 @@ def _stats(v: list) -> dict:
             "max": round(max(v), 3)}
 
 
-def angle_block(entries: list, rows: list) -> dict:
-    """POINT angle error against the true angle, on the frames where the truth is a POINT being held."""
+def angle_errors(entries: list, rows: list) -> dict:
+    """Raw POINT angle errors (deg) on the frames where the truth is a POINT being held: of the better of the two depth
+    readings ('better') and of the roadmap-resolved reading ('resolved'), plus the counts behind the shares."""
     held = [e for e in entries if e["truth"] == "POINT" and e["phase"] == "holding"]
     read = [e for e in held if e["read"] == "POINT" and e["point"]]
     best = []
@@ -240,10 +247,17 @@ def angle_block(entries: list, rows: list) -> dict:
             ambiguous += bool(res["ambiguous"])
             if res.get("rel_deg") is not None:
                 resolved.append(abs(hc.wrap(res["rel_deg"] - r["truth_angle"])))
-    return {"truth_point_frames_held": len(held), "read_as_point": len(read), "coverage": _ratio(len(read), len(held)),
-            "error_deg_better_depth_reading": _stats(best), "error_deg_resolved_reading": _stats(resolved),
-            "frames_with_a_resolution": point_rows, "resolved": len(resolved), "ambiguous": ambiguous,
-            "ambiguous_share": _ratio(ambiguous, point_rows),
+    return {"held": len(held), "read": len(read), "better": best, "resolved": resolved, "resolution_frames": point_rows,
+            "ambiguous": ambiguous}
+
+
+def angle_block(entries: list, rows: list) -> dict:
+    """POINT angle error against the true angle, on the frames where the truth is a POINT being held."""
+    a = angle_errors(entries, rows)
+    return {"truth_point_frames_held": a["held"], "read_as_point": a["read"], "coverage": _ratio(a["read"], a["held"]),
+            "error_deg_better_depth_reading": _stats(a["better"]), "error_deg_resolved_reading": _stats(a["resolved"]),
+            "frames_with_a_resolution": a["resolution_frames"], "resolved": len(a["resolved"]), "ambiguous": a["ambiguous"],
+            "ambiguous_share": _ratio(a["ambiguous"], a["resolution_frames"]),
             "note": "ambiguous = the two depth readings of the arm fit two different branches of the roadmap (the arrival "
                     "direction is never a candidate); the remaining ambiguity is a limitation of one RGB camera"}
 
@@ -261,14 +275,16 @@ def branch_block(runs: list, rows_by_run: dict, road: hc.Roadmap) -> dict:
         for rec in run.junctions:
             asked += 1
             if rec.get("result") != "accepted":
-                detail.append({"run": run.name, "junction": rec["junction"], "result": rec.get("result"), "correct": None})
+                detail.append({"run": run.name, "junction": rec["junction"], "result": rec.get("result"), "correct": None,
+                               "asks": rec.get("asks")})
                 continue
             accepted += 1
             worlds = [hc.wrap(r["robot"]["yaw_deg"] + r["truth_angle"]) for r in rows
                       if r["junction"] == rec["junction"] and r["truth_angle"] is not None]
             if not worlds:
                 unknown += 1
-                detail.append({"run": run.name, "junction": rec["junction"], "result": "accepted", "correct": NOT_EVALUATED})
+                detail.append({"run": run.name, "junction": rec["junction"], "result": "accepted", "correct": NOT_EVALUATED,
+                               "asks": rec.get("asks")})
                 continue
             w = _circular_mean(worlds)
             dirs, arrival = hv.branch_directions(road, rec["junction"])
@@ -278,7 +294,7 @@ def branch_block(runs: list, rows_by_run: dict, road: hc.Roadmap) -> dict:
             correct += ok
             wrong += not ok
             detail.append({"run": run.name, "junction": rec["junction"], "result": "accepted", "read": rec.get("read"),
-                           "true_branch": true_branch, "correct": ok})
+                           "true_branch": true_branch, "correct": ok, "asks": rec.get("asks")})
     scored = correct + wrong
     recs = [rec for run in runs for rec in run.junctions]
     second = [rec for rec in recs if "second_view_t" in rec]

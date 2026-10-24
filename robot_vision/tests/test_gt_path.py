@@ -338,7 +338,7 @@ class LeakTestTests(unittest.TestCase):
 
 class IsolationTests(unittest.TestCase):
     def test_only_evaluation_code_imports_gt_path(self):
-        allowed = {"hri_analysis.py"}
+        allowed = {"hri_analysis.py", "hri_analysis_v4.py"}
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)

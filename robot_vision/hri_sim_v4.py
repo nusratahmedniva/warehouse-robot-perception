@@ -494,33 +494,59 @@ class SimulatorV4:
                 "frame_log": list(c.frame_log), "hud_log": hud_log, "truth_rows": truth, "frames": frames, **summ}
 
 
-def export_session(results: list[dict], out_root, zoom_enabled: bool, seed: int = 1, name: str = "sim") -> tuple:
-    """Write simulated trials as the two run folders a real session leaves, so hri_eval_dev_v4.py can be tried (and
-    tested) on them: Unity's trials_<name>/ (session.json, truth_run###.json, run_###/truth.jsonl, run.json) and the
-    bridge's bridge_<name>/ (v4_log.jsonl, python_trial_###.json, config_used/control.json). Returns (unity, bridge)."""
+def export_session(results: list[dict], out_root, zoom_enabled: bool, seed: int = 1, name: str = "sim",
+                   trial_gap_s: float = 1000.0, mode: str = "development", task: str = "Task2") -> tuple:
+    """Write simulated trials as the two run folders a real session leaves, so hri_eval_dev_v4.py and hri_analysis_v4.py can
+    be tried (and tested) on them. Unity's trials_<name>/: session.json, truth_run###.json (outcome, collisions, closest
+    person, times), run_###/truth.jsonl and run.json. The bridge's bridge_<name>/: v4_log.jsonl, python_trial_###.json,
+    decisions.csv and perception.csv (fixed illustrative round-trip and inference times), config_used/control.json. Trial k's
+    clock starts at (k - 1) * trial_gap_s, as one Unity session's Time.time keeps running. Returns (unity, bridge)."""
+    import csv
     import json
     from pathlib import Path
     root = Path(out_root)
     u, b = root / f"trials_{name}", root / f"bridge_{name}"
-    (u).mkdir(parents=True)
+    u.mkdir(parents=True)
     (b / "config_used").mkdir(parents=True)
     base, v4 = hv.load_control()
     v4["zoom"]["enabled"] = zoom_enabled
     (b / "config_used" / "control.json").write_text(json.dumps(v4, indent=2) + "\n", encoding="utf-8")
-    (u / "session.json").write_text(json.dumps({"task": "Task2", "mode": "development", "seed": seed,
+    (u / "session.json").write_text(json.dumps({"task": task, "mode": mode, "seed": seed,
                                                 "endpoints": ["E1", "E2", "E3", "E4"]}), encoding="utf-8")
+    road = hc.Roadmap(hc.load_json("configs/roadmap.json"))
+    perc_rows, dec_rows = [], []
     with (b / "v4_log.jsonl").open("w", encoding="utf-8") as log:
         for i, r in enumerate(results, 1):
-            (u / f"truth_run{i:03d}.json").write_text(json.dumps({"trial": i, "outcome": r["outcome"], "b_name": r["goal"],
-                                                                  "failure_reason": r["failure_reason"]}), encoding="utf-8")
+            off = (i - 1) * trial_gap_s
+            ax, az = road.pos(road.start)
+            gx, gz = road.pos(r["goal"])
+            col = r["failure_reason"] == "collision"
+            (u / f"truth_run{i:03d}.json").write_text(json.dumps({
+                "trial": i, "task": "Task2", "mode": "development", "seed": seed, "a_name": road.start, "b_name": r["goal"],
+                "a_x": ax, "a_z": az, "b_x": gx, "b_z": gz, "outcome": r["outcome"], "failure_reason": r["failure_reason"],
+                "final_distance_to_b_m": r["final_distance_m"], "straight_line_m": round(math.hypot(gx - ax, gz - az), 3),
+                "travelled_m": r["travelled_m"], "total_s": r["time_s"], "t_start": off, "t_end": off + r["time_s"],
+                "collisions": int(col), "human_collisions": int(col), "closest_human_m": r["closest_person_m"]}), encoding="utf-8")
             run = u / f"run_{i:03d}"
             run.mkdir()
-            (run / "truth.jsonl").write_text("".join(json.dumps(x) + "\n" for x in r["truth_rows"]), encoding="utf-8")
-            (run / "run.json").write_text(json.dumps({"run_start_s": 0.0}), encoding="utf-8")
+            rows = [{**x, "time_s": round(x["time_s"] + off, 6)} for x in r["truth_rows"]]
+            (run / "truth.jsonl").write_text("".join(json.dumps(x) + "\n" for x in rows), encoding="utf-8")
+            (run / "run.json").write_text(json.dumps({"run_start_s": off}), encoding="utf-8")
             for row in r["frame_log"]:
-                log.write(json.dumps({"trial": i, **row}) + "\n")
+                log.write(json.dumps({"trial": i, **row, "t": round(row["t"] + off, 4), "ctrl_t": round(row["ctrl_t"] + off, 4)}) + "\n")
             summary = {k: r[k] for k in ("state", "abort_reason", "junctions", "step_s", "trace")}
             (b / f"python_trial_{i:03d}.json").write_text(json.dumps({**summary, "trial": i}), encoding="utf-8")
+            for k in range(5):
+                dec_rows.append({"trial": i, "time_s": round(off + k * 0.1, 3), "rtt_ms": 0.8 + 0.1 * k, "watchdog_count": 0})
+            perc_rows += [{"type": "frame_360", "time_s": off + 1.0, "decode_ms": 5.0, "model_ms": "yolo11s-pose/cam360:200.0",
+                           "total_ms": 210.0},
+                          {"type": "frame_pan_tilt", "time_s": off + 1.1, "decode_ms": 3.0,
+                           "model_ms": "yolo11s-pose/gesture:60.0;mediapipe/hands:20.0;reader/window:0.5", "total_ms": 85.0}]
+    for name_, rows_ in (("decisions.csv", dec_rows), ("perception.csv", perc_rows)):
+        with (b / name_).open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows_[0]))
+            w.writeheader()
+            w.writerows(rows_)
     return u, b
 
 

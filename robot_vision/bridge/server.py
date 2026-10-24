@@ -510,6 +510,22 @@ def make_perception_worker(out: Path, perception_config: str | Path):
     return PerceptionWorker(hpm.HriPerception(cfg), out)
 
 
+def preflight_final(cfg: dict, mode: str, setting: str) -> None:
+    """Before a v4 final run starts (SystemExit otherwise): protocol 3 in guide mode, the v4 configs frozen with every hash
+    matching, the setting known and not run before, and the zoom switch of control.json what the setting says."""
+    import final_guard_v4 as fg
+    import freeze_v4 as fz
+    if cfg["protocol_version"] < 3 or mode != "guide":
+        raise SystemExit("--final-setting is for the v4 study: --mode guide with configs/v4/bridge.json (protocol 3)")
+    fz.require_frozen()
+    fg.check_name(setting)
+    fg.ensure_not_done(dio.resolve(cfg["paths"]["output_root"]), setting, "run")
+    want = fg.plan()["settings"][setting].get("zoom")
+    have = dio.read_json(V4_CONTROL)["zoom"]["enabled"]
+    if want is not None and have != want:
+        raise SystemExit(f"setting {setting!r} needs zoom {'on' if want else 'off'} but {V4_CONTROL} has zoom.enabled = {have}")
+
+
 def make_perception_worker_v4(out: Path, perception_config: str | Path, reader_config: str | Path,
                               commander_config: str | Path):
     """Protocol 3: the v4 perception (tracked pan-tilt people, hands, moving-gesture reader) on the same worker layout."""
@@ -541,10 +557,18 @@ def record_inference_devices(path: Path, info: dict, perception) -> dict | None:
 
 async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
               perception: str = "off", perception_config: str = "configs/hri_perception.json",
-              task: str = "Task2", exit_on_disconnect: bool = False, resource_log: bool = False) -> Path:
+              task: str = "Task2", exit_on_disconnect: bool = False, resource_log: bool = False,
+              final_setting: str | None = None) -> Path:
     from bridge import diagnostics as diag
     from bridge import machine_state
+    if final_setting:                              # a v4 FINAL: frozen configs, once per setting (final_guard_v4.py)
+        preflight_final(cfg, mode, final_setting)
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
+    if final_setting:
+        import final_guard_v4 as fg
+        import freeze_v4 as fz
+        dio.write_json(out / "FINAL_SETTING.json", {"setting": final_setting, "frozen_sha256": fz.sha256_lf(fz.REPO / fz.FROZEN_REL),
+                                                    "started": datetime.now().isoformat(timespec="seconds")})
     used = [cfg_path]
     if perception == "vision":
         import hri_perception as hpm
@@ -635,6 +659,9 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         await server.close()
         if guide is not None:
             guide.close()
+        if final_setting and any(out.glob("python_trial_*.json")):
+            import final_guard_v4 as fg
+            fg.write_done(out, final_setting, "run", {"trials_written": len(list(out.glob("python_trial_*.json")))})
         if worker is not None:
             log.extra["perception"] = worker.summary() if hasattr(worker, "summary") else None
             worker.close()
@@ -669,6 +696,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--perception-config", default="configs/hri_perception.json")
     ap.add_argument("--resource-log", action="store_true",
                     help="log memory, paging, CPU per process and GPU once per second (resources.csv, own process)")
+    ap.add_argument("--final-setting", default=None,
+                    help="v4 FINAL run of this setting (zoom_on, zoom_off, bystanders, unseen_look): needs configs/v4/frozen.json "
+                         "frozen with every hash matching; refused if the setting was already run (final_guard_v4.py)")
     ap.add_argument("--task", choices=["Task1", "Task2"], default=None,
                     help="guide mode (required there): the map (Task2 = roadmap.json; Task1 = roadmap.json plus the "
                          "checkpoints of configs/task1_route.json). The Unity trial runner refuses trials if it differs "
@@ -684,7 +714,8 @@ def main(argv: list[str] | None = None) -> None:
         ap.error("hello mode speaks protocol version 2 only; use --mode guide with a version 3 config")
     try:
         asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
-                        args.perception_config, args.task or "Task2", args.exit_on_disconnect, args.resource_log))
+                        args.perception_config, args.task or "Task2", args.exit_on_disconnect, args.resource_log,
+                        args.final_setting))
     except KeyboardInterrupt:
         pass
 
