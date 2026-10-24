@@ -1,0 +1,40 @@
+{
+  "label": "Analysis settings of the v4 study (hri_analysis_v4.py): intervals, the archived v3 results used for research question 1, and the differences between v3 and v4 that are listed under the comparison table. Reporting only.",
+  "declared": "2026-10-24, before any v4 recording exists. Frozen with the other v4 configs.",
+  "status": "declared",
+  "confidence": 0.95,
+  "wilson_z": 1.96,
+  "bootstrap": {
+    "n_resamples": 2000,
+    "seed": 1,
+    "percentiles": [2.5, 97.5],
+    "unit": "run",
+    "why": "Frames, asks and junctions within one run are not independent (the same worker, the same view), so the intervals for gesture accuracy, coverage, angle error and time resample whole RUNS with replacement (cluster bootstrap), not frames. Wilson intervals on frame counts are also given, labelled as frame-level. 2000 resamples and seed 1 are fixed here so the intervals are reproducible; they are not tuned."
+  },
+  "angle_percentile": 95,
+  "v3_results": {
+    "task2_final": "../results/summary/task2/final/runs_reported_in_audit.csv",
+    "task2_replication": "../results/summary/task2/replication/runs.csv",
+    "task1_final": "../results/summary/task1/final/runs.csv",
+    "note": "The archived v3 results (results/summary/, copied from results_archive_20261022_213628). The original Task 2 final has only the per-run table transcribed from AUDIT.md section 2 (success, goal, distance, time, junction reads, closest approach); its other measures are not available (not_evaluated)."
+  },
+  "v3_task2_original_collisions": 0,
+  "v3_task2_original_collisions_source": "AUDIT.md section 2 (0 collisions, 0 with a person)",
+  "rq1_note": "Research question 1: can the robot understand natural, moving gestures as reliably as v3's fixed poses? The table compares the v3 Task 2 route (original final and replication) and the v3 Task 1 final with each v4 setting on the measures both can compute. Success and the junction reads are the comparable core; times depend on the machine and are marked.",
+  "declared_differences": [
+    "Gestures: v3 shows fixed arm poses (LEFT / RIGHT arm out, FORWARD arm up or fist, STOP open palm); v4 shows natural, moving POINT (any angle), WAIT (index finger up) and STOP, with varying speed, size, arm and start delay.",
+    "Reader: v3 classifies the arm angle of one frame into five fixed directions (three kept) plus MediaPipe STOP; v4 reads a 1.0 s window (gesture_motion.py: moving gesture, held pose, hand landmarks) and returns an angle.",
+    "Decision: v3 maps a direction class to a branch; v4 resolves a pointed angle to a branch with the roadmap (the arrival branch is never valid, within 30 deg), with a second look from a sideways shift and a re-approach of the commander when needed.",
+    "Dialog hold: v4 accepts a reading held 0.5 s (control.json dialog.gesture_hold_s); v3 held 1.0 s (hri_control.json, frozen). Re-ask shift: v4 moves 0.8 m to the side before looking again (control.json dialog.reask_shift_m, initial, chosen from the simulator two-view study); v3 moved 0.4 m (frozen). All other dialog timings (approach distance 2.0 m, ask window 5 s, two asks) are the v3 values.",
+    "Several people: v4 scenes may have bystanders, one of whom commands (commander rule: facing the robot, hand moving, gesture started after the question); v3 had one worker per stop and no bystanders.",
+    "Zoom: v4 can narrow the pan-tilt field of view onto the hand (zoom on / off settings); v3 used a fixed 60 deg view.",
+    "Avatar looks: v4 uses several looks and clips, split into development and test (the test look and clips were never used in development); v3 used one Mixamo worker.",
+    "Protocol and scene: v4 speaks protocol 3 (HUD, zoom, truth files) in the v4 scene; v3 spoke protocol 2 in the v3 scene.",
+    "Truth: v4 scores against per-frame truth (truth.jsonl) and the optimal path on a grid; v3 scored against the command shown at each junction.",
+    "Runs and seeds: the number of runs per setting, the seed and the machine are those of configs/v4/final_plan.json and the session records; v3 used 10 runs per task, seed 2. Inference times, stale-perception stops and total times depend on the machine and are not comparable across machines."
+  ],
+  "comparability": {
+    "comparable": ["success", "junction reads at the first ask (with coverage)", "collisions", "closest approach to a person", "final distance to B", "travelled / straight line", "time excluding stale-perception stops", "time in motion"],
+    "not_comparable_across_machines": ["inference time per model", "stale-perception stops", "total trial time", "round trip"]
+  }
+}

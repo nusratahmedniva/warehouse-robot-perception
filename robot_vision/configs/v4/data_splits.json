@@ -1,0 +1,40 @@
+{
+  "note": "v4 splits by avatar look AND by animation clip (docs/project_flow_v4.md, Fair testing). PLACEHOLDER NAMES until Nusrat sends the real looks and clips; the guard refuses a final evaluation while 'placeholder' is true. The split structure (which names are development, which are test) is a proposal for Anisha to confirm.",
+  "placeholder": true,
+  "looks": {
+    "placeholder_look_dev_1": "development",
+    "placeholder_look_dev_2": "development",
+    "placeholder_look_test_1": "test"
+  },
+  "clips": {
+    "placeholder_point_dev_1": "development",
+    "placeholder_point_dev_2": "development",
+    "placeholder_point_test_1": "test",
+    "placeholder_wait_dev_1": "development",
+    "placeholder_wait_dev_2": "development",
+    "placeholder_wait_test_1": "test",
+    "placeholder_stop_dev_1": "development",
+    "placeholder_stop_dev_2": "development",
+    "placeholder_stop_test_1": "test"
+  },
+  "final_evaluation_splits": [
+    "test"
+  ],
+  "rules": [
+    "development looks and clips: used to develop and set every v4 threshold (gesture reader, commander rule, zoom rule).",
+    "test looks and clips: never used in development. Scripts refuse them unless --final-evaluation is passed, for the one run with a frozen config.",
+    "A run (its set of looks and clips together) must lie wholly in one split: a run that mixes development and test looks, development and test clips, or a development look with a test clip is refused (data_splits_v4.guard_run).",
+    "A look or clip that is not listed here is refused (unknown is never assumed to be development); a gesture clip with no logged animation clip name is refused.",
+    "While 'placeholder' is true the names are not real: --final-evaluation is refused."
+  ],
+  "recorded": {
+    "structure": "2026-10-23, before any v4 run exists (final_evaluation_done false)"
+  },
+  "final_evaluation_done": false,
+  "styles": {
+    "placeholder_look_dev_1": "placeholder_style_a",
+    "placeholder_look_dev_2": "placeholder_style_b",
+    "placeholder_look_test_1": "placeholder_style_a"
+  },
+  "styles_note": "Look style (e.g. the source of the avatar: VRoid, Asset Store, Mixamo character) for the per-style tables of hri_analysis_v4.py. PLACEHOLDERS until Nusrat sends the real looks; a look without an entry is reported as 'unknown style'."
+}

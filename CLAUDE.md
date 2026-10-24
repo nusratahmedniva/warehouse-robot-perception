@@ -166,3 +166,18 @@ Specification: docs/project_flow.md
   (development mode). No reported result uses it; both Task 2 runs used the moved-worker layout.
   Results archive: robot_vision/make_results_archive.py (configs/results_archive.json, results_manifest.json) copies
   the run folders outside the repo with checksums and a zip; summary tables and plots go to results/summary/.
+
+## v4 (new study on top of v3)
+- Owners: Anisha = Python (robot_vision/, docs/); Nusrat = Unity (unity/). Neither edits the other's files; shared
+  files change only by agreement.
+- v3 is frozen as release `v1.0` and stays exactly reproducible: no v3 config, frozen hash or behaviour changes for v4.
+  If v3 must change for v4, stop and ask first.
+- v4 spec: docs/project_flow_v4.md. Bridge protocol version 3: docs/protocol_v3.md (version 2: docs/protocol.md).
+- v4 configs live in robot_vision/configs/v4/ (README there); the server speaks protocol 3 only when given
+  `--config configs/v4/bridge.json`. v4 ground-truth evaluation (robot_vision/gt_path.py) is evaluation code: inference
+  code never imports it, and Unity's truth files (grid, optimal path, trail, truth labels) never reach the robot.
+- v4 freezing and finals (Phase 4): `configs/v4/frozen.json` is written only by `python freeze_v4.py --freeze` (Anisha, after the
+  development evaluation; never by the AI) and `tests/test_v4_frozen.py` pins it once `frozen` is true. Final runs
+  (`bridge.server --final-setting`) and final evaluations (`hri_eval_final_v4.py`) are refused unless it is frozen with every hash
+  matching, use test looks and clips only, and run each setting once (`final_guard_v4.py`: FINAL_RUN_DONE.json, FINAL_DONE.json).
+  Development tools refuse test data. The plan, with the blanks Anisha must fill, is AUDIT.md section 14.

@@ -110,6 +110,44 @@ otherwise set `UNITY_EDITOR` to its path). On macOS, use
 The official final runs are already done and protected, so they
 can't be run a second time by accident.
 
+## v4: natural pointing gestures (in progress)
+
+v4 is a second study built on top of the finished one. The first study used fixed arm poses. In v4 the workers point the way a
+person does: they point in any direction, hold a hand up with one finger raised ("wait a moment"), or push an open palm
+towards the robot (STOP). Several people can stand at a junction, and only one of them gives the commands. The robot has to work
+out who, read the movement over about a second, turn the pointing direction into one of the roads, and can zoom its second camera
+onto the hand. A "ground truth" layer that the robot cannot see (the best path, the robot's trail, what each worker really showed)
+is used only to score it.
+
+v4 does not change anything of the first study: its settings, tests and results stay exactly as they were. The v4 settings live
+in `robot_vision/configs/v4/`, the plan and every declared decision are in `AUDIT.md` section 14, and the protocol is in
+`docs/protocol_v3.md`. **v4 has no results yet.** The numbers in the simulator tests only check the code; they are not results.
+
+**Run it** (from `robot_vision/`, with the v4 scene open in Unity; PowerShell and macOS Terminal differ only in the Python path):
+
+    .\.venv\Scripts\python.exe -m bridge.server --mode guide --task Task2 --perception vision --config configs/v4/bridge.json
+    .venv/bin/python -m bridge.server --mode guide --task Task2 --perception vision --config configs/v4/bridge.json
+
+Without `--config configs/v4/bridge.json` the server speaks the first study's protocol. Each run writes a new folder under
+`robot_vision/outputs/` (never overwritten). Stop the server with one Ctrl+C so the summary is written.
+
+**Evaluate it** (development data only; test looks and clips are refused; use the same `.venv` Python as above):
+
+    python hri_eval_dev_v4.py --session outputs/trials_X outputs/bridge_guide_Y
+    python hri_analysis_v4.py --session zoom_on outputs/trials_X outputs/bridge_guide_Y
+
+The first scores the gesture reading, the pointing angle, who was picked as commander and the time to an accepted gesture, always
+with how often the robot answered at all. The second gives the success rate, intervals, the comparison with the first study
+and the list of differences between the two. Both write a new folder under `outputs/`.
+
+**The final runs** are protected the same way as before, and more strictly. Nothing final can start until the v4 settings are
+frozen (`python freeze_v4.py --freeze`, done by Anisha after the development evaluation; until then `frozen` in
+`configs/v4/frozen.json` is false and a test pins every file once it is true). Each of the four final settings (zoom on, zoom
+off, with bystanders, an unseen avatar look) can be run once (`--final-setting NAME`) and evaluated once
+(`hri_eval_final_v4.py`), and only on avatar looks and animations that were never used in development. After the runs,
+`make_results_archive_v4.py` copies the run folders, the leak-test images and the frozen settings, with checksums, to a folder
+outside the repository.
+
 ## How we kept the results honest
 
 - All thresholds and settings were fixed **before** the first final

@@ -1,0 +1,21 @@
+{
+  "label": "v4 results archive (make_results_archive_v4.py): copies of v4 session folders for the supervisor and the paper. Read-only towards the run folders. Not part of the freeze (it lists run folders, which are added after the runs). Paths are relative to the robot_vision folder unless noted.",
+  "archive_root": "../../RobotVisionResults",
+  "archive_root_note": "Outside the repository (a folder next to it), the same place as the v3 archives. Override with --archive-root. Each build writes a new results_archive_v4_<time>/ and its zip; nothing is overwritten.",
+  "output_root": "outputs",
+  "manifest": "configs/v4/archive/results_manifest.json",
+  "audit": "../AUDIT.md",
+  "repo_root": "..",
+  "unity_project_version": "../unity/Robotics-Warehouse/WarehouseProjectURP/ProjectSettings/ProjectVersion.txt",
+  "models": [
+    {"name": "yolo11s-pose (people, arm keypoints)", "path": "models/yolo11s-pose.pt", "expected_from": "configs/hri_perception.json", "key": "pose_model.sha256"},
+    {"name": "MediaPipe gesture_recognizer.task (hands)", "path": "../external/media_pipe_gesture/gesture_recognizer.task", "expected_from": "configs/gesture_hri.json", "key": "model.sha256"}
+  ],
+  "exclude": {
+    "suffixes": [".pt", ".pth", ".ckpt", ".onnx", ".safetensors", ".bin", ".task", ".tflite", ".engine", ".fbx", ".tga", ".unitypackage", ".vrm"],
+    "dir_names": ["_path_migration_backup", "worker_textures", "__pycache__"],
+    "name_contains": ["mixamo"],
+    "note": "Model weights, avatar files (VRM, FBX) and Mixamo files are never archived (licences; weights are identified by SHA-256 in environment/models.csv). The leak-test images (.png) and the frames are copied."
+  },
+  "no_compress_suffixes": [".png", ".jpg", ".jpeg", ".mp4", ".zip", ".gz"]
+}
