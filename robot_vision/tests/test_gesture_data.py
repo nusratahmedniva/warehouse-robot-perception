@@ -291,8 +291,18 @@ def merge_main(unity: Path, bridge: Path, out: Path) -> None:
         dio.new_run_dir = real
 
 
+def file_digest(p: Path) -> str:
+    # Hashes were taken with LF endings (as in test_hri_frozen.file_sha256). On Windows, hri_trials.py writes its JSON
+    # with write_text (text mode, CRLF) and the fixture's config files are CRLF too: same content, other bytes. CSV is
+    # hashed as written: the csv module writes "\r\n" row endings on every platform (newline="").
+    data = p.read_bytes()
+    if p.suffix in (".json", ".jsonl"):
+        data = data.replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
 def tree_hashes(out: Path) -> dict:
-    return {p.relative_to(out).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+    return {p.relative_to(out).as_posix(): file_digest(p)
             for p in sorted(out.rglob("*")) if p.is_file() and p.name != "run.json"}
 
 
