@@ -7,7 +7,8 @@ Run (from robot_vision/, with a server listening, e.g. run_trials.ps1 / run_tria
     python -m bridge.replay_client --frames outputs/<bridge run>/frames --duration-s 120
 
 Sends hello, telemetry at telemetry_hz, frame_360 at frame_360_hz and frame_pan_tilt at frame_pan_tilt_hz
-(bridge.json), cycling through the saved JPEGs of each camera. Writes outputs/replay_<time>/replies.csv (per
+(bridge.json; with --config configs/v4/bridge.json it speaks protocol 3 and its pan-tilt intrinsics match the 60 deg
+field of view, as protocol 3 requires), cycling through the saved JPEGs of each camera. Writes outputs/replay_<time>/replies.csv (per
 telemetry: send time, reply time, round trip) and summary.json (max, mean, p95, count over 300 ms = would-be watchdog
 stops, frames sent).
 """
@@ -61,6 +62,7 @@ async def replay(host: str, port: int, cfg: dict, frames: Path, duration_s: floa
     pano_b = [p.read_bytes() for p in pano]
     pan_b = [p.read_bytes() for p in pan]
     limits = P.Limits.from_config(cfg)
+    ver = limits.version                       # 2 or 3, from the config: configs/v4/bridge.json speaks protocol 3
     for _ in range(600):                       # the server listens only after its models are warmed up
         try:
             reader, writer = await asyncio.open_connection(host, port)
@@ -87,7 +89,8 @@ async def replay(host: str, port: int, cfg: dict, frames: Path, duration_s: floa
     rx = asyncio.create_task(receive())
     writer.write(P.encode({"type": "hello", "seq": seq, "time_s": 0.0, "client": "replay", "unity_version": "replay",
                            "telemetry_hz": cfg["telemetry_hz"], "frame_360_hz": cfg["frame_360_hz"],
-                           "frame_pan_tilt_hz": cfg["frame_pan_tilt_hz"], "watchdog_timeout_s": cfg["watchdog_timeout_s"]}))
+                           "frame_pan_tilt_hz": cfg["frame_pan_tilt_hz"], "watchdog_timeout_s": cfg["watchdog_timeout_s"]},
+                          version=ver))
     periods = {"telemetry": 1.0 / cfg["telemetry_hz"], "frame_360": 1.0 / cfg["frame_360_hz"],
                "frame_pan_tilt": 1.0 / cfg["frame_pan_tilt_hz"]}
     due = dict.fromkeys(periods, 0.0)
@@ -103,11 +106,11 @@ async def replay(host: str, port: int, cfg: dict, frames: Path, duration_s: floa
             seq += 1
             if kind == "telemetry":
                 sent[seq] = now
-                writer.write(P.encode(telemetry(seq, now)))
+                writer.write(P.encode(telemetry(seq, now), version=ver))
             else:
                 data = (pano_b if kind == "frame_360" else pan_b)[count[kind] % len(pano_b if kind == "frame_360" else pan_b)]
                 w, h = (2048, 1024) if kind == "frame_360" else (730, 530)
-                writer.write(P.encode(frame_header(kind, seq, count[kind], now, w, h), {"image": data}))
+                writer.write(P.encode(frame_header(kind, seq, count[kind], now, w, h), {"image": data}, version=ver))
             count[kind] += 1
         await writer.drain()
         await asyncio.sleep(max(0.0, min(due.values()) - (time.perf_counter() - t0)))
