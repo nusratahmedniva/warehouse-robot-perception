@@ -190,7 +190,8 @@ class FreezeMechanicsTests(unittest.TestCase):
     def test_line_endings_do_not_matter(self):
         fz.freeze(self.repo)
         f = self.repo / fz.V4_DIR / "commander.json"
-        f.write_bytes(f.read_bytes().replace(b"\n", b"\r\n"))
+        # From LF first: a Windows checkout (core.autocrlf) is already CRLF, and "\n" -> "\r\n" would make "\r\r\n".
+        f.write_bytes(f.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         self.assertEqual(fz.problems(self.repo), [])
 
     def test_freeze_is_refused_while_a_blank_is_left(self):
