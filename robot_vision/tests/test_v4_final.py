@@ -43,10 +43,34 @@ def final_repo(tmp: Path, freeze: bool = True, runs: int = 2) -> Path:
     return repo
 
 
-def session(tmp: Path, name: str, n: int = 2, zoom: bool = True, mode: str = "final", seed: int = 7, spec_kw=None, goal="E2"):
+def leak_images(folder: Path, differ: bool = False) -> None:
+    """Two image pairs (360 and pan-tilt): identical on / off, or with one pixel different."""
+    import numpy as np
+    from PIL import Image
+    folder.mkdir(exist_ok=True)
+    for cam in ("cam360", "pan_tilt"):
+        a = (np.arange(8 * 6 * 3) % 251).astype("uint8").reshape(8, 6, 3)
+        b = a.copy()
+        if differ and cam == "pan_tilt":
+            b[2, 2, 0] += 5
+        Image.fromarray(a).save(folder / f"{cam}_on.png")
+        Image.fromarray(b).save(folder / f"{cam}_off.png")
+
+
+def session(tmp: Path, name: str, n: int = 2, zoom: bool = True, mode: str = "final", seed: int = 7, spec_kw=None, goal="E2",
+            leak: str = "ok", unity_leak=True):
+    """A synthetic session. leak: 'ok' identical image pairs, 'differ' one pixel differs, 'none' no leak_test/ folder.
+    unity_leak: the value Unity records under the leak key in session.json (None = key absent)."""
     spec = sv.SceneSpec(**{**TEST_SPEC, **(spec_kw or {})})
     results = [tt.trial(goal, spec, zoom=zoom, seed=k + 1) for k in range(n)]
-    return sv.export_session(results, tmp, zoom, seed=seed, name=name, mode=mode)
+    u, b = sv.export_session(results, tmp, zoom, seed=seed, name=name, mode=mode)
+    if leak != "none":
+        leak_images(u / "leak_test", differ=(leak == "differ"))
+    if unity_leak is not None:
+        sj = json.loads((u / "session.json").read_text())
+        sj["leak_test_passed"] = unity_leak
+        (u / "session.json").write_text(json.dumps(sj))
+    return u, b
 
 
 class GuardTests(unittest.TestCase):
@@ -223,11 +247,55 @@ class FinalEvaluationTests(unittest.TestCase):
             ef.evaluate_final("zoom_on", self.pairs(name="d", mode="development"), self.repo, self.out)
         self.assertEqual(fg.markers(self.out, "zoom_on", "evaluation"), [])          # refusals leave no marker
 
+    def refused_for_leak(self, why: str, **kw):
+        called = []
+        real = ev.load_sessions
+        ev.load_sessions = lambda *a, **k: called.append(1)
+        try:
+            with self.assertRaisesRegex(SystemExit, "leak test has not passed") as cm:
+                ef.evaluate_final("zoom_on", [session(self.root, kw.pop("name", "lk"), **kw)], self.repo, self.out)
+        finally:
+            ev.load_sessions = real
+        self.assertIn(why, str(cm.exception))
+        self.assertEqual(called, [])                                           # refused before any test data was read
+        self.assertEqual(fg.markers(self.out, "zoom_on", "evaluation"), [])    # and no FINAL_DONE.json
+
+    def test_the_leak_test_is_enforced_before_the_final_evaluation(self):
+        self.refused_for_leak("Unity's own leak test failed", name="u", unity_leak=False)
+        self.refused_for_leak("Python's leak test failed", name="p", leak="differ")
+        self.refused_for_leak("no leak_test/ folder", name="m", leak="none")
+        self.refused_for_leak("has no 'leak_test_passed'", name="k", unity_leak=None)
+
+    def test_a_passing_leak_test_is_recorded_by_the_evaluation(self):
+        pairs = self.pairs()
+        out, _ = ef.evaluate_final("zoom_on", pairs, self.repo, self.out)
+        rec = json.loads((pairs[0][0] / "leak_test" / "leak_test.json").read_text())
+        self.assertTrue(rec["passed"])                                         # written by the independent check, not by Unity
+        self.assertTrue((out / "FINAL_DONE.json").exists())
+
     def test_a_run_marker_does_not_stop_the_evaluation(self):
         (self.out / "bridge_x").mkdir()
         fg.write_done(self.out / "bridge_x", "zoom_on", "run")
         out, _ = ef.evaluate_final("zoom_on", self.pairs(), self.repo, self.out)
         self.assertTrue((out / "FINAL_DONE.json").exists())
+
+
+class UnconfirmedKeyTests(unittest.TestCase):
+    def test_a_repo_frozen_with_the_placeholder_key_refuses_every_final_evaluation(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = tfz.make_repo(Path(d) / "r")
+            f = repo / fz.V4_DIR / "gt_eval.json"
+            cfg = json.loads(f.read_text())
+            cfg["unity_leak_result_key_confirmed"] = False
+            f.write_text(json.dumps(cfg))
+            fz.refresh_list(repo)
+            fz.freeze(repo)                                                     # the freeze itself does not read the key
+            u, b = session(Path(d), "s")
+            try:
+                with self.assertRaisesRegex(SystemExit, "placeholder, not confirmed by Nusrat"):
+                    ef.evaluate_final("zoom_on", [(u, b)], repo, Path(d) / "out")
+            finally:
+                rp.set_active_roots({})
 
 
 class ServerFinalTests(unittest.IsolatedAsyncioTestCase):

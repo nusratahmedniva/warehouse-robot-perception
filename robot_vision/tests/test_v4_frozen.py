@@ -46,6 +46,10 @@ def make_repo(tmp: Path, fill_plan: bool = True) -> Path:
         d = json.loads(sp.read_text())
         d["placeholder"] = False
         sp.write_text(json.dumps(d))
+        ge = repo / fz.V4_DIR / "gt_eval.json"                     # the Unity leak-test key, confirmed by Nusrat in this copy
+        d = json.loads(ge.read_text())
+        d["unity_leak_result_key_confirmed"] = True
+        ge.write_text(json.dumps(d))
     return repo
 
 

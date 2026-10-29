@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 import final_guard_v4 as fg  # noqa: E402
 import freeze_v4 as fz  # noqa: E402
+import gt_path  # noqa: E402
 import make_results_archive as ma  # noqa: E402
 import make_results_archive_v4 as mv  # noqa: E402
 import test_v4_final as tf  # noqa: E402
@@ -36,11 +37,8 @@ class World:
         self.arch = tmp / "archives"
         u, b = tf.session(self.out, "final_zoom_on")
         self.unity, self.bridge = u, b
-        lt = u / "leak_test"
-        lt.mkdir()
-        (lt / "cam360_on.png").write_bytes(b"\x89PNG-on")
-        (lt / "cam360_off.png").write_bytes(b"\x89PNG-off")
-        (lt / "leak_test.json").write_text(json.dumps({"passed": True}))
+        gt_cfg = gt_path.load_config(self.repo / "robot_vision/configs/v4/gt_eval.json")
+        assert gt_path.session_leak_check(u, gt_cfg)["passed"]          # what the final evaluation does: writes leak_test.json
         if complete:
             fg.write_done(b, "zoom_on", "run")
             (b / "FINAL_SETTING.json").write_text(json.dumps({"setting": "zoom_on", "frozen_sha256": fz.sha256_lf(self.repo / fz.FROZEN_REL)}))
@@ -127,7 +125,7 @@ class ArchiveTests(unittest.TestCase):
 
     def test_a_missing_done_marker_or_leak_test_is_a_problem_for_a_final(self):
         (self.w.bridge / "FINAL_RUN_DONE.json").unlink()
-        (self.w.unity / "leak_test" / "leak_test.json").write_text(json.dumps({"passed": False}))
+        (self.w.unity / "leak_test" / "leak_test.json").write_text(json.dumps({"passed": False}))      # disagrees with the images
         p = {c["check"] for c in self.problems(self.w.build())}
         self.assertIn("FINAL_RUN_DONE.json", p)
         self.assertIn("leak test passed", p)

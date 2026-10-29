@@ -14,10 +14,14 @@ Inference code must never import it (tests/test_gt_path.py checks that).
 - path_measures: the same measures against ONE polyline (Phase 1; kept, no longer used by evaluate_run).
 - leak_test: every <name>_on / <name>_off image pair must be pixel-identical (max difference from the config);
   writes leak_test.json.
+- session_leak_check: the leak test of a Unity session folder, enforced: Python's independent check (run on leak_test/ when
+  leak_test.json is absent, never overwriting) AND Unity's own result in session.json must both pass. hri_eval_final_v4.py refuses
+  without it; hri_eval_dev_v4.py and the results archive report it.
 
 Usage (from robot_vision/):
     python gt_path.py run   outputs/trials_X/run_001 [--config configs/v4/gt_eval.json]
     python gt_path.py leak  outputs/trials_X/leak_test
+    python gt_path.py session outputs/trials_X     (Unity's and Python's leak test of the session, as the final evaluation enforces it)
 """
 
 from __future__ import annotations
@@ -333,23 +337,111 @@ def leak_test(folder: str | Path, max_pixel_diff: int = 0, write: bool = True) -
               "max_diff": max((p["max_diff"] for p in pairs), default=None), "max_pixel_diff_allowed": max_pixel_diff,
               "pairs": pairs, "problems": problems or ([] if pairs else ["no image pairs found"])}
     if write:
-        with (folder / "leak_test.json").open("x", encoding="utf-8") as f:
-            f.write(json.dumps(result, indent=2) + "\n")
+        write_leak_json(folder, result)
     return result
+
+
+def write_leak_json(folder: str | Path, result: dict) -> Path:
+    """leak_test.json in the folder (mode 'x': never overwrites)."""
+    p = Path(folder) / "leak_test.json"
+    with p.open("x", encoding="utf-8") as f:
+        f.write(json.dumps(result, indent=2) + "\n")
+    return p
+
+
+def _dig(d, dotted: str):
+    for k in dotted.split("."):
+        if not isinstance(d, dict) or k not in d:
+            return None, False
+        d = d[k]
+    return d, True
+
+
+def session_leak_check(session_dir: str | Path, cfg: dict | None = None, write: bool = True) -> dict:
+    """The leak test of one Unity session folder (<session>/leak_test/ and <session>/session.json). passed is True only if BOTH hold:
+
+    1. Python's independent check passes. leak_test.json is never overwritten: if it is absent the pairs are compared now and, when
+       there are image pairs and write is True, the result is saved as leak_test.json; if it is present it is read, and the images are
+       compared again in memory, a disagreement between the file and the images is a failure. No images, an unreadable image, a
+       pair with one missing side or a size mismatch are failures.
+    2. Unity's own result in session.json (the key named by cfg['unity_leak_result_key'], dotted for a nested one) is the boolean True.
+       A missing session.json, a missing key, false or anything that is not a boolean is a failure; while
+       cfg['unity_leak_result_key_confirmed'] is false (the key is a placeholder until Nusrat confirms it) it is a failure too.
+    reasons lists every failure; the dict also holds each side's details."""
+    cfg = cfg if cfg is not None else load_config()
+    session = Path(session_dir)
+    reasons: list[str] = []
+    folder = session / "leak_test"
+    py: dict = {"passed": False, "source": None, "max_diff": None, "pairs": 0}
+    if not folder.is_dir():
+        reasons.append("no leak_test/ folder (the image pairs are missing)")
+    else:
+        try:
+            now = leak_test(folder, cfg["leak_max_pixel_diff"], write=False)
+        except OSError as e:
+            now = {"passed": False, "pairs": [], "max_diff": None, "problems": [f"leak_test/ could not be read: {e}"]}
+        py.update(passed=now["passed"], max_diff=now["max_diff"], pairs=len(now["pairs"]))
+        recorded = folder / "leak_test.json"
+        if recorded.is_file():
+            py["source"] = "leak_test.json present (not rewritten)"
+            try:
+                was = json.loads(recorded.read_text(encoding="utf-8")).get("passed")
+            except (OSError, ValueError):
+                was = None
+            if was is not True and was is not False:
+                py["passed"] = False
+                reasons.append("leak_test.json is unreadable or has no 'passed' flag")
+            elif was != now["passed"]:
+                py["passed"] = False
+                reasons.append(f"leak_test.json says passed={was} but the images in leak_test/ now give passed={now['passed']}")
+            elif not now["passed"]:
+                reasons += [f"Python's leak test failed: {x}" for x in (now["problems"] or [f"largest pixel difference {now['max_diff']}"])]
+        else:
+            py["source"] = "compared now"
+            if write and now["pairs"]:
+                write_leak_json(folder, now)
+                py["source"] = "compared now and written to leak_test.json"
+            if not now["passed"]:
+                reasons += [f"Python's leak test failed: {x}" for x in (now["problems"] or [f"largest pixel difference {now['max_diff']}"])]
+    unity = {"key": cfg.get("unity_leak_result_key"), "value": None, "passed": False}
+    sj = session / "session.json"
+    if not cfg.get("unity_leak_result_key_confirmed", False):
+        reasons.append(f"Unity's session.json key for its leak-test result ('{unity['key']}') is a placeholder, not confirmed by Nusrat yet")
+    elif not sj.is_file():
+        reasons.append("no session.json (Unity's own leak-test result is missing)")
+    else:
+        try:
+            value, found = _dig(json.loads(sj.read_text(encoding="utf-8")), unity["key"])
+        except (OSError, ValueError):
+            value, found = None, False
+            reasons.append("session.json is unreadable")
+        if not found:
+            reasons.append(f"session.json has no '{unity['key']}' (Unity's own leak-test result is missing)")
+        else:
+            unity["value"] = value
+            if value is True:
+                unity["passed"] = True
+            elif value is False:
+                reasons.append(f"Unity's own leak test failed ({unity['key']} is false)")
+            else:
+                reasons.append(f"session.json '{unity['key']}' is {value!r}, not a boolean")
+    return {"passed": bool(py["passed"] and unity["passed"] and not reasons), "reasons": reasons, "python": py, "unity": unity}
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("what", choices=["run", "leak"])
+    ap.add_argument("what", choices=["run", "leak", "session"],
+                    help="run: one run folder; leak: the image pairs of a leak_test/ folder; session: Unity's and Python's leak test of a session folder")
     ap.add_argument("folder")
     ap.add_argument("--config", default=DEFAULT_CONFIG)
     a = ap.parse_args(argv)
     import decision_io as dio
     cfg = load_config(dio.resolve(a.config))
     folder = dio.resolve(a.folder)
-    res = evaluate_run(folder, cfg) if a.what == "run" else leak_test(folder, cfg["leak_max_pixel_diff"])
+    res = (evaluate_run(folder, cfg) if a.what == "run" else leak_test(folder, cfg["leak_max_pixel_diff"]) if a.what == "leak"
+           else session_leak_check(folder, cfg))
     print(json.dumps(res, indent=2))
-    if a.what == "leak" and not res["passed"]:
+    if a.what in ("leak", "session") and not res["passed"]:
         raise SystemExit(1)
 
 

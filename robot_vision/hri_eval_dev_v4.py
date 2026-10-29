@@ -41,6 +41,7 @@ from pathlib import Path
 import data_splits_v4 as ds
 import gesture_data as gd
 import gesture_motion as gm
+import gt_path
 import hri_control as hc
 import hri_control_v4 as hv
 
@@ -352,6 +353,9 @@ def evaluate(runs: list, ecfg: dict | None = None, gcfg: dict | None = None, roa
     road = road if road is not None else hc.Roadmap(hc.load_json("configs/roadmap.json"))
     res = evaluate_block(runs, ecfg, gcfg, road)
     res["sessions"] = sorted({r.session for r in runs})
+    gt_cfg = gt_path.load_config()
+    res["leak_test"] = {u.name: {k: v for k, v in gt_path.session_leak_check(u, gt_cfg, write=False).items() if k in ("passed", "reasons")}
+                        for u in sorted({r.unity_dir for r in runs if r.unity_dir is not None}, key=str)}
     res["per_zoom"] = {label: evaluate_block([r for r in runs if r.zoom_on == flag], ecfg, gcfg, road) if any(
         r.zoom_on == flag for r in runs) else NOT_EVALUATED for label, flag in (("zoom_on", True), ("zoom_off", False))}
     res["splits"] = "development looks and clips only (data_splits_v4.guard_run)"
@@ -387,12 +391,15 @@ def markdown(res: dict) -> str:
           f"Error of the roadmap-resolved reading (deg): {a['error_deg_resolved_reading']}.",
           f"Frames with a resolution {a['frames_with_a_resolution']}: resolved {a['resolved']}, ambiguous {a['ambiguous']} (share {a['ambiguous_share']}).", "", a["note"], ""]
     b = res["branch"]
+    leak = res.get("leak_test", {})
     sv, ra = b["second_view"], b["reapproached"]
     L += ["## Branch", "", f"Asks {b['junction_asks']}, accepted {b['accepted']} (answered share {b['answered_share']}); scored {b['scored']}, "
           f"correct {b['correct']} (rate {b['correct_rate_of_scored']}); not evaluated {b['not_evaluated']}.",
           f"Second view (two depth readings fitted two branches): {sv['asks_with_a_second_view']} asks (share {sv['share_of_asks']}), "
           f"accepted after it {sv['accepted_after_it']}, unresolved {sv['unresolved_after_it']}. Re-approached the commander: {ra['asks']} asks.",
-          "", "## Commander", ""]
+          "", "## Leak test (reported, not enforced in development)", ""]
+    L += [f"- {name}: {'passed (Unity and Python)' if v['passed'] else 'NOT passed: ' + '; '.join(v['reasons'])}" for name, v in leak.items()]
+    L += ["", "## Commander", ""]
     for k, v in res["commander"].items():
         L.append(f"- {k}: {v['frames']} frames with a gesturing truth commander; correct {v['correct']}, wrong {v['wrong']}, "
                  f"none {v['no_commander']}; coverage {v['coverage']}, accuracy of decided {v['accuracy_of_decided']}.")

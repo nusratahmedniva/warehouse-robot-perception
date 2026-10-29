@@ -198,12 +198,19 @@ Before every session Unity renders **both** robot cameras (360 and pan-tilt) twi
 (more pairs, from other poses, use other prefixes: `cam360_p2_on.png`, ...). Both images of a pair have the same size
 and pose; nothing else in the scene moves between the two renders (animation and physics paused, same frame).
 
-Unity compares the pairs itself, records its result in `session.json` and keeps the image pairs in `leak_test/`; it **never writes
-`leak_test.json`**. That file is Python's independent check: `python gt_path.py leak outputs/trials_X/leak_test` compares each pair
-pixel by pixel and writes `leak_test/leak_test.json` (`passed`, `max_diff`, per-pair results). **The images must be identical
-(`leak_max_pixel_diff` 0 in `configs/v4/gt_eval.json`), or no run may start**: Unity's trial runner refuses to start until its own
-comparison passed, and Python's check must pass too before the session counts (the results archive requires `leak_test.json` with
-`passed` true for a final). JPEG must not be used here: its compression would make identical scenes differ.
+**Workflow (decided 2026-10-29).** Unity runs its own comparison **before trial 1 and refuses to start the trials if it fails**, records
+its result in `session.json` as a boolean, and keeps the image pairs in `leak_test/`; it **never writes `leak_test.json`**. That file is
+Python's independent check (`gt_path.session_leak_check`, also `python gt_path.py session outputs/trials_X`): it compares each pair pixel
+by pixel and writes `leak_test/leak_test.json` (`passed`, `max_diff`, per-pair results) if the file is absent, never overwriting one that is
+there (an existing file is read, and is a failure if it disagrees with the images). It runs automatically when a final evaluation starts
+(`hri_eval_final_v4.py`), which refuses unless **both** passed: Unity's `session.json` result is exactly `true` AND Python's check passed. Missing
+images, a missing or non-boolean Unity result, or any disagreement means not passed, with the reason. `hri_eval_dev_v4.py` reports the status
+per session without refusing; the results archive uses the same check. **The images must be identical (`leak_max_pixel_diff` 0 in
+`configs/v4/gt_eval.json`).** JPEG must not be used here: its compression would make identical scenes differ.
+
+The `session.json` key is the named setting `unity_leak_result_key` in `configs/v4/gt_eval.json` (dotted for a nested key). It is a
+PLACEHOLDER (`leak_test_passed`, `unity_leak_result_key_confirmed` false) until Nusrat confirms the real key; until then the check reports
+"not passed" and a final evaluation is refused.
 
 ## What Nusrat implements in Unity from this document
 
@@ -277,6 +284,11 @@ comparison passed, and Python's check must pass too before the session counts (t
 - 2026-10-29: the `trail.csv` example shows `yaw_deg` with 3 decimals (as the text already said): `0.000,6.250,-10.000,0.000`.
 - 2026-10-29: **leak test records.** Unity records its own leak-test result in `session.json` and keeps the image pairs in `leak_test/`; it never
   writes `leak_test.json`, which is `gt_path.py leak` (Python's independent check).
+- 2026-10-29: **leak-test workflow (enforced).** Unity runs its own leak test before trial 1, refuses to start on failure and records the result in
+  `session.json`; Python's independent check (`gt_path.session_leak_check`) runs automatically at evaluation time; both must pass, and
+  `hri_eval_final_v4.py` refuses otherwise (before `FINAL_DONE.json`, before any test data is read). Only a boolean `true` from Unity passes. The
+  `session.json` key is a placeholder named setting (`unity_leak_result_key`, unconfirmed) until Nusrat confirms it. `leak_test.json` is never
+  overwritten and is never written by Unity.
 
 ## Changes
 

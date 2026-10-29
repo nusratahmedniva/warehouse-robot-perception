@@ -37,6 +37,7 @@ from pathlib import Path
 
 import final_guard_v4 as fg
 import freeze_v4 as fz
+import gt_path
 import make_results_archive as ma
 
 HERE = Path(__file__).resolve().parent
@@ -83,12 +84,13 @@ def session_checks(s: dict, output_root: Path, repo: Path) -> list[dict]:
         out.append(row("unity", "run folders", "ok" if runs else "problem", f"{len(runs)} run_### folders"))
         missing = [r.name for r in runs if not ((r / "truth.jsonl").is_file() and (r / "run.json").is_file())]
         out.append(row("unity", "truth.jsonl and run.json in every run folder", "ok" if not missing else "problem", ", ".join(missing)))
-        lt = u / "leak_test" / "leak_test.json"
-        if lt.is_file():
-            ok = json.loads(lt.read_text(encoding="utf-8")).get("passed") is True
-            out.append(row("unity", "leak test passed", "ok" if ok else "problem", str(lt.relative_to(u))))
-        else:
-            out.append(row("unity", "leak test passed", "problem" if final else "missing", "no leak_test/leak_test.json"))
+        leak = gt_path.session_leak_check(u, gt_path.load_config(repo / "robot_vision/configs/v4/gt_eval.json"), write=False)
+        out.append(row("unity", "leak test passed", "ok" if leak["passed"] else ("problem" if final else "missing"),
+                       "Unity's own result and Python's independent check passed" if leak["passed"] else "; ".join(leak["reasons"])))
+        if final:
+            has = (u / "leak_test" / "leak_test.json").is_file()
+            out.append(row("unity", "leak_test.json recorded", "ok" if has else "problem",
+                           "Python's independent check was recorded" if has else "no leak_test/leak_test.json (the final evaluation writes it)"))
         if final:
             sess = json.loads((u / "session.json").read_text(encoding="utf-8")) if (u / "session.json").is_file() else {}
             out.append(row("unity", "Unity session mode is final", "ok" if sess.get("mode") == "final" else "problem", f"mode {sess.get('mode')!r}"))

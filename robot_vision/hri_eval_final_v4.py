@@ -3,7 +3,10 @@
 Allowed only when ALL of this holds, otherwise refused (SystemExit) before any test data is read:
   1. configs/v4/frozen.json is frozen and every hash matches (v4 configs, v3 files v4 reads, pose weights, MediaPipe model);
   2. the setting has not been evaluated before (FINAL_DONE.json, final_guard_v4.py);
-  3. every run lies wholly in the TEST split (data_splits_v4.guard_run with final evaluation: test looks and clips only, no
+  3. the leak test of every Unity session passed: Unity's own result in session.json AND Python's independent check of leak_test/
+     (gt_path.session_leak_check; it writes leak_test.json when absent, never overwrites). Missing images, a missing Unity result or any
+     disagreement refuses, with the reason;
+  4. every run lies wholly in the TEST split (data_splits_v4.guard_run with final evaluation: test looks and clips only, no
      development data, no mix, no placeholders) and is what the setting says (zoom, bystanders, runs, seed, task, Unity mode).
 It runs the same evaluation as hri_eval_dev_v4.py (the numbers are computed by the same code), writes a new folder
 <output_root>/hri_eval_final_v4_<setting>_<time>/ with eval.json, eval.md, the frozen record and every v4 config used, and
@@ -23,6 +26,7 @@ import data_splits_v4 as ds
 import final_guard_v4 as fg
 import freeze_v4 as fz
 import gesture_data as gd
+import gt_path
 import hri_eval_dev_v4 as ev
 
 HERE = Path(__file__).resolve().parent
@@ -32,8 +36,13 @@ def gate(setting: str, pairs, output_root, gcfg: dict, repo: Path = fz.REPO) -> 
     """All the checks, in order, before and while the test data is loaded. Returns the loaded runs."""
     fz.require_frozen(repo)                                           # 1. frozen and every hash matches (models must be present)
     fg.ensure_not_done(output_root, setting, "evaluation", repo)       # 2. not evaluated before
+    gt_cfg = gt_path.load_config(repo / "robot_vision/configs/v4/gt_eval.json")
+    for unity in sorted({Path(u) for u, _ in pairs}, key=str):         # 3. the leak test passed (before any test data is read)
+        leak = gt_path.session_leak_check(unity, gt_cfg)
+        if not leak["passed"]:
+            raise SystemExit(f"{unity.name}: the leak test has not passed, so no result is reported: " + "; ".join(leak["reasons"]))
     splits = ds.load(repo / "robot_vision/configs/v4/data_splits.json")
-    runs = ev.load_sessions(pairs, gcfg, splits, final_evaluation=True, settings=[setting] * len(pairs))   # 3. test split only
+    runs = ev.load_sessions(pairs, gcfg, splits, final_evaluation=True, settings=[setting] * len(pairs))   # 4. test split only
     problems = fg.check_setting(setting, runs, repo)
     if problems:
         raise SystemExit(f"setting {setting!r} refused: " + "; ".join(problems))

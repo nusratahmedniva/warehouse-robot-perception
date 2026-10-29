@@ -131,6 +131,15 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(on["branch"]["accepted"], 3)
         self.assertEqual(off["branch"]["accepted"], 1)
 
+    def test_the_leak_test_status_is_reported_per_session_and_never_refuses(self):
+        lt = self.res["leak_test"]
+        self.assertEqual(set(lt), {"trials_on", "trials_off"})
+        for v in lt.values():
+            self.assertFalse(v["passed"])                                       # the synthetic sessions have no leak test
+            self.assertTrue(v["reasons"])
+        self.assertIn("Leak test (reported, not enforced in development)", ev.markdown(self.res))
+        self.assertFalse((self.pairs[0][0] / "leak_test").exists())              # reporting wrote nothing into the session
+
     def test_markdown_reports_coverage_everywhere(self):
         md = ev.markdown(self.res)
         for word in ("coverage", "Per look", "Per distance", "Zoom on vs off", "not_evaluated", "Commander", "answered"):

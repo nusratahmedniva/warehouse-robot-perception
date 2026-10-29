@@ -490,9 +490,169 @@ class CorridorTests(unittest.TestCase):
         self.assertEqual(worst([(0.0, 0.25, 0.25), (0.1, 0.75, 0.25)]), 0.0)                         # on centres: exactly 0
 
 
+class SessionLeakCheckTests(unittest.TestCase):
+    """gt_path.session_leak_check: Unity's own result in session.json AND Python's independent check of leak_test/."""
+
+    CFG = {**CFG, "unity_leak_result_key": "leak_test_passed", "unity_leak_result_key_confirmed": True}
+
+    def make(self, d, images="ok", unity=True, key="leak_test_passed", session=True):
+        import numpy as np
+        from PIL import Image
+        root = Path(d)
+        if images != "none":
+            lt = root / "leak_test"
+            lt.mkdir()
+            if images != "empty":
+                a = (np.arange(8 * 6 * 3) % 251).astype("uint8").reshape(8, 6, 3)
+                for cam in ("cam360", "pan_tilt"):
+                    b = a.copy()
+                    if images == "differ" and cam == "pan_tilt":
+                        b[1, 1, 1] += 4
+                    Image.fromarray(a).save(lt / f"{cam}_on.png")
+                    if images == "onesided" and cam == "pan_tilt":
+                        continue
+                    Image.fromarray(b).save(lt / f"{cam}_off.png")
+        if session:
+            body = {"task": "Task2", "mode": "final"}
+            if unity is not None:
+                body[key] = unity
+            (root / "session.json").write_text(json.dumps(body))
+        return root
+
+    def check(self, d, **kw):
+        return gt.session_leak_check(d, self.CFG, **kw)
+
+    def test_both_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.check(self.make(d))
+            self.assertTrue(r["passed"])
+            self.assertEqual(r["reasons"], [])
+            self.assertEqual((r["python"]["pairs"], r["python"]["max_diff"], r["unity"]["value"]), (2, 0, True))
+            self.assertEqual(r["python"]["source"], "compared now and written to leak_test.json")
+            self.assertTrue(json.loads((Path(d) / "leak_test" / "leak_test.json").read_text())["passed"])
+
+    def test_unity_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.check(self.make(d, unity=False))
+            self.assertFalse(r["passed"])
+            self.assertTrue(r["python"]["passed"])
+            self.assertIn("Unity's own leak test failed", " ".join(r["reasons"]))
+
+    def test_python_fails_while_unity_says_it_passed(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.check(self.make(d, images="differ"))
+            self.assertFalse(r["passed"])
+            self.assertTrue(r["unity"]["passed"])
+            self.assertIn("Python's leak test failed", " ".join(r["reasons"]))
+            self.assertEqual(r["python"]["max_diff"], 4)
+            self.assertFalse(json.loads((Path(d) / "leak_test" / "leak_test.json").read_text())["passed"])     # recorded, not hidden
+
+    def test_images_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.check(self.make(d, images="none"))
+            self.assertFalse(r["passed"])
+            self.assertIn("no leak_test/ folder", " ".join(r["reasons"]))
+        with tempfile.TemporaryDirectory() as d:
+            root = self.make(d, images="empty")
+            r = self.check(root)
+            self.assertFalse(r["passed"])
+            self.assertIn("no image pairs found", " ".join(r["reasons"]))
+            self.assertFalse((root / "leak_test" / "leak_test.json").exists())                  # nothing to record: nothing written
+        with tempfile.TemporaryDirectory() as d:
+            r = self.check(self.make(d, images="onesided"))
+            self.assertFalse(r["passed"])
+            self.assertIn("only the on image exists", " ".join(r["reasons"]))
+
+    def test_session_json_without_the_key_or_without_session_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.check(self.make(d, unity=None))
+            self.assertFalse(r["passed"])
+            self.assertIn("has no 'leak_test_passed'", " ".join(r["reasons"]))
+            self.assertTrue(r["python"]["passed"])
+        with tempfile.TemporaryDirectory() as d:
+            r = self.check(self.make(d, session=False))
+            self.assertFalse(r["passed"])
+            self.assertIn("no session.json", " ".join(r["reasons"]))
+        with tempfile.TemporaryDirectory() as d:
+            root = self.make(d)
+            (root / "session.json").write_text("{broken")
+            self.assertIn("unreadable", " ".join(self.check(root)["reasons"]))
+
+    def test_only_a_boolean_true_passes(self):
+        for value in ("PASS", "true", 1, 0, "", None, [True]):
+            with tempfile.TemporaryDirectory() as d:
+                root = self.make(d, unity=value)
+                r = self.check(root)
+                self.assertFalse(r["passed"], repr(value))
+                self.assertFalse(r["unity"]["passed"], repr(value))
+
+    def test_an_existing_leak_test_json_is_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self.make(d)
+            f = root / "leak_test" / "leak_test.json"
+            f.write_text(json.dumps({"passed": True, "note": "written earlier"}))
+            before = f.read_bytes()
+            r = self.check(root)
+            self.assertTrue(r["passed"])
+            self.assertEqual(f.read_bytes(), before)
+            self.assertEqual(r["python"]["source"], "leak_test.json present (not rewritten)")
+            # an earlier record that disagrees with the images is a failure, and is still not rewritten
+            f.write_text(json.dumps({"passed": False}))
+            r = self.check(root)
+            self.assertFalse(r["passed"])
+            self.assertIn("says passed=False but the images", " ".join(r["reasons"]))
+            self.assertEqual(json.loads(f.read_text()), {"passed": False})
+            f.write_text("{not json")
+            self.assertIn("unreadable", " ".join(self.check(root)["reasons"]))
+            self.assertEqual(f.read_text(), "{not json")
+
+    def test_a_recorded_pass_that_the_images_no_longer_support_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self.make(d, images="differ")
+            (root / "leak_test" / "leak_test.json").write_text(json.dumps({"passed": True}))
+            r = self.check(root)
+            self.assertFalse(r["passed"])
+            self.assertIn("says passed=True but the images", " ".join(r["reasons"]))
+
+    def test_write_false_creates_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self.make(d)
+            r = self.check(root, write=False)
+            self.assertTrue(r["passed"])
+            self.assertFalse((root / "leak_test" / "leak_test.json").exists())
+
+    def test_the_unity_key_is_a_named_setting_that_starts_unconfirmed(self):
+        shipped = gt.load_config()
+        self.assertEqual(shipped["unity_leak_result_key"], "leak_test_passed")
+        self.assertFalse(shipped["unity_leak_result_key_confirmed"])             # placeholder until Nusrat confirms
+        with tempfile.TemporaryDirectory() as d:
+            r = gt.session_leak_check(self.make(d), shipped)
+            self.assertFalse(r["passed"])
+            self.assertIn("placeholder, not confirmed by Nusrat", " ".join(r["reasons"]))
+
+    def test_a_nested_key_can_be_named(self):
+        cfg = {**self.CFG, "unity_leak_result_key": "leak_test.passed"}
+        with tempfile.TemporaryDirectory() as d:
+            root = self.make(d, unity=None)
+            (root / "session.json").write_text(json.dumps({"leak_test": {"passed": True, "max_diff": 0}}))
+            self.assertTrue(gt.session_leak_check(root, cfg)["passed"])
+            (root / "session.json").write_text(json.dumps({"leak_test": {"passed": False}}))
+            self.assertFalse(gt.session_leak_check(root, cfg)["passed"])
+            (root / "session.json").write_text(json.dumps({"leak_test": "ok"}))
+            self.assertFalse(gt.session_leak_check(root, cfg)["passed"])
+
+    def test_command_line_session_mode(self):
+        import io
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as d:
+            root = self.make(d)
+            with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                gt.main(["session", str(root)])                               # the shipped key is unconfirmed: exit status 1
+
+
 class IsolationTests(unittest.TestCase):
     def test_only_evaluation_code_imports_gt_path(self):
-        allowed = {"hri_analysis.py", "hri_analysis_v4.py"}
+        allowed = {"hri_analysis.py", "hri_analysis_v4.py", "hri_eval_dev_v4.py", "hri_eval_final_v4.py", "make_results_archive_v4.py"}
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)

@@ -1113,14 +1113,19 @@ until Nusrat sends the complete list (the rest of the v4 scene's Unity configs) 
    different cells for A to E3 and A to E4: several equally short paths exist, and the measures used to depend on which one A* or Unity returned.
    **0.40 m stays the official widening.**
 3. **`trail.csv`** `yaw_deg` has 3 decimals (the protocol example is corrected).
-4. **Leak test records.** Unity records its own result in `session.json` and keeps the image pairs in `leak_test/`; it never writes `leak_test.json`, which is
-   `gt_path.py leak` (Python's independent check). Both must pass before a session counts; the archive requires `leak_test.json` with `passed` true for a final.
+4. **Leak test, enforced (decided 29 October 2026).** Unity runs its own check before trial 1, refuses to start on failure, records the result in `session.json`
+   and keeps the image pairs in `leak_test/`; it never writes `leak_test.json`. Python's independent check (`gt_path.session_leak_check`) runs automatically at
+   evaluation time and writes `leak_test.json` when absent (never overwriting). **Both must pass**: `hri_eval_final_v4.py` refuses otherwise, before
+   `FINAL_DONE.json` and before any test data is read; `hri_eval_dev_v4.py` reports the status per session without refusing; `make_results_archive_v4.py` uses
+   the same check. Missing images, a missing or non-boolean Unity result (only `true` passes) or any disagreement is "not passed", with the reason.
+   The `session.json` key is a **named setting in `configs/v4/gt_eval.json`, a PLACEHOLDER until Nusrat confirms it** (part of B9); until then a final
+   evaluation is refused.
 
 ### 14.8 Run protocol (before every final session)
 
 Other apps closed, Windows power mode "Best performance" (as in section 9), enough free memory, the machine recorded; the leak test
 (ground-truth layer on / off render identical) passes before the first run (Unity's own comparison, recorded in `session.json`, and Python's independent
-check `python gt_path.py leak <leak_test folder>`, which writes `leak_test.json`); a resource
+check, `python gt_path.py session <session folder>`, which writes `leak_test.json` and also runs automatically when a final evaluation starts, 14.7b item 4); a resource
 log is kept (`--resource-log`). The machine for the finals (B10, decided 24 Oct 2026): Nusrat's Windows PC with the NVIDIA RTX 3060, the same machine
 as the v3 Task 1 final (section 10), so inference times of the finals are comparable with that run (not with the Mac original of Task 2). Inference times and total times are not comparable across
 machines (14.3, RQ1 table).

@@ -140,6 +140,11 @@ The first scores the gesture reading, the pointing angle, who was picked as comm
 with how often the robot answered at all. The second gives the success rate, intervals, the comparison with the first study
 and the list of differences between the two. Both write a new folder under `outputs/`.
 
+**The leak test.** Before the first run of a session the Unity scene renders both robot cameras twice, with the hidden "ground truth"
+layer on and off, and the pictures must be identical, otherwise the robot's cameras could see the truth. Unity checks this itself before
+trial 1 and refuses to start if it fails; it keeps the picture pairs in the session folder. Python checks the same pictures again,
+independently, when a final evaluation starts, and both checks must pass or no result is reported.
+
 **The final runs** are protected the same way as before, and more strictly. Nothing final can start until the v4 settings are
 frozen (`python freeze_v4.py --freeze`, done by Anisha after the development evaluation; until then `frozen` in
 `configs/v4/frozen.json` is false and a test pins every file once it is true). Each of the four final settings (zoom on, zoom
