@@ -250,6 +250,18 @@ compression would make identical scenes differ.
   again, neither using up an ask; only a gesture that starts after "Which direction?" counts (details in
   `docs/gesture_reader_v4.md`, Decided). The question text can therefore be shown more than once per ask; nothing changes in
   the messages. `screen_text` and the HUD fields are as before.
+- 2026-10-29 (Unity side, agreed with Nusrat): **v4 Unity config files.** Unity v4 uses new files `bridge_unity_v4.json` (its
+  paths point to `robot_vision/configs/v4/bridge.json`, so both sides read the protocol 3 settings from one file) and
+  `robot_unity_v4.json`, loaded only by the scene `WarehouseRobot_v4.unity`. The v3 files `bridge_unity.json` and
+  `robot_unity.json`, `configs/hri_frozen.json` and the v3 AUDIT entries stay unchanged.
+- 2026-10-29: **grid widening.** In `run_###/grid.json` the blocked cells are widened by **0.40 m**: robot half-width 0.30 m
+  (`robot_width_m` 0.6 in `robot.json`) plus a safety margin of 0.10 m (`safety_margin_per_side_m` in `robot.json`), read by Unity
+  through the v4 config. Cell size stays 0.5 m.
+- 2026-10-29: **sensitivity check (report only).** Once during development, before the freeze, for the A-to-B pair of each scenario Unity
+  also computes the A* path with a widening of 0.50 m (the AMR NavMesh agent radius) and reports whether the path or its length
+  differs from the official one. It is a report: the official grid, and so `optimal_path.json`, stays at 0.40 m unless Anisha and Nusrat
+  decide otherwise before the freeze; any change is disclosed in AUDIT.md section 14.
+- 2026-10-29: **trial runner.** `TrialRunnerV4` runs the v4 trials and is used only in the v4 scene; the v3 `TrialRunner` is unchanged.
 
 ## Changes
 

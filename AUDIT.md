@@ -1080,7 +1080,24 @@ normalised) of: every file in `configs/v4/` (bridge, commander, control, data_sp
 gesture_reader, gt_eval); the v3 files v4 reads (`hri_control.json`, `hri_perception.json`, `gesture_hri.json`, `roadmap.json`,
 `robot.json`); the pose weights and the MediaPipe model file. `tests/test_v4_frozen.py` fails if any changes. Until then `frozen` is false
 and final runs and final evaluations are refused. Unity-side files of the v4 scene (its bridge and robot configs) and the Unity final-run
-guard: **BLANK B9** (Nusrat lists them; they are added to the freeze the way section 8 item 2 did for v3).
+guard: **BLANK B9** (Nusrat lists them; they are added to the freeze the way section 8 item 2 did for v3). So far agreed: `bridge_unity_v4.json`
+and `robot_unity_v4.json` (14.7a).
+
+#### 14.7a Unity side (agreed with Nusrat, 29 October 2026; docs only, before any v4 development or final data)
+
+1. **Separate v4 config files.** Unity v4 uses new files `bridge_unity_v4.json` (pointing to `robot_vision/configs/v4/bridge.json`) and
+   `robot_unity_v4.json`, loaded only by `WarehouseRobot_v4.unity`. The v3 files `bridge_unity.json` and `robot_unity.json`,
+   `configs/hri_frozen.json` and the v3 AUDIT entries (sections 1 to 13) stay unchanged; `tests/test_hri_frozen.py` still pins them.
+2. **Grid widening 0.40 m.** Blocked cells of `grid.json` are widened by 0.40 m = robot half-width 0.30 m (`robot_width_m` 0.6 in `robot.json`)
+   + safety margin 0.10 m (`safety_margin_per_side_m` in `robot.json`), read through the v4 config. Cell size 0.5 m.
+3. **Sensitivity check, report only, run once during development before the freeze.** For each scenario's A-to-B pair Unity also computes
+   the A* path with a widening of 0.50 m (the AMR NavMesh agent radius) and reports whether the path or its length differs. It
+   decides nothing by itself: the official grid stays 0.40 m unless Anisha and Nusrat decide otherwise before the freeze, and any
+   change is disclosed here (section 15). Its report is kept with the development sessions, not with the finals.
+4. **Trial runner.** `TrialRunnerV4`, used only in the v4 scene (the v3 `TrialRunner` is unchanged).
+
+These files are added to the B9 list of Unity files to freeze (14.13): `bridge_unity_v4.json` and `robot_unity_v4.json`. B9 stays open
+until Nusrat sends the complete list (the rest of the v4 scene's Unity configs) and the Unity final-run guard of `TrialRunnerV4`.
 
 ### 14.8 Run protocol (before every final session)
 
@@ -1147,5 +1164,5 @@ Anything done differently from this section is disclosed here, dated, before the
 |---|---|---|
 | B7 | which test looks, clips and bystander layout each setting uses (`test_assignment`) | Nusrat's real looks and clips, then both of us |
 | B8 | real look and clip names, their numbers, the unseen test look, the look styles (`data_splits.json` still has placeholders) | Nusrat |
-| B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`) | Nusrat |
+| B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`). Agreed 29 Oct 2026 so far: `bridge_unity_v4.json` and `robot_unity_v4.json` are on the list (14.7a); the rest of the list and the `TrialRunnerV4` guard are open | Nusrat |
 | B11 | v4 acceptance criteria for RQ1 to RQ4 (`acceptance_criteria`) | both of us |
