@@ -999,8 +999,9 @@ Computed by `hri_analysis_v4.py` (the numbers by `hri_eval_dev_v4.py` / `hri_eva
   second look and how many a re-approach.
 - **Commander:** accuracy of the chosen commander against truth, with and without bystanders.
 - **Time:** from the first "Which direction?" to the accepted gesture (median, 95th percentile, bootstrap), also without WAIT time.
-- **Path:** trail length / optimal path length, largest distance from the optimal line, share of the trail within one grid cell, final
-  distance from B (`gt_path.py`; the optimal path is A* on Unity's grid and is checked against Unity's own).
+- **Path:** trail length / optimal path length, largest distance from the optimal corridor, share of the trail within one grid cell of it, final
+  distance from B (`gt_path.py`). The corridor is every cell on some shortest path (14.7b); Python's A* length is checked against Unity's, and the
+  corridor size and how much of it Unity's drawn path covers are reported.
 - **Safety and system:** collisions, closest approach to a person, inference time per model, Unity-measured round trip (machine-dependent).
 - **Groups:** per look, per look style, per distance bin, zoom on vs off.
 - **RQ1 table:** one table of v4 against the archived v3 results (`results/summary/`), with every declared difference listed under it
@@ -1099,10 +1100,27 @@ and `robot_unity_v4.json` (14.7a).
 These files are added to the B9 list of Unity files to freeze (14.13): `bridge_unity_v4.json` and `robot_unity_v4.json`. B9 stays open
 until Nusrat sends the complete list (the rest of the v4 scene's Unity configs) and the Unity final-run guard of `TrialRunnerV4`.
 
+#### 14.7b Ground-truth scoring: the optimal corridor and the leak test (decided 29 October 2026, before any v4 development or final data)
+
+1. **Corridor rule.** The trail measures are scored against the **optimal corridor**, not against `optimal_path.json`. Corridor = every free cell c with
+   d(A, c) + d(c, B) = d(A, B) within the 1e-3 m tolerance (two Dijkstra passes, 8-connected, diagonal sqrt(2), no corner cutting, the A* rules). A
+   trail point's distance is to the nearest corridor cell centre; "share of the trail within one grid cell" counts points within `near_optimal_cells`
+   (1 cell = 0.5 m) of one. A perfect trail between two centres is up to 0.25 m (straight) or 0.35 m (diagonal) from the nearest centre, so the
+   resolution of "largest distance" is about half a step. The length check against Unity's `optimal_path.json`, the A* length, the corridor size and the
+   number of corridor cells Unity's drawn path covers are reported (so the paper can describe them).
+2. **Why.** Nusrat's grid sensitivity check (14.7a item 3; reported by her, output folder
+   `robot_vision/outputs/gt_grid_check_20261029_183748/` on her machine) found identical lengths at 0.40 m and 0.50 m widening for all 4 A-to-B pairs, but
+   different cells for A to E3 and A to E4: several equally short paths exist, and the measures used to depend on which one A* or Unity returned.
+   **0.40 m stays the official widening.**
+3. **`trail.csv`** `yaw_deg` has 3 decimals (the protocol example is corrected).
+4. **Leak test records.** Unity records its own result in `session.json` and keeps the image pairs in `leak_test/`; it never writes `leak_test.json`, which is
+   `gt_path.py leak` (Python's independent check). Both must pass before a session counts; the archive requires `leak_test.json` with `passed` true for a final.
+
 ### 14.8 Run protocol (before every final session)
 
 Other apps closed, Windows power mode "Best performance" (as in section 9), enough free memory, the machine recorded; the leak test
-(ground-truth layer on / off render identical) passes before the first run (`python gt_path.py leak <leak_test folder>`); a resource
+(ground-truth layer on / off render identical) passes before the first run (Unity's own comparison, recorded in `session.json`, and Python's independent
+check `python gt_path.py leak <leak_test folder>`, which writes `leak_test.json`); a resource
 log is kept (`--resource-log`). The machine for the finals (B10, decided 24 Oct 2026): Nusrat's Windows PC with the NVIDIA RTX 3060, the same machine
 as the v3 Task 1 final (section 10), so inference times of the finals are comparable with that run (not with the Mac original of Task 2). Inference times and total times are not comparable across
 machines (14.3, RQ1 table).

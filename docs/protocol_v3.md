@@ -146,8 +146,9 @@ The shortest path from A's cell to B's cell on that grid, as Unity computed it.
   measures).
 - `length_m` = (sum of step costs in cells) x `cell_size_m`, computed from `cells` (not from the exact A and B
   positions). Python recomputes the optimal length with its own A* and requires equality within
-  `optimal_length_tolerance_m` (0.001 m, `configs/v4/gt_eval.json`). Several equally short paths may exist; only the
-  length must match.
+  `optimal_length_tolerance_m` (0.001 m, `configs/v4/gt_eval.json`). Several equally short paths may exist (A to E3 and A to E4 do); only
+  the length must match. The trail is NOT scored against this one drawn path but against the optimal corridor: every free cell on some
+  shortest path (decided 2026-10-29, see Decided). Python reports how many of the corridor's cells Unity's path covers.
 
 ### `run_###/trail.csv`
 
@@ -155,8 +156,8 @@ The robot's position every 0.1 s of simulation time, from the start of the run t
 
 ```
 time_s,x,z,yaw_deg
-0.000,6.250,-10.000,0.00
-0.100,6.250,-10.000,0.00
+0.000,6.250,-10.000,0.000
+0.100,6.250,-10.000,0.000
 ```
 
 Header exactly as above; `time_s` is Unity `Time.time` (absolute, not relative to the run start); `x`, `z`, `yaw_deg`
@@ -197,11 +198,12 @@ Before every session Unity renders **both** robot cameras (360 and pan-tilt) twi
 (more pairs, from other poses, use other prefixes: `cam360_p2_on.png`, ...). Both images of a pair have the same size
 and pose; nothing else in the scene moves between the two renders (animation and physics paused, same frame).
 
-Python (`python gt_path.py leak outputs/trials_X/leak_test`) compares each pair pixel by pixel and writes
-`leak_test/leak_test.json` (`passed`, `max_diff`, per-pair results). **The images must be identical
-(`leak_max_pixel_diff` 0 in `configs/v4/gt_eval.json`), or no run may start**; the Unity trial runner should refuse to
-start until it has run the check (its own pixel comparison, or Python's) and it passed. JPEG must not be used here: its
-compression would make identical scenes differ.
+Unity compares the pairs itself, records its result in `session.json` and keeps the image pairs in `leak_test/`; it **never writes
+`leak_test.json`**. That file is Python's independent check: `python gt_path.py leak outputs/trials_X/leak_test` compares each pair
+pixel by pixel and writes `leak_test/leak_test.json` (`passed`, `max_diff`, per-pair results). **The images must be identical
+(`leak_max_pixel_diff` 0 in `configs/v4/gt_eval.json`), or no run may start**: Unity's trial runner refuses to start until its own
+comparison passed, and Python's check must pass too before the session counts (the results archive requires `leak_test.json` with
+`passed` true for a final). JPEG must not be used here: its compression would make identical scenes differ.
 
 ## What Nusrat implements in Unity from this document
 
@@ -262,6 +264,19 @@ compression would make identical scenes differ.
   differs from the official one. It is a report: the official grid, and so `optimal_path.json`, stays at 0.40 m unless Anisha and Nusrat
   decide otherwise before the freeze; any change is disclosed in AUDIT.md section 14.
 - 2026-10-29: **trial runner.** `TrialRunnerV4` runs the v4 trials and is used only in the v4 scene; the v3 `TrialRunner` is unchanged.
+- 2026-10-29: **optimal corridor.** The trail measures "largest distance from the optimal line" and "share of the trail within one cell"
+  (`gt_path.py`, evaluation code only) are scored against the optimal corridor, not against `optimal_path.json`: the set of every free cell c
+  with d(A, c) + d(c, B) = d(A, B) within the existing 1e-3 m tolerance (two Dijkstra passes, 8-connected, diagonal sqrt(2), no corner
+  cutting, the same rules as the A*). The distance of a trail point is to the nearest corridor cell centre, so a trail along any shortest path
+  through cell centres scores 0 (between two centres a perfect trail is up to half a step away: 0.25 m straight, 0.35 m diagonal). The length
+  check against Unity's `optimal_path.json` and the A* length are kept and reported, and so are the corridor size and how many cells of the
+  corridor Unity's drawn path covers. Reason: Nusrat's grid sensitivity check (reported by her; the output folder
+  `robot_vision/outputs/gt_grid_check_20261029_183748/` is on her machine) found, for the 4 A-to-B pairs, identical lengths at 0.40 m and
+  0.50 m widening for all 4, but different cells for A to E3 and A to E4: several equally short paths exist, and the earlier measures
+  depended on which one A* or Unity returned. The official widening stays 0.40 m.
+- 2026-10-29: the `trail.csv` example shows `yaw_deg` with 3 decimals (as the text already said): `0.000,6.250,-10.000,0.000`.
+- 2026-10-29: **leak test records.** Unity records its own leak-test result in `session.json` and keeps the image pairs in `leak_test/`; it never
+  writes `leak_test.json`, which is `gt_path.py leak` (Python's independent check).
 
 ## Changes
 

@@ -173,6 +173,11 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(p["coverage"], "1 of 4 runs have the v4 path files")
         self.assertEqual(p["optimal_path_matches_astar"], "1 of 1")
         self.assertEqual(p["final_distance_from_b_m"]["max"], 0.0)
+        self.assertIn("optimal corridor", p["reference"])
+        self.assertEqual(p["unity_path_inside_the_corridor"], "1 of 1")
+        self.assertEqual(p["corridor_cells"]["n"], 1)
+        self.assertIn("runs_with_several_shortest_paths", p)
+        self.assertIn("optimal corridor", an.markdown(self.res))
         self.assertEqual(self.res["settings"]["zoom_off"]["path"]["status"], an.NE)
 
     def test_safety_system_and_times(self):

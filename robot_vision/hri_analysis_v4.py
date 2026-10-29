@@ -223,6 +223,7 @@ def timing_block(rd: list, cfg: dict) -> dict:
 
 def path_block(rd: list, gt_cfg: dict) -> dict:
     ratio, far, share, final, match, n = [], [], [], [], 0, 0
+    cor_cells, cor_share, several, in_cor = [], [], 0, 0
     for r in rd:
         d = r["run"].unity_dir / f"run_{r['run'].trial:03d}"
         if not gt_path.has_v4_files(d):
@@ -230,6 +231,12 @@ def path_block(rd: list, gt_cfg: dict) -> dict:
         res = gt_path.evaluate_run(d, gt_cfg)
         n += 1
         match += bool(res["optimal_path_check"]["match"])
+        c = res["corridor"]
+        if "cells" in c:
+            cor_cells.append(c["cells"])
+            cor_share.append(c["corridor_share_on_unity_path"])
+            several += bool(c["several_shortest_paths"])
+            in_cor += c["unity_path_cells_in_corridor"] == c["unity_path_cells"]
         m = res["measures"]
         for lst, key in ((ratio, "trail_over_optimal"), (far, "max_distance_from_optimal_m"),
                          (share, "share_within_near_distance"), (final, "final_distance_from_b_m")):
@@ -238,6 +245,9 @@ def path_block(rd: list, gt_cfg: dict) -> dict:
     if not n:
         return {"status": NE, "coverage": f"0 of {len(rd)} runs have the v4 path files"}
     return {"coverage": f"{n} of {len(rd)} runs have the v4 path files", "optimal_path_matches_astar": f"{match} of {n}",
+            "reference": "optimal corridor: every cell on some shortest path (gt_path.optimal_corridor)",
+            "corridor_cells": ha.stats(cor_cells), "runs_with_several_shortest_paths": f"{several} of {n}",
+            "unity_path_inside_the_corridor": f"{in_cor} of {n}", "corridor_share_covered_by_unity_path": ha.stats(cor_share),
             "trail_over_optimal": ha.stats(ratio), "max_distance_from_optimal_m": ha.stats(far),
             "share_within_one_cell": ha.stats(share), "final_distance_from_b_m": ha.stats(final)}
 
@@ -452,7 +462,8 @@ def markdown(res: dict) -> str:
                      f"run-level bootstrap {_b(v['accuracy_of_decided']['bootstrap'])}.")
         L += ["", f"Time from the question to the accepted gesture (s): accepted {tm['accepted']} of {tm['junction_asks']} asks; "
               f"{_sp(tm['ask_to_accepted_s'], res['config'])}.", "",
-              f"Path: {b['path'].get('coverage')}; trail/optimal {b['path'].get('trail_over_optimal', NE)}; largest distance from the optimal line "
+              f"Path (against the optimal corridor of all shortest paths; corridor cells {b['path'].get('corridor_cells', NE)}, runs with several shortest "
+              f"paths {b['path'].get('runs_with_several_shortest_paths', NE)}): {b['path'].get('coverage')}; trail/optimal {b['path'].get('trail_over_optimal', NE)}; largest distance from the corridor "
               f"{b['path'].get('max_distance_from_optimal_m', NE)}; share within one cell {b['path'].get('share_within_one_cell', NE)}; final distance from B "
               f"{b['path'].get('final_distance_from_b_m', NE)}.",
               f"Safety: collisions {sf['collisions']} (with a person {sf['collisions_with_a_person']}), closest approach {sf['closest_person_m']}.",

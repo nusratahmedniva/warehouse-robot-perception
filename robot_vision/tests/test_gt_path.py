@@ -336,6 +336,160 @@ class LeakTestTests(unittest.TestCase):
                 gt.leak_test(d, 0)
 
 
+# A 7 x 5 grid whose middle is a wall: from A (0, 0) to B (6, 4) the robot can go along the top and down the right side, or down the
+# left side and along the bottom. Both routes are 10 straight steps (5.0 m); they are 2.0 m apart.
+TWO_ROUTES = ["0000000", "0111110", "0111110", "0111110", "0000000"]
+TOP = [(i, 0) for i in range(7)] + [(6, j) for j in range(1, 5)]
+BOTTOM = [(0, j) for j in range(5)] + [(i, 4) for i in range(1, 7)]
+
+
+def centres(g, cells):
+    return [g.centre(*c) for c in cells]
+
+
+def trail_on(g, cells):
+    return [(0.1 * i, *g.centre(*c)) for i, c in enumerate(cells)]
+
+
+class CorridorTests(unittest.TestCase):
+    def setUp(self):
+        self.g = grid(TWO_ROUTES)
+        self.s, self.t = (0, 0), (6, 4)
+
+    def test_both_equally_short_routes_are_in_the_corridor(self):
+        cor = gt.optimal_corridor(self.g, self.s, self.t, 0.001)
+        self.assertAlmostEqual(cor["length_m"], 5.0)
+        self.assertEqual(set(cor["cells"]), set(TOP) | set(BOTTOM))
+        self.assertEqual(cor["size"], 20)                                    # 11 + 11 - the shared A and B
+        for route in (TOP, BOTTOM):
+            self.assertAlmostEqual(gt.path_length_m(route, 0.5), 5.0)         # and both really are shortest paths
+        self.assertEqual(gt.astar(self.g, self.s, self.t)[1], 5.0)
+
+    def test_a_single_shortest_path_gives_a_corridor_of_that_path(self):
+        g = grid(["0000", "0000", "0000", "0000"])
+        self.assertEqual(gt.optimal_corridor(g, (0, 0), (3, 0), 0.001)["cells"], [(0, 0), (1, 0), (2, 0), (3, 0)])
+        self.assertEqual(gt.optimal_corridor(g, (0, 0), (3, 3), 0.001)["cells"], [(0, 0), (1, 1), (2, 2), (3, 3)])
+        self.assertIsNone(gt.optimal_corridor(grid(["010", "010", "010"]), (0, 0), (2, 0), 0.001))      # unreachable
+        self.assertIsNone(gt.optimal_corridor(grid(["010", "000"]), (1, 0), (2, 1), 0.001))             # A blocked
+
+    def test_corner_cutting_is_not_allowed_in_the_corridor_either(self):
+        g = grid(["00", "10"])                                                # (0,1) blocked: the diagonal would cut its corner
+        self.assertEqual(gt.optimal_corridor(g, (0, 0), (1, 1), 0.001)["cells"], [(0, 0), (1, 0), (1, 1)])
+
+    def test_matches_an_independent_brute_force_on_random_grids(self):
+        rng = random.Random(11)
+        checked = 0
+        for _ in range(60):
+            nx, nz = rng.randint(3, 10), rng.randint(3, 10)
+            g = grid(["".join("1" if rng.random() < 0.25 else "0" for _ in range(nx)) for _ in range(nz)])
+            s, t = (rng.randrange(nx), rng.randrange(nz)), (rng.randrange(nx), rng.randrange(nz))
+            cor = gt.optimal_corridor(g, s, t, 0.001)
+            ref = dijkstra_length(g, s, t) if g.free(*s) and g.free(*t) else None
+            if ref is None:
+                self.assertIsNone(cor)
+                continue
+            def d(a, b):
+                if a == b:
+                    return 0.0
+                v = dijkstra_length(g, a, b)
+                return math.inf if v is None else v
+            want = {(x, z) for x in range(nx) for z in range(nz) if g.free(x, z) and d(s, (x, z)) + d((x, z), t) <= ref + 0.001}
+            self.assertEqual(set(cor["cells"]), want)
+            self.assertIn(s, want)
+            self.assertIn(t, want)
+            checked += 1
+        self.assertGreater(checked, 20)
+
+    def test_the_tolerance_only_absorbs_rounding(self):
+        a = gt.optimal_corridor(self.g, self.s, self.t, 0.0)
+        b = gt.optimal_corridor(self.g, self.s, self.t, 0.001)
+        self.assertEqual(a["cells"], b["cells"])
+        wide = gt.optimal_corridor(self.g, self.s, self.t, 0.3)                   # 0.3 m is more than the 0.29 m of one diagonal detour
+        self.assertGreaterEqual(wide["size"], b["size"])
+
+    def measures(self, cells, rows=None):
+        g = self.g
+        cor = gt.optimal_corridor(g, self.s, self.t, 0.001)
+        return gt.corridor_measures(trail_on(g, cells), centres(g, cor["cells"]), g.goal, g.cell, 1.0, cor["length_m"])
+
+    def test_a_trail_on_either_route_scores_zero_deviation_and_full_share(self):
+        for route in (TOP, BOTTOM):
+            m = self.measures(route)
+            self.assertEqual((m["max_distance_from_optimal_m"], m["share_within_near_distance"]), (0.0, 1.0))
+            self.assertAlmostEqual(m["trail_over_optimal"], 1.0)
+            self.assertEqual(m["final_distance_from_b_m"], 0.0)
+            self.assertEqual(m["reference"], "optimal corridor")
+
+    def test_a_trail_off_both_routes_does_not(self):
+        inside = [(2, 2), (3, 2), (4, 2)]                                         # the middle of the wall: 1.0 m from both routes
+        m = self.measures(inside)
+        self.assertAlmostEqual(m["max_distance_from_optimal_m"], 1.0)
+        self.assertEqual(m["share_within_near_distance"], 0.0)
+        mixed = self.measures([(0, 0), (1, 0), (2, 0), (3, 0), (3, 1), (3, 2), (3, 3), (3, 4)])
+        self.assertAlmostEqual(mixed["max_distance_from_optimal_m"], 1.0)
+        self.assertTrue(0 < mixed["share_within_near_distance"] < 1)
+
+    def test_the_old_one_path_measure_depended_on_which_path_was_drawn_the_corridor_does_not(self):
+        g = self.g
+        bottom_trail = trail_on(g, BOTTOM)
+        pts_top = centres(g, TOP)
+        old = gt.path_measures(bottom_trail, pts_top, g.goal, g.cell, 1.0)
+        self.assertGreater(old["max_distance_from_optimal_m"], 1.5)                # judged against the top route only
+        self.assertLess(old["share_within_near_distance"], 1.0)
+        new = self.measures(BOTTOM)
+        self.assertEqual(new["max_distance_from_optimal_m"], 0.0)
+
+    def run_folder(self, d, trail_cells, drawn):
+        folder = Path(d) / "run"
+        write_run(folder, [], rows=TWO_ROUTES)
+        (folder / "trail.csv").write_text("time_s,x,z,yaw_deg\n" + "".join(
+            f"{0.1 * i:.3f},{x},{z},0.000\n" for i, (_, x, z) in enumerate(trail_on(self.g, trail_cells))))
+        (folder / "optimal_path.json").write_text(json.dumps(unity_path(self.g, drawn)))
+        return folder
+
+    def test_evaluate_run_gives_the_same_measures_whichever_shortest_path_unity_drew(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = gt.evaluate_run(self.run_folder(Path(d) / "a", BOTTOM, TOP), CFG)
+            b = gt.evaluate_run(self.run_folder(Path(d) / "b", BOTTOM, BOTTOM), CFG)
+        self.assertEqual(a["measures"], b["measures"])
+        self.assertEqual((a["measures"]["max_distance_from_optimal_m"], a["measures"]["share_within_near_distance"]), (0.0, 1.0))
+        self.assertTrue(a["optimal_path_check"]["match"] and b["optimal_path_check"]["match"])        # the length check is kept
+
+    def test_the_corridor_size_and_what_unitys_path_covers_are_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = gt.evaluate_run(self.run_folder(d, TOP, TOP), CFG)
+        c = r["corridor"]
+        self.assertEqual((c["cells"], c["length_m"], c["astar_length_m"]), (20, 5.0, 5.0))
+        self.assertEqual((c["unity_path_cells"], c["unity_path_cells_in_corridor"], c["corridor_cells_on_unity_path"]), (11, 11, 11))
+        self.assertEqual(c["corridor_share_on_unity_path"], 0.55)
+        self.assertTrue(c["several_shortest_paths"])
+        self.assertEqual(c["astar_path_cells"], 11)
+
+    def test_a_grid_with_one_shortest_path_has_a_corridor_equal_to_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            g, cells = write_run(Path(d) / "r", [(0.25, 0.25), (0.75, 0.25)], rows=["0000"])             # one row: one shortest path
+            r = gt.evaluate_run(Path(d) / "r", CFG)
+        self.assertFalse(r["corridor"]["several_shortest_paths"])
+        self.assertEqual(r["corridor"]["corridor_share_on_unity_path"], 1.0)
+        self.assertEqual(r["corridor"]["cells"], r["corridor"]["unity_path_cells"])
+
+    def test_too_little_data_and_an_unreachable_goal_are_none_not_a_guess(self):
+        m = gt.corridor_measures([(0.0, 0.25, 0.25)], [(0.25, 0.25)], (1.0, 1.0), 0.5, 1.0, 2.0)
+        self.assertIsNone(m["trail_over_optimal"])
+        self.assertIsNone(gt.corridor_measures([], [], (0.0, 0.0), 0.5, 1.0, 0.0)["max_distance_from_optimal_m"])
+
+    def test_the_trail_is_scored_against_cell_centres_so_half_a_step_is_the_resolution(self):
+        g = self.g
+        cor = gt.optimal_corridor(g, self.s, self.t, 0.001)
+        c = centres(g, cor["cells"])
+
+        def worst(trail):
+            return gt.corridor_measures(trail, c, g.goal, g.cell, 1.0, cor["length_m"])["max_distance_from_optimal_m"]
+        self.assertAlmostEqual(worst([(0.0, 0.5, 0.25), (0.1, 0.5, 0.25)]), 0.25)                    # midway between two centres, straight step
+        self.assertAlmostEqual(worst([(0.0, 0.0, 0.0), (0.1, 0.0, 0.0)]), math.hypot(0.25, 0.25), places=3)    # the corner of the first cell
+        self.assertEqual(worst([(0.0, 0.25, 0.25), (0.1, 0.75, 0.25)]), 0.0)                         # on centres: exactly 0
+
+
 class IsolationTests(unittest.TestCase):
     def test_only_evaluation_code_imports_gt_path(self):
         allowed = {"hri_analysis.py", "hri_analysis_v4.py"}

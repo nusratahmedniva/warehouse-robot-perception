@@ -5,8 +5,13 @@ Inference code must never import it (tests/test_gt_path.py checks that).
 - load_grid / astar: the grid (0.5 m cells, blocked cells already widened by Unity) and an 8-connected A* (straight
   step 1 cell, diagonal sqrt(2) cells, no corner cutting: a diagonal step needs both side cells free).
 - compare_optimal: Python's A* length against Unity's optimal_path.json length, within a tolerance from the config.
-- path_measures: from trail.csv: trail length / optimal length, largest distance from the optimal polyline, share of
-  trail points within near_optimal_cells of it, final distance from B.
+- optimal_corridor: every free cell on SOME shortest path (d(A,c) + d(c,B) == d(A,B) within the tolerance; two Dijkstra passes,
+  the same moves as the A*). Several equally short paths are common (A to E3 and A to E4), and which one A* or Unity returns is
+  arbitrary, so the trail is scored against the corridor, not against one path.
+- corridor_measures (used by evaluate_run): from trail.csv: trail length / optimal length, largest distance from the corridor (to the
+  nearest corridor cell centre), share of trail points within near_optimal_cells of it, final distance from B. The corridor size
+  and how much of it Unity's drawn path covers are reported (evaluate_run -> "corridor").
+- path_measures: the same measures against ONE polyline (Phase 1; kept, no longer used by evaluate_run).
 - leak_test: every <name>_on / <name>_off image pair must be pixel-identical (max difference from the config);
   writes leak_test.json.
 
@@ -116,6 +121,42 @@ def astar(grid: Grid, start: tuple[int, int], goal: tuple[int, int]) -> tuple[li
     return None
 
 
+def dijkstra(grid: Grid, source: tuple[int, int]) -> dict[tuple[int, int], float]:
+    """Cost (in cells: straight 1, diagonal sqrt(2)) from source to every reachable free cell, with the A* moves and its
+    no-corner-cutting rule. The moves are symmetric, so the cost from B to c equals the cost from c to B."""
+    if not grid.free(*source):
+        return {}
+    cost = {source: 0.0}
+    heap = [(0.0, source)]
+    while heap:
+        g, cur = heapq.heappop(heap)
+        if g > cost.get(cur, math.inf) + 1e-12:
+            continue
+        for dx, dz, c in STEPS:
+            nxt = (cur[0] + dx, cur[1] + dz)
+            if not grid.free(*nxt):
+                continue
+            if dx != 0 and dz != 0 and not (grid.free(cur[0] + dx, cur[1]) and grid.free(cur[0], cur[1] + dz)):
+                continue
+            ng = g + c
+            if ng < cost.get(nxt, math.inf) - 1e-12:
+                cost[nxt] = ng
+                heapq.heappush(heap, (ng, nxt))
+    return cost
+
+
+def optimal_corridor(grid: Grid, start: tuple[int, int], goal: tuple[int, int], tolerance_m: float) -> dict | None:
+    """The optimal corridor: every free cell c with d(A, c) + d(c, B) == d(A, B) within tolerance_m (the same 1e-3 m as the
+    length check). Includes A's and B's cells and every cell of every shortest path. None when B cannot be reached from A."""
+    da, db = dijkstra(grid, start), dijkstra(grid, goal)
+    if goal not in da:
+        return None
+    d = da[goal]
+    tol = tolerance_m / grid.cell
+    cells = sorted(c for c in da if c in db and da[c] + db[c] <= d + tol)
+    return {"cells": cells, "length_m": d * grid.cell, "size": len(cells)}
+
+
 def path_length_m(cells: list[tuple[int, int]], cell_size_m: float) -> float:
     return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(cells, cells[1:])) * cell_size_m
 
@@ -193,6 +234,29 @@ def path_measures(trail: list[tuple[float, float, float]], optimal_points: list[
             "final_distance_from_b_m": round(math.hypot(pts[-1][0] - goal[0], pts[-1][1] - goal[1]), 4)}
 
 
+def corridor_measures(trail: list[tuple[float, float, float]], centres: list[tuple[float, float]], goal: tuple[float, float],
+                      cell_size_m: float, near_cells: float, optimal_length_m: float) -> dict:
+    """Trail against the optimal corridor: each trail point's distance is to the nearest corridor cell CENTRE. A trail that follows
+    a shortest path through cell centres scores 0, whichever shortest path it is; between two centres a perfect trail can be up to half a
+    step away (0.25 m straight, 0.35 m diagonal). Same keys as path_measures. Fewer than 2 trail points or no corridor give None."""
+    import numpy as np
+    pts = [(x, z) for _, x, z in trail]
+    near = near_cells * cell_size_m
+    if len(pts) < 2 or not centres:
+        return {"trail_points": len(pts), "trail_length_m": None, "optimal_length_m": round(optimal_length_m, 4) or None,
+                "trail_over_optimal": None, "max_distance_from_optimal_m": None, "share_within_near_distance": None,
+                "near_distance_m": near, "final_distance_from_b_m": None, "reference": "optimal corridor"}
+    P, C = np.asarray(pts, float), np.asarray(centres, float)
+    d = np.sqrt(((P[:, None, :] - C[None, :, :]) ** 2).sum(axis=2)).min(axis=1)
+    length = polyline_length(pts)
+    return {"trail_points": len(pts), "trail_length_m": round(length, 4), "optimal_length_m": round(optimal_length_m, 4),
+            "trail_over_optimal": round(length / optimal_length_m, 4) if optimal_length_m > 0 else None,
+            "max_distance_from_optimal_m": round(float(d.max()), 4),
+            "share_within_near_distance": round(float((d <= near + 1e-9).sum()) / len(d), 4), "near_distance_m": near,
+            "final_distance_from_b_m": round(math.hypot(pts[-1][0] - goal[0], pts[-1][1] - goal[1]), 4),
+            "reference": "optimal corridor"}
+
+
 RUN_FILES = ("grid.json", "optimal_path.json", "trail.csv")
 
 
@@ -201,15 +265,33 @@ def has_v4_files(run_dir: Path) -> bool:
 
 
 def evaluate_run(run_dir: str | Path, cfg: dict | None = None) -> dict:
-    """Both checks for one run folder (grid.json, optimal_path.json, trail.csv)."""
+    """The checks for one run folder (grid.json, optimal_path.json, trail.csv):
+    - optimal_path_check: Python's A* length against Unity's optimal_path.json (and that Unity's cells are a legal path);
+    - corridor: the optimal corridor (size, length, the A* length) and how much of it Unity's drawn path covers;
+    - measures: the trail against the corridor (not against the one path A* or Unity happened to return)."""
     cfg = cfg if cfg is not None else load_config()
     run_dir = Path(run_dir)
     grid = load_grid(run_dir / "grid.json")
     unity = json.loads((run_dir / "optimal_path.json").read_text(encoding="utf-8"))
-    pts = [(p["x"], p["z"]) for p in unity["points"]]
-    return {"optimal_path_check": compare_optimal(grid, unity, cfg["optimal_length_tolerance_m"]),
-            "measures": path_measures(load_trail(run_dir / "trail.csv"), pts, grid.goal, grid.cell,
-                                      cfg["near_optimal_cells"])}
+    check = compare_optimal(grid, unity, cfg["optimal_length_tolerance_m"])
+    s, g = grid.cell_of(*grid.start), grid.cell_of(*grid.goal)
+    cor = optimal_corridor(grid, s, g, cfg["optimal_length_tolerance_m"])
+    trail = load_trail(run_dir / "trail.csv")
+    if cor is None:
+        return {"optimal_path_check": check, "corridor": {"status": "not_evaluated", "why": "B is not reachable from A on this grid"},
+                "measures": corridor_measures(trail, [], grid.goal, grid.cell, cfg["near_optimal_cells"], 0.0)}
+    cells = set(cor["cells"])
+    drawn = [(c["ix"], c["iz"]) for c in unity["cells"]]
+    on = cells & set(drawn)
+    found = astar(grid, s, g)
+    info = {"cells": cor["size"], "length_m": round(cor["length_m"], 6),
+            "astar_length_m": round(found[1], 6) if found else None, "astar_path_cells": len(found[0]) if found else None,
+            "several_shortest_paths": bool(found and cor["size"] > len(found[0])),
+            "unity_path_cells": len(drawn), "unity_path_cells_in_corridor": len(set(drawn) & cells),
+            "corridor_cells_on_unity_path": len(on), "corridor_share_on_unity_path": round(len(on) / cor["size"], 4)}
+    return {"optimal_path_check": check, "corridor": info,
+            "measures": corridor_measures(trail, [grid.centre(*c) for c in cor["cells"]], grid.goal, grid.cell,
+                                          cfg["near_optimal_cells"], cor["length_m"])}
 
 
 # ---------------------------------------------------------------- leak test

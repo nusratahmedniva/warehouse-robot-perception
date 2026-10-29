@@ -3,7 +3,7 @@
   "optimal_length_tolerance_m": 0.001,
   "optimal_length_note": "Python's A* length must equal Unity's optimal_path.json length within this absolute tolerance (same grid, same step costs, so only float rounding is allowed).",
   "near_optimal_cells": 1.0,
-  "near_optimal_note": "A trail point counts as near the optimal path when it is within this many grid cells (cell_size_m each) of the optimal polyline (docs/project_flow_v4.md: share of the trail within one grid cell).",
+  "near_optimal_note": "A trail point counts as near the optimal path when it is within this many grid cells (cell_size_m each) of the nearest cell centre of the optimal CORRIDOR, i.e. of any shortest path (docs/project_flow_v4.md: share of the trail within one grid cell; corridor rule decided 2026-10-29).",
   "leak_max_pixel_diff": 0,
   "leak_note": "Leak test: ground-truth layer on and off must render identical images (0 = every pixel equal, so the images must be lossless, e.g. PNG)."
 }
