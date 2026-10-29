@@ -963,3 +963,229 @@ replication reproduces the original's outcome exactly: 10/10, the same 14 juncti
 against 1.033 m; both above 1.0 m). Time excluding stale stops is about the same (53.72 s against 53.35 s); the
 original lost 1.35 s per run to stale-perception stops and the replication none, consistent with its faster
 inference, which is not comparable across machines. One 10-trial sample per side.
+
+## 14. v4 plan (written 24 October 2026; to be completed BEFORE any v4 final run)
+
+**Status: draft. Decided 24 October 2026 (before any v4 development or final data existed): B1 to B6, B10, B12 and the bootstrap settings (14.13); open: B7, B8, B9, B11.** This section is the v4 counterpart of sections 2, 8 and 11: it fixes, before any final run, what is measured, how it
+is decided and how it is run. Everything not marked **BLANK** is decided or declared. A BLANK is a number or choice that only Anisha
+can make (they are collected in 14.13); none is chosen by the code, and none may be chosen after seeing final results. The v3 results
+(sections 2, 10, 13) are not touched: v3 is frozen as release `v1.0` and stays exactly reproducible.
+
+### 14.1 What v4 is
+
+v4 is a new study on top of v3, not a change to it (`docs/project_flow_v4.md`): fixed arm poses (v3) against natural, moving gestures
+(v4: POINT with any angle, WAIT, STOP), several people with one commander, a zoom onto the hand, and ground-truth files for scoring.
+v4 has its own configs (`robot_vision/configs/v4/`), its own protocol (version 3, `docs/protocol_v3.md`), its own scene, its own
+decision rules (below) and its own final runs. The server speaks protocol 3 only when given `--config configs/v4/bridge.json`.
+Rule kept from v3: no v3 config, frozen hash or v3 behaviour is changed for v4 (`tests/test_hri_frozen.py` still passes unchanged).
+
+### 14.2 Research questions
+
+1. **RQ1 moving vs fixed:** can the robot understand natural, moving gestures as reliably as v3's fixed poses?
+2. **RQ2 who commands:** can it tell which of several people is giving the command?
+3. **RQ3 zoom:** does zooming onto the hand improve recognition at a distance? (The same runs with zoom on and off.)
+4. **RQ4 new looks:** does it still work on avatar looks it never saw in development?
+
+### 14.3 Metrics (all reported with their coverage and the number of runs behind them)
+
+Computed by `hri_analysis_v4.py` (the numbers by `hri_eval_dev_v4.py` / `hri_eval_final_v4.py`):
+
+- **Outcome:** success rate with a Wilson 95 % interval over runs; failure reasons (collision, timeout, aborted, wrong goal).
+- **Gesture reading:** per command (POINT, WAIT, STOP): accuracy among the frames the reader answered and the coverage (share answered), each
+  with a Wilson interval (frame level, labelled as such) and a bootstrap interval over runs; the confusion matrix; false reads on frames
+  where nothing was shown. NONE and `insufficient_history` readings are coverage, not errors.
+- **POINT:** angle error against the true angle on held frames (median, 95th percentile, bootstrap intervals), for the better of the two
+  depth readings and for the reading the roadmap resolved; the share of ambiguous frames; the correct-branch rate; how many asks needed a
+  second look and how many a re-approach.
+- **Commander:** accuracy of the chosen commander against truth, with and without bystanders.
+- **Time:** from the first "Which direction?" to the accepted gesture (median, 95th percentile, bootstrap), also without WAIT time.
+- **Path:** trail length / optimal path length, largest distance from the optimal corridor, share of the trail within one grid cell of it, final
+  distance from B (`gt_path.py`). The corridor is every cell on some shortest path (14.7b); Python's A* length is checked against Unity's, and the
+  corridor size and how much of it Unity's drawn path covers are reported.
+- **Safety and system:** collisions, closest approach to a person, inference time per model, Unity-measured round trip (machine-dependent).
+- **Groups:** per look, per look style, per distance bin, zoom on vs off.
+- **RQ1 table:** one table of v4 against the archived v3 results (`results/summary/`), with every declared difference listed under it
+  (14.4, item 12).
+
+Intervals: bootstrap over RUNS (frames within a run are not independent), 2000 resamples, seed 1, 95 % (`configs/v4/analysis.json`).
+
+### 14.4 Decision rules, declared in advance
+
+Values in `configs/v4/`, each with its reasoning in the file. "Decided" = decided by Anisha (dates in `docs/gesture_reader_v4.md`,
+Decided). "Initial" = proposed with reasoning, to be set on DEVELOPMENT data only (never on test looks or clips).
+
+1. **Reader** (`gesture_reader.json`): a 1.0 s window at 10 Hz; POINT and WAIT are read from a held pose, STOP on a 0.3 s window; initial values.
+2. **STOP** needs no push motion (decided): an open palm stops the robot; STOP of anyone in view stops it at once, also while driving.
+3. **POINT direction** (decided 24 Oct): a 3D direction from foreshortening (shoulder-to-wrist length against shoulder width, 1.4 initial), both depth
+   readings (toward / away from the camera) kept; resolved with the roadmap: each candidate goes to the nearest branch or the arrival
+   direction, the arrival direction is never an answer, a candidate farther than 30 deg (initial) from its branch is dropped.
+4. **Hand cross-check tie-break** (decided): off until the development evaluation has measured the MediaPipe world-landmark cross-check.
+5. **Two-view disambiguation** (decided): if the two readings fit two different branches, move sideways by the re-ask shift (item 5a), read
+   again and accept the candidate consistent across both views within 10 deg (initial); at most once per junction; not counted as an ask.
+   5a. **Re-ask shift 0.8 m** (`control.json` dialog.`reask_shift_m`; decided 24 Oct 2026 by Anisha as an INITIAL v4 value, to be confirmed on
+   development data). **Declared v4 difference for RQ1:** v3 moved 0.4 m (`hri_control.json`, frozen, unchanged; the v4 controller reads the value
+   from `control.json`). Reason: in the simulator two-view study (not a measurement; `docs/gesture_reader_v4.md`) at 10 deg angle noise a
+   0.4 m shift resolved 18 of 20 ambiguous asks (2 to a wrong branch) and 0.8 m resolved 20 of 20. A 0.8 m shift also moves the mirror
+   candidate by about 45 deg, so even a plain second ask from the new viewpoint is unambiguous in the simulator.
+6. **Approach the commander** (decided): if the commander is not the person approached, go to them (2.0 m) and ask again, once; not counted as an ask.
+7. **Commander timing** (decided): only a gesture that starts after "Which direction?" is shown counts; commander = facing the robot with a
+   moving or held hand; none or a tie = no commander.
+8. **WAIT** (decided): hold position and watch the same person; 20 s timeout counts as an unclear ask (ask again, then abort).
+9. **Zoom rule** (initial values): hand fills a share of the image height, never narrower than the arm fits, widen in steps when the hand is
+   lost, clamp 15-60 deg; switch on / off for the RQ3 runs.
+10. **Dialog hold 0.5 s** (decided; v3: 1.0 s). **Declared v4 difference for RQ1.** The reader already needs the arm still for 0.4 s and the
+    pose to pass its cues in 70 % of the frames; the dialog adds 0.5 s of the same resolved branch.
+11. **Unchanged from v3:** approach distance 2.0 m, ask window 5 s, two asks, abort, safety stops, speeds (read from the frozen `hri_control.json`).
+12. **Differences between v3 and v4 listed under the RQ1 table** (`analysis.json`, `declared_differences`): gestures, reader, decision, the 0.5 s
+    hold, the 0.8 m re-ask shift, several people and the commander rule, zoom, avatar looks and clips, protocol 3 and the v4 scene,
+    per-frame truth, runs / seeds / machine. Any further difference found later is added there before the final runs.
+
+No rule is changed after seeing final results. A rule changed after seeing development results is listed in section 15 (to be added),
+with the reason, as in section 4.
+
+### 14.5 Settings, seeds and runs
+
+Decided 24 October 2026 by Anisha, before any v4 development or final data existed (`configs/v4/final_plan.json`). Four final settings,
+each run once:
+
+| setting | what it varies | RQ |
+|---|---|---|
+| `zoom_on` | zoom rule on, test looks and clips | RQ3 (with `zoom_off`), RQ1 |
+| `zoom_off` | the same runs with the zoom rule off | RQ3 |
+| `bystanders` | several people at each junction, one commander | RQ2 |
+| `unseen_look` | an avatar look never used in development | RQ4 |
+
+Every final session lies wholly in the TEST split (test looks and clips, never used in development); a session that mixes development and test
+data, or uses a name not in `configs/v4/data_splits.json`, is refused. Numbers:
+
+| item | value |
+|---|---|
+| task / route (B1) | Task2: the guided route with junctions, goal B changing every run (the v3 Task 2 route) |
+| development seed (B2) | 1 (as in v3) |
+| final seed (B3) | 2: the same goal order as the v3 Task 2 final (E1 E2 E4 E2 E1 E3 E4 E1 E4 E1 for its first 10 runs; `tests/test_v4_frozen.py` pins this), so RQ1 compares the same goals |
+| runs per setting (B4) | 20 (the first 10 goals are those of the v3 final; the full order is `hri_trials.goal_order(2, endpoints, 20)`, the same generator Unity uses) |
+| trial timeout (B5) | 240 s: the v3 value, `robot_vision/configs/trials.json` `timeout_s`, pinned in `configs/hri_frozen.json` `tasks.Task2.trials_fixed` |
+| success radius (B6) | 0.3 m: the v3 value (same two files) |
+| which test looks / clips / bystander layout each setting uses (B7) | **BLANK B7** (waiting for Nusrat's real looks and clips, then both of us) |
+
+### 14.6 Data split
+
+Development looks and clips set every threshold; test looks and clips are used once, in the final runs. Names are PLACEHOLDERS in
+`data_splits.json` until Nusrat sends the real looks and clips: **BLANK B8** (real names, the number of looks and clips, which look is the unseen
+test look, and the look styles). A final evaluation is refused while the names are placeholders.
+
+### 14.7 Frozen hashes
+
+`configs/v4/frozen.json` (written by `freeze_v4.py --freeze`, by Anisha, after the development evaluation) records the SHA-256 (line endings
+normalised) of: every file in `configs/v4/` (bridge, commander, control, data_splits, eval_dev, analysis, final_plan, gesture_data,
+gesture_reader, gt_eval); the v3 files v4 reads (`hri_control.json`, `hri_perception.json`, `gesture_hri.json`, `roadmap.json`,
+`robot.json`); the pose weights and the MediaPipe model file. `tests/test_v4_frozen.py` fails if any changes. Until then `frozen` is false
+and final runs and final evaluations are refused. Unity-side files of the v4 scene (its bridge and robot configs) and the Unity final-run
+guard: **BLANK B9** (Nusrat lists them; they are added to the freeze the way section 8 item 2 did for v3). So far agreed: `bridge_unity_v4.json`
+and `robot_unity_v4.json` (14.7a).
+
+#### 14.7a Unity side (agreed with Nusrat, 29 October 2026; docs only, before any v4 development or final data)
+
+1. **Separate v4 config files.** Unity v4 uses new files `bridge_unity_v4.json` (pointing to `robot_vision/configs/v4/bridge.json`) and
+   `robot_unity_v4.json`, loaded only by `WarehouseRobot_v4.unity`. The v3 files `bridge_unity.json` and `robot_unity.json`,
+   `configs/hri_frozen.json` and the v3 AUDIT entries (sections 1 to 13) stay unchanged; `tests/test_hri_frozen.py` still pins them.
+2. **Grid widening 0.40 m.** Blocked cells of `grid.json` are widened by 0.40 m = robot half-width 0.30 m (`robot_width_m` 0.6 in `robot.json`)
+   + safety margin 0.10 m (`safety_margin_per_side_m` in `robot.json`), read through the v4 config. Cell size 0.5 m.
+3. **Sensitivity check, report only, run once during development before the freeze.** For each scenario's A-to-B pair Unity also computes
+   the A* path with a widening of 0.50 m (the AMR NavMesh agent radius) and reports whether the path or its length differs. It
+   decides nothing by itself: the official grid stays 0.40 m unless Anisha and Nusrat decide otherwise before the freeze, and any
+   change is disclosed here (section 15). Its report is kept with the development sessions, not with the finals.
+4. **Trial runner.** `TrialRunnerV4`, used only in the v4 scene (the v3 `TrialRunner` is unchanged).
+
+These files are added to the B9 list of Unity files to freeze (14.13): `bridge_unity_v4.json` and `robot_unity_v4.json`. B9 stays open
+until Nusrat sends the complete list (the rest of the v4 scene's Unity configs) and the Unity final-run guard of `TrialRunnerV4`.
+
+#### 14.7b Ground-truth scoring: the optimal corridor and the leak test (decided 29 October 2026, before any v4 development or final data)
+
+1. **Corridor rule.** The trail measures are scored against the **optimal corridor**, not against `optimal_path.json`. Corridor = every free cell c with
+   d(A, c) + d(c, B) = d(A, B) within the 1e-3 m tolerance (two Dijkstra passes, 8-connected, diagonal sqrt(2), no corner cutting, the A* rules). A
+   trail point's distance is to the nearest corridor cell centre; "share of the trail within one grid cell" counts points within `near_optimal_cells`
+   (1 cell = 0.5 m) of one. A perfect trail between two centres is up to 0.25 m (straight) or 0.35 m (diagonal) from the nearest centre, so the
+   resolution of "largest distance" is about half a step. The length check against Unity's `optimal_path.json`, the A* length, the corridor size and the
+   number of corridor cells Unity's drawn path covers are reported (so the paper can describe them).
+2. **Why.** Nusrat's grid sensitivity check (14.7a item 3; reported by her, output folder
+   `robot_vision/outputs/gt_grid_check_20261029_183748/` on her machine) found identical lengths at 0.40 m and 0.50 m widening for all 4 A-to-B pairs, but
+   different cells for A to E3 and A to E4: several equally short paths exist, and the measures used to depend on which one A* or Unity returned.
+   **0.40 m stays the official widening.**
+3. **`trail.csv`** `yaw_deg` has 3 decimals (the protocol example is corrected).
+4. **Leak test, enforced (decided 29 October 2026).** Unity runs its own check before trial 1, refuses to start on failure, records the result in `session.json`
+   and keeps the image pairs in `leak_test/`; it never writes `leak_test.json`. Python's independent check (`gt_path.session_leak_check`) runs automatically at
+   evaluation time and writes `leak_test.json` when absent (never overwriting). **Both must pass**: `hri_eval_final_v4.py` refuses otherwise, before
+   `FINAL_DONE.json` and before any test data is read; `hri_eval_dev_v4.py` reports the status per session without refusing; `make_results_archive_v4.py` uses
+   the same check. Missing images, a missing or non-boolean Unity result (only `true` passes) or any disagreement is "not passed", with the reason.
+   The `session.json` key is a **named setting in `configs/v4/gt_eval.json`, a PLACEHOLDER until Nusrat confirms it** (part of B9); until then a final
+   evaluation is refused.
+
+### 14.8 Run protocol (before every final session)
+
+Other apps closed, Windows power mode "Best performance" (as in section 9), enough free memory, the machine recorded; the leak test
+(ground-truth layer on / off render identical) passes before the first run (Unity's own comparison, recorded in `session.json`, and Python's independent
+check, `python gt_path.py session <session folder>`, which writes `leak_test.json` and also runs automatically when a final evaluation starts, 14.7b item 4); a resource
+log is kept (`--resource-log`). The machine for the finals (B10, decided 24 Oct 2026): Nusrat's Windows PC with the NVIDIA RTX 3060, the same machine
+as the v3 Task 1 final (section 10), so inference times of the finals are comparable with that run (not with the Mac original of Task 2). Inference times and total times are not comparable across
+machines (14.3, RQ1 table).
+
+### 14.9 Run-once guards
+
+Python: `bridge.server --final-setting NAME` refuses unless the v4 configs are frozen with every hash matching and the setting has not been run
+(marker `FINAL_RUN_DONE.json` in the bridge folder once a trial finished); `hri_eval_final_v4.py` refuses unless frozen, the data is test-split
+only and is what the setting says (zoom, bystanders, number of runs, seed, task, Unity mode final), and writes `FINAL_DONE.json` last, after
+which the setting cannot be evaluated again. A started run or evaluation that did not finish writes no marker and does not block (as in v3).
+`hri_analysis_v4.py` only describes the data and may be re-run into a new folder. Unity: the final-run guard of the v4 trial runner is
+Nusrat's (**BLANK B9**). A repetition of a final must be declared here first.
+
+### 14.10 Acceptance and reporting
+
+The v3 finals used four criteria (`hri_session_check.py`). Acceptance criteria for v4 (what counts as "reliable" for RQ1, RQ2, RQ3, RQ4):
+**BLANK B11**. Results are reported whatever they are; intervals, coverage and the declared differences accompany every comparison.
+
+### 14.11 Procedure, from development recordings to the archived final results
+
+1. Nusrat sends the development recordings (v4 scene, development looks and clips) and the real names; `data_splits.json` is updated.
+2. Development evaluation: `hri_eval_dev_v4.py --session UNITY BRIDGE ...` (development data only; test data is refused).
+3. Thresholds are set on development data only, written to `configs/v4/` with the date and the rule used (B12, decided 24 Oct 2026: for each initial
+   threshold the value with the **highest development accuracy among those with coverage >= 0.8**; ties go to the v3 value, or else to the more
+   conservative value, i.e. the one that answers less often and rejects more), and the changes after seeing development results are
+   disclosed in section 15.
+4. Fill the BLANKs of `final_plan.json`; `python freeze_v4.py --freeze`; commit; `tests/test_v4_frozen.py` now pins everything.
+5. Final runs, one per setting, `--final-setting NAME`, on the machine and protocol of 14.8, with Nusrat's Unity final guard.
+6. `hri_eval_final_v4.py --setting NAME --session UNITY BRIDGE` per setting (once).
+7. `hri_analysis_v4.py --final --session NAME UNITY BRIDGE ...` for the tables, intervals and the RQ1 comparison.
+8. Add the sessions to `configs/v4/archive/results_manifest.json`; `make_results_archive_v4.py --repo-summary ../results/summary/v4`; verify with `--verify`.
+9. Write the results into sections 16 onward (as sections 10 and 13 did for v3) and stop.
+
+### 14.12 What may not happen
+
+No threshold is tuned on test data or on final results. No final is repeated silently. No v3 file changes. The leak test must pass before a run.
+Anything done differently from this section is disclosed here, dated, before the next run.
+
+### 14.13 The blanks
+
+**Decided on 24 October 2026 by Anisha, before any v4 development or final data existed:**
+
+| | decision |
+|---|---|
+| B1 | Task2 |
+| B2 | development seed 1 |
+| B3 | final seed 2 (same goal order as the v3 final, for RQ1) |
+| B4 | 20 runs per setting |
+| B5 | 240 s, the v3 trial timeout (`configs/trials.json`, pinned in `configs/hri_frozen.json`) |
+| B6 | success radius 0.3 m (the v3 value) |
+| B10 | Nusrat's Windows PC with the RTX 3060 (same machine as the v3 Task 1 final) |
+| B12 | threshold rule: highest development accuracy with coverage >= 0.8; ties to the v3 value or the more conservative value |
+| bootstrap | 2000 resamples, seed 1 (confirmed) |
+| `reask_shift_m` | 0.8 m, an initial v4 value (14.4, item 5a), to be confirmed on development data |
+
+**Still open (the freeze is refused while any is blank; `final_plan.json` keys in brackets):**
+
+| | what | waiting for |
+|---|---|---|
+| B7 | which test looks, clips and bystander layout each setting uses (`test_assignment`) | Nusrat's real looks and clips, then both of us |
+| B8 | real look and clip names, their numbers, the unseen test look, the look styles (`data_splits.json` still has placeholders) | Nusrat |
+| B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`). Agreed 29 Oct 2026 so far: `bridge_unity_v4.json` and `robot_unity_v4.json` are on the list (14.7a); the rest of the list and the `TrialRunnerV4` guard are open | Nusrat |
+| B11 | v4 acceptance criteria for RQ1 to RQ4 (`acceptance_criteria`) | both of us |

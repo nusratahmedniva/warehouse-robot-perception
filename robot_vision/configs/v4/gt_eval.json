@@ -1,0 +1,12 @@
+{
+  "note": "Ground-truth evaluation settings for robot_vision/gt_path.py (evaluation code only; never read by inference code). Declared 2026-10-23 before any v4 run.",
+  "optimal_length_tolerance_m": 0.001,
+  "optimal_length_note": "Python's A* length must equal Unity's optimal_path.json length within this absolute tolerance (same grid, same step costs, so only float rounding is allowed).",
+  "near_optimal_cells": 1.0,
+  "near_optimal_note": "A trail point counts as near the optimal path when it is within this many grid cells (cell_size_m each) of the nearest cell centre of the optimal CORRIDOR, i.e. of any shortest path (docs/project_flow_v4.md: share of the trail within one grid cell; corridor rule decided 2026-10-29).",
+  "leak_max_pixel_diff": 0,
+  "leak_note": "Leak test: ground-truth layer on and off must render identical images (0 = every pixel equal, so the images must be lossless, e.g. PNG).",
+  "unity_leak_result_key": "leak_test_passed",
+  "unity_leak_result_key_confirmed": false,
+  "unity_leak_note": "Decided 2026-10-29: Unity records its own leak-test result in session.json and keeps the image pairs in leak_test/ (it never writes leak_test.json, which is Python's independent check). unity_leak_result_key names the session.json key (dotted for a nested one, e.g. 'leak_test.passed'); only the boolean true passes. The key is a PLACEHOLDER until Nusrat confirms it; while unity_leak_result_key_confirmed is false gt_path.session_leak_check reports 'not passed' and a final evaluation is refused. Set the real key and confirmed = true together, before the freeze (this file is in the frozen set)."
+}

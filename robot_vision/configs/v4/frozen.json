@@ -1,0 +1,22 @@
+{
+  "label": "Freeze record of the v4 study (freeze_v4.py). Not frozen yet: the thresholds in configs/v4/ are still being set on development data. 'frozen' stays false until Anisha freezes it after the development evaluation; then the hashes below are filled and tests/test_v4_frozen.py fails if any file changes.",
+  "frozen": false,
+  "frozen_at": null,
+  "git_commit": null,
+  "files": [
+    "robot_vision/configs/v4/analysis.json",
+    "robot_vision/configs/v4/bridge.json",
+    "robot_vision/configs/v4/commander.json",
+    "robot_vision/configs/v4/control.json",
+    "robot_vision/configs/v4/data_splits.json",
+    "robot_vision/configs/v4/eval_dev.json",
+    "robot_vision/configs/v4/final_plan.json",
+    "robot_vision/configs/v4/gesture_data.json",
+    "robot_vision/configs/v4/gesture_reader.json",
+    "robot_vision/configs/v4/gt_eval.json"
+  ],
+  "sha256": {},
+  "v3_dependencies": {},
+  "models": {},
+  "note": "v3 files read by v4 (hashes recorded at the freeze): robot_vision/configs/hri_control.json, robot_vision/configs/hri_perception.json, robot_vision/configs/gesture_hri.json, robot_vision/configs/roadmap.json, robot_vision/configs/robot.json"
+}

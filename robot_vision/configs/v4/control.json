@@ -1,0 +1,55 @@
+{
+  "label": "v4 control (hri_control_v4.py): POINT / WAIT / STOP dialog, roadmap resolution of the pointed direction, zoom rule. docs/project_flow_v4.md, docs/gesture_reader_v4.md.",
+  "declared": "2026-10-24, before any v4 recording exists. Values marked initial are TO BE SET ON DEVELOPMENT DATA; none is tuned. Drive, safety and the other dialog timings come from the frozen v3 file below (read only, unchanged).",
+  "status": "initial",
+  "base": "configs/hri_control.json",
+  "dialog": {
+    "gesture_hold_s": 0.5,
+    "branch_match_max_deg": 30,
+    "wait_hold_s": 0.5,
+    "wait_timeout_s": 20,
+    "wait_text": "One moment...",
+    "use_hand_crosscheck_as_tiebreak": false,
+    "reask_shift_m": 0.8,
+    "why": {
+      "gesture_hold_s": "Overrides the v3 value (1.0 s). INITIAL. The reader already requires the arm to be still for hold_min_s (0.4 s) and the pose to pass its cues in 70 per cent of the frames; the dialog adds 0.5 s of the same resolved branch (5 frames at 10 Hz), the MOVE hold of the v3 decision rules. To be set on development data.",
+      "branch_match_max_deg": "INITIAL. Largest angle between a pointed direction (world yaw) and the nearest valid branch for the robot to take it. The branches of the roadmap are 90 deg apart; 30 deg leaves a 30 deg band between two branches in which the answer is unclear (ask again), like the v3 reader's 15 deg tolerance around 45 deg spaced directions. The reader's foreshortening makes the angle uncertain by tens of degrees for out-of-plane arms, so a smaller value would reject most of them.",
+      "wait_hold_s": "INITIAL. How long a WAIT must be read before the robot holds position: same as gesture_hold_s.",
+      "wait_timeout_s": "DECIDED 2026-10-24 (Anisha): 20 s. After it the ask counts as unclear: ask again (from a new viewpoint, reask_shift_m), then abort, as in v3.",
+      "wait_text": "Screen text while waiting.",
+      "use_hand_crosscheck_as_tiebreak": "false until the development evaluation has measured the MediaPipe world-landmark cross-check: when the roadmap leaves two branches, the finger direction would decide. Off = the ask is unclear (ask again).",
+      "two_view_enabled": "DECIDED 2026-10-24 (Anisha). When the two depth readings of a POINT fit two different branches, the robot does not abort: it moves sideways by reask_shift_m (v3 value 0.4 m, to its right as it faces the person), reads again, and accepts the candidate that is consistent across both views. At most once per junction; the second view does not use up an ask. Still unclear -> ask again, then abort as before.",
+      "view_consistency_deg": "INITIAL. Two readings of the same pointed direction (world yaw) from the two viewpoints agree within this many degrees. A 0.4 m shift at 2.0 m turns the camera by about 11 deg, which moves the mirror candidate by about 23 deg while the true direction stays put; 10 deg therefore separates them only if the angle noise is under about 6 deg. A larger shift (reask_shift_m) would separate them with more noise (docs/gesture_reader_v4.md: two-view study); Anisha decides.",
+      "reapproach_commander": "DECIDED 2026-10-24 (Anisha). When the commander turns out to be another person than the one the robot approached (linked by bearing to a 360-camera person), the robot approaches the commander to approach_distance_m and asks again, at most once per junction; this ask does not use up an ask.",
+      "reask_shift_m": "INITIAL v4 value, decided 2026-10-24 by Anisha, to be confirmed on development data. Overrides the v3 value 0.4 m (hri_control.json, frozen, unchanged): how far the robot moves to its right, back onto the 2.0 m circle, before looking again (the second view of an ambiguous POINT and the re-ask). Simulator two-view study (docs/gesture_reader_v4.md, not a measurement): at 10 deg angle noise 0.4 m resolved 18 of 20 ambiguous FORWARD and LEFT asks (2 wrong), 0.8 m resolved 20 of 20. A 0.8 m shift turns the camera by about 22 deg, which moves the mirror candidate by about 45 deg while the true direction stays put. A declared v4 difference from v3 (AUDIT.md section 14.4)."
+    },
+    "two_view_enabled": true,
+    "view_consistency_deg": 10,
+    "reapproach_commander": true
+  },
+  "zoom": {
+    "enabled": true,
+    "fov_default_deg": 60.0,
+    "fov_min_deg": 15.0,
+    "fov_max_deg": 60.0,
+    "hand_share": 0.25,
+    "arm_fit_margin": 0.1,
+    "hand_lost_s": 0.5,
+    "widen_step_deg": 10.0,
+    "max_change_deg_per_s": 30.0,
+    "why": {
+      "enabled": "Switch for the zoom on / off comparison runs (research question 3). Off: vertical_fov_deg is -1 (keep the default) on every command.",
+      "fov_default_deg": "Unity default (CLAUDE.md verified facts: vertical FOV 60 deg).",
+      "fov_min_deg": "INITIAL. Narrowest field of view. At 15 deg a hand (0.19 m) at 5 m fills about 14 per cent of the image height; narrower would lose the arm for any reading of POINT.",
+      "fov_max_deg": "The widest (the default); the zoom only narrows and widens back to this.",
+      "hand_share": "INITIAL. The hand box should fill this share of the image height. A hand is about 0.19 m: at 2 m (the ask distance) it fills 9 per cent of a 60 deg view; 0.25 would need about 22 deg. The arm-fit rule below keeps the shoulder and wrist in view, so at 2 m it is the arm, not the hand, that limits the zoom.",
+      "arm_fit_margin": "INITIAL. The shoulder, elbow and wrist keypoints must stay inside the image with this margin on every side (POINT is read from them), so the zoom never narrows past the arm. Also the margin inside which the hand must stay centred, else it counts as lost.",
+      "hand_lost_s": "INITIAL. Without a hand box for this long the view widens: 5 frames at 10 Hz.",
+      "widen_step_deg": "INITIAL. When the hand has been lost for hand_lost_s the view widens by this much, and again by this much every hand_lost_s while it stays lost, up to fov_max_deg (10 deg every 0.5 s = 20 deg/s, inside max_change_deg_per_s).",
+      "max_change_deg_per_s": "INITIAL. Largest change of the commanded field of view per second, so the picture does not jump."
+    }
+  },
+  "hud": {
+    "note": "commander_id in the HUD is the 360-camera track id of the commander (linked by bearing, configs/v4/commander.json link_bearing_tol_deg), -1 when it cannot be linked."
+  }
+}

@@ -19,6 +19,11 @@ time_excl_stale_stops_s and in_motion_s are. Older logs without a safety or v_mp
 Output: a new folder <output_root>/hri_trials_<time>/ with run_###.json (all metrics of one run), results.csv (one
 row per run, running success ratio), summary.json, the configs of both sides and run.json (git commit).
 
+v4 (docs/protocol_v3.md): when Unity's trial folder has a run_###/ subfolder for a run (grid.json, optimal_path.json,
+trail.csv, truth.jsonl, ...), its files are copied unchanged into <output>/run_###/ so hri_analysis.py finds them next
+to run_###.json, and the session's leak_test/ folder (images and leak_test.json) into <output>/leak_test/. A v3 session
+has none of these and its output is byte-identical to before.
+
 Usage (from robot_vision/):  python hri_trials.py --unity outputs/trials_development_Task2_X --bridge outputs/bridge_guide_Y
                              [--metrics-config configs/hri_trials_metrics.json]
 """
@@ -216,6 +221,30 @@ def merge(unity: Path, bridge: Path, metrics: dict | None = None) -> tuple[list[
     return runs, {"session": session, "check": check}
 
 
+def copy_v4_run_files(unity: Path, out: Path, runs: list[dict]) -> list[str]:
+    """Copy Unity's run_###/ folders (v4 ground-truth files) of the merged runs into out/run_###/. Files are copied as
+    they are (never modified); out/run_### must not exist yet. Returns the folder names copied; nothing for v3 sessions."""
+    import shutil
+    copied = []
+    for r in runs:
+        name = f"run_{r['trial']:03d}"
+        src = unity / name
+        if src.is_dir():
+            shutil.copytree(src, out / name)
+            copied.append(name)
+    return copied
+
+
+def copy_v4_session_files(unity: Path, out: Path) -> list[str]:
+    """Copy Unity's session-level leak_test/ folder (image pairs and leak_test.json) to out/leak_test/, unchanged."""
+    import shutil
+    src = unity / "leak_test"
+    if not src.is_dir():
+        return []
+    shutil.copytree(src, out / "leak_test")
+    return ["leak_test"]
+
+
 def csv_row(r: dict) -> dict:
     row = {k: r.get(k) for k in COLUMNS if k in r}
     row.update(a_x=r["a"]["x"], a_z=r["a"]["z"], b_name=r["b"]["name"], b_x=r["b"]["x"], b_z=r["b"]["z"])
@@ -252,6 +281,8 @@ def main(argv=None) -> None:
     (out / "config_used" / metrics_path.name).write_bytes(metrics_path.read_bytes())
     for r in runs:
         (out / f"run_{r['trial']:03d}.json").write_text(json.dumps(r, indent=2) + "\n", encoding="utf-8")
+    copy_v4_run_files(unity, out, runs)
+    copy_v4_session_files(unity, out)
     with (out / "results.csv").open("x", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
         w.writeheader()
