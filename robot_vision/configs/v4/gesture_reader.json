@@ -1,0 +1,91 @@
+{
+  "label": "v4 moving-gesture reader (gesture_motion.py): POINT / WAIT / STOP / NONE from a time window of body keypoints and hand landmarks. docs/gesture_reader_v4.md.",
+  "declared": "2026-10-24, before any v4 recording exists. Every value below is INITIAL, TO BE SET ON DEVELOPMENT DATA (development looks and clips only, data_splits_v4.py); none is tuned. Values with a v3 origin say so. Frozen later in configs/v4/frozen.json.",
+  "status": "initial",
+  "frame_hz": 10.0,
+  "frame_hz_note": "frame_pan_tilt_hz of configs/v4/bridge.json; the reader checks it against the bridge config.",
+  "window": {
+    "window_s": 1.0,
+    "min_valid_fraction": 0.6,
+    "hold_min_s": 0.4,
+    "stop_window_s": 0.3,
+    "why": {
+      "window_s": "Lower end of the spec's 1 to 2 s (10 frames at 10 Hz): the shortest window the spec allows, so the answer is as fast as possible; the development sweep decides whether 2 s is needed.",
+      "min_valid_fraction": "6 of 10 frames. Tolerates 4 dropped or keypoint-less frames (fast swing, hand hidden for a moment) while a half-empty window still gives insufficient_history rather than a guess.",
+      "hold_min_s": "0.4 s = 5 frames at 10 Hz, 4 frame intervals: enough to average the keypoint jitter of a held arm (a held angle is the mean of at least 5 frames) without making the robot wait long after the arm settles.",
+      "stop_window_s": "0.3 s = 3 frames at 10 Hz: just above the v3 stop_hold_s of 0.2 s (2 frames), so one dropped frame does not hide an open palm. STOP is the safety command and is read on this short window, not the hold."
+    }
+  },
+  "keypoints": {
+    "body_kp_conf_min": 0.5,
+    "hand_link_max_shoulder_widths": 0.4,
+    "arm_raised_margin": 0.25,
+    "raised_max_abs_deg": 120,
+    "why": {
+      "body_kp_conf_min": "v3 keypoint_confidence (configs/hri_perception.json), frozen; same middle-of-the-range reasoning.",
+      "hand_link_max_shoulder_widths": "A MediaPipe wrist landmark and the YOLO wrist keypoint of the same arm differ by keypoint noise only, about a hand's width (0.09 m = 0.25 shoulder widths of 0.4 m) at worst; 0.4 allows that plus margin and stays below the distance to the other arm's wrist.",
+      "arm_raised_margin": "Wrist at least 0.25 torso lengths above the hip line. A hanging wrist is at or below the hip line (about 0 to -0.2 torso lengths); 0.25 puts the margin above keypoint jitter (about 0.02 to 0.05 torso lengths).",
+      "raised_max_abs_deg": "v3 value (frozen): an arm hanging down is at about +-180 deg from straight up; beyond +-120 deg it is not raised."
+    }
+  },
+  "motion": {
+    "still_speed_max": 0.4,
+    "motion_path_min": 0.4,
+    "why": {
+      "still_speed_max": "In torso lengths per second. Keypoint jitter of about 2 px on a torso of about 150 px (a person at 3 m) is 0.013 torso lengths per frame, i.e. about 0.19 torso lengths/s of apparent speed at 10 Hz; 0.4 is twice that. A gesturing wrist moves at 1 to 3 torso lengths/s.",
+      "motion_path_min": "Wrist path over the window in torso lengths. Jitter alone accumulates about 9 x 0.019 = 0.17 over 10 frames; 0.4 is more than twice that and under half of one arm swing (an arm is about 0.9 torso lengths)."
+    }
+  },
+  "point": {
+    "segment_disagreement_max_deg": 45,
+    "arm_length_min": 0.8,
+    "point_arm_extension_min_deg": 140,
+    "arm_length_in_shoulder_widths": 1.4,
+    "point_elevation_max_deg": 60,
+    "hand_crosscheck_tol_deg": 45,
+    "hand_world_z_away_positive": true,
+    "why": {
+      "segment_disagreement_max_deg": "v3 value (frozen): shoulder-to-wrist and elbow-to-wrist directions of a straight arm agree; above 45 deg is a bent arm or wrong keypoints.",
+      "arm_length_min": "v3 min_arm_to_shoulder_width (frozen), 0.8 shoulder widths. With the foreshortening geometry an arm this short points almost along the line of sight; the geometry below still returns two candidates, but below this length the keypoints are too uncertain to use.",
+      "point_arm_extension_min_deg": "Elbow angle (180 = straight). A pointing arm is straight or nearly: 140 deg was the v3 development value for the elbow-straightness test before it was replaced by the segment test; WAIT (a raised hand by the head) has an elbow bent to about 90 deg, so the classes do not overlap.",
+      "arm_length_in_shoulder_widths": "Anthropometric: shoulder joint to wrist of an adult is about 0.29 m (upper arm) + 0.26 m (forearm) = 0.55 m and the width between the shoulder joints about 0.39 m, a ratio of about 1.4. Used with the YOLO shoulder keypoints. The avatars are not adults of this build: to be checked on the development looks. Foreshortening is ill-conditioned near the image plane (a 10 per cent error in this ratio moves the wrist depth by up to 0.2 arm lengths), so the reader always returns BOTH depth solutions (toward / away) and the roadmap chooses; there is no 'in-plane' threshold.",
+      "point_elevation_max_deg": "Largest angle of the pointing arm above or below horizontal for which a ground direction is read. Beyond it the horizontal part of the arm direction is under half its length (sin 30 deg), the azimuth noise doubles, and an arm pointing straight up or down has no ground direction at all.",
+      "hand_crosscheck_tol_deg": "The MediaPipe world-landmark finger direction is noisy (it is estimated from a single RGB frame); a candidate counts as agreeing when within 45 deg of it.",
+      "hand_world_z_away_positive": "ASSUMPTION to verify on real data: MediaPipe hand world landmarks use the image axes (x right, y down) with z increasing away from the camera, like the normalised landmarks (smaller z = closer to the camera). The sign decides which of the two arm solutions the finger supports."
+    }
+  },
+  "hand": {
+    "wait_score_min": 0.5,
+    "stop_score_min": 0.5,
+    "finger_extended_ratio": 1.6,
+    "finger_curled_ratio": 1.2,
+    "palm_spread_min_deg": 20,
+    "index_up_tol_deg": 30,
+    "wait_raise_margin": 0.0,
+    "wait_forearm_vertical_tol_deg": 40,
+    "wait_arm_extension_max_deg": 130,
+    "push_scale_ratio_min": 1.2,
+    "stop_requires_push": false,
+    "why": {
+      "wait_score_min": "MediaPipe Pointing_Up category score; middle of the range, the value v3 uses for STOP (stop.min_confidence 0.5).",
+      "stop_score_min": "v3 stop.min_confidence (frozen) for Open_Palm.",
+      "finger_extended_ratio": "Distance wrist to fingertip over distance wrist to the finger's base joint (MCP). Extended: tip about 1.8 times the MCP distance; curled: about 1.0. 1.6 sits near the extended end so a half-bent finger is not called extended.",
+      "finger_curled_ratio": "The curled end: 1.2. Fingers between 1.2 and 1.6 are neither extended nor curled, and a hand with such a finger is not accepted as WAIT or STOP.",
+      "palm_spread_min_deg": "Angle between wrist-to-index-tip and wrist-to-pinky-tip. An open palm with spread fingers is about 25 to 35 deg, fingers held together about 15; 20 accepts a relaxed open palm. To be checked against the Mixamo hands.",
+      "index_up_tol_deg": "Index finger (MCP to tip) within 30 deg of straight up in the image for WAIT (finger up).",
+      "wait_raise_margin": "Wrist above the shoulder line (0 torso lengths): a hand raised near the head.",
+      "wait_forearm_vertical_tol_deg": "Elbow-to-wrist within 40 deg of straight up: a raised forearm, not an arm pointing sideways.",
+      "wait_arm_extension_max_deg": "Elbow angle at most 130 deg: a bent arm. Together with point_arm_extension_min_deg (140) the two arm classes are separated by a 10 deg gap in which neither WAIT nor POINT is read.",
+      "push_scale_ratio_min": "Growth of the hand box over the window (last over first) that marks the push of STOP: 20 per cent, about 8 cm of push at 2 m for a hand at arm's length.",
+      "stop_requires_push": "false: an open palm held toward the robot also stops it. Missing a STOP is worse than a false stop, and the v3 STOP was an open palm alone. docs/gesture_reader_v4.md proposed all cues for WAIT and STOP; this is the one deviation, to be confirmed."
+    }
+  },
+  "decision": {
+    "class_share_min": 0.7,
+    "class_margin_min": 0.2,
+    "why": {
+      "class_share_min": "Share of the evaluated frames (the hold stretch, or the STOP window) in which a class's cues all pass. 0.7 allows 3 in 10 frames to fail from keypoint noise.",
+      "class_margin_min": "The best class share must beat the next by 0.2; closer than that is ambiguous and reads NONE."
+    }
+  }
+}

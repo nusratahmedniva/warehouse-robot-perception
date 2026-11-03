@@ -1,0 +1,12 @@
+{
+  "label": "Development evaluation of the v4 reader, commander rule and dialog (hri_eval_dev_v4.py). Evaluation code only; development looks and clips only (data_splits_v4.guard_run refuses test data).",
+  "declared": "2026-10-24, before any v4 recording exists. Values are INITIAL, TO BE SET ON DEVELOPMENT DATA; they only define how readings are matched to workers and grouped for reporting, never a decision threshold of the robot.",
+  "status": "initial",
+  "match_bearing_deg": 10.0,
+  "distance_bins_m": [0.0, 1.5, 2.5, 4.0, 6.0],
+  "commands": ["POINT", "WAIT", "STOP", "NONE"],
+  "why": {
+    "match_bearing_deg": "A person in the pan-tilt view is matched to the truth worker whose true bearing from the robot is nearest, if within this many degrees and not equally near to another. Same value as commander.json link_bearing_tol_deg: two people 1 m apart at 2 m differ by about 26 deg.",
+    "distance_bins_m": "Robot-to-worker distance bins for the per-distance report: the ask distance is 2.0 m (v3 approach_distance_m), so the bins separate 'at the ask distance' (1.5 to 2.5) from nearer and farther views; 6 m is the gesture range of the v3 simulator."
+  }
+}

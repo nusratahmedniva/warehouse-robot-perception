@@ -1,4 +1,6 @@
-"""Bridge protocol (docs/protocol.md): framing, schema and validation, shared by the server and its tests.
+"""Bridge protocol (docs/protocol.md version 2, docs/protocol_v3.md version 3): framing, schema and validation,
+shared by the server and its tests. The version a connection speaks comes from its bridge config (configs/bridge.json
+= 2, configs/v4/bridge.json = 3); version 2 is unchanged by version 3.
 
 Message = 4-byte big-endian header length + UTF-8 JSON header + attachments (sizes listed in the header).
 FramingError and VersionError end the connection; MessageError rejects one message and keeps it.
@@ -12,12 +14,17 @@ import math
 import struct
 from dataclasses import dataclass, field
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 2          # the default (v3 study); a version 3 config selects the v4 schemas
+SUPPORTED_VERSIONS = (2, 3)
 LENGTH = struct.Struct(">I")
 
 # Keys that would carry goal B (or any end-point coordinate) to Python. Rejected at any depth.
 FORBIDDEN_KEYS = frozenset({"goal", "goal_point", "goal_x", "goal_z", "end_point", "end_point_x", "end_point_z",
                             "point_b", "b"})
+
+# Version 3 (v4 study) also rejects keys that would carry ground truth about the workers, at any depth.
+TRUTH_KEYS = frozenset({"true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth"})
+FORBIDDEN_KEYS_V3 = FORBIDDEN_KEYS | TRUTH_KEYS
 
 NUM, INT, STR, BOOL = "number", "int", "string", "bool"
 POSE = {"x": NUM, "z": NUM, "yaw_deg": NUM}
@@ -45,6 +52,20 @@ SCHEMAS: dict[str, dict] = {
                 "target_z": NUM, "state": STR, "screen_text": STR},
     "error": {"error": STR, "fatal": BOOL},
 }
+
+# Version 3: the command gains vertical_fov_deg (pan-tilt zoom) and the hud block (docs/protocol_v3.md).
+GESTURES_V3 = frozenset({"POINT", "WAIT", "STOP", "NONE"})
+HUD_PERSON = {"id": INT, "bearing_deg": NUM, "distance_m": NUM, "is_commander": BOOL}
+HUD_LOG_ENTRY = {"dir": STR, "type": STR, "seq": INT, "text": STR}
+HUD = {"state": STR, "screen_text": STR, "commander_id": INT, "gesture": STR, "gesture_score": NUM,
+       "gesture_raw": STR, "gesture_accepted": STR, "point_angle_deg": NUM, "people": [HUD_PERSON],
+       "log": [HUD_LOG_ENTRY]}
+SCHEMAS_V3: dict[str, dict] = {
+    **SCHEMAS,
+    "command": {**SCHEMAS["command"], "vertical_fov_deg": NUM, "hud": HUD},
+}
+SCHEMAS_BY_VERSION = {2: SCHEMAS, 3: SCHEMAS_V3}
+FORBIDDEN_BY_VERSION = {2: FORBIDDEN_KEYS, 3: FORBIDDEN_KEYS_V3}
 FROM_UNITY = frozenset({"hello", "telemetry", "frame_360", "frame_pan_tilt"})
 TO_UNITY = frozenset({"command", "error"})
 REQUIRED_ATTACHMENTS = {"frame_360": ("image",), "frame_pan_tilt": ("image",)}
@@ -74,10 +95,12 @@ class Limits:
     max_header_bytes: int
     max_attachment_bytes: int
     version: int = PROTOCOL_VERSION
+    intrinsics_rel_tol: float = 1e-3     # version 3 only: frame_pan_tilt intrinsics vs vertical_fov_deg
 
     @classmethod
     def from_config(cls, cfg: dict) -> "Limits":
-        return cls(int(cfg["max_header_bytes"]), int(cfg["max_attachment_bytes"]), int(cfg["protocol_version"]))
+        return cls(int(cfg["max_header_bytes"]), int(cfg["max_attachment_bytes"]), int(cfg["protocol_version"]),
+                   float(cfg.get("intrinsics_rel_tol", 1e-3)))
 
 
 @dataclass
@@ -204,32 +227,57 @@ def _check_fields(obj: dict, schema: dict, where: str) -> None:
             raise MessageError(f"{path}: expected {kind}, got {type(v).__name__}")
 
 
-def _forbidden_keys(obj, path: str = "") -> list[str]:
+def _forbidden_keys(obj, path: str = "", keys: frozenset = FORBIDDEN_KEYS) -> list[str]:
     found = []
     if isinstance(obj, dict):
         for k, v in obj.items():
-            if k.lower() in FORBIDDEN_KEYS:
+            if k.lower() in keys:
                 found.append(f"{path}{k}")
-            found += _forbidden_keys(v, f"{path}{k}.")
+            found += _forbidden_keys(v, f"{path}{k}.", keys)
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
-            found += _forbidden_keys(v, f"{path}{i}.")
+            found += _forbidden_keys(v, f"{path}{i}.", keys)
     return found
 
 
-def validate(msg: Message, allowed_types: frozenset[str]) -> None:
-    """Check a framed message against SCHEMAS. Raises MessageError."""
+def _check_v3(t: str, h: dict, rel_tol: float) -> None:
+    """Version 3 checks beyond field types."""
+    if t == "frame_pan_tilt":
+        fov, w, ht = h["vertical_fov_deg"], h["width"], h["height"]
+        if not 0.0 < fov < 180.0:
+            raise MessageError(f"frame_pan_tilt: vertical_fov_deg {fov} outside (0, 180)")
+        fy = (ht / 2.0) / math.tan(math.radians(fov) / 2.0)
+        for name, want in (("fy", fy), ("fx", fy), ("cx", w / 2.0), ("cy", ht / 2.0)):
+            if abs(h[name] - want) > rel_tol * abs(want):
+                raise MessageError(f"frame_pan_tilt: {name} {h[name]} does not match vertical_fov_deg {fov} "
+                                   f"and size {w}x{ht} (expected {want:.4f}, relative tolerance {rel_tol})")
+    elif t == "command":
+        fov = h["vertical_fov_deg"]
+        if fov != -1 and not 0.0 < fov < 180.0:
+            raise MessageError(f"command: vertical_fov_deg {fov} must be -1 (keep) or in (0, 180)")
+        hud = h["hud"]
+        if hud["gesture"] not in GESTURES_V3:
+            raise MessageError(f"command: hud.gesture {hud['gesture']!r} not in {sorted(GESTURES_V3)}")
+        if hud["commander_id"] < -1:
+            raise MessageError("command: hud.commander_id must be -1 (none) or an id >= 0")
+
+
+def validate(msg: Message, allowed_types: frozenset[str], limits: Limits | None = None) -> None:
+    """Check a framed message against the schemas of its protocol version (SCHEMAS or SCHEMAS_V3). Raises MessageError."""
     h = msg.header
+    version = h.get("version", PROTOCOL_VERSION)
+    if version not in SCHEMAS_BY_VERSION:
+        raise MessageError(f"unsupported protocol version {version!r}")
     t = h.get("type")
     if not isinstance(t, str) or t not in allowed_types:
         raise MessageError(f"unknown or unexpected message type {t!r}")
     if not _is_int(h.get("seq")) or h["seq"] < 0:
         raise MessageError(f"{t}: 'seq' must be an integer >= 0")
-    _check_fields(h, SCHEMAS[t], t)
+    _check_fields(h, SCHEMAS_BY_VERSION[version][t], t)
     if t in FROM_UNITY:
-        bad = _forbidden_keys(h)
+        bad = _forbidden_keys(h, keys=FORBIDDEN_BY_VERSION[version])
         if bad:
-            raise MessageError(f"{t}: forbidden goal field(s) {bad}; Python never receives B")
+            raise MessageError(f"{t}: forbidden goal or truth field(s) {bad}; Python never receives B or ground truth")
     for name in REQUIRED_ATTACHMENTS.get(t, ()):
         if name not in msg.attachments:
             raise MessageError(f"{t}: missing attachment {name!r}")
@@ -238,5 +286,7 @@ def validate(msg: Message, allowed_types: frozenset[str]) -> None:
             raise MessageError(f"{t}: image is not a JPEG")
         if h["width"] <= 0 or h["height"] <= 0:
             raise MessageError(f"{t}: bad image size")
+    if version >= 3:
+        _check_v3(t, h, limits.intrinsics_rel_tol if limits is not None else 1e-3)
     if t == "telemetry" and h["nav_status"] not in NAV_STATUSES:
         raise MessageError(f"telemetry: unknown nav_status {h['nav_status']!r}")

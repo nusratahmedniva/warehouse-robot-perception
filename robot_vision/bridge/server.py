@@ -61,15 +61,18 @@ import decision_io as dio  # noqa: E402  (run-folder helpers: new_run_dir, git_i
 from bridge import protocol as P  # noqa: E402
 
 DEFAULT_CONFIG = "configs/bridge.json"
+V4_CONTROL, V4_COMMANDER, V4_READER = "configs/v4/control.json", "configs/v4/commander.json", "configs/v4/gesture_reader.json"
 FRAME_COUNTERS = ("frames_360_sent", "frames_360_dropped", "frames_pan_tilt_sent", "frames_pan_tilt_dropped")
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG) -> tuple[dict, Path]:
     p = dio.resolve(path)
     cfg = dio.read_json(p)
-    if cfg.get("protocol_version") != P.PROTOCOL_VERSION:
+    if cfg.get("protocol_version") not in P.SUPPORTED_VERSIONS:
         raise ValueError(f"{p}: protocol_version {cfg.get('protocol_version')} but bridge/protocol.py speaks "
-                         f"{P.PROTOCOL_VERSION}")
+                         f"{list(P.SUPPORTED_VERSIONS)}")
+    if cfg["protocol_version"] >= 3 and "hud" not in cfg:
+        raise ValueError(f"{p}: protocol version 3 needs a 'hud' block (log_messages_per_direction)")
     for key in ("host", "port", "telemetry_hz", "frame_360_hz", "frame_pan_tilt_hz", "watchdog_timeout_s",
                 "max_header_bytes", "max_attachment_bytes"):
         if key not in cfg:
@@ -429,7 +432,7 @@ class BridgeServer:
         """Validate and send one Python -> Unity message (header without version/seq/attachments)."""
         h = {**header, "seq": self.seq}
         self.seq += 1
-        P.validate(P.Message({**h, "version": self.limits.version, "attachments": []}), P.TO_UNITY)
+        P.validate(P.Message({**h, "version": self.limits.version, "attachments": []}), P.TO_UNITY, self.limits)
         writer.write(P.encode(h, version=self.limits.version))
         await writer.drain()
         if self.log:
@@ -471,7 +474,7 @@ class BridgeServer:
                     break
                 t0 = time.perf_counter()
                 try:
-                    P.validate(msg, P.FROM_UNITY)
+                    P.validate(msg, P.FROM_UNITY, self.limits)
                 except P.MessageError as e:
                     if self.log:
                         self.log.message("in", msg.header, msg.attachments)
@@ -495,12 +498,45 @@ class BridgeServer:
             self.disconnected.set()
 
 
+def gesture_motion_hz() -> float:
+    return float(dio.read_json(V4_READER)["frame_hz"])
+
+
 def make_perception_worker(out: Path, perception_config: str | Path):
     """Load the vision models (before Unity connects) and start the worker writing to out/perception.csv."""
     import hri_perception as hpm
     from bridge.perception import PerceptionWorker
     cfg = hpm.load_config(dio.resolve(perception_config))
     return PerceptionWorker(hpm.HriPerception(cfg), out)
+
+
+def preflight_final(cfg: dict, mode: str, setting: str) -> None:
+    """Before a v4 final run starts (SystemExit otherwise): protocol 3 in guide mode, the v4 configs frozen with every hash
+    matching, the setting known and not run before, and the zoom switch of control.json what the setting says."""
+    import final_guard_v4 as fg
+    import freeze_v4 as fz
+    if cfg["protocol_version"] < 3 or mode != "guide":
+        raise SystemExit("--final-setting is for the v4 study: --mode guide with configs/v4/bridge.json (protocol 3)")
+    fz.require_frozen()
+    fg.check_name(setting)
+    fg.ensure_not_done(dio.resolve(cfg["paths"]["output_root"]), setting, "run")
+    want = fg.plan()["settings"][setting].get("zoom")
+    have = dio.read_json(V4_CONTROL)["zoom"]["enabled"]
+    if want is not None and have != want:
+        raise SystemExit(f"setting {setting!r} needs zoom {'on' if want else 'off'} but {V4_CONTROL} has zoom.enabled = {have}")
+
+
+def make_perception_worker_v4(out: Path, perception_config: str | Path, reader_config: str | Path,
+                              commander_config: str | Path):
+    """Protocol 3: the v4 perception (tracked pan-tilt people, hands, moving-gesture reader) on the same worker layout."""
+    import commander_v4
+    import gesture_motion
+    import hri_perception as hpm
+    import hri_perception_v4 as hv4
+    from bridge.perception_v4 import PerceptionWorkerV4
+    cfg = hpm.load_config(dio.resolve(perception_config))
+    reader, commander = gesture_motion.load_config(dio.resolve(reader_config)), commander_v4.load_config(dio.resolve(commander_config))
+    return PerceptionWorkerV4(hv4.HriPerceptionV4(cfg, reader, commander), out)
 
 
 def record_inference_devices(path: Path, info: dict, perception) -> dict | None:
@@ -521,10 +557,18 @@ def record_inference_devices(path: Path, info: dict, perception) -> dict | None:
 
 async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
               perception: str = "off", perception_config: str = "configs/hri_perception.json",
-              task: str = "Task2", exit_on_disconnect: bool = False, resource_log: bool = False) -> Path:
+              task: str = "Task2", exit_on_disconnect: bool = False, resource_log: bool = False,
+              final_setting: str | None = None) -> Path:
     from bridge import diagnostics as diag
     from bridge import machine_state
+    if final_setting:                              # a v4 FINAL: frozen configs, once per setting (final_guard_v4.py)
+        preflight_final(cfg, mode, final_setting)
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
+    if final_setting:
+        import final_guard_v4 as fg
+        import freeze_v4 as fz
+        dio.write_json(out / "FINAL_SETTING.json", {"setting": final_setting, "frozen_sha256": fz.sha256_lf(fz.REPO / fz.FROZEN_REL),
+                                                    "started": datetime.now().isoformat(timespec="seconds")})
     used = [cfg_path]
     if perception == "vision":
         import hri_perception as hpm
@@ -536,7 +580,13 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         import hri_control as hc
         import task_route as tr
         road, route, road_files = tr.map_for_task(task, hc.load_json)
-        for extra in ["configs/hri_control.json"] + road_files:  # the exact configs of this run
+        v4_files = []
+        if cfg["protocol_version"] >= 3:
+            v4_files = [V4_CONTROL, V4_COMMANDER, V4_READER]
+            if abs(gesture_motion_hz() - cfg["frame_pan_tilt_hz"]) > 1e-9:
+                raise ValueError(f"configs/v4/gesture_reader.json frame_hz {gesture_motion_hz()} differs from the bridge "
+                                 f"frame_pan_tilt_hz {cfg['frame_pan_tilt_hz']}")
+        for extra in ["configs/hri_control.json"] + road_files + v4_files:  # the exact configs of this run
             (out / "config_used" / Path(extra).name).write_bytes(dio.resolve(extra).read_bytes())
         dio.write_json(out / "config_used" / "map_used.json", road)
         print(f"[bridge] task {task}: map {route}", flush=True)
@@ -544,7 +594,7 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         "created": datetime.now().isoformat(timespec="seconds"), "mode": mode,
         "command": " ".join([Path(sys.executable).name] + sys.argv), "git": dio.git_info(),
         "python": platform.python_version(), "platform": platform.platform(),
-        "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": P.PROTOCOL_VERSION,
+        "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": cfg["protocol_version"],
         "mute_after_s": mute_after_s, "perception": perception, "task": task if mode == "guide" else None,
         "route": route, "machine_state": machine_state.read(), "resource_log": resource_log}
     dio.write_json(out / "run_info.json", info)
@@ -558,7 +608,8 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
     gc_monitor = diag.GcMonitor(out)
     worker = None
     if perception == "vision":
-        worker = make_perception_worker(out, perception_config)
+        worker = (make_perception_worker_v4(out, perception_config, V4_READER, V4_COMMANDER) if cfg["protocol_version"] >= 3
+                  else make_perception_worker(out, perception_config))
         print(f"[bridge] perception: {worker.label}", flush=True)
         record_inference_devices(out / "run_info.json", info, worker.p)
     log.extra["threads_at_start"] = diag.thread_info()
@@ -566,9 +617,19 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
           f"{log.extra['threads_at_start'].get('process_threads')} in the process", flush=True)
     guide = None
     if mode == "guide":
-        from bridge.guide import GuideController
-        controller = guide = GuideController(hc.Controller(hc.load_json("configs/hri_control.json"), hc.Roadmap(road)),
-                                             worker, out, route=route)
+        if cfg["protocol_version"] >= 3:                       # v4: the v4 controller and guide (protocol 3 only)
+            import commander_v4
+            import hri_control_v4 as hv
+            from bridge.guide_v4 import GuideControllerV4
+            base, v4 = hv.load_control(V4_CONTROL)
+            controller = guide = GuideControllerV4(hv.ControllerV4(base, v4, commander_v4.load_config(V4_COMMANDER),
+                                                                   hc.Roadmap(road)), worker, out, route=route,
+                                                   hud_cfg=cfg.get("hud"))
+        else:
+            from bridge.guide import GuideController
+            controller = guide = GuideController(hc.Controller(hc.load_json("configs/hri_control.json"), hc.Roadmap(road)),
+                                                 worker, out, route=route,
+                                                 protocol_version=cfg["protocol_version"], hud_cfg=cfg.get("hud"))
         if worker is None:
             print("[bridge] WARNING: guide mode without --perception vision: no people, the robot will not move.", flush=True)
     else:
@@ -598,6 +659,9 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         await server.close()
         if guide is not None:
             guide.close()
+        if final_setting and any(out.glob("python_trial_*.json")):
+            import final_guard_v4 as fg
+            fg.write_done(out, final_setting, "run", {"trials_written": len(list(out.glob("python_trial_*.json")))})
         if worker is not None:
             log.extra["perception"] = worker.summary() if hasattr(worker, "summary") else None
             worker.close()
@@ -632,6 +696,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--perception-config", default="configs/hri_perception.json")
     ap.add_argument("--resource-log", action="store_true",
                     help="log memory, paging, CPU per process and GPU once per second (resources.csv, own process)")
+    ap.add_argument("--final-setting", default=None,
+                    help="v4 FINAL run of this setting (zoom_on, zoom_off, bystanders, unseen_look): needs configs/v4/frozen.json "
+                         "frozen with every hash matching; refused if the setting was already run (final_guard_v4.py)")
     ap.add_argument("--task", choices=["Task1", "Task2"], default=None,
                     help="guide mode (required there): the map (Task2 = roadmap.json; Task1 = roadmap.json plus the "
                          "checkpoints of configs/task1_route.json). The Unity trial runner refuses trials if it differs "
@@ -643,9 +710,12 @@ def main(argv: list[str] | None = None) -> None:
     if args.mode == "guide" and args.task is None:
         ap.error("guide mode needs --task Task1 or --task Task2 (the map must match the Unity trial runner's task)")
     cfg, cfg_path = load_config(args.config)
+    if args.mode == "hello" and cfg["protocol_version"] >= 3:
+        ap.error("hello mode speaks protocol version 2 only; use --mode guide with a version 3 config")
     try:
         asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
-                        args.perception_config, args.task or "Task2", args.exit_on_disconnect, args.resource_log))
+                        args.perception_config, args.task or "Task2", args.exit_on_disconnect, args.resource_log,
+                        args.final_setting))
     except KeyboardInterrupt:
         pass
 

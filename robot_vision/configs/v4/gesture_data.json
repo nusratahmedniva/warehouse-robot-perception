@@ -1,0 +1,8 @@
+{
+  "note": "Settings of robot_vision/gesture_data.py (evaluation code only: truth.jsonl loader, truth-to-frame join, labelled clips). The lists are those of docs/protocol_v3.md; the phase list may be extended by agreement with Nusrat.",
+  "truth_join_max_s": 0.06,
+  "truth_join_note": "A pan-tilt frame gets the truth row of a worker only when the nearest row is within this many seconds of the frame time. Same value as truth_join_max_s in configs/hri_perception.json (v3). Decided 2026-10-23 (docs/protocol_v3.md, Decided).",
+  "commands": ["POINT", "WAIT", "STOP", "NONE"],
+  "arms": ["left", "right", "none"],
+  "phases": ["idle", "start_delay", "gesturing", "holding", "returning"]
+}

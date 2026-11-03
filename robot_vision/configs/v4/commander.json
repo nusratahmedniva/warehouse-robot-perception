@@ -1,0 +1,13 @@
+{
+  "label": "v4 commander rule (commander_v4.py): who is giving the command among the people the pan-tilt camera sees. docs/gesture_reader_v4.md, docs/project_flow_v4.md steps 4 and 7.",
+  "declared": "2026-10-24, before any v4 recording exists. Every value is INITIAL, TO BE SET ON DEVELOPMENT DATA; none is tuned.",
+  "status": "initial",
+  "facing_shoulder_ratio_min": 0.5,
+  "motion_margin": 0.2,
+  "link_bearing_tol_deg": 10,
+  "why": {
+    "facing_shoulder_ratio_min": "A person facing the camera shows a shoulder width of about 0.8 of the torso length (0.40 m over 0.50 m); the apparent width falls with the cosine of the turn, so 0.5 (cos 51 deg) keeps people turned less than about 50 deg from the camera. Together with both eyes visible (a head turned away loses an eye).",
+    "motion_margin": "Torso lengths. When two facing people both move a raised hand, the one whose wrist travelled further wins only if it travelled at least this much further (half of motion_path_min of the reader); closer than that is a tie, which reads as no commander.",
+    "link_bearing_tol_deg": "Largest difference between the bearing of a pan-tilt person and a 360-camera person for them to be the same person. Two people at 2 m standing 1 m apart differ by about 26 deg; 10 deg is well under that and well over the combined bearing error of the two cameras (a few degrees)."
+  }
+}

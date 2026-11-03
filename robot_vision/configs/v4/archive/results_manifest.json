@@ -1,0 +1,4 @@
+{
+  "label": "v4 sessions to archive. One entry per session; folder names are those under robot_vision/outputs/. role final = a final setting (zoom_on, zoom_off, bystanders, unseen_look), run once; role development = development sessions. eval / analysis folders are optional.",
+  "sessions": []
+}
