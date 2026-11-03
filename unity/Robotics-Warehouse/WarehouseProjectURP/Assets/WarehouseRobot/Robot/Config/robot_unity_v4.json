@@ -1,0 +1,72 @@
+{
+  "note": "v4 study robot config (2026-10-29). Loaded only by WarehouseRobot_v4.unity (scene override of the robot's RobotRig). Every section except v4 is a copy of robot_unity.json (v3 study, frozen in robot_vision/configs/hri_frozen.json, unchanged); keep them equal. Body size and drive limits come from the shared robot.json named in paths.",
+  "conventions": "As robot_unity.json. Robot frame: +Z forward, +Y up (Unity, left-handed). v > 0 drives forward. omega > 0 turns left (counter-clockwise seen from above, REP-103 sign); Unity angularVelocity.y = -omega. pan_deg > 0 turns the pan camera left; pan 0 looks along the robot's forward axis. tilt_deg must be 0 (level camera, required by the lower-bound person distance). The 360 equirectangular image is world-aligned (RenderToCubemap renders world-axis faces): it does not rotate when the robot turns.",
+  "far_clip_note": "As robot_unity.json.",
+  "paths": {
+    "repo_root_relative_to_unity_project": "../../..",
+    "robot_config": "robot_vision/configs/robot.json"
+  },
+  "body": {
+    "ground_clearance_m": 0.05,
+    "collider_bottom_m": 0.02,
+    "wheel_radius_m": 0.10,
+    "wheel_width_m": 0.06,
+    "mass_kg": 60.0
+  },
+  "mast": {
+    "radius_m": 0.025,
+    "forward_offset_m": 0.0
+  },
+  "camera_360": {
+    "height_m": 1.60,
+    "face_size_px": 1024,
+    "width_px": 2048,
+    "height_px": 1024,
+    "frame_rate_hz": 10.0,
+    "near_m": 0.05,
+    "far_m": 100.0
+  },
+  "pan_tilt_camera": {
+    "height_m": 1.20,
+    "width_px": 730,
+    "height_px": 530,
+    "vertical_fov_deg": 60.0,
+    "tilt_deg": 0.0,
+    "near_m": 0.1,
+    "far_m": 100.0,
+    "pan_min_deg": -180.0,
+    "pan_max_deg": 180.0
+  },
+  "debug": {
+    "keyboard_pan_speed_dps": 60.0
+  },
+  "placement": {
+    "floor_tag": "Floor",
+    "ray_start_above_m": 1.0,
+    "ray_length_m": 3.0
+  },
+  "collisions": {
+    "ignore_tags": ["Floor"],
+    "merge_recontact_s": 0.5
+  },
+  "obstacles": {
+    "groups": ["Shelves", "FloorBoxes", "Walls", "Stations"],
+    "make_rigidbodies_kinematic": true
+  },
+  "v4": {
+    "enabled": true,
+    "zoom_config": "robot_vision/configs/v4/control.json",
+    "zoom_note": "Unity's clamp for the commanded vertical_fov_deg (docs/protocol_v3.md section 1) is read from Python's zoom rule, configs/v4/control.json -> zoom (fov_min_deg, fov_max_deg; fov_default_deg must equal pan_tilt_camera.vertical_fov_deg), so both sides use one declared range and Unity adds no number of its own. -1 keeps the default.",
+    "ground_truth": {
+      "layer": "GroundTruth",
+      "cell_size_m": 0.5,
+      "trail_interval_s": 0.1,
+      "marker_radius_m": 0.4,
+      "marker_height_m": 3.0,
+      "line_width_m": 0.08,
+      "path_point_size_m": 0.15,
+      "floor_offset_m": 0.02
+    },
+    "ground_truth_note": "cell_size_m 0.5 and the 0.1 s trail interval are docs/project_flow_v4.md and docs/protocol_v3.md. Widening decided 2026-10-29 by Nusrat and Anisha: robot_width_m / 2 + safety_margin_per_side_m, both read from robot.json (0.30 + 0.10 = 0.40 m). Cell rule (Unity implementation, 2026-10-29, to be confirmed): a cell is free iff its centre lies on the floor (colliders tagged placement.floor_tag) and at least that far from every obstacle footprint (the colliders the robot collides with under obstacles.groups, as ColliderSetup builds them, between the floor and the top of the mast, camera_360.height_m). Sensitivity check, report only: the same A* with the AMR NavMesh agent radius (Tools > Warehouse v4 > Grid Sensitivity Check). The marker, line and point sizes and floor_offset_m are display only (never read by any measure). Every ground-truth object is on the layer named here, which both robot cameras skip."
+  }
+}

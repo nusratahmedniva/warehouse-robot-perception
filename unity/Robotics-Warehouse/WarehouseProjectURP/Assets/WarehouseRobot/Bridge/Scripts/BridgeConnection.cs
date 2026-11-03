@@ -30,6 +30,7 @@ namespace WarehouseRobot.Bridge
         readonly int port;
         readonly int maxHeaderBytes, maxAttachmentBytes;
         readonly int reconnectMs, connectTimeoutMs;
+        readonly int protocolVersion;
         readonly ConcurrentQueue<BridgeEvent> events = new ConcurrentQueue<BridgeEvent>();
         readonly ConcurrentQueue<KeyValuePair<int, long>> telemetryWrites = new ConcurrentQueue<KeyValuePair<int, long>>();
         readonly BlockingCollection<OutItem> outgoing = new BlockingCollection<OutItem>(new ConcurrentQueue<OutItem>());
@@ -48,8 +49,10 @@ namespace WarehouseRobot.Bridge
         /// <summary>Frame messages queued but not yet written (the caller drops new frames above a limit).</summary>
         public int PendingFrames => Volatile.Read(ref pendingFrames);
 
-        public BridgeConnection(string host, int port, int maxHeaderBytes, int maxAttachmentBytes, float reconnectS, float connectTimeoutS)
+        public BridgeConnection(string host, int port, int maxHeaderBytes, int maxAttachmentBytes, float reconnectS, float connectTimeoutS,
+            int protocolVersion = BridgeProtocol.Version)
         {
+            this.protocolVersion = protocolVersion;
             this.host = host;
             this.port = port;
             this.maxHeaderBytes = maxHeaderBytes;
@@ -112,7 +115,7 @@ namespace WarehouseRobot.Bridge
                     writer.Start();
                     while (!stopping)
                     {
-                        var msg = BridgeProtocol.Read(stream, maxHeaderBytes, maxAttachmentBytes);
+                        var msg = BridgeProtocol.Read(stream, maxHeaderBytes, maxAttachmentBytes, protocolVersion);
                         if (msg == null) { reason = "server closed the connection"; break; }
                         msg.ReceivedTicks = Stopwatch.GetTimestamp();
                         events.Enqueue(new BridgeEvent { Kind = BridgeEventKind.Message, Message = msg });

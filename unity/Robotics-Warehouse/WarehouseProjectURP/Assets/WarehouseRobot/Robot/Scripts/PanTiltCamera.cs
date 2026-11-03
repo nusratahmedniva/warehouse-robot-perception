@@ -14,6 +14,7 @@ namespace WarehouseRobot
         [SerializeField] Camera cam;
 
         PanTiltCameraConfig cfg;
+        ZoomRange zoom;   // v4 only (robot_unity_v4.json); null in v3: the field of view stays at the default
 
         public Camera Camera => cam;
         public RenderTexture Image { get; private set; }
@@ -22,6 +23,13 @@ namespace WarehouseRobot
         public float PanMinDeg => cfg != null ? cfg.pan_min_deg : 0f;
         public float PanMaxDeg => cfg != null ? cfg.pan_max_deg : 0f;
         public bool Ready => Image != null;
+        /// <summary>Configured vertical field of view (pan_tilt_camera.vertical_fov_deg): the unzoomed view.</summary>
+        public float DefaultFovDeg => cfg != null ? cfg.vertical_fov_deg : 0f;
+        /// <summary>Zoom range (v4: configs/v4/control.json -> zoom); without zoom both equal the default.</summary>
+        public float FovMinDeg => zoom != null ? zoom.fov_min_deg : DefaultFovDeg;
+        public float FovMaxDeg => zoom != null ? zoom.fov_max_deg : DefaultFovDeg;
+        /// <summary>Vertical field of view the camera renders with now.</summary>
+        public float FovDeg => cam != null ? cam.fieldOfView : 0f;
 
         public void Bind(Camera camera) => cam = camera;
 
@@ -32,6 +40,18 @@ namespace WarehouseRobot
             PanDeg = Mathf.Clamp(deg, cfg.pan_min_deg, cfg.pan_max_deg);
             transform.localRotation = Quaternion.Euler(0f, -PanDeg, 0f);
             return PanDeg;
+        }
+
+        /// <summary>
+        /// Zoom (v4): set the vertical field of view in degrees, clamped to [FovMinDeg, FovMaxDeg]. Takes effect from the
+        /// next render; every frame_pan_tilt header reports the field of view and intrinsics it was rendered with.
+        /// Returns the value applied.
+        /// </summary>
+        public float SetFovDeg(float deg)
+        {
+            if (cfg == null || cam == null) return FovDeg;
+            cam.fieldOfView = Mathf.Clamp(deg, FovMinDeg, FovMaxDeg);
+            return cam.fieldOfView;
         }
 
         void Awake()
@@ -45,6 +65,7 @@ namespace WarehouseRobot
                 return;
             }
             cfg = config.Unity.pan_tilt_camera;
+            zoom = config.IsV4 ? config.Zoom : null;
             Image = new RenderTexture(cfg.width_px, cfg.height_px, 24, RenderTextureFormat.ARGB32) { name = "PanTiltCameraImage" };
             Image.Create();
             ApplyCameraSettings(cam, cfg);
@@ -57,7 +78,8 @@ namespace WarehouseRobot
         {
             if (cfg == null) return;
             var robot = GetComponentInParent<RobotRig>().transform;
-            var problems = SelfVisibilityViolations(robot, cam.transform.position, cfg.vertical_fov_deg, cfg.near_m);
+            // The widest view the camera can take (the zoom range never exceeds it in v3: no zoom).
+            var problems = SelfVisibilityViolations(robot, cam.transform.position, Mathf.Max(cfg.vertical_fov_deg, FovMaxDeg), cfg.near_m);
             if (problems.Count == 0)
                 Debug.Log("[PanTiltCamera] Self-visibility check passed: no robot part can appear in the image at any pan angle.", this);
             else

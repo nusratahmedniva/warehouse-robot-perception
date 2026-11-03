@@ -99,8 +99,9 @@ namespace WarehouseRobot.Bridge
             }
 
             var s = Shared;
-            if (s.protocol_version != BridgeProtocol.Version)
-                e.Add($"bridge.json protocol_version {s.protocol_version}, but this Unity code speaks {BridgeProtocol.Version}");
+            if (!BridgeProtocol.Supported(s.protocol_version))
+                e.Add($"bridge.json protocol_version {s.protocol_version}, but this Unity code speaks {BridgeProtocol.Version} " +
+                      $"(configs/bridge.json, v3 study) or {BridgeProtocol.Version3} (configs/v4/bridge.json, v4 study)");
             if (string.IsNullOrEmpty(s.host)) e.Add("bridge.json host is required");
             if (s.port < 1 || s.port > 65535) e.Add("bridge.json port must be 1..65535");
             Positive("bridge.json telemetry_hz", s.telemetry_hz);

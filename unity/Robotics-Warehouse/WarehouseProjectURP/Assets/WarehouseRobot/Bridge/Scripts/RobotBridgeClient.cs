@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Rendering;
 using WarehouseHRI;
+using WarehouseHRI.V4;
 using Debug = UnityEngine.Debug;
 
 namespace WarehouseRobot.Bridge
@@ -21,6 +22,12 @@ namespace WarehouseRobot.Bridge
     /// watchdog_timeout_s (CommandWatchdog; before 2026-10-22: no command for watchdog_timeout_s of wall-clock time) and
     /// when the connection drops. While the debug keyboard control is on, commands are not applied (keyboard_override).
     /// F3 shows/hides the bridge panel.
+    /// Protocol version 3 (v4 study, docs/protocol_v3.md; selected only by a shared config with protocol_version 3, i.e.
+    /// bridge_unity_v4.json in WarehouseRobot_v4.unity): every message carries version 3; a command must carry
+    /// vertical_fov_deg (applied to the pan-tilt camera, -1 = configured default, clamped to the zoom range) and hud
+    /// (kept in Hud for HudOverlay, display only); a command without them, or with an invalid field of view, is
+    /// ignored. Before connecting, every message type Unity sends is checked for the goal and truth keys; one found
+    /// disables the bridge. With version 2 (v3 study) behaviour is unchanged.
     /// </summary>
     [DisallowMultipleComponent]
     public class RobotBridgeClient : MonoBehaviour
@@ -113,6 +120,13 @@ namespace WarehouseRobot.Bridge
         public bool PythonPerceptionReady { get; private set; }
         public bool Connected => connection != null && connection.Connected;
         public float LastRoundTripMs => rttMs;
+        /// <summary>protocol_version of the shared config (2 = v3 study, 3 = v4 study); 0 if the config failed to load.</summary>
+        public int ProtocolVersion => cfg != null ? cfg.Shared.protocol_version : 0;
+        bool V3 => ProtocolVersion == BridgeProtocol.Version3;
+        /// <summary>Version 3: the hud block of the last applied command (null before one, and after a disconnect).</summary>
+        public HudMsg Hud { get; private set; }
+        /// <summary>While true no camera frame is requested (the v4 leak test renders the robot cameras itself).</summary>
+        public bool FramesPaused { get; set; }
 
         public void Bind(TextAsset configAsset, RobotRig robotRig)
         {
@@ -141,6 +155,41 @@ namespace WarehouseRobot.Bridge
             }
             navPath = new NavMeshPath();
             watchdog = new CommandWatchdog(cfg.Shared.watchdog_timeout_s);
+            if (V3)
+            {
+                string leak = ForbiddenKeyInMessageTypes();
+                if (leak != null)
+                {
+                    Debug.LogError("[RobotBridge] Protocol 3: a message Unity sends would carry the forbidden key '" + leak +
+                                   "' (goal or truth, docs/protocol_v3.md); bridge disabled.", this);
+                    enabled = false;
+                    return;
+                }
+                Debug.Log("[RobotBridge] Protocol version 3 (v4 study, " + cfg.SharedConfigPath + ").", this);
+            }
+        }
+
+        /// <summary>
+        /// Every message type Unity sends, serialized with one element in each list, checked for the goal and truth
+        /// keys of docs/protocol_v3.md. Returns the first such key, or null.
+        /// </summary>
+        static string ForbiddenKeyInMessageTypes()
+        {
+            var t = new TelemetryMsg();
+            t.nav_corners.Add(new NavCorner());
+            t.frame_ms_list.Add(0f);
+            t.watchdog_events.Add(new WatchdogEventMsg());
+            t.attachments.Add(new AttachmentSpec());
+            var f360 = new Frame360Msg();
+            f360.attachments.Add(new AttachmentSpec());
+            var pan = new FramePanTiltMsg();
+            pan.attachments.Add(new AttachmentSpec());
+            foreach (object m in new object[] { new HelloMsg(), t, f360, pan })
+            {
+                string key = ProtocolV3.FindForbiddenKey(JsonUtility.ToJson(m));
+                if (key != null) return key;
+            }
+            return null;
         }
 
         void Start()
@@ -173,7 +222,7 @@ namespace WarehouseRobot.Bridge
             if (connection != null || cfg == null) return;
             var s = cfg.Shared;
             connection = new BridgeConnection(s.host, s.port, s.max_header_bytes, s.max_attachment_bytes,
-                cfg.Unity.reconnect_interval_s, cfg.Unity.connect_timeout_s);
+                cfg.Unity.reconnect_interval_s, cfg.Unity.connect_timeout_s, s.protocol_version);
             encoder360 = new FrameEncoder(connection);
             encoderPan = new FrameEncoder(connection);
             Debug.Log($"[RobotBridge] Connecting to {connection.Endpoint} (retry every {cfg.Unity.reconnect_interval_s:F1} s)", this);
@@ -239,6 +288,7 @@ namespace WarehouseRobot.Bridge
             streamPan.Reset();
             var hello = new HelloMsg
             {
+                version = ProtocolVersion,
                 seq = NextSeq(),
                 time_s = Time.time,
                 unity_version = Application.unityVersion,
@@ -257,6 +307,7 @@ namespace WarehouseRobot.Bridge
             watchdog.Disconnected(SwNow());
             State = "disconnected";
             ScreenText = "";
+            Hud = null;
             PythonRoute = "";
             PythonPerceptionReady = false;
             if (robot != null && !KeyboardOverride) robot.Drive.Stop();
@@ -268,6 +319,12 @@ namespace WarehouseRobot.Bridge
             switch (msg.Envelope.type)
             {
                 case "command":
+                    string missing = V3 ? ProtocolV3.MissingCommandKey(msg.HeaderJson) : null;
+                    if (missing != null)
+                    {
+                        LogErrorOnce($"Protocol 3 command without '{missing}' ignored (docs/protocol_v3.md).");
+                        break;
+                    }
                     ApplyCommand(JsonUtility.FromJson<CommandMsg>(msg.HeaderJson), msg.ReceivedTicks);
                     break;
                 case "error":
@@ -290,6 +347,13 @@ namespace WarehouseRobot.Bridge
             if (!(IsFinite(cmd.v) && IsFinite(cmd.omega) && IsFinite(cmd.pan_deg) && IsFinite(cmd.target_x) && IsFinite(cmd.target_z)))
             {
                 LogErrorOnce("Command with a non-finite number ignored.");
+                return;
+            }
+            float fovDeg = 0f;
+            if (V3 && !ProtocolV3.TryResolveFov(cmd.vertical_fov_deg, robot.PanTilt.DefaultFovDeg, robot.PanTilt.FovMinDeg,
+                    robot.PanTilt.FovMaxDeg, out fovDeg, out string fovError))
+            {
+                LogErrorOnce("Command ignored: " + fovError);
                 return;
             }
             lastCommand = cmd;
@@ -326,11 +390,13 @@ namespace WarehouseRobot.Bridge
             {
                 robot.Drive.SetCommand(cmd.v, cmd.omega);
                 robot.PanTilt.SetPanDeg(cmd.pan_deg);
+                if (V3) robot.PanTilt.SetFovDeg(fovDeg);   // rendered from the next frame on; its header reports it
             }
             hasTarget = cmd.has_target;
             target = new Vector2(cmd.target_x, cmd.target_z);
             State = cmd.state ?? "";
             ScreenText = cmd.screen_text ?? "";
+            if (V3) Hud = cmd.hud ?? new HudMsg();
             PythonRoute = cmd.route ?? "";
             PythonPerceptionReady = cmd.perception_ready;
         }
@@ -372,6 +438,7 @@ namespace WarehouseRobot.Bridge
             var drive = robot.Drive;
             var t = new TelemetryMsg
             {
+                version = ProtocolVersion,
                 seq = NextSeq(),
                 time_s = Time.time,
                 pose = CurrentPose(),
@@ -554,7 +621,7 @@ namespace WarehouseRobot.Bridge
 
         bool FrameDue(StreamState s, float hz)
         {
-            if (connection == null || !connection.Connected || !SystemInfo.supportsAsyncGPUReadback) return false;
+            if (connection == null || !connection.Connected || !SystemInfo.supportsAsyncGPUReadback || FramesPaused) return false;
             float now = Time.unscaledTime, period = 1f / hz;
             if (!s.Scheduled) { s.NextTime = now; s.Scheduled = true; }
             if (now < s.NextTime) return false;
@@ -576,6 +643,7 @@ namespace WarehouseRobot.Bridge
             var c = cfg.Unity.camera_360;
             var meta = new Frame360Msg
             {
+                version = ProtocolVersion,
                 seq = NextSeq(),
                 time_s = Time.time,
                 frame_index = stream360.Requested,
@@ -594,9 +662,12 @@ namespace WarehouseRobot.Bridge
             if (pan == null || !pan.Ready || cam != pan.Camera) return;
             if (!FrameDue(streamPan, cfg.Shared.frame_pan_tilt_hz)) return;
             var img = pan.Image;
+            // cam.fieldOfView here is the one this frame was rendered with (zoom is applied in Update, before rendering),
+            // so the intrinsics always belong to the pixels (docs/protocol_v3.md section 2).
             float fy = 0.5f * img.height / Mathf.Tan(0.5f * cam.fieldOfView * Mathf.Deg2Rad);
             var meta = new FramePanTiltMsg
             {
+                version = ProtocolVersion,
                 seq = NextSeq(),
                 time_s = Time.time,
                 frame_index = streamPan.Requested,

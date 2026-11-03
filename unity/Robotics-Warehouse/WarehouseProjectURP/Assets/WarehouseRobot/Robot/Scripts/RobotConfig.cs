@@ -18,6 +18,46 @@ namespace WarehouseRobot
         public float estop_decel_mps2;
         public float max_angular_speed_radps;
         public float max_angular_accel_radps2;
+        /// <summary>Read by the v4 ground-truth grid only (widening = robot_width_m / 2 + this).</summary>
+        public float safety_margin_per_side_m;
+    }
+
+    /// <summary>The zoom block of robot_vision/configs/v4/control.json (Python's zoom rule), read for Unity's clamp.</summary>
+    [Serializable]
+    public class ZoomRange
+    {
+        public float fov_default_deg;
+        public float fov_min_deg;
+        public float fov_max_deg;
+    }
+
+    [Serializable]
+    class ZoomConfigFile
+    {
+        public ZoomRange zoom;
+    }
+
+    /// <summary>v4 study: the ground-truth layer (docs/project_flow_v4.md, "Ground-truth layer"; docs/protocol_v3.md).</summary>
+    [Serializable]
+    public class GroundTruthConfig
+    {
+        public string layer;
+        public float cell_size_m;
+        public float trail_interval_s;
+        public float marker_radius_m;
+        public float marker_height_m;
+        public float line_width_m;
+        public float path_point_size_m;
+        public float floor_offset_m;
+    }
+
+    /// <summary>The v4 section of robot_unity_v4.json; absent (or enabled false) in the v3 robot_unity.json.</summary>
+    [Serializable]
+    public class V4RobotConfig
+    {
+        public bool enabled;
+        public string zoom_config;
+        public GroundTruthConfig ground_truth;
     }
 
     [Serializable]
@@ -111,6 +151,7 @@ namespace WarehouseRobot
         public PlacementConfig placement;
         public CollisionsConfig collisions;
         public ObstaclesConfig obstacles;
+        public V4RobotConfig v4;
     }
 
     /// <summary>
@@ -122,6 +163,17 @@ namespace WarehouseRobot
         public SharedRobotConfig Robot;
         public UnityRobotConfig Unity;
         public string RobotConfigPath;
+        /// <summary>Name and text of the Unity config asset this was loaded from (recorded by the v4 trial runner).</summary>
+        public string UnityConfigName, UnityConfigText;
+        /// <summary>v4 only: Python's zoom range (configs/v4/control.json -> zoom), Unity's clamp for vertical_fov_deg. Null in v3.</summary>
+        public ZoomRange Zoom;
+        public string ZoomConfigPath;
+
+        /// <summary>True for the v4 study config (robot_unity_v4.json, section v4 with enabled true).</summary>
+        public bool IsV4 => Unity.v4 != null && Unity.v4.enabled;
+
+        /// <summary>v4 ground-truth grid widening: robot half-width plus the safety margin per side (robot.json).</summary>
+        public float GroundTruthInflationM => 0.5f * Robot.robot_width_m + Robot.safety_margin_per_side_m;
 
         public static RobotConfig Load(TextAsset unityConfig)
         {
@@ -146,7 +198,20 @@ namespace WarehouseRobot
                 Robot = JsonUtility.FromJson<SharedRobotConfig>(File.ReadAllText(robotPath)),
                 Unity = unity,
                 RobotConfigPath = robotPath,
+                UnityConfigName = unityConfig.name,
+                UnityConfigText = unityConfig.text,
             };
+            if (cfg.IsV4)
+            {
+                if (string.IsNullOrEmpty(unity.v4.zoom_config) || unity.v4.ground_truth == null)
+                    throw new InvalidOperationException(unityConfig.name + ": v4.zoom_config and v4.ground_truth are required when v4.enabled is true.");
+                string zoomPath = Path.GetFullPath(Path.Combine(projectRoot, unity.paths.repo_root_relative_to_unity_project, unity.v4.zoom_config));
+                if (!File.Exists(zoomPath))
+                    throw new FileNotFoundException("v4 zoom config not found (check v4.zoom_config in " + unityConfig.name + ")", zoomPath);
+                cfg.Zoom = JsonUtility.FromJson<ZoomConfigFile>(File.ReadAllText(zoomPath))?.zoom;
+                cfg.ZoomConfigPath = zoomPath;
+                if (cfg.Zoom == null) throw new InvalidOperationException(zoomPath + ": no zoom section");
+            }
             var errors = cfg.Validate();
             if (errors.Count > 0)
                 throw new InvalidOperationException("Invalid robot config:\n  " + string.Join("\n  ", errors));
@@ -221,7 +286,28 @@ namespace WarehouseRobot
             if (Unity.collisions.ignore_tags == null) e.Add("collisions.ignore_tags is required (may be empty)");
             if (Unity.collisions.merge_recontact_s < 0f) e.Add("collisions.merge_recontact_s must be >= 0");
             if (Unity.obstacles.groups == null) e.Add("obstacles.groups is required (may be empty)");
+            if (IsV4) ValidateV4(e);
             return e;
+        }
+
+        void ValidateV4(List<string> e)
+        {
+            var z = Zoom;
+            if (z == null) { e.Add("v4: zoom range not loaded"); return; }
+            if (!(z.fov_min_deg > 0f)) e.Add("v4 zoom fov_min_deg must be > 0");
+            if (!(z.fov_max_deg < 180f)) e.Add("v4 zoom fov_max_deg must be < 180");
+            if (!(z.fov_min_deg <= z.fov_default_deg && z.fov_default_deg <= z.fov_max_deg))
+                e.Add("v4 zoom: fov_min_deg <= fov_default_deg <= fov_max_deg required");
+            if (Mathf.Abs(z.fov_default_deg - Unity.pan_tilt_camera.vertical_fov_deg) > 1e-4f)
+                e.Add($"v4 zoom fov_default_deg {z.fov_default_deg} differs from pan_tilt_camera.vertical_fov_deg {Unity.pan_tilt_camera.vertical_fov_deg}");
+            var g = Unity.v4.ground_truth;
+            if (string.IsNullOrEmpty(g.layer)) e.Add("v4.ground_truth.layer is required");
+            if (!(g.cell_size_m > 0f)) e.Add("v4.ground_truth.cell_size_m must be > 0");
+            if (!(g.trail_interval_s > 0f)) e.Add("v4.ground_truth.trail_interval_s must be > 0");
+            if (!(g.marker_radius_m > 0f && g.marker_height_m > 0f && g.line_width_m > 0f && g.path_point_size_m > 0f))
+                e.Add("v4.ground_truth marker_radius_m, marker_height_m, line_width_m and path_point_size_m must be > 0");
+            if (g.floor_offset_m < 0f) e.Add("v4.ground_truth.floor_offset_m must be >= 0");
+            if (Robot.safety_margin_per_side_m < 0f) e.Add("robot.json safety_margin_per_side_m must be >= 0 (v4 grid widening)");
         }
     }
 }
