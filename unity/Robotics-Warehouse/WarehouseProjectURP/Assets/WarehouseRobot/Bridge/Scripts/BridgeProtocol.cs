@@ -9,10 +9,16 @@ namespace WarehouseRobot.Bridge
     /// <summary>
     /// docs/protocol.md: 4-byte big-endian header length + UTF-8 JSON header + attachments (sizes in the header).
     /// Thread-safe (JsonUtility.ToJson/FromJson are marked ThreadSafe), so the network and encoder threads use it.
+    /// Version 2 (v3 study, configs/bridge.json) and version 3 (v4 study, configs/v4/bridge.json, docs/protocol_v3.md):
+    /// a connection speaks exactly the protocol_version of the shared config it was started with.
     /// </summary>
     public static class BridgeProtocol
     {
+        /// <summary>Version 2, the v3 study's protocol and the default of every message class.</summary>
         public const int Version = 2;
+        public const int Version3 = WarehouseHRI.V4.ProtocolV3.Version;
+
+        public static bool Supported(int version) => version == Version || version == Version3;
 
         /// <summary>Frame a header (whose attachments list must already match) and its attachments.</summary>
         public static byte[] Frame(string headerJson, params byte[][] attachments)
@@ -39,7 +45,11 @@ namespace WarehouseRobot.Bridge
         /// Read one message. Returns null on a clean end of stream between messages; throws BridgeFramingException
         /// (or BridgeVersionException) when the stream cannot be trusted any more.
         /// </summary>
-        public static RawMessage Read(Stream stream, int maxHeaderBytes, int maxAttachmentBytes)
+        public static RawMessage Read(Stream stream, int maxHeaderBytes, int maxAttachmentBytes) =>
+            Read(stream, maxHeaderBytes, maxAttachmentBytes, Version);
+
+        /// <summary>Read one message of the given protocol version (any other version is a BridgeVersionException).</summary>
+        public static RawMessage Read(Stream stream, int maxHeaderBytes, int maxAttachmentBytes, int expectedVersion)
         {
             var prefix = new byte[4];
             int got = ReadUpTo(stream, prefix, 4);
@@ -64,8 +74,8 @@ namespace WarehouseRobot.Bridge
             }
             if (env == null || env.attachments == null)
                 throw new BridgeFramingException("header has no attachments list");
-            if (env.version != Version)
-                throw new BridgeVersionException($"protocol version {env.version}, expected {Version}");
+            if (env.version != expectedVersion)
+                throw new BridgeVersionException($"protocol version {env.version}, expected {expectedVersion}");
 
             long total = 0;
             var names = new HashSet<string>();
@@ -301,6 +311,11 @@ namespace WarehouseRobot.Bridge
         // whether its perception is warmed up; the trial runner waits for both before trial 1. Absent = "" / false.
         public string route = "";
         public bool perception_ready;
+        // Version 3 (docs/protocol_v3.md): pan-tilt zoom (-1 = keep the configured default) and the heads-up display
+        // block (display only). Both are required in version 3 (checked on the header text); version 2 commands have
+        // neither and read the defaults, which change nothing.
+        public float vertical_fov_deg = WarehouseHRI.V4.ProtocolV3.KeepDefaultFov;
+        public WarehouseHRI.V4.HudMsg hud = new WarehouseHRI.V4.HudMsg();
     }
 
     [Serializable]

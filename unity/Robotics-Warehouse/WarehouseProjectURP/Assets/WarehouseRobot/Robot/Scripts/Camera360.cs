@@ -21,6 +21,8 @@ namespace WarehouseRobot
         bool reportedFailure;
 
         public RenderTexture Equirect { get; private set; }
+        /// <summary>The (disabled) camera behind the cubemap; the v4 leak test renders it into its own textures.</summary>
+        public Camera Camera => cam;
         public int FramesCaptured { get; private set; }
         /// <summary>Time.time of the last successful capture (-1 before the first).</summary>
         public float LastCaptureTime { get; private set; } = -1f;

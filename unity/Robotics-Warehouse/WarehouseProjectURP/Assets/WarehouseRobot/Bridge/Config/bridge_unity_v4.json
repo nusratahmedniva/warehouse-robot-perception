@@ -1,0 +1,22 @@
+{
+  "note": "v4 study bridge, Unity side (2026-10-29). Loaded only by WarehouseRobot_v4.unity. Same as bridge_unity.json (v3 study, frozen in robot_vision/configs/hri_frozen.json, unchanged) except paths.bridge_config, which names the v4 shared config: protocol_version 3 (docs/protocol_v3.md). Host, port, rates, watchdog and limits come from that file (Python reads the same file).",
+  "paths": {
+    "repo_root_relative_to_unity_project": "../../..",
+    "bridge_config": "robot_vision/configs/v4/bridge.json"
+  },
+  "auto_connect": true,
+  "reconnect_interval_s": 1.0,
+  "connect_timeout_s": 2.0,
+  "nav": {
+    "agent_type": "AMR",
+    "snap_max_distance_m": 1.0,
+    "snap_note": "As bridge_unity.json: NavMesh.SamplePosition snaps the path start (robot) and the target to the NavMesh within this distance; telemetry reports the horizontal snap distances.",
+    "agent_note": "As bridge_unity.json: AMR agent type, radius 0.5 m = half of the 1.00 m required passage width (robot + pallet, footprint.py)."
+  },
+  "camera_360": {
+    "centre_world_yaw_deg": 0.0,
+    "centre_note": "As bridge_unity.json (confirmed 2026-10-20: a cube placed along world +Z appears at the centre of the equirectangular image)."
+  },
+  "flip_rows": false,
+  "flip_note": "As bridge_unity.json."
+}
