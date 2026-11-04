@@ -208,9 +208,10 @@ images, a missing or non-boolean Unity result, or any disagreement means not pas
 per session without refusing; the results archive uses the same check. **The images must be identical (`leak_max_pixel_diff` 0 in
 `configs/v4/gt_eval.json`).** JPEG must not be used here: its compression would make identical scenes differ.
 
-The `session.json` key is the named setting `unity_leak_result_key` in `configs/v4/gt_eval.json` (dotted for a nested key). It is a
-PLACEHOLDER (`leak_test_passed`, `unity_leak_result_key_confirmed` false) until Nusrat confirms the real key; until then the check reports
-"not passed" and a final evaluation is refused.
+The `session.json` key is the named setting `unity_leak_result_key` in `configs/v4/gt_eval.json`. Confirmed 2026-11-04 (Nusrat, commit
+`43cbeb2`, `TrialRunnerV4`): `leak_test.passed`, i.e. `session.json` holds an object `leak_test` with a boolean `passed`
+(`{"leak_test": {"passed": true, ...}}`). Only the boolean `true` passes; `false`, a missing key or any other value, for example the string
+`"true"`, is "not passed". The earlier placeholder `leak_test_passed` (a flat key) is not read.
 
 ## What Nusrat implements in Unity from this document
 
@@ -289,6 +290,10 @@ PLACEHOLDER (`leak_test_passed`, `unity_leak_result_key_confirmed` false) until 
   `hri_eval_final_v4.py` refuses otherwise (before `FINAL_DONE.json`, before any test data is read). Only a boolean `true` from Unity passes. The
   `session.json` key is a placeholder named setting (`unity_leak_result_key`, unconfirmed) until Nusrat confirms it. `leak_test.json` is never
   overwritten and is never written by Unity.
+- 2026-11-04: **leak-test key confirmed.** Nusrat confirmed (commit `43cbeb2`) that Unity writes its own leak-test result in `session.json` as
+  `leak_test.passed`, a boolean inside the nested object `leak_test`. `configs/v4/gt_eval.json` now has `unity_leak_result_key` = `"leak_test.passed"` and
+  `unity_leak_result_key_confirmed` = `true` (it replaces the placeholder of 2026-10-29). Only a boolean `true` passes; the string `"true"` does not.
+  Nothing else changed: `gt_path.session_leak_check` and the rule that a final evaluation needs both Unity's and Python's check to pass are as decided on 2026-10-29.
 
 ## Changes
 
