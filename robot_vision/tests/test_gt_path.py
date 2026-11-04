@@ -493,9 +493,9 @@ class CorridorTests(unittest.TestCase):
 class SessionLeakCheckTests(unittest.TestCase):
     """gt_path.session_leak_check: Unity's own result in session.json AND Python's independent check of leak_test/."""
 
-    CFG = {**CFG, "unity_leak_result_key": "leak_test_passed", "unity_leak_result_key_confirmed": True}
+    CFG = CFG                                           # the shipped configs/v4/gt_eval.json: key "leak_test.passed", confirmed 2026-11-04
 
-    def make(self, d, images="ok", unity=True, key="leak_test_passed", session=True):
+    def make(self, d, images="ok", unity=True, key="leak_test.passed", session=True):
         import numpy as np
         from PIL import Image
         root = Path(d)
@@ -514,8 +514,11 @@ class SessionLeakCheckTests(unittest.TestCase):
                     Image.fromarray(b).save(lt / f"{cam}_off.png")
         if session:
             body = {"task": "Task2", "mode": "final"}
-            if unity is not None:
-                body[key] = unity
+            if unity is not None:                       # a dotted key is a nested object: leak_test.passed -> {"leak_test": {"passed": ...}}
+                cur = body
+                for part in key.split(".")[:-1]:
+                    cur = cur.setdefault(part, {})
+                cur[key.split(".")[-1]] = unity
             (root / "session.json").write_text(json.dumps(body))
         return root
 
@@ -567,7 +570,7 @@ class SessionLeakCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             r = self.check(self.make(d, unity=None))
             self.assertFalse(r["passed"])
-            self.assertIn("has no 'leak_test_passed'", " ".join(r["reasons"]))
+            self.assertIn("has no 'leak_test.passed'", " ".join(r["reasons"]))
             self.assertTrue(r["python"]["passed"])
         with tempfile.TemporaryDirectory() as d:
             r = self.check(self.make(d, session=False))
@@ -621,33 +624,64 @@ class SessionLeakCheckTests(unittest.TestCase):
             self.assertTrue(r["passed"])
             self.assertFalse((root / "leak_test" / "leak_test.json").exists())
 
-    def test_the_unity_key_is_a_named_setting_that_starts_unconfirmed(self):
+    def test_the_shipped_unity_key_is_the_confirmed_nested_one(self):
         shipped = gt.load_config()
-        self.assertEqual(shipped["unity_leak_result_key"], "leak_test_passed")
-        self.assertFalse(shipped["unity_leak_result_key_confirmed"])             # placeholder until Nusrat confirms
+        self.assertEqual(shipped["unity_leak_result_key"], "leak_test.passed")        # confirmed by Nusrat 2026-11-04 (commit 43cbeb2)
+        self.assertIs(shipped["unity_leak_result_key_confirmed"], True)
+
+    def test_the_switch_still_blocks_when_the_key_is_not_confirmed(self):
         with tempfile.TemporaryDirectory() as d:
-            r = gt.session_leak_check(self.make(d), shipped)
+            r = gt.session_leak_check(self.make(d), {**gt.load_config(), "unity_leak_result_key_confirmed": False})
             self.assertFalse(r["passed"])
             self.assertIn("placeholder, not confirmed by Nusrat", " ".join(r["reasons"]))
 
-    def test_a_nested_key_can_be_named(self):
-        cfg = {**self.CFG, "unity_leak_result_key": "leak_test.passed"}
+    def test_session_json_with_leak_test_passed_true_passes_and_the_string_true_does_not(self):
+        shipped = gt.load_config()
         with tempfile.TemporaryDirectory() as d:
             root = self.make(d, unity=None)
-            (root / "session.json").write_text(json.dumps({"leak_test": {"passed": True, "max_diff": 0}}))
-            self.assertTrue(gt.session_leak_check(root, cfg)["passed"])
-            (root / "session.json").write_text(json.dumps({"leak_test": {"passed": False}}))
-            self.assertFalse(gt.session_leak_check(root, cfg)["passed"])
-            (root / "session.json").write_text(json.dumps({"leak_test": "ok"}))
-            self.assertFalse(gt.session_leak_check(root, cfg)["passed"])
+            sj = root / "session.json"
+            sj.write_text(json.dumps({"leak_test": {"passed": True}}))
+            r = gt.session_leak_check(root, shipped)
+            self.assertTrue(r["passed"], r["reasons"])
+            self.assertEqual((r["unity"]["key"], r["unity"]["value"]), ("leak_test.passed", True))
+            sj.write_text(json.dumps({"leak_test": {"passed": "true"}}))
+            r = gt.session_leak_check(root, shipped)
+            self.assertFalse(r["passed"])
+            self.assertFalse(r["unity"]["passed"])
+            self.assertIn("not a boolean", " ".join(r["reasons"]))
+
+    def test_other_shapes_of_the_unity_record_do_not_pass(self):
+        shipped = gt.load_config()
+        cases = {"false": {"leak_test": {"passed": False}}, "the object is a string": {"leak_test": "ok"},
+                 "a boolean instead of an object": {"leak_test": True}, "key missing in the object": {"leak_test": {"pairs": []}},
+                 "the old flat placeholder key": {"leak_test_passed": True}, "number": {"leak_test": {"passed": 1}}}
+        for name, body in cases.items():
+            with tempfile.TemporaryDirectory() as d:
+                root = self.make(d, unity=None)
+                (root / "session.json").write_text(json.dumps(body))
+                self.assertFalse(gt.session_leak_check(root, shipped)["passed"], name)
+
+    def test_the_whole_record_unity_writes_passes(self):
+        # the shape of TrialRunnerV4's LeakRecord: passed, the allowed difference, the pairs and the pose
+        body = {"task": "Task2", "mode": "final", "leak_test": {"passed": True, "max_pixel_diff_allowed": 0, "pose": "x 1.0 z 2.0", "pairs": []}}
+        with tempfile.TemporaryDirectory() as d:
+            root = self.make(d, unity=None)
+            (root / "session.json").write_text(json.dumps(body))
+            self.assertTrue(gt.session_leak_check(root, gt.load_config())["passed"])
 
     def test_command_line_session_mode(self):
         import io
         from contextlib import redirect_stdout
         with tempfile.TemporaryDirectory() as d:
-            root = self.make(d)
-            with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
-                gt.main(["session", str(root)])                               # the shipped key is unconfirmed: exit status 1
+            (Path(d) / "ok").mkdir()
+            (Path(d) / "bad").mkdir()
+            ok = self.make(Path(d) / "ok")
+            with redirect_stdout(io.StringIO()):
+                gt.main(["session", str(ok)])                                  # both pass: returns without SystemExit
+            bad = self.make(Path(d) / "bad", unity=False)
+            with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as cm:
+                gt.main(["session", str(bad)])
+            self.assertEqual(cm.exception.code, 1)
 
 
 class IsolationTests(unittest.TestCase):

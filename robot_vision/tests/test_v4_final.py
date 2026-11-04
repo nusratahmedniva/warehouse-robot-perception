@@ -68,7 +68,7 @@ def session(tmp: Path, name: str, n: int = 2, zoom: bool = True, mode: str = "fi
         leak_images(u / "leak_test", differ=(leak == "differ"))
     if unity_leak is not None:
         sj = json.loads((u / "session.json").read_text())
-        sj["leak_test_passed"] = unity_leak
+        sj["leak_test"] = {"passed": unity_leak}                   # the key confirmed 2026-11-04: leak_test.passed
         (u / "session.json").write_text(json.dumps(sj))
     return u, b
 
@@ -264,7 +264,7 @@ class FinalEvaluationTests(unittest.TestCase):
         self.refused_for_leak("Unity's own leak test failed", name="u", unity_leak=False)
         self.refused_for_leak("Python's leak test failed", name="p", leak="differ")
         self.refused_for_leak("no leak_test/ folder", name="m", leak="none")
-        self.refused_for_leak("has no 'leak_test_passed'", name="k", unity_leak=None)
+        self.refused_for_leak("has no 'leak_test.passed'", name="k", unity_leak=None)
 
     def test_a_passing_leak_test_is_recorded_by_the_evaluation(self):
         pairs = self.pairs()

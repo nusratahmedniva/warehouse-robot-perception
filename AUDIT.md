@@ -1118,8 +1118,10 @@ until Nusrat sends the complete list (the rest of the v4 scene's Unity configs) 
    evaluation time and writes `leak_test.json` when absent (never overwriting). **Both must pass**: `hri_eval_final_v4.py` refuses otherwise, before
    `FINAL_DONE.json` and before any test data is read; `hri_eval_dev_v4.py` reports the status per session without refusing; `make_results_archive_v4.py` uses
    the same check. Missing images, a missing or non-boolean Unity result (only `true` passes) or any disagreement is "not passed", with the reason.
-   The `session.json` key is a **named setting in `configs/v4/gt_eval.json`, a PLACEHOLDER until Nusrat confirms it** (part of B9); until then a final
-   evaluation is refused.
+   The `session.json` key is a **named setting in `configs/v4/gt_eval.json`. Confirmed 4 November 2026** (Nusrat, commit `43cbeb2`, `TrialRunnerV4`): it is
+   `leak_test.passed`, a boolean inside the object `leak_test` in `session.json` (`unity_leak_result_key_confirmed` is now `true`; the placeholder
+   `leak_test_passed` of 29 October is gone). Only a boolean `true` passes; the string `"true"` does not. The file is in the frozen set (14.7), so the
+   confirmation is made before the freeze.
 
 ### 14.8 Run protocol (before every final session)
 
@@ -1187,5 +1189,5 @@ Anything done differently from this section is disclosed here, dated, before the
 |---|---|---|
 | B7 | which test looks, clips and bystander layout each setting uses (`test_assignment`) | Nusrat's real looks and clips, then both of us |
 | B8 | real look and clip names, their numbers, the unseen test look, the look styles (`data_splits.json` still has placeholders) | Nusrat |
-| B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`). Agreed 29 Oct 2026 so far: `bridge_unity_v4.json` and `robot_unity_v4.json` are on the list (14.7a); the rest of the list and the `TrialRunnerV4` guard are open | Nusrat |
+| B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`). Agreed 29 Oct 2026 so far: `bridge_unity_v4.json` and `robot_unity_v4.json` are on the list (14.7a); the rest of the list and the `TrialRunnerV4` guard are open. (The leak-test `session.json` key is no longer open: confirmed 4 Nov 2026, 14.7b item 4.) | Nusrat |
 | B11 | v4 acceptance criteria for RQ1 to RQ4 (`acceptance_criteria`) | both of us |
