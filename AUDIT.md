@@ -1195,7 +1195,7 @@ Anything done differently from this section is disclosed here, dated, before the
 ### 14.14 Server timing: the v4 models in worker processes (6 November 2026)
 
 **Status: implemented and measured on Anisha's Mac only. Not yet measured on the machine of the finals (B10, Nusrat's PC), and the limits below
-are NOT shown to be met there.** The decision in "What is decided" needs Anisha's confirmation after the PC measurement. Nothing here changes a
+are NOT shown to be met there.** The rule for choosing the perception mode is decided (6 November 2026, "What is decided" below) and has not been applied yet. Nothing here changes a
 v3 file or a v3 result.
 
 **Problem.** Unity stops the robot when Python is silent for 0.3 s (`watchdog_timeout_s`). The v3 server runs the models on two threads of the
@@ -1276,11 +1276,14 @@ threads 1.57 GB in one process; processes 0.23 GB (server) + 1.74 GB (workers) =
    (memory pressure, CPU contention, antivirus, power), in which case moving the models out of the process removes one cause (the shared GIL, by construction) but cannot be shown to remove that stall.
    **Whether it does can only be measured on the PC.**
 
-**What is decided and what is proposed.**
-- Decided (as requested): v4 uses worker processes for the models; the thread design stays selectable (`perception_workers.mode`), protocol 2 always uses threads.
-- **Proposed, not yet confirmed by Anisha:** on Nusrat's PC run `timing_check_v4.py` in both modes (`--workers threads`, `--workers processes`, 60 s or more, the run protocol of 14.8). Use `processes` if it meets every limit; if it
-  misses a limit that `threads` meets, use `threads` and disclose it here; if neither meets them, no v4 final is started until the cause is found (resource log, `stall_tracebacks.txt`). The mode in `bridge.json` is what the freeze pins.
-- The limits are not changed because of any result.
+**What is decided.**
+- Decided (6 November 2026, Anisha): v4 uses worker processes for the models; the thread design stays selectable (`perception_workers.mode`), protocol 2 always uses threads. The limits are not changed because of any result.
+- **Decided (6 November 2026, Anisha): the rule for choosing the mode.**
+  1. On Nusrat's PC, under the run protocol of 14.8, run `timing_check_v4.py` in both modes (`--workers threads`, `--workers processes`, 60 s or more).
+  2. Use `processes` if it meets every declared limit; otherwise use `threads` if it does; if neither does, **no v4 final starts until the cause is found** (resource log, `stall_tracebacks.txt`).
+  3. **Addition:** the chosen mode must also pass **one real Play development session with Unity running** before the freeze: 0 watchdog stops, 0 worker events, and loop lag and round trip within the declared limits. If it fails there, the same rule applies again (the other mode is tried; if neither passes, no freeze and no final).
+  4. The mode in `bridge.json` is what the freeze pins (14.7). The result of each step is recorded here, dated, with the run folders.
+- Status of the rule: **not yet applied** (no PC measurement and no Play session exist yet).
 
 **Not shown / limits of this check.** The replay is not Unity (Editor rendering, physics and the network threads share the PC in a real run); the controller's step and the commander rule are not in it (measured separately, tiny);
 the frames are of the 2026-10-20 scene; one Mac only; the "behind" threshold (0.5 s, equal to `gesture_stale_s`) is untested on the PC; a dead worker is not restarted (the trial then times out or aborts on stale perception, which is the honest outcome).
