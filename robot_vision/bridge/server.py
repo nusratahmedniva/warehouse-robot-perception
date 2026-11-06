@@ -539,6 +539,15 @@ def make_perception_worker_v4(out: Path, perception_config: str | Path, reader_c
     return PerceptionWorkerV4(hv4.HriPerceptionV4(cfg, reader, commander), out)
 
 
+def make_perception_processes_v4(out: Path, perception_config: str | Path, reader_config: str | Path,
+                                 commander_config: str | Path, wcfg: dict):
+    """Protocol 3 with perception_workers.mode 'processes' (configs/v4/bridge.json): the models run in two worker processes
+    (bridge/perception_mp_v4.py), so heavy Python work in them can never hold the GIL of this process's reply loop.
+    Returns when both have loaded and warmed up their models."""
+    from bridge import perception_mp_v4
+    return perception_mp_v4.start_v4(out, perception_config, reader_config, commander_config, wcfg)
+
+
 def record_inference_devices(path: Path, info: dict, perception) -> dict | None:
     """Adds the device and precision each model actually uses, read at runtime after warm-up, and the library
     versions to run_info.json (logging only; nothing is selected or changed here)."""
@@ -597,6 +606,8 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         "bridge_config": str(cfg_path), "config_sha256": hashes, "protocol_version": cfg["protocol_version"],
         "mute_after_s": mute_after_s, "perception": perception, "task": task if mode == "guide" else None,
         "route": route, "machine_state": machine_state.read(), "resource_log": resource_log}
+    if cfg["protocol_version"] >= 3:
+        info["perception_workers"] = (cfg.get("perception_workers") or {}).get("mode", "threads")
     dio.write_json(out / "run_info.json", info)
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
     log.extra["clock_t0_unix_s"] = round(time.time() - (time.monotonic() - log.t0), 6)   # t_wall_s 0 in Unix time
@@ -608,8 +619,13 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
     gc_monitor = diag.GcMonitor(out)
     worker = None
     if perception == "vision":
-        worker = (make_perception_worker_v4(out, perception_config, V4_READER, V4_COMMANDER) if cfg["protocol_version"] >= 3
-                  else make_perception_worker(out, perception_config))
+        wcfg = cfg.get("perception_workers") or {}
+        if cfg["protocol_version"] >= 3 and wcfg.get("mode", "threads") == "processes":
+            worker = make_perception_processes_v4(out, perception_config, V4_READER, V4_COMMANDER, wcfg)
+        elif cfg["protocol_version"] >= 3:
+            worker = make_perception_worker_v4(out, perception_config, V4_READER, V4_COMMANDER)
+        else:
+            worker = make_perception_worker(out, perception_config)
         print(f"[bridge] perception: {worker.label}", flush=True)
         record_inference_devices(out / "run_info.json", info, worker.p)
     log.extra["threads_at_start"] = diag.thread_info()
@@ -640,7 +656,13 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
     log.extra["gc_freeze"] = diag.freeze_heap()      # infrastructure: full collections no longer stall the loop
     print(f"[bridge] heap frozen: {log.extra['gc_freeze']}", flush=True)
     port = await server.start()
-    lag = diag.LoopLagMonitor(out, t0=log.t0)
+    if cfg["protocol_version"] >= 3:         # v4: the same monitor that also keeps every sample (p99); protocol 2 is unchanged
+        from bridge import timing_v4
+        t4 = cfg.get("timing", {})
+        lag = timing_v4.LoopLagMonitorV4(out, threshold_ms=float(t4.get("loop_lag_threshold_ms", 50.0)),
+                                         dump_after_s=float(t4.get("stall_dump_after_s", 0.25)), t0=log.t0)
+    else:
+        lag = diag.LoopLagMonitor(out, t0=log.t0)
     lag.start()
     print(f"[bridge] mode {mode}: listening on {cfg['host']}:{port}; run folder {out}", flush=True)
     print("[bridge] press Ctrl+C to stop" + (f" (or wait {duration_s:g} s)" if duration_s else "") +
