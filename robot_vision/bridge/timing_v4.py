@@ -94,7 +94,8 @@ def read_replies(path: Path) -> list[tuple]:
         r = csv.reader(f)
         next(r, None)
         for row in r:
-            rows.append((int(row[0]), float(row[1]), float(row[2]), float(row[3])))
+            if row:                                       # a blank line (e.g. a doubled CR) is not a reply
+                rows.append((int(row[0]), float(row[1]), float(row[2]), float(row[3])))
     return rows
 
 
