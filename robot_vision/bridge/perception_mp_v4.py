@@ -362,7 +362,8 @@ class ProcessPerceptionV4:
     def __init__(self, specs: list[dict], out_dir: Path | None = None, wcfg: dict | None = None, verbose: bool = True):
         self.cfg = {**DEFAULTS, **(wcfg or {})}
         self.verbose = verbose
-        self._lock = threading.Lock()                        # guards _latest, _v4, the csv and the event list
+        self._lock = threading.Lock()                        # guards _latest, _v4 and the event list: assignments only, no I/O
+        self._io_lock = threading.Lock()                     # guards the csv and the events file (writes happen under this one)
         self._t0 = time.monotonic()
         self._latest = {"people": [], "target": dict(NO_TARGET), "people_time_s": None, "people_pose": None, "gesture": "NONE",
                         "gesture_confidence": 0.0, "gesture_source": "none", "gesture_time_s": None, "inference_ms": {}}
@@ -432,7 +433,7 @@ class ProcessPerceptionV4:
             link.stop(float(self.cfg["stop_timeout_s"]))
         for link in self.links.values():
             link._receiver.join(2.0)
-        with self._lock:
+        with self._io_lock:
             for f in (self._csv_file, self._events_file):
                 if f is not None and not f.closed:
                     f.close()
@@ -459,9 +460,11 @@ class ProcessPerceptionV4:
                 self._latest.update({k: d[k] for k in ("people", "target", "people_time_s", "people_pose")})
             else:
                 self._v4 = d["v4"]
-            row = d.get("row")
-            if row is not None and self._csv_file is not None and not self._csv_file.closed:
-                self._csv.writerow({**row, "t_wall_s": round(now - self._t0, 4)})
+        row = d.get("row")
+        if row is not None and self._csv_file is not None:
+            with self._io_lock:
+                if not self._csv_file.closed:
+                    self._csv.writerow({**row, "t_wall_s": round(now - self._t0, 4)})
         with link._lock:
             t_sub = link.submit_t.pop(d.get("frame_index"), None)
             was_behind, behind_since, link.behind = link.behind, link.waiting_since, False
@@ -501,8 +504,10 @@ class ProcessPerceptionV4:
         ev = {"t_wall_s": round(time.monotonic() - self._t0, 4), "worker": link.name, "event": kind, **fields}
         with self._lock:
             self.events.append(ev)
-            if self._events_file is not None and not self._events_file.closed:
-                self._events_file.write(json.dumps(ev, separators=(",", ":")) + "\n")
+        if self._events_file is not None:
+            with self._io_lock:
+                if not self._events_file.closed:
+                    self._events_file.write(json.dumps(ev, separators=(",", ":")) + "\n")
         if self.verbose:
             print(f"[perception] worker {link.name}: {kind} {fields if kind != 'error' else ''}", flush=True)
 

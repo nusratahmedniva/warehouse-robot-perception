@@ -386,6 +386,30 @@ class FailureTests(unittest.TestCase):
         self.assertEqual(mp.summary()["worker_events"], [])           # a normal stop is not a death
 
 
+class FileWritesNeverHoldTheResultsLockTests(unittest.TestCase):
+    def test_a_blocked_file_write_does_not_delay_the_results_the_loop_reads(self):
+        """The csv write has its own lock: while it is held (a slow disk, an antivirus scan) the newest result is already visible."""
+        with tempfile.TemporaryDirectory() as t:
+            mp = mpv.ProcessPerceptionV4(specs(gesture=False), Path(t), verbose=False)
+            try:
+                mp.wait_started()
+                mp._io_lock.acquire()
+                try:
+                    mp.submit(frame("frame_360", 0))
+                    wait_for(lambda: mp.snapshot()["people_time_s"] == 0.0, "the result visible while the file write is blocked")
+                    self.assertEqual(mp.processed["frame_360"], 0)       # the counter that announces it waits for the write
+                finally:
+                    mp._io_lock.release()
+                wait_for(lambda: mp.processed["frame_360"] == 1, "the write done")
+            finally:
+                mp.close()
+
+    def test_loop_facing_reads_take_no_file_lock(self):
+        import inspect
+        for fn in (mpv.ProcessPerceptionV4.snapshot, mpv.ProcessPerceptionV4.snapshot_v4, mpv.ProcessPerceptionV4.submit):
+            self.assertNotIn("_io_lock", inspect.getsource(fn))
+
+
 class StructureTests(unittest.TestCase):
     def test_the_asyncio_facing_methods_do_no_io_and_take_no_slow_lock(self):
         """submit() touches only the mailbox lock (assignments); snapshot() only the results lock. Neither opens a pipe."""

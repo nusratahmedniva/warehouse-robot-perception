@@ -1191,3 +1191,100 @@ Anything done differently from this section is disclosed here, dated, before the
 | B8 | real look and clip names, their numbers, the unseen test look, the look styles (`data_splits.json` still has placeholders) | Nusrat |
 | B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`). Agreed 29 Oct 2026 so far: `bridge_unity_v4.json` and `robot_unity_v4.json` are on the list (14.7a); the rest of the list and the `TrialRunnerV4` guard are open. (The leak-test `session.json` key is no longer open: confirmed 4 Nov 2026, 14.7b item 4.) | Nusrat |
 | B11 | v4 acceptance criteria for RQ1 to RQ4 (`acceptance_criteria`) | both of us |
+
+### 14.14 Server timing: the v4 models in worker processes (6 November 2026)
+
+**Status: implemented and measured on Anisha's Mac only. Not yet measured on the machine of the finals (B10, Nusrat's PC), and the limits below
+are NOT shown to be met there.** The decision in "What is decided" needs Anisha's confirmation after the PC measurement. Nothing here changes a
+v3 file or a v3 result.
+
+**Problem.** Unity stops the robot when Python is silent for 0.3 s (`watchdog_timeout_s`). The v3 server runs the models on two threads of the
+same process as the asyncio loop that answers the telemetry, so heavy Python work (MediaPipe, the tracker, a garbage collection) can hold the GIL
+and stall the loop. Nusrat's v3 check run of 2026-11-03 had one watchdog stop from a 0.4 s stall. v4 adds more work in that process (hands, the
+moving-gesture buffers, the commander rule), so this had to be addressed before any v4 final.
+
+**What was changed (protocol 3 only).**
+- `bridge/perception_mp_v4.py` (new): the v4 perception in two worker processes started with `spawn` (Windows and macOS), one per camera:
+  `people` (frame_360: YOLO11s-pose + ByteTrack, `HriPerception.people`) and `gesture` (frame_pan_tilt: tracked people, hands, buffers,
+  reader, `HriPerceptionV4.persons`). Inside each worker the unchanged `PerceptionWorkerV4` runs its lane (same processing, same latest-frame-only
+  rule, same `perception.csv` row); the real classes load only the models their lane needs (the 360 model and the v3 STOP adapter, which v4 does not use, are
+  not loaded in the gesture worker).
+- In the server process: `submit()` puts the frame in a one-slot mailbox (a newer frame replaces it, counted as dropped) and returns; a sender thread per
+  worker writes it into the pipe; a receiver thread per worker swaps the results in; `snapshot()` / `snapshot_v4()` only read them under a lock that is
+  held for assignments only (file writes have their own lock). The asyncio loop never touches a pipe and never waits for a model.
+- A worker that dies, fails to start, or leaves a frame without a result for `behind_after_s` (0.5 s) is logged (console, `perception_events.jsonl`,
+  `summary.json` -> `perception.worker_events`) and the server goes on answering with the last results, whose capture times make them stale for the
+  controller (`people_stale_s`, `gesture_stale_s`: unknown, never a guess). A failure at start-up stops the server before it listens. No restart.
+- `bridge/timing_v4.py` and `timing_check_v4.py` (new): the loop-lag monitor that keeps every sample (p99), and the repeatable timing check.
+  `bridge/server.py`: protocol 3 only: `perception_workers.mode` and the v4 monitor; the protocol 2 branch is byte-for-byte the old behaviour (tests).
+  `configs/v4/bridge.json`: `timing`, `timing_limits`, `perception_workers`. `bridge/perception.py`, `bridge/perception_v4.py`,
+  `bridge/diagnostics.py`, `bridge/guide*.py`, every v3 config and every frozen hash are unchanged.
+- Setting: `perception_workers.mode` is `processes` (as requested) or `threads` (the design that was measured as the baseline). It is part of the
+  v4 bridge config, so it is pinned by the freeze (14.7).
+
+**Limits declared before the fix was measured** (`configs/v4/bridge.json` -> `timing_limits`; proposed by Claude, accepted by Anisha as proposed on
+6 November 2026 after the baseline below was shown to her; commit `d8a0200` holds the limits and the unwired module, the "after" runs came later). They come from
+the 0.3 s watchdog and a margin, not from any measurement of the fix; every entry is "measured <= limit":
+
+| metric | limit | meaning |
+|---|---|---|
+| `loop_lag_p99_ms` | 25 | how late the server's 10 ms asyncio sleep wakes up, 99th percentile |
+| `loop_lag_max_ms` | 100 | the same, maximum (a third of the watchdog) |
+| `round_trip_p99_ms` / `round_trip_max_ms` | 50 / 150 | telemetry written -> its command read, as the client sees it |
+| `reply_gap_max_ms` | 150 | longest silence between two commands (the replay's telemetry period is 50 ms) |
+| `unanswered_telemetry` | 0 | telemetry with no command |
+| `perception_worker_events` | 0 | worker deaths, errors and "behind" episodes (0 when the workers are threads) |
+
+**Method.** `timing_check_v4.py --frames outputs/bridge_guide_20261020_164656/frames --duration-s 120`: it starts the v4 guide server with the real models
+(YOLO11s-pose, MediaPipe) and replays 171 saved panorama and 300 saved pan-tilt JPEGs of the 2026-10-20 development session through `bridge/replay_client.py`
+at the real rates (20 Hz telemetry, 5 Hz panorama, 10 Hz pan-tilt, protocol 3), then reads what the server and the client measured. The replay is a
+stand-in for Unity with no robot and no trial (`trial_running` false), so it measures the Python side with the models busy, not Unity's own load.
+Machine: Anisha's MacBook (macOS 26.6, arm64, Apple GPU via MPS, 8 cores), commit as in each `report.json`. Outputs: `outputs/timing_check_v4_<time>/` (report.md,
+report.json, the replay, the server log) and the server's own run folder.
+
+**Before (thread design) and after (worker processes), 120 s replays.** Every run that was made is listed (none is left out):
+
+| run (folder `timing_check_v4_...`) | workers | device | loop lag p99 / max (ms) | round trip p99 / max (ms) | longest reply gap (ms) | unanswered | worker events | stall dumps | replay client paused >100 ms |
+|---|---|---|---|---|---|---|---|---|---|
+| 20261106_171152 | threads | Apple GPU | server crashed at once (below), no numbers | | | | | | |
+| 20261106_171429 | threads | CPU | 3.6 / 27.2 | 4.6 / 44.1 | 100.0 | 0 | 0 | 0 | no |
+| 20261106_173759 (replicate) | threads | CPU | 4.1 / 27.9 | 4.6 / 20.5 | 69.8 | 0 | 0 | 0 | no |
+| 20261106_172133 | processes | CPU | 4.7 / 28.2 | 6.4 / 21.3 | 72.4 | 0 | 101 "behind" | 0 | no |
+| 20261106_172342 | processes | Apple GPU | 2.4 / **186.1** | 5.0 / 70.9 | **156.4** | 0 | 0 | 1 | yes (137 ms) |
+| 20261106_172643 (replicate) | processes | Apple GPU | 11.8 / **226.0** | **67.4** / **460.5** | **561.4** | 0 | 12 | 4 | yes (7 times, up to 332 ms) |
+| 20261106_172852 (replicate) | processes | Apple GPU | 2.9 / **274.2** | 26.2 / **371.4** | **423.3** | 0 | 9 | 4 | yes (4 times, up to 347 ms) |
+
+A 30 s smoke run of the process mode (`..._171841`) found a flaw in the first "behind" rule (it measured from the last result, so both workers were flagged
+as soon as the first frames arrived); the rule was changed to measure how long a submitted frame waits and the runs above were made with the corrected
+rule. Bold = a declared limit missed. A 20 s run with the committed default config (`..._174823`, Apple GPU, processes, no flags) met every limit (loop lag p99 1.2 / max 11.6 ms, round trip max 6.1 ms, longest gap 56.7 ms); it is shorter than the 60 s the limits are defined for, so it is not counted as a pass. Perception throughput (frames processed of frames offered): CPU, threads 104 of 600 panorama and 522 of 1200 pan-tilt (second run 102 / 495),
+CPU, processes 100 / 490 (the CPU cannot keep up: a panorama frame takes 1.3 to 1.7 s, so the workers report "behind" by design); Apple GPU, processes 442 to 478 of 600
+panorama and 1037 to 1154 of 1200 pan-tilt, end-to-end latency p99 218 to 399 ms (pan-tilt) and 493 to 582 ms (panorama). Memory (60 s replays on the CPU, `..._174110` and `..._174218`):
+threads 1.57 GB in one process; processes 0.23 GB (server) + 1.74 GB (workers) = 1.96 GB, about 25 % more. Cost of the controller itself per telemetry
+(`GuideControllerV4.on_message`, the test rig with four people in view, 2000 messages): mean 0.04 ms, p99 0.15 ms, max 0.33 ms (not in the replay, which is idle; negligible next to the limits).
+
+**What the numbers show.**
+1. **The thread design cannot use the Apple GPU at all:** with both perception threads on MPS the server process aborts at the first frames with the Metal assertion
+   `A command encoder is already encoding to this command buffer` (`..._171152/server.log`). With one process per camera the same models run on the Apple GPU. (The v3
+   Task 2 final on the Mac ran before the two-thread split of 2026-10-21.) On the PC with CUDA the thread design runs, as in the v3 checks.
+2. **On the CPU both designs meet every timing limit** (loop lag max 27 to 28 ms, round trip max 20 to 44 ms, longest gap 70 to 100 ms); the worker-process design costs nothing measurable
+   in loop timing there, and its "behind" events are the CPU being too slow for the panorama (not a defect; the limit `perception_worker_events` is meant for a machine whose inference keeps up).
+3. **On the Apple GPU with worker processes the limits were missed in 3 of 3 runs** (loop lag max 186 to 274 ms, round trip max up to 461 ms; in two of the runs one round trip each exceeded 300 ms,
+   which Unity's watchdog would have counted as a stop), **and the cause is not the server's GIL**: (a) in the 10 stack dumps of the 9 stalls (`stall_tracebacks.txt`, dump after 0.1 s) no other thread of the server process was running Python: they were waiting (on a lock, in `recv`, on the queue), or inside a pipe write or a console `print`, which release the GIL, and the main thread was either in the loop monitor's own sleep line or in ordinary handler code (`snapshot()`'s JSON, `_handle`), not blocked on any lock, so nothing was holding the GIL against it; (b) the replay client, a separate process that loads no model, also stopped sending telemetry for 104 to 347 ms at the same moments in all
+   three runs, and in none of the five CPU runs (nor in the 30 s smoke run on the Apple GPU); (c) both workers were reported "behind" at the same instants. The whole machine paused while the Apple GPU was loaded; why is not identified
+   (a hypothesis, not tested: GPU load starving the rest of the system on this Mac). The limits are therefore **not met on this machine on the Apple GPU**, and no thread-design figure exists for it to compare with (it crashes).
+4. **This is the same signature as the PC stall of section 9 item 13** (256 ms stall with both perception threads idle in the stack dump). So the cause of the 2026-11-03 stall may also be machine-level
+   (memory pressure, CPU contention, antivirus, power), in which case moving the models out of the process removes one cause (the shared GIL, by construction) but cannot be shown to remove that stall.
+   **Whether it does can only be measured on the PC.**
+
+**What is decided and what is proposed.**
+- Decided (as requested): v4 uses worker processes for the models; the thread design stays selectable (`perception_workers.mode`), protocol 2 always uses threads.
+- **Proposed, not yet confirmed by Anisha:** on Nusrat's PC run `timing_check_v4.py` in both modes (`--workers threads`, `--workers processes`, 60 s or more, the run protocol of 14.8). Use `processes` if it meets every limit; if it
+  misses a limit that `threads` meets, use `threads` and disclose it here; if neither meets them, no v4 final is started until the cause is found (resource log, `stall_tracebacks.txt`). The mode in `bridge.json` is what the freeze pins.
+- The limits are not changed because of any result.
+
+**Not shown / limits of this check.** The replay is not Unity (Editor rendering, physics and the network threads share the PC in a real run); the controller's step and the commander rule are not in it (measured separately, tiny);
+the frames are of the 2026-10-20 scene; one Mac only; the "behind" threshold (0.5 s, equal to `gesture_stale_s`) is untested on the PC; a dead worker is not restarted (the trial then times out or aborts on stale perception, which is the honest outcome).
+
+**For the next Play run (Nusrat).** (1) Before it: the two timing checks above on the PC, send both `outputs/timing_check_v4_*` folders. (2) In the run: the console shows `[perception] worker people ready`, `... worker gesture ready` before Unity may connect (loading takes
+longer than with threads), and any `died` / `behind` / `error` line; afterwards `summary.json` -> `perception.worker_events` must be empty, `event_loop_lag.all_samples` gives p99 / max, `stall_tracebacks.txt` (dumps at 0.1 s), and Unity's own watchdog and frame-time figures as before.
+(3) `nvidia-smi` during the run: two CUDA contexts now (people and gesture worker), memory of the GPU and free RAM (the process mode uses about 400 MB more). (4) The run folder keeps `perception_events.jsonl` and `run_info.json` -> `perception_workers`.

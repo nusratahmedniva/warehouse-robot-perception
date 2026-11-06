@@ -52,6 +52,47 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def tree_rss_mb(pid: int) -> dict | None:
+    """Resident memory (MB) of a process and of its children (the worker processes), or None without psutil / when it is gone."""
+    try:
+        import psutil
+        main = psutil.Process(pid)
+        kids = main.children(recursive=True)
+        server = main.memory_info().rss / 1e6
+        workers = [k.memory_info().rss / 1e6 for k in kids]
+        return {"server_mb": server, "workers_mb": workers, "total_mb": server + sum(workers)}
+    except Exception:                                    # noqa: BLE001 - psutil missing or the process already ended
+        return None
+
+
+class MemorySampler:
+    """Samples tree_rss_mb(pid) every interval_s on a thread of this script (never in the server) and keeps the maxima."""
+
+    def __init__(self, pid: int, interval_s: float = 2.0):
+        import threading
+        self.pid, self.interval_s, self.samples = pid, interval_s, []
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="memory-sampler", daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            r = tree_rss_mb(self.pid)
+            if r is not None:
+                self.samples.append(r)
+            self._stop.wait(self.interval_s)
+
+    def stop(self) -> dict | None:
+        self._stop.set()
+        self._thread.join(5.0)
+        if not self.samples:
+            return None
+        return {"samples": len(self.samples), "server_process_max_mb": round(max(x["server_mb"] for x in self.samples), 1),
+                "worker_processes_max_total_mb": round(max(sum(x["workers_mb"]) for x in self.samples), 1),
+                "all_processes_max_mb": round(max(x["total_mb"] for x in self.samples), 1),
+                "note": "resident memory of the server process and its children, sampled every 2 s during the replay"}
+
+
 def read_text(p: Path) -> str:
     return p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
 
@@ -115,6 +156,7 @@ def markdown(rep: dict) -> str:
           f"Python receive lag (server read later than the earliest message): {json.dumps(rep['result']['python_receive_lag'])}", "",
           f"Garbage collection: {json.dumps(rep['result']['gc_pauses'])}", "", "## Perception", "",
           "```json", json.dumps(rep["result"]["perception"], indent=2), "```", "",
+          f"Memory (resident, sampled): {json.dumps(rep.get('memory'))}", "",
           f"## Stall stacks: {rep['result']['stall_dumps']} dump(s) in stall_tracebacks.txt", ""]
     if rep["stall_traceback_excerpt"]:
         L += ["```", rep["stall_traceback_excerpt"], "```", ""]
@@ -164,13 +206,16 @@ def main(argv=None) -> int:
             server_dir = wait_for_listening(proc, log, a.ready_timeout_s)
             print(f"[timing] server listening on port {port}; replaying {a.duration_s:g} s ...", flush=True)
             (out / "replay").mkdir()
+            sampler = MemorySampler(proc.pid)
             try:
                 rsum = asyncio.run(R.replay(cfg["host"], port, cfg_run, frames, a.duration_s, out / "replay"))
             except (ConnectionError, OSError) as e:
+                sampler.stop()
                 proc.poll()
                 print(f"[timing] the server closed the connection ({type(e).__name__}); server exit status {proc.returncode}. "
                       f"End of {log.name}:\n{read_text(log)[-1200:]}", flush=True)
                 return 2
+            memory = sampler.stop()
             try:
                 proc.wait(timeout=180)
             except subprocess.TimeoutExpired:
@@ -187,7 +232,7 @@ def main(argv=None) -> int:
     rep = {"label": a.label, "perception_mode": (cfg_run.get("perception_workers") or {}).get("mode", "threads"),
            "duration_s": a.duration_s, "git": dio.git_info(), "platform": platform.platform(), "python": platform.python_version(),
            "machine_state": machine_state.read(), "config": a.config, "config_sha256": dio.sha256(cfg_path), "device": a.device,
-           "server_run_folder": "{output_root}/" + server_dir.name, "replay_summary": rsum, "result": result,
+           "server_run_folder": "{output_root}/" + server_dir.name, "replay_summary": rsum, "result": result, "memory": memory,
            "stall_traceback_excerpt": tb[:6000], "command": "timing_check_v4.py " + " ".join(argv if argv is not None else sys.argv[1:])}
     dio.write_json(out / "report.json", rep)
     (out / "report.md").write_text(markdown(rep), encoding="utf-8")

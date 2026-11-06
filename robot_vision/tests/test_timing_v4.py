@@ -229,6 +229,30 @@ class CheckScriptTests(unittest.TestCase):
                 tc.wait_for_listening(dead, log, 5.0)
             self.assertIn("boom", str(e.exception))
 
+    def test_memory_of_a_process_tree_is_read_without_the_server(self):
+        import os
+        try:
+            import psutil  # noqa: F401
+        except ImportError:
+            self.assertIsNone(tc.tree_rss_mb(os.getpid()))
+            return
+        r = tc.tree_rss_mb(os.getpid())
+        self.assertGreater(r["server_mb"], 1.0)
+        self.assertAlmostEqual(r["total_mb"], r["server_mb"] + sum(r["workers_mb"]), places=6)
+        self.assertIsNone(tc.tree_rss_mb(2 ** 22 + 12345))             # no such process: None, no exception
+
+    def test_memory_sampler_keeps_the_maxima(self):
+        import os
+        s = tc.MemorySampler(os.getpid(), interval_s=0.01)
+        import time
+        t_end = time.monotonic() + 30.0
+        while not s.samples and time.monotonic() < t_end:
+            time.sleep(0.01)
+        r = s.stop()
+        if r is not None:                                              # None only without psutil
+            self.assertGreaterEqual(r["samples"], 1)
+            self.assertGreaterEqual(r["all_processes_max_mb"], r["server_process_max_mb"])
+
     def test_script_refuses_a_protocol_2_config(self):
         with self.assertRaises(SystemExit):
             tc.main(["--frames", "x", "--config", "configs/bridge.json"])
