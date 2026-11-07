@@ -279,6 +279,8 @@ namespace WarehouseAvatar
             WorkerPhase before = m_Scheduler.Phase;
             if (m_Scheduler.Tick(t)) OnPhase(before, m_Scheduler.Phase);
             UpdateTurn();
+            // held still (docs/look_check_v4.md): no idle motion under the held arm; natural motion in the other phases
+            Animator.speed = m_Scheduler.Phase == WorkerPhase.Holding ? Config.animation.hold_body_speed : 1f;
             m_IkWeight = WorkerPhases.Performing(m_Scheduler.Phase) ? m_Scheduler.Weight(t, CurrentSpec.ease) : 0f;
             UpdateGestureLayer(t);
             ComputeTargets(t);
@@ -397,7 +399,7 @@ namespace WarehouseAvatar
                     break;
                 }
             }
-            var sway = GestureVariation.Sway(Current, t);
+            var sway = GestureVariation.Sway(Current, t, m_IkWeight);      // the hold's own amplitude while held
             m_Target += side * sway.x + up * sway.y + fwd * sway.z;
         }
 
@@ -483,6 +485,15 @@ namespace WarehouseAvatar
             if (right.sqrMagnitude < 1e-8f) right = transform.right;
             right.Normalize();
             forward = Vector3.Cross(right, Vector3.up).normalized;
+        }
+
+        /// <summary>Diagnostics: the shoulder and hand of the gesturing arm (world). False when no gesture was requested yet.</summary>
+        public bool GestureArmPositions(out Vector3 shoulder, out Vector3 hand)
+        {
+            var arm = Current.arm == "right" ? m_Right : Current.arm == "left" ? m_Left : null;
+            shoulder = arm != null ? arm.Upper.position : Vector3.zero;
+            hand = arm != null ? arm.Hand.position : Vector3.zero;
+            return arm != null;
         }
 
         static Vector3 Horizontal(Vector3 v) => Vector3.ProjectOnPlane(v, Vector3.up);

@@ -26,7 +26,8 @@
     "turn_clip_file": "",
     "gesture_layer_fade_s": 0.2,
     "controller": "Assets/WarehouseRobot/Avatar/Animation/WorkerV4.controller",
-    "why": "Idle.fbx: the Mixamo idle of v3 (unity/downloads). No Mixamo turn clip is downloaded, so the turn state plays the idle while the root turns ('' = idle); a turn clip can be named here later. gesture_layer_fade_s: fade of the gesture layer in and out around a Mixamo variant, so the arm does not jump between the idle and the clip."
+    "hold_body_speed": 0.0,
+    "why": "Idle.fbx: the Mixamo idle of v3 (unity/downloads). No Mixamo turn clip is downloaded, so the turn state plays the idle while the root turns ('' = idle); a turn clip can be named here later. gesture_layer_fade_s: fade of the gesture layer in and out around a Mixamo variant, so the arm does not jump between the idle and the clip. hold_body_speed (Phase 2C, 2026-11-08, Nusrat): the Animator's speed during the holding phase; 0 = the body under the held arm stands still (no idle motion), as the pose of docs/look_check_v4.md is 'held still'. The idle plays at normal speed in every other phase (idle, start delay, raising, returning) and resumes from the same pose, so nothing jumps."
   },
   "hand_shapes": {
     "point": {
@@ -56,7 +57,8 @@
     "point_either_arm_within_deg": 25.0,
     "sway_amplitude_m": [0.004, 0.012],
     "sway_frequency_hz": [0.25, 0.6],
-    "why": "Drawn uniformly per gesture from a stream seeded per (session seed, run, worker id). speed divides the raise and return durations (and plays a Mixamo variant faster or slower); size scales the gesture's extent (POINT elevation, WAIT hand offsets, STOP reach, push and sway) inside the limits below; start_delay_s: the time between the question appearing and the arm starting to move; hold_s: how long the pose is held, long enough for the reader's 1 s window, its 0.4 s stillness and the dialog's 0.5 s hold (configs/v4/gesture_reader.json, control.json) with margin. Arm: left with left_arm_probability, except POINT uses the arm on the side it points to unless the direction is within point_either_arm_within_deg of straight ahead. While held, the hand sways by a few millimetres to a centimetre per axis (a held human arm is not still)."
+    "hold_sway_amplitude_m": [0.0, 0.0],
+    "why": "Drawn uniformly per gesture from a stream seeded per (session seed, run, worker id). speed divides the raise and return durations (and plays a Mixamo variant faster or slower); size scales the gesture's extent (POINT elevation, WAIT hand offsets, STOP reach, push and sway) inside the limits below; start_delay_s: the time between the question appearing and the arm starting to move; hold_s: how long the pose is held, long enough for the reader's 1 s window, its 0.4 s stillness and the dialog's 0.5 s hold (configs/v4/gesture_reader.json, control.json) with margin. Arm: left with left_arm_probability, except POINT uses the arm on the side it points to unless the direction is within point_either_arm_within_deg of straight ahead. Sway: while the arm moves (raising, returning) the hand sways by sway_amplitude_m per axis; while the pose is held the amplitude is hold_sway_amplitude_m, blended by the IK weight so the hand never jumps. Phase 2C (2026-11-08, Nusrat): hold_sway_amplitude_m is 0, so the held pose is still as docs/look_check_v4.md asks ('held still'); it stays a config value in case Anisha decides otherwise. It is drawn after every other value, so the other draws of a seeded stream are unchanged."
   },
   "limits": {
     "point_reach": [0.95, 0.99],
@@ -125,13 +127,13 @@
     },
     {
       "id": "sunbox_f2", "family": "sunbox", "role": "candidate",
-      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, darker skin, black T-shirt, tracksuit pants, beanie, glasses (as look_check.json)",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, darker skin, black T-shirt, tracksuit pants, beanie (as look_check.json). Glasses removed 2026-11-08 (Phase 2C, appearance only): the clear round glasses render as bright white ellipses over both eyes in the Play-mode look check frames, hiding the eyes from the face keypoints the commander's facing test needs.",
       "kind": "sunbox", "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
       "sunbox": {
         "gender": "Female", "skin": 2, "hair_style": 6, "hair_material": 1, "facial_hair_style": 0,
         "clothing": [
           { "name": "TShirt", "variation": 0 }, { "name": "Tracksuit Pants", "variation": 0 }, { "name": "Basketball Shoes", "variation": 1 },
-          { "name": "Beanie", "variation": 0 }, { "name": "Classic Round Glasses Clear", "variation": 0 }
+          { "name": "Beanie", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
         ]
       }
     }

@@ -71,6 +71,8 @@ namespace WarehouseAvatar
         public string command, clip, arm;
         public float speed, size, start_delay_s, hold_s, point_elevation_deg;
         public Vector3 sway_amplitude_m, sway_frequency_hz, sway_phase_rad;
+        /// <summary>The sway amplitude while the pose is held (variation.hold_sway_amplitude_m; 0 = held still).</summary>
+        public Vector3 hold_sway_amplitude_m;
     }
 
     public static class GestureVariation
@@ -105,6 +107,8 @@ namespace WarehouseAvatar
             p.sway_amplitude_m = new Vector3(rng.Range(v.sway_amplitude_m), rng.Range(v.sway_amplitude_m), rng.Range(v.sway_amplitude_m));
             p.sway_frequency_hz = new Vector3(rng.Range(v.sway_frequency_hz), rng.Range(v.sway_frequency_hz), rng.Range(v.sway_frequency_hz));
             p.sway_phase_rad = new Vector3((float)(rng.NextDouble() * 2 * Math.PI), (float)(rng.NextDouble() * 2 * Math.PI), (float)(rng.NextDouble() * 2 * Math.PI));
+            // drawn last, so every value above is the same as before the hold amplitude existed (Phase 2C)
+            p.hold_sway_amplitude_m = new Vector3(rng.Range(v.hold_sway_amplitude_m), rng.Range(v.hold_sway_amplitude_m), rng.Range(v.hold_sway_amplitude_m));
             return p;
         }
 
@@ -115,10 +119,16 @@ namespace WarehouseAvatar
             return u * u * (3f - 2f * u);
         }
 
-        /// <summary>Small hand sway around the target (side, up, forward in metres), scaled by the gesture's size.</summary>
-        public static Vector3 Sway(GestureParams p, float t)
+        /// <summary>
+        /// Small hand sway around the target (side, up, forward in metres), scaled by the gesture's size. held (0..1, the
+        /// IK weight: 1 for the whole hold) blends the amplitude from sway_amplitude_m (arm moving) to hold_sway_amplitude_m
+        /// (pose held), so the hand never jumps when the hold starts or ends.
+        /// </summary>
+        public static Vector3 Sway(GestureParams p, float t, float held)
         {
-            float S(int i) => p.sway_amplitude_m[i] * p.size * Mathf.Sin(2f * Mathf.PI * p.sway_frequency_hz[i] * t + p.sway_phase_rad[i]);
+            held = Mathf.Clamp01(held);
+            float S(int i) => Mathf.Lerp(p.sway_amplitude_m[i], p.hold_sway_amplitude_m[i], held) * p.size *
+                              Mathf.Sin(2f * Mathf.PI * p.sway_frequency_hz[i] * t + p.sway_phase_rad[i]);
             return new Vector3(S(0), S(1), S(2));
         }
     }

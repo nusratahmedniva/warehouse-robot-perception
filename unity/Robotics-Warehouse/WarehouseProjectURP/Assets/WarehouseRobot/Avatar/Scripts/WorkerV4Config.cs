@@ -78,6 +78,7 @@ namespace WarehouseAvatar
             {
                 if (string.IsNullOrEmpty(animation.idle_clip_file)) e.Add("animation.idle_clip_file: required");
                 if (!(animation.gesture_layer_fade_s > 0f)) e.Add("animation.gesture_layer_fade_s must be > 0");
+                if (!In01(animation.hold_body_speed)) e.Add("animation.hold_body_speed must be in [0, 1] (0 = the body stands still while a gesture is held)");
                 if (string.IsNullOrEmpty(animation.controller) || !animation.controller.StartsWith("Assets/", StringComparison.Ordinal))
                     e.Add("animation.controller must be a project path starting with Assets/");
             }
@@ -144,6 +145,7 @@ namespace WarehouseAvatar
             Range(e, "variation.point_elevation_deg", v.point_elevation_deg, -30f, 45f);
             Range(e, "variation.sway_amplitude_m", v.sway_amplitude_m, 0f, 0.05f);
             Range(e, "variation.sway_frequency_hz", v.sway_frequency_hz, 0.01f, 3f);
+            Range(e, "variation.hold_sway_amplitude_m", v.hold_sway_amplitude_m, 0f, 0.05f);
             if (!In01(v.left_arm_probability)) e.Add("variation.left_arm_probability must be in [0, 1]");
             if (v.point_either_arm_within_deg < 0f || v.point_either_arm_within_deg > 90f) e.Add("variation.point_either_arm_within_deg must be in [0, 90]");
         }
@@ -279,6 +281,8 @@ namespace WarehouseAvatar
         public string turn_clip_file;
         public float gesture_layer_fade_s;
         public string controller;
+        /// <summary>Animator speed while a gesture is held (0 = the body stands still). -1 until read, so a missing key is refused.</summary>
+        public float hold_body_speed = -1f;
     }
 
     /// <summary>Finger curls per joint (proximal, intermediate, distal), in degrees toward the palm; spread between fingers.</summary>
@@ -329,6 +333,7 @@ namespace WarehouseAvatar
         public float point_either_arm_within_deg;
         public float[] sway_amplitude_m;
         public float[] sway_frequency_hz;
+        public float[] hold_sway_amplitude_m;
     }
 
     /// <summary>Clamps that keep every varied gesture inside its command's definition (docs/gesture_reader_v4.md poses).</summary>

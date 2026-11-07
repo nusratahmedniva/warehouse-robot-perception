@@ -61,6 +61,10 @@ namespace WarehouseRobot.AvatarCheck
             public float distance_m, vertical_fov_deg, time_first_s, time_last_s;
             public float speed, size, start_delay_s, hold_s, point_side_azimuth_deg, point_angle_deg;
             public float hand_to_target_max_m = -1f;
+            /// <summary>Stillness over the recording: the largest distance of the gesturing hand and shoulder from their
+            /// positions at the first frame (-1 for NONE).</summary>
+            public float hand_motion_max_m = -1f, shoulder_motion_max_m = -1f;
+            [NonSerialized] public Vector3 FirstHand, FirstShoulder;
         }
 
         [Serializable]
@@ -466,6 +470,12 @@ namespace WarehouseRobot.AvatarCheck
             if (m_Quick) Debug.Log($"[LookCheckPlay] {rec.name} frame {frameIndex}: {w.DebugState()}");
             if (rec.command == WorkerV4Config.Point) rec.point_angle_deg = (float)truth.PointAngleDeg;
             if (rec.command != LookCheckConfig.None) rec.hand_to_target_max_m = Mathf.Max(rec.hand_to_target_max_m, w.HandToTargetM);
+            if (rec.command != LookCheckConfig.None && w.GestureArmPositions(out var shoulder, out var hand))
+            {
+                if (frameIndex == 0) { rec.FirstHand = hand; rec.FirstShoulder = shoulder; rec.hand_motion_max_m = 0f; rec.shoulder_motion_max_m = 0f; }
+                rec.hand_motion_max_m = Mathf.Max(rec.hand_motion_max_m, Vector3.Distance(hand, rec.FirstHand));
+                rec.shoulder_motion_max_m = Mathf.Max(rec.shoulder_motion_max_m, Vector3.Distance(shoulder, rec.FirstShoulder));
+            }
 
             var prevTarget = st.Cam.targetTexture;
             var prevActive = RenderTexture.active;

@@ -168,12 +168,61 @@ namespace WarehouseAvatar.Tests
                 {
                     Assert.That(p.sway_amplitude_m[k], Is.InRange(v.sway_amplitude_m[0], v.sway_amplitude_m[1]));
                     Assert.That(p.sway_frequency_hz[k], Is.InRange(v.sway_frequency_hz[0], v.sway_frequency_hz[1]));
+                    Assert.That(p.hold_sway_amplitude_m[k], Is.InRange(v.hold_sway_amplitude_m[0], v.hold_sway_amplitude_m[1]));
                 }
                 clips.Add(p.clip);
                 arms.Add(p.arm);
             }
             CollectionAssert.AreEquivalent(cfg.ClipNames("STOP"), clips);
             CollectionAssert.AreEquivalent(new[] { "left", "right" }, arms);
+        }
+
+        [Test]
+        public void Hold_SwayUsesTheHoldAmplitudeWhileHeld_AndBlendsWithoutAJump()
+        {
+            var p = new GestureParams
+            {
+                size = 1.1f, sway_amplitude_m = new Vector3(0.01f, 0.008f, 0.012f), hold_sway_amplitude_m = Vector3.zero,
+                sway_frequency_hz = new Vector3(0.3f, 0.5f, 0.4f), sway_phase_rad = new Vector3(0.2f, 1.1f, 2.0f),
+            };
+            for (float t = 0f; t < 5f; t += 0.037f)
+            {
+                Assert.AreEqual(Vector3.zero, GestureVariation.Sway(p, t, 1f), "held (IK weight 1): no sway with a hold amplitude of 0");
+                var moving = GestureVariation.Sway(p, t, 0f);
+                for (int k = 0; k < 3; k++)
+                {
+                    float expected = p.sway_amplitude_m[k] * p.size * Mathf.Sin(2f * Mathf.PI * p.sway_frequency_hz[k] * t + p.sway_phase_rad[k]);
+                    Assert.AreEqual(expected, moving[k], 1e-6f, "moving: the arm's own sway amplitude");
+                    Assert.AreEqual(0.5f * expected, GestureVariation.Sway(p, t, 0.5f)[k], 1e-6f, "in between: blended");
+                }
+            }
+            p.hold_sway_amplitude_m = new Vector3(0.002f, 0.002f, 0.002f);     // a non-zero hold amplitude stays possible
+            Assert.Greater(GestureVariation.Sway(p, 0.7f, 1f).magnitude, 0f);
+        }
+
+        [Test]
+        public void Hold_ConfigValues_AreRequiredAndChecked()
+        {
+            var cfg = LoadConfig();
+            Assert.That(cfg.animation.hold_body_speed, Is.InRange(0f, 1f));
+            Assert.AreEqual(2, cfg.variation.hold_sway_amplitude_m.Length);
+
+            cfg.animation.hold_body_speed = 1.5f;
+            cfg.variation.hold_sway_amplitude_m = new[] { 0f, 0.2f };
+            var e = string.Join("\n", cfg.Validate());
+            StringAssert.Contains("animation.hold_body_speed", e);
+            StringAssert.Contains("variation.hold_sway_amplitude_m", e);
+
+            // a file without the keys is refused (a missing key would otherwise read as 0, the still hold)
+            string text = File.ReadAllText(Path.Combine(ProjectDir, ConfigAsset));
+            var speedKey = new Regex("\"hold_body_speed\"\\s*:\\s*[-0-9.]+\\s*,");
+            var swayKey = new Regex("\"hold_sway_amplitude_m\"\\s*:\\s*\\[[^\\]]*\\]\\s*,");
+            Assert.AreEqual(1, speedKey.Matches(text).Count);
+            Assert.AreEqual(1, swayKey.Matches(text).Count);
+            text = swayKey.Replace(speedKey.Replace(text, ""), "");
+            e = string.Join("\n", WorkerV4Config.Parse(text).Validate());
+            StringAssert.Contains("animation.hold_body_speed", e);
+            StringAssert.Contains("variation.hold_sway_amplitude_m", e);
         }
 
         [Test]
