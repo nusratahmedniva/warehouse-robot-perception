@@ -271,6 +271,13 @@ proposals for Anisha to confirm or replace. No value is chosen from test data or
   v3 config): the two-view study below resolved 20 of 20 ambiguous asks at 10 deg noise with 0.8 m against 18 of 20 with 0.4 m. Threshold rule
   for the development data: highest development accuracy with coverage >= 0.8, ties to the v3 value or the more conservative one.
 - 2026-10-24: the dialog hold is 0.5 s (v3: 1.0 s); kept, and listed in AUDIT.md section 14 as a declared v4 difference for RQ1.
+- 2026-11-07 (decision (c), recorded in `AUDIT.md` 14.15): **the pan-tilt camera stays level; the zoom is limited by distance through the existing `arm_fit` rule.**
+  Nusrat found that at 2.0 m a raised hand is about 22 to 24 degrees above the level camera, so a 30 degree view loses it. With a camera 1.2 m high (inferred, to be
+  confirmed) and a person with the shoulder at 1.5 m, `tests/test_zoom_geometry_v4.py` shows on the real `ZoomController`: at 2.0 m the commanded view never goes below
+  the view that keeps shoulder, elbow and wrist inside the margin (about 56 degrees for a vertical arm, 52 for an arm 60 degrees up), so the narrowest commanded view is 60 degrees for a
+  vertical arm, 54 for an arm 60 degrees up and 48 for one 45 degrees up; at 3 / 4 / 6 m it is about 41 / 31 / 20 degrees (vertical arm), i.e. about 1.5x / 2.1x / 3.3x. **The zoom is therefore expected to matter only
+  from about 3 m**, and some final cases have to place the commander at about 4 m (`AUDIT.md` B7 note). The reader itself is unaffected: it works on angles from keypoint
+  differences, which do not depend on the field of view.
 
 ## Phase 3: initial values
 
