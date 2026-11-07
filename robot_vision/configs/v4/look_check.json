@@ -1,0 +1,51 @@
+{
+  "label": "v4 avatar-look check (look_check_v4.py): do the real YOLO pose and MediaPipe hand models find the body and hands of each avatar look, and does the reader read POINT / WAIT / STOP? An engineering check, not an evaluation.",
+  "declared": "2026-11-06, before any real frame of any look exists. Verdict rules proposed by Claude with the reasoning below and accepted by Anisha on 2026-11-06 as proposed. Nothing is tuned on the check: no reader, commander or perception value may be changed because of its result; a look that fails is swapped. The check never reads truth.jsonl and never reads data_splits (looks are judged by how they look to the models, whatever their split).",
+  "status": "declared",
+  "paths": {"output_root": "outputs"},
+  "input": {
+    "image_ext": ".png",
+    "header_ext": ".json",
+    "commands": ["POINT", "WAIT", "STOP", "NONE"],
+    "commands_note": "NONE (arms down) is an optional negative control: the reader must not read a command. A verdict needs only POINT, WAIT and STOP.",
+    "required_commands": ["POINT", "WAIT", "STOP"],
+    "arms": ["left", "right"],
+    "arms_note": "The person's own arm, optional key \"arm\" in the header JSON (docs/look_check_v4.md). Without it the raised arm is inferred and left and right cannot be separated.",
+    "fallback_frame_hz": 10.0,
+    "fallback_frame_hz_note": "Frame times when a header has no time_s: index / this rate (frame_pan_tilt_hz of configs/v4/bridge.json)."
+  },
+  "distances": {
+    "decisive_m": [2.0],
+    "secondary_m": [4.0],
+    "match_tol_m": 0.25,
+    "why": "The robot asks at 2.0 m (spec), so the 2 m groups decide the verdict. 4 m (the commander seen from afar, zoomed) is reported, and can only lower a look from usable to weak, because zoom exists to make the person larger there."
+  },
+  "minimum_data": {
+    "frames_per_group": 10,
+    "sequences_per_group": 2,
+    "why": "A group is one look, one command, one distance and one arm. Fewer than 10 frames, or fewer than 2 sequences (one per recording take), is not_evaluated, and a look with a required 2 m group not evaluated is insufficient_data, not usable (project rule: unknown over guess)."
+  },
+  "checks": {
+    "person_rate":        {"usable_min": 0.95, "weak_min": 0.80, "why": "Share of frames in which YOLO finds a person. Without a person nothing else can work; 0.95 allows one lost frame in 20 (the reader tolerates 4 of 10 frames dropped, min_valid_fraction 0.6, so 0.80 is the most a window can lose)."},
+    "arm_valid_rate":     {"usable_min": 0.90, "weak_min": 0.70, "required": {"POINT": true, "WAIT": true, "STOP": false}, "why": "Share of frames in which the reader can use the recorded arm: both shoulders, both hips, elbow and wrist of that arm all above body_kp_conf_min (gesture_reader.json). The reader needs 6 of 10 window frames valid (0.6); 0.70 leaves little margin, 0.90 a comfortable one. Not checked for STOP: the reader reads STOP from the linked hand alone (gesture_motion.read_window), which needs only the shoulders and the wrist keypoint, and that is what hand_linked_rate measures."},
+    "hand_linked_rate":   {"usable_min": 0.80, "weak_min": 0.50, "hand_required": {"POINT": false, "WAIT": true, "STOP": true}, "why": "Share of frames in which a MediaPipe hand is linked to the recorded arm by its wrist (gesture_motion.link_hands). WAIT and STOP are read from the hand, so below weak_min they fail. POINT is read from the arm geometry and uses the hand only as a cross-check, so a low rate there can only make the look weak."},
+    "own_cue_rate":       {"usable_min": 0.70, "weak_min": 0.50, "why": "Share of frames in which ALL cues of the recorded command pass in that frame alone (gesture_motion.frame_flags: raised arm, finger states, category and score, arm pose). 0.70 equals decision.class_share_min of gesture_reader.json: below it the reader cannot accept a held pose even when the arm is still. A test keeps the two equal."},
+    "wrong_class_rate":   {"usable_max": 0.10, "weak_max": 0.25, "why": "Share of frames whose full-cue class (STOP > WAIT > POINT, as the reader's frame_class) is a different command than the one recorded: the confusions WAIT/STOP, WAIT/POINT, STOP/POINT are the research question. 0.10 is below the reader's class margin (0.2); a look above 0.25 gives readings that are wrong more often than a quarter of the time."},
+    "sequence_read_rate": {"usable_min": 0.80, "weak_min": 0.50, "why": "Share of sequences (1 s at 10 Hz) whose reader answer at the last frame is the recorded command (gesture_motion.read_window, the live window and thresholds). Sequences only."},
+    "wrong_read_rate":    {"usable_max": 0.10, "weak_max": 0.25, "why": "Share of sequences whose reader answer is a different command (not NONE, not insufficient_history: those are lost coverage, counted by sequence_read_rate). A wrong command is the dangerous failure, so it is bounded on its own."},
+    "arm_ratio_p95":      {"assumed": 1.4, "low_rel": 0.30, "high_rel": 0.25, "why": "POINT only. The 95th percentile over POINT frames of |shoulder -> wrist| / shoulder width in the image, against the assumed full arm length 1.4 shoulder widths (point.arm_length_in_shoulder_widths). Foreshortening only shortens the image ratio, so the p95 of a take that includes sideways arms reaches the true ratio; accepted range 1.4 x (1 - 0.30) to 1.4 x (1 + 0.25), i.e. 0.98 to 1.75. Outside it the look's arm proportions (or YOLO's wrist and elbow on it) differ from the assumption: POINT directions are biased. It can make a look weak, never fail it, because the reader returns both depth roots and the roadmap resolves them."}
+  },
+  "verdict": {
+    "levels": ["usable", "weak", "fails"],
+    "order_worst_first": ["fails", "insufficient_data", "weak", "usable"],
+    "rule": "Per group: the worst of its checks (below weak = fails; a check with too little data = not_evaluated). Per look: the worst of its decisive (2 m) groups of the required commands, with the order above. A look with every decisive group usable and no data missing is usable. 4 m groups and the POINT arm ratio can only lower usable to weak.",
+    "left_right_rule": "When any recording of a look carries an arm label, both arms are required in every decisive group; otherwise left and right are pooled and the report says so."
+  },
+  "annotation": {
+    "enabled": true,
+    "keypoint_radius_px": 4,
+    "line_px": 2,
+    "colours_bgr": {"ok": [0, 200, 0], "low": [0, 0, 255], "hand": [255, 160, 0], "hand_box": [255, 0, 255], "text": [255, 255, 255]},
+    "why": "Green = keypoint above body_kp_conf_min, red = below it (the reader treats it as missing). Orange = hand landmarks, magenta = hand box."
+  }
+}
