@@ -42,7 +42,6 @@ namespace WarehouseAvatar.EditorTools
         public const string ScenePath = "Assets/WarehouseRobot/Avatar/LookCheck.unity";
         public const string ConfigPath = "Assets/WarehouseRobot/Avatar/Config/look_check.json";
         const string SunboxFolder = "Assets/SunboxGames";
-        const string SunboxComponent = "Sunbox.Avatars.AvatarCustomization";
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
 
@@ -390,43 +389,11 @@ namespace WarehouseAvatar.EditorTools
             return result;
         }
 
-        /// <summary>The Sunbox avatar customised by reflection (its public fields and methods); returns the active base's Animator.</summary>
+        /// <summary>The Sunbox avatar customised by reflection (SunboxLookApplier, shared with WorkerV4); returns the active base's Animator.</summary>
         static Animator ApplySunbox(GameObject inst, SunboxLook s, LookInventoryRow row)
         {
-            var comp = inst.GetComponentsInChildren<MonoBehaviour>(true).FirstOrDefault(m => m != null && m.GetType().FullName == SunboxComponent)
-                       ?? throw new InvalidOperationException($"no {SunboxComponent} on {inst.name}");
-            var t = comp.GetType();
-            FieldInfo Field(string n) => t.GetField(n) ?? throw new MissingFieldException(SunboxComponent, n);
-            MethodInfo Method(string n) => t.GetMethod(n) ?? throw new MissingMethodException(SunboxComponent, n);
-
-            var gender = Enum.Parse(Field("CurrentGender").FieldType, s.gender);
-            Field("SkinMaterialIndex").SetValue(comp, s.skin);
-            Field("HairStyleIndex").SetValue(comp, s.hair_style);
-            Field("HairMaterialIndex").SetValue(comp, s.hair_material);
-            Field("FacialHairStyleIndex").SetValue(comp, s.facial_hair_style);
-            Method("SetGender").Invoke(comp, new[] { gender, (object)true });
-
-            var refs = Field("AvatarReferences").GetValue(comp) ?? throw new InvalidOperationException("AvatarReferences not set on the Sunbox prefab");
-            var items = (Array)refs.GetType().GetField("AvailableClothingItems").GetValue(refs);
-            var chosen = new List<string>();
-            foreach (var c in s.clothing ?? new SunboxClothing[0])
-            {
-                object item = items.Cast<object>().FirstOrDefault(i => i != null && (string)i.GetType().GetField("Name").GetValue(i) == c.name)
-                              ?? throw new ArgumentException($"Sunbox clothing item '{c.name}' is not in this pack");
-                var variations = (Material[])item.GetType().GetField("Variations").GetValue(item);
-                if (c.variation < 0 || c.variation >= variations.Length)
-                    throw new ArgumentException($"Sunbox clothing item '{c.name}' has {variations.Length} variations; {c.variation} requested");
-                Method("AttachClothingItem").Invoke(comp, new[] { item, (object)c.variation });
-                chosen.Add($"{c.name} [{(variations[c.variation] != null ? variations[c.variation].name : "none")}]");
-            }
-            Method("UpdateCustomization").Invoke(comp, null);
-
-            var skins = (Material[])refs.GetType().GetField(s.gender == "Male" ? "MaleSkinMaterials" : "FemaleSkinMaterials").GetValue(refs);
-            var hairs = (Array)refs.GetType().GetField("HairItems").GetValue(refs);
-            string skin = s.skin >= 0 && s.skin < skins.Length && skins[s.skin] != null ? skins[s.skin].name : "out of range";
-            string hair = s.hair_style >= 0 && s.hair_style < hairs.Length ? (string)hairs.GetValue(s.hair_style).GetType().GetField("Name").GetValue(hairs.GetValue(s.hair_style)) : "out of range";
-            row.note = $"{s.gender}, skin {skin}, hair {hair}; " + string.Join(", ", chosen) + ".";
-            var animator = (Animator)t.GetProperty("Animator").GetValue(comp);
+            var animator = SunboxLookApplier.Apply(inst, s, out string description);
+            row.note = description;
             return animator;
         }
 

@@ -8,7 +8,7 @@
     "com.unity.render-pipelines.universal": "14.0.12",
     "com.unity.robotics.warehouse": "file:../../com.unity.robotics.warehouse.urp",
     "com.unity.robotics.warehouse.base": "file:../../com.unity.robotics.warehouse.base",
-    "com.unity.test-framework": "1.4.6",
+    "com.unity.test-framework": "1.1.33",
     "com.unity.textmeshpro": "3.0.7",
     "com.unity.timeline": "1.7.7",
     "com.unity.ugui": "1.0.0",
@@ -43,9 +43,6 @@
     "com.unity.modules.video": "1.0.0",
     "com.unity.modules.vr": "1.0.0",
     "com.unity.modules.wind": "1.0.0",
-    "com.unity.modules.xr": "1.0.0",
-    "com.vrmc.gltf": "https://github.com/vrm-c/UniVRM.git?path=/Packages/UniGLTF#v0.131.4",
-    "com.vrmc.univrm": "https://github.com/vrm-c/UniVRM.git?path=/Packages/VRM#v0.131.4",
-    "com.vrmc.vrm": "https://github.com/vrm-c/UniVRM.git?path=/Packages/VRM10#v0.131.4"
+    "com.unity.modules.xr": "1.0.0"
   }
 }

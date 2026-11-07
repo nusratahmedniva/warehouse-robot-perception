@@ -1,7 +1,7 @@
 {
     "name": "WarehouseAvatar.Tests.EditMode",
     "rootNamespace": "WarehouseAvatar.Tests",
-    "references": ["WarehouseAvatar", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+    "references": ["WarehouseAvatar", "WarehouseHRI", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

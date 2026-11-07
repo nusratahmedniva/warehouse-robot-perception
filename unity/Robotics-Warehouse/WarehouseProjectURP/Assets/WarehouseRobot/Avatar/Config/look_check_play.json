@@ -1,0 +1,31 @@
+{
+  "note": "v4 Phase 2B Play-mode look check (2026-11-07, Nusrat; declared before it ran): the look check of docs/look_check_v4.md recorded again with the worker template (WorkerV4.prefab, worker_v4.json) and the real gesture variants, in Play mode (real motion, real Unity Time.time in every header). Recording settings (distances, field of view, 11 frames, arms) and the stage (floor, backdrop, light) are those of look_check.json; the camera settings those of robot_unity_v4.json pan_tilt_camera, as in the Edit-mode check. An engineering check, not an evaluation: nothing is tuned on it. Read only by Tools > Warehouse v4 > Look Check > Run Play-Mode Look Check (LookCheckPlay.unity).",
+  "output": {
+    "root": "robot_vision/outputs",
+    "run_prefix": "look_check_play",
+    "recordings_prefix": "looks_check",
+    "why": "A new folder robot_vision/outputs/look_check_play_<time>/ (git-ignored) holds the run's own files (config_used/, run_info.json, recordings.jsonl, workers.json, truth/); the recordings alone go into its subfolder looks_check_<time>/, the --input of look_check_v4.py (the tool reads every subfolder of its input as a sequence and never reads truth files)."
+  },
+  "looks": ["sunbox_m1", "sunbox_f1", "sunbox_f2"],
+  "seed": 1,
+  "point_side_azimuth_deg": [0.0, 45.0, 20.0],
+  "singles_per_group": 5,
+  "single_point_side_azimuth_deg": [10.0, 30.0, 60.0, 0.0, 45.0],
+  "none_sequences": 2,
+  "none_singles": 5,
+  "none_frame_spacing_s": 0.7,
+  "settle_after_hold_s": 0.2,
+  "question_after_request_s": 0.3,
+  "pause_between_s": 0.4,
+  "face_wait_max_s": 5.0,
+  "phase_wait_max_s": 15.0,
+  "initial_yaw_offset_deg": 35.0,
+  "stage_spacing_m": 100.0,
+  "why": {
+    "groups": "Every look x command (POINT, WAIT, STOP) x arm (left, right; forced, so both arms are recorded) x distance (2.0 and 4.0 m): one sequence per variant of the command (3, so at least the required 2), named <look>__<COMMAND>__<d>__<arm>_<variant>, and singles_per_group single frames from further gestures (variants in turn), <arm>_f<k>_<variant>. NONE (negative control, no arm): none_sequences sequences and none_singles singles of the worker standing idle, facing the robot.",
+    "point_side_azimuth_deg": "POINT direction per variant in config order, in the look check's convention (0 = straight out to the person's own side, in the image plane; 90 = at the camera): the first variant sideways (the take that measures the arm length), the second at 45 deg toward the front, as docs/look_check_v4.md asks, the third in between. Singles use single_point_side_azimuth_deg in turn.",
+    "timing": "The worker is asked (Request), the question is shown question_after_request_s later, and the frames are taken while the worker HOLDS the pose (with its natural sway), starting settle_after_hold_s into the hold: 11 frames at 10 Hz (the first Unity frame at or after each 0.1 s step; its Time.time is the header's time_s). A single frame is taken at a random moment of the hold. Speed, size and start delay are the worker's own seeded variation (seed, run 1, the stage's worker id); the arm is forced.",
+    "stages": "The six (look, distance) stages run at the same time, each with its own floor, backdrop, camera and worker, stage_spacing_m apart, under the one light of look_check.json render. Each worker starts initial_yaw_offset_deg away from the camera, so it notices the camera (the robot) and turns to face it before the first recording.",
+    "truth_files": "Each stage writes truth/<look>__<d>.jsonl with the template's truth logger (the worker is the commander from the request until it is back to idle). It is a demonstration of the run-file format only: it is not part of the look check's input."
+  }
+}
