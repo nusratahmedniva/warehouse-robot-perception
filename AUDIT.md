@@ -1264,8 +1264,9 @@ threads 1.57 GB in one process; processes 0.23 GB (server) + 1.74 GB (workers) =
 (`GuideControllerV4.on_message`, the test rig with four people in view, 2000 messages): mean 0.04 ms, p99 0.15 ms, max 0.33 ms (not in the replay, which is idle; negligible next to the limits).
 
 **PC measurement (Nusrat's PC, recorded 7 November 2026).** Windows 11, NVIDIA RTX 3060, 60 s replay (`timing_check_v4.py`, no Unity, real models, 20 / 5 / 10 Hz), the run protocol of 14.8 followed.
-`threads` was run at commit `80a64d1`, `processes` at `650bf53`; `robot_vision/` is identical between these two commits, so the comparison is fair. The results were analysed on that PC
-(Nusrat's Claude Code) and the numbers below were passed on as text; the result folders are not in the repository and were not read here.
+`threads` was run at commit `80a64d1`, `processes` at `650bf53`; `robot_vision/` is identical between these two commits, so the comparison is fair. Source of the numbers: they were read
+directly from Nusrat's result zip `timing_checks_20261107.zip` (the two `timing_check_v4_*` `report.md` files, `gc_pauses.csv`, `loop_lag.csv`, `server.log` and `summary.json` of the two `bridge_guide_20261107_*` runs)
+by Anisha's assistant, not taken from a second-hand analysis. The zip is outside the repository and nothing from it was copied in. Recorded here on Anisha's instruction.
 
 | | loop lag p99 / max (ms) | round trip p99 / max (ms) | longest reply gap (ms) | unanswered | worker events | memory | limits |
 |---|---|---|---|---|---|---|---|
