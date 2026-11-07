@@ -106,3 +106,13 @@ sequences; both arms, forced; the 60 deg view; the three looks (except f1's top)
 ## Results
 
 Added after the rerun, below this line, without changing the declaration above.
+
+### Fix after the declaration, before the full rerun (2026-11-08)
+
+A smoke run of the new venue (`-lookCheckQuick`, `look_check_play_debug_20261108_050313`, not evaluated) showed the
+person as a flat cyan (0, 255, 255) silhouette in the first takes, at both distances: the Editor's placeholder for a
+shader variant that is still compiling asynchronously (the scene's spot lights and shadows need variants the stage
+never used; the stage run `look_check_play_20261108_031857` has 0 such frames out of 1530). The menu now turns the
+Editor's asynchronous shader compilation off while the check runs and restores it afterwards. A second smoke run
+(`look_check_play_debug_20261108_050703`) had 0 cyan frames out of 308. A rendering defect of the check itself;
+nothing about the looks or gestures was changed.

@@ -25,6 +25,7 @@ namespace WarehouseAvatar.EditorTools
         const string InjectedKey = "WarehouseAvatar.LookCheckPlay.Injected";
         const string QuitKey = "WarehouseAvatar.LookCheckPlay.Quit";
         const string DeadlineKey = "WarehouseAvatar.LookCheckPlay.Deadline";
+        const string AsyncShadersKey = "WarehouseAvatar.LookCheckPlay.AsyncShaders";
 
         [Serializable] class VenueOnly { public LookCheckPlayDriver.PlayVenue venue; }
 
@@ -86,6 +87,11 @@ namespace WarehouseAvatar.EditorTools
             if (!Application.isPlaying || !SessionState.GetBool(ActiveKey, false) || SessionState.GetBool(InjectedKey, false)) return;
             if (scene.path != VenueScene()) return;
             SessionState.SetBool(InjectedKey, true);
+            // The Editor draws a shader variant that is still compiling as flat cyan (0, 255, 255); the scene's lights
+            // need variants the Editor had not compiled yet, so the first takes of the Phase 2D smoke run showed a cyan
+            // person. Compile synchronously while the check runs (an Editor session setting, restored in Finish).
+            SessionState.SetBool(AsyncShadersKey, ShaderUtil.allowAsyncCompilation);
+            ShaderUtil.allowAsyncCompilation = false;
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(WorkerTemplateMenu.PrefabPath);
             var go = new GameObject("LookCheckPlay");
             SceneManager.MoveGameObjectToScene(go, scene);
@@ -113,6 +119,7 @@ namespace WarehouseAvatar.EditorTools
             SessionState.SetBool(ActiveKey, false);
             EditorApplication.update -= Poll;
             SceneManager.sceneLoaded -= OnSceneLoaded;
+            ShaderUtil.allowAsyncCompilation = SessionState.GetBool(AsyncShadersKey, true);
             Debug.Log($"[LookCheckPlay] finished ({code}): {status}");
             if (SessionState.GetBool(QuitKey, false)) EditorApplication.Exit(code);
             else EditorApplication.ExitPlaymode();
