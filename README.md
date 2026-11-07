@@ -131,6 +131,23 @@ in `robot_vision/configs/v4/`, the plan and every declared decision are in `AUDI
 Without `--config configs/v4/bridge.json` the server speaks the first study's protocol. Each run writes a new folder under
 `robot_vision/outputs/` (never overwritten). Stop the server with one Ctrl+C so the summary is written.
 
+**How fast the server answers (v4 only).** Unity stops the robot if Python is silent for 0.3 s, so the server must always answer the
+telemetry quickly. In v4 the camera models (people on the panorama; people, hands and the moving-gesture reader on the second camera)
+run in two separate worker processes, not on threads of the server, so slow model work can never hold up the answers. The server
+only reads the latest results. If a worker dies or falls behind, the server writes it to the console and to `perception_events.jsonl`
+in the run folder and keeps answering with the last results, which the controller then sees as stale (it treats them as unknown,
+never guesses). Setting: `perception_workers.mode` in `robot_vision/configs/v4/bridge.json` (`processes` or `threads`; the first
+study always uses threads). **Check it** on the machine you will run on, with the Unity robot not needed, from `robot_vision/`:
+
+    .\.venv\Scripts\python.exe timing_check_v4.py --frames outputs\<an earlier run>\frames --duration-s 60
+    .venv/bin/python timing_check_v4.py --frames outputs/<an earlier run>/frames --duration-s 60
+
+It starts the v4 server with the real models, plays saved camera frames to it at the real rates, and prints the loop lag, the time
+from telemetry to command, the longest silence between two commands, the stack dumps of any stall, the memory used and whether the
+limits declared in `configs/v4/bridge.json` (`timing_limits`) are met (exit status 0 = met). Add `--workers threads` or
+`--workers processes` to compare the two. The measurements, the declared limits and what they do and do not show are in `AUDIT.md`
+section 14.14.
+
 **Evaluate it** (development data only; test looks and clips are refused; use the same `.venv` Python as above):
 
     python hri_eval_dev_v4.py --session outputs/trials_X outputs/bridge_guide_Y
