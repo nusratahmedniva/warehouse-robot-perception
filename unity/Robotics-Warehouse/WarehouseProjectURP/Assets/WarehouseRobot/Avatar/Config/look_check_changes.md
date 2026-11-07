@@ -116,3 +116,36 @@ never used; the stage run `look_check_play_20261108_031857` has 0 such frames ou
 Editor's asynchronous shader compilation off while the check runs and restores it afterwards. A second smoke run
 (`look_check_play_debug_20261108_050703`) had 0 cyan frames out of 308. A rendering defect of the check itself;
 nothing about the looks or gestures was changed.
+
+### Rerun (2026-11-08, commit 21ecad4)
+
+Recordings `look_check_play_20261108_051252` (756 recordings, 1596 frames = 38 per group, 0 frames outside the hold,
+0 cyan frames; every pose clear at the first draw; bearings 15.2 to 50.0 deg; camera distances 1.85 to 2.15 m and
+3.85 to 4.15 m; hand and shoulder still to 0.0 mm over every sequence). Report `look_check_v4_20261108_053315`
+(`look_check_v4.py` and its config unchanged).
+
+| look | before (`look_check_v4_20261108_032808`) | after |
+|---|---|---|
+| sunbox_m1 | fails | **weak** |
+| sunbox_f1 | fails | fails |
+| sunbox_f2 | fails | fails |
+
+2 m groups, own cue (before -> after) and grade:
+
+| look | WAIT left | WAIT right | STOP left | STOP right | POINT left | POINT right |
+|---|---|---|---|---|---|---|
+| sunbox_m1 | 0.00 -> 0.89 usable | 1.00 -> 0.92 usable | 0.71 -> 0.95 usable | 0.71 -> 0.66 weak | 0.97 -> 0.97 weak | 1.00 -> 0.95 weak |
+| sunbox_f1 | 0.00 -> 0.11 fails | 0.00 -> 0.34 fails | 0.37 -> 0.05 fails | 0.00 -> 0.55 weak | 0.68 -> 0.97 weak | 1.00 -> 1.00 weak |
+| sunbox_f2 | 0.00 -> 0.76 usable | 0.00 -> 0.13 fails | 0.03 -> 0.05 fails | 0.68 -> 0.95 usable | 0.08 -> 0.95 weak | 0.39 -> 1.00 weak |
+
+What the report shows (observations only; nothing was changed on them):
+
+- The left-arm WAIT bug is gone where the hand is found: m1 left 0.00 -> 0.89, f2 left 0.00 -> 0.76.
+- Every POINT group is `weak`, not failing: the reader reads POINT (own cue 0.95 to 1.00), but the hand is rarely
+  linked (not required for POINT) and the 95th-percentile arm ratio is 1.87 to 2.00 against the accepted 0.98 to 1.75
+  (the template's arm is longer in shoulder widths than the reader's assumed 1.4).
+- The remaining failures are MediaPipe's category, not the geometry: f1 and f2 STOP left show an open palm in 0.66 and
+  0.97 of the frames but `Open_Palm` in 0.05; f2 WAIT right shows the finger up in 0.66 but `Pointing_Up` in 0.13;
+  f1 WAIT finds and links the hand in only 0.39 to 0.45 of the frames.
+- `weak` and `fails` decisions are Anisha's and Nusrat's (docs/look_check_v4.md: keep with the reasons, re-pose, or
+  swap); this rerun proposes none.
