@@ -49,6 +49,9 @@ namespace WarehouseRobot.Bridge
             public int Requested;
             public int Sent;        // queued for sending (encoder thread)
             public int Dropped;
+            /// <summary>Protocol 3 only: the readback buffer of a finished frame, reused by the next one (null while a frame
+            /// holds it). Taken and returned atomically, so two frames never share a buffer.</summary>
+            public byte[] Spare;
 
             public void Reset()
             {
@@ -706,9 +709,21 @@ namespace WarehouseRobot.Bridge
                     Interlocked.Exchange(ref s.Busy, 0);
                     return;
                 }
+                var data = req.GetData<byte>();
+                byte[] rgba;
+                if (V3)
+                {
+                    // v4 (2026-11-08): reuse the buffer instead of a new 8.4 MB (360) / 1.5 MB (pan-tilt) array per frame.
+                    // Those arrays were ~97 % of Unity's managed allocations, and the full collection they forced about
+                    // every 17 s stalled the main thread for 200-330 ms (Phase 2D profile). Same pixels, same timing rules.
+                    rgba = Interlocked.Exchange(ref s.Spare, null);
+                    if (rgba == null || rgba.Length != data.Length) rgba = new byte[data.Length];
+                    data.CopyTo(rgba);
+                }
+                else rgba = data.ToArray();
                 encoder.Enqueue(new FrameEncoder.Job
                 {
-                    Rgba = req.GetData<byte>().ToArray(),
+                    Rgba = rgba,
                     Width = w,
                     Height = h,
                     FlipRows = cfg.Unity.flip_rows, // EncodeArrayToJPG takes Unity's bottom-up rows, like Texture2D
@@ -716,6 +731,7 @@ namespace WarehouseRobot.Bridge
                     HeaderForImageSize = header,
                     Done = ok =>
                     {
+                        if (V3) Interlocked.CompareExchange(ref s.Spare, rgba, null);   // encoded and sent: free for the next frame
                         if (ok) Interlocked.Increment(ref s.Sent);
                         else Interlocked.Increment(ref s.Dropped);
                         Interlocked.Exchange(ref s.Busy, 0);

@@ -133,6 +133,56 @@ namespace WarehouseAvatar.Tests
             CollectionAssert.AreEqual(List("phases"), TruthFormat.Phases);
         }
 
+        // ---------------------------------------------------------------- Play-mode look check config (Phase 2D)
+
+        [Serializable] class PlayVenue { public string scene; public string[] junctions; public float[] approach_bearing_deg; public float distance_tolerance_m, camera_clearance_m; public int max_pose_draws; }
+        [Serializable] class PlayTakes { public int sequences_per_group, singles_per_group; public float[] sequence_point_side_azimuth_deg, single_point_side_azimuth_deg; }
+        [Serializable] class PlayFile { public string[] looks; public PlayVenue venue; public PlayTakes takes; }
+
+        static PlayFile LoadPlay() => JsonUtility.FromJson<PlayFile>(File.ReadAllText(Path.Combine(ProjectDir, "Assets/WarehouseRobot/Avatar/Config/look_check_play.json")));
+
+        [Test]
+        public void PlayConfig_DistanceBandIsPythonsApproachTolerance()
+        {
+            string text = File.ReadAllText(Path.Combine(RepoRoot, "robot_vision/configs/hri_control.json"));
+            var m = Regex.Match(text, "\"approach_tolerance_m\"\\s*:\\s*([0-9.]+)");
+            Assert.IsTrue(m.Success, "no approach_tolerance_m in hri_control.json");
+            Assert.AreEqual(float.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), LoadPlay().venue.distance_tolerance_m, 1e-6f);
+        }
+
+        [Test]
+        public void PlayConfig_VenueIsTheV4SceneAndItsJunctions()
+        {
+            var play = LoadPlay();
+            Assert.AreEqual("Assets/Scenes/WarehouseRobot_v4.unity", play.venue.scene);
+            Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<SceneAsset>(play.venue.scene), play.venue.scene);
+            string road = File.ReadAllText(Path.Combine(RepoRoot, "robot_vision/configs/roadmap.json"));
+            var junctions = Regex.Matches(road, "\"(\\w+)\"\\s*:\\s*\\{[^}]*\"kind\"\\s*:\\s*\"junction\"").Cast<Match>().Select(x => x.Groups[1].Value).ToArray();
+            CollectionAssert.AreEquivalent(junctions, play.venue.junctions, "every Task 2 junction, nothing else");
+            Assert.That(play.venue.approach_bearing_deg, Has.Length.EqualTo(2));
+            Assert.That(play.venue.approach_bearing_deg[0], Is.LessThanOrEqualTo(18f), "the band holds every measured ask (18 to 47 deg)");
+            Assert.That(play.venue.approach_bearing_deg[1], Is.GreaterThanOrEqualTo(47f));
+            Assert.Greater(play.venue.camera_clearance_m, 0f);
+            Assert.GreaterOrEqual(play.venue.max_pose_draws, 1);
+        }
+
+        [Test]
+        public void PlayConfig_TakesKeepTheLookCheckMinimums_AndEveryLookVisitsEveryJunction()
+        {
+            var play = LoadPlay();
+            var check = LookCheckConfig.Parse(File.ReadAllText(Path.Combine(ProjectDir, "Assets/WarehouseRobot/Avatar/Config/look_check.json")));
+            var t = play.takes;
+            Assert.GreaterOrEqual(t.sequences_per_group, 2, "docs/look_check_v4.md: at least 2 sequences per group");
+            Assert.GreaterOrEqual(t.sequences_per_group, play.venue.junctions.Length, "a sequence at every junction");
+            Assert.GreaterOrEqual(t.sequences_per_group * check.recording.sequence_frames + t.singles_per_group, 10, "at least 10 frames per group");
+            Assert.AreEqual(11, check.recording.sequence_frames);
+            Assert.AreEqual(0f, t.sequence_point_side_azimuth_deg[0], "POINT sequence 1 sideways in the image plane");
+            Assert.AreEqual(45f, t.sequence_point_side_azimuth_deg[1], "POINT sequence 2 at 45 deg toward the front");
+            Assert.GreaterOrEqual(t.singles_per_group, 5, "docs/look_check_v4.md recommends about 5 singles");
+            CollectionAssert.AreEquivalent(LoadConfig().looks.Select(l => l.id), play.looks);
+            Assert.GreaterOrEqual(play.looks.Length, play.venue.junctions.Length, "rounds = looks: every look visits every junction");
+        }
+
         // ---------------------------------------------------------------- variation
 
         [Test]
@@ -405,6 +455,117 @@ namespace WarehouseAvatar.Tests
             Assert.Less(HandShaper.TipRatio(arm, HandShaper.Ring), 1.0f);
             var index = (arm.Fingers[HandShaper.Index][2].position - arm.Fingers[HandShaper.Index][0].position).normalized;
             Assert.Greater(Vector3.Dot(index, Vector3.right), 0.99f, "index along the arm");
+        }
+
+        // ---------------------------------------------------------------- left and right hands (Phase 2D)
+
+        /// <summary>Largest distance (m) between the left hand's joints and fingertips, mirrored across the body's
+        /// sagittal plane, and the right hand's, each relative to its own wrist.</summary>
+        static float MirrorGap(LookPoser.Arm left, LookPoser.Arm right, Vector3 bodyRight, out string where)
+        {
+            Vector3 M(Vector3 v) => v - 2f * Vector3.Dot(v, bodyRight) * bodyRight;
+            float worst = 0f;
+            where = "";
+            for (int f = 0; f < 5; f++)
+                for (int j = 0; j <= 3; j++)
+                {
+                    if (left.Fingers[f][Mathf.Min(j, 2)] == null || right.Fingers[f][Mathf.Min(j, 2)] == null) continue;
+                    Vector3 l = j < 3 ? left.Fingers[f][j].position : HandShaper.Tip(left, f);
+                    Vector3 r = j < 3 ? right.Fingers[f][j].position : HandShaper.Tip(right, f);
+                    float gap = Vector3.Distance(M(l - left.Hand.position), r - right.Hand.position);
+                    if (gap > worst) { worst = gap; where = $"finger {f} {(j < 3 ? "joint " + j : "tip")}"; }
+                }
+            return worst;
+        }
+
+        /// <summary>Shape both hands with mirror-image targets (WAIT and STOP: fingers up, palm forward; POINT: fingers out to
+        /// each side and forward, palm down) and return the mirror gap.</summary>
+        static float ShapedGap(WorkerV4Config cfg, string command, LookPoser.Arm left, LookPoser.Arm right, Quaternion[][] bindL,
+                               Quaternion[][] bindR, Vector3 bodyRight, out string where)
+        {
+            Vector3 fwd = Vector3.Cross(bodyRight, Vector3.up).normalized;
+            var shape = cfg.hand_shapes.For(command);
+            if (command == WorkerV4Config.Point)
+            {
+                HandShaper.Apply(right, bindR, shape, (bodyRight + fwd).normalized, Vector3.down, 1f);
+                HandShaper.Apply(left, bindL, shape, (-bodyRight + fwd).normalized, Vector3.down, 1f);
+            }
+            else
+            {
+                HandShaper.Apply(right, bindR, shape, Vector3.up, fwd, 1f);
+                HandShaper.Apply(left, bindL, shape, Vector3.up, fwd, 1f);
+            }
+            return MirrorGap(left, right, bodyRight, out where);
+        }
+
+        [Test]
+        public void HandShape_LeftIsTheMirrorOfTheRight_EvenWhenTheRigsRestPoseIsNot()
+        {
+            var cfg = LoadConfig();
+            var rig = Rig();
+            // break the rig's symmetry as the Sunbox base mesh does: the left thumb bent at its intermediate joint
+            var thumb = rig.Get(HumanBodyBones.LeftThumbIntermediate);
+            thumb.rotation = Quaternion.AngleAxis(40f, Vector3.up) * thumb.rotation;
+            var left = HandShaper.BuildArm(rig, false);
+            var right = HandShaper.BuildArm(rig, true);
+            var bodyRight = Vector3.right;
+
+            var bindL = HandShaper.Capture(left);
+            var bindR = HandShaper.Capture(right);
+            float broken = ShapedGap(cfg, WorkerV4Config.Wait, left, right, bindL, bindR, bodyRight, out string where);
+            Assert.Greater(broken, 0.005f, "without the fix the asymmetric rest pose gives different hands (the test must see the bug)");
+
+            foreach (var t in rig.Root.GetComponentsInChildren<Transform>()) t.localRotation = Quaternion.identity;
+            thumb.rotation = Quaternion.AngleAxis(40f, Vector3.up) * thumb.rotation;
+            Assert.Greater(HandShaper.MirrorRest(right, left), 0.005f, "the rest-pose correction is reported");
+            bindL = HandShaper.Capture(left);
+            Assert.Less(HandShaper.MirrorRest(right, left), 1e-5f, "a mirrored rest pose needs no correction");
+            foreach (var cmd in WorkerV4Config.Commands)
+            {
+                float gap = ShapedGap(cfg, cmd, left, right, bindL, bindR, bodyRight, out where);
+                Assert.Less(gap, 0.001f, $"{cmd}: left and right hands differ by {gap * 1000f:0.0} mm at {where} (before the fix {broken * 1000f:0.0} mm)");
+            }
+        }
+
+        [Test]
+        public void EveryLook_LeftAndRightHandShapes_AreMirrorImages()
+        {
+            // Phase 2D bug: WAIT with the left arm read 0.00 on every look (the Sunbox rest pose's left thumb is not the
+            // mirror of the right one, so the left WAIT thumb stuck out and MediaPipe did not call it Pointing_Up).
+            var cfg = LoadConfig();
+            var w = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabAsset).GetComponent<WorkerV4>();
+            int checkedLooks = 0;
+            foreach (var look in cfg.looks)
+            {
+                var prefab = w.lookSources.FirstOrDefault(s => s.asset == look.asset)?.prefab;
+                if (prefab == null) continue;
+                var inst = UnityEngine.Object.Instantiate(prefab);
+                try
+                {
+                    var animator = look.kind == LookEntry.KindSunbox ? SunboxLookApplier.Apply(inst, look.sunbox, out _) : inst.GetComponentInChildren<Animator>();
+                    HumanAvatarFix.Apply(animator);
+                    var bones = new AnimatorBones(animator);
+                    var left = HandShaper.BuildArm(bones, false);
+                    var right = HandShaper.BuildArm(bones, true);
+                    var bodyRight = Vector3.ProjectOnPlane(right.Upper.position - left.Upper.position, Vector3.up).normalized;
+                    float restGap = MirrorGap(left, right, bodyRight, out string restWhere);
+                    Assert.GreaterOrEqual(HandShaper.MirrorRest(right, left), 0f, look.id);        // as WorkerV4.Initialize
+                    Assert.Less(MirrorGap(left, right, bodyRight, out string where), 0.001f, $"{look.id} rest pose after the fix: {where}");
+                    var bindL = HandShaper.Capture(left);
+                    var bindR = HandShaper.Capture(right);
+                    foreach (var cmd in WorkerV4Config.Commands)
+                    {
+                        float gap = ShapedGap(cfg, cmd, left, right, bindL, bindR, bodyRight, out where);
+                        Assert.Less(gap, 0.001f, $"{look.id} {cmd}: left and right hands differ by {gap * 1000f:0.0} mm at {where} " +
+                                                 $"(rest pose before the fix: {restGap * 1000f:0.0} mm at {restWhere})");
+                        for (int f = 0; f < 5; f++)
+                            Assert.AreEqual(HandShaper.TipRatio(right, f), HandShaper.TipRatio(left, f), 0.02f, $"{look.id} {cmd} finger {f} tip ratio");
+                    }
+                    checkedLooks++;
+                }
+                finally { UnityEngine.Object.DestroyImmediate(inst); }
+            }
+            if (checkedLooks == 0) Assert.Ignore("no look asset installed (third-party, git-ignored)");
         }
 
         // ---------------------------------------------------------------- truth.jsonl

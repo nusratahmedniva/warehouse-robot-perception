@@ -6,59 +6,86 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using WarehouseAvatar;
+using WarehouseHRI;
+using WarehouseRobot.Bridge;
+using WarehouseRobot.Scenario;
 
 namespace WarehouseRobot.AvatarCheck
 {
     /// <summary>
-    /// v4 Phase 2B Play-mode look check (LookCheckPlay.unity, look_check_play.json): the worker template performs the real
-    /// gesture variants in Play mode and the pan-tilt camera settings of robot_unity_v4.json record them in the input
-    /// format of docs/look_check_v4.md (Anisha's look_check_v4.py), with the real Unity Time.time of every frame. Six stages
-    /// (3 looks x 2 distances) run at once. Writes robot_vision/outputs/look_check_play_&lt;time&gt;/ (never overwrites):
-    /// looks_check_&lt;time&gt;/ (recordings only), recordings.jsonl, workers.json, truth/, config_used/, run_info.json.
-    /// An engineering check, not an evaluation.
+    /// v4 Play-mode look check (look_check_play.json; venue and takes changed in Phase 2D, 2026-11-08, declared in
+    /// Avatar/Config/look_check_changes.md before the rerun). The worker template performs the real gesture variants in
+    /// Play mode inside WarehouseRobot_v4.unity (its own lights, baked lighting and surroundings; the scene file is not
+    /// changed) at the Task 2 worker stands, and cameras with the pan-tilt settings of robot_unity_v4.json record them from
+    /// the robot's asking positions, in the input format of docs/look_check_v4.md (Anisha's look_check_v4.py), with the
+    /// real Unity Time.time of every frame. LookCheckPlayMenu adds this driver at Play; its Awake switches off the
+    /// study's runtime parts (trial runner, bridge, v3 workers, robot body) before they start, so nothing connects to
+    /// Python and no session is written.
+    /// Every take is an independent performance (its own variation stream and its own camera pose, drawn from a seeded
+    /// stream within the declared bearing and distance bands); a 2 m and a 4 m camera on the same bearing record it.
+    /// Each round runs one look at each junction at the same time; over the rounds every look visits every junction.
+    /// Writes robot_vision/outputs/look_check_play_&lt;time&gt;/ (never overwrites): looks_check_&lt;time&gt;/ (recordings only),
+    /// recordings.jsonl, workers.json, truth/, config_used/, run_info.json. An engineering check, not an evaluation.
     /// </summary>
+    [DefaultExecutionOrder(-1000)]
     public class LookCheckPlayDriver : MonoBehaviour
     {
         public TextAsset playConfig;
         public TextAsset lookCheckConfig;
         public TextAsset robotConfig;
         public WorkerV4 workerPrefab;
-        public Light keyLight;
         public string repoRootRelativeToProject = "../../..";
         public bool runOnStart = true;
 
         public string Status { get; private set; } = "idle";
         public string OutputFolder { get; private set; } = "";
         public string RecordingFolder { get; private set; } = "";
+        /// <summary>What Awake switched off in the scene (reported in run_info.json).</summary>
+        public string SceneChanges { get; private set; } = "";
 
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
 
         [Serializable]
-        class PlayConfig
+        public class PlayConfig
         {
             public PlayOutput output;
             public string[] looks;
             public int seed;
-            public float[] point_side_azimuth_deg;
-            public int singles_per_group;
-            public float[] single_point_side_azimuth_deg;
-            public int none_sequences, none_singles;
-            public float none_frame_spacing_s, settle_after_hold_s, question_after_request_s, pause_between_s;
-            public float face_wait_max_s, phase_wait_max_s, initial_yaw_offset_deg, stage_spacing_m;
+            public PlayVenue venue;
+            public PlayTakes takes;
+            public float settle_after_hold_s, question_after_request_s, pause_between_s;
+            public float face_wait_max_s, phase_wait_max_s, initial_yaw_offset_deg;
         }
 
-        [Serializable] class PlayOutput { public string root, run_prefix, recordings_prefix; }
+        [Serializable] public class PlayOutput { public string root, run_prefix, recordings_prefix; }
+
+        [Serializable]
+        public class PlayVenue
+        {
+            public string scene;
+            public string[] junctions;
+            public float[] approach_bearing_deg;
+            public float distance_tolerance_m, camera_clearance_m, head_height_m, hips_height_m;
+            public int max_pose_draws;
+        }
+
+        [Serializable]
+        public class PlayTakes
+        {
+            public int sequences_per_group, singles_per_group;
+            public float[] sequence_point_side_azimuth_deg, single_point_side_azimuth_deg;
+        }
 
         [Serializable]
         class RecordingRecord
         {
-            public string name, kind, look, command, arm, clip;
-            public int worker_id, n_frames, frames_outside_hold, hand_ik_calls;
-            public float distance_m, vertical_fov_deg, time_first_s, time_last_s;
+            public string name, kind, look, command, arm, clip, junction;
+            public int worker_id, take, variation_run, pose_draws, n_frames, frames_outside_hold, hand_ik_calls;
+            public float distance_m, camera_distance_m, approach_bearing_deg, camera_x, camera_z, camera_yaw_deg;
+            public float vertical_fov_deg, time_first_s, time_last_s;
             public float speed, size, start_delay_s, hold_s, point_side_azimuth_deg, point_angle_deg;
             public float hand_to_target_max_m = -1f;
             /// <summary>Stillness over the recording: the largest distance of the gesturing hand and shoulder from their
@@ -70,9 +97,9 @@ namespace WarehouseRobot.AvatarCheck
         [Serializable]
         class WorkerRecord
         {
-            public int worker_id;
-            public string look, description, truth_file;
-            public float distance_m, arm_length_m, shoulder_width_m, arm_to_shoulder_ratio, height_m, ground_shift_m;
+            public int worker_id, round;
+            public string look, junction, description, truth_file;
+            public float stand_x, stand_z, arm_length_m, shoulder_width_m, arm_to_shoulder_ratio, height_m, ground_shift_m;
             public int truth_lines;
             public string truth_failed;
         }
@@ -83,26 +110,44 @@ namespace WarehouseRobot.AvatarCheck
         class RunInfo
         {
             public string created_local, finished_local, git_commit, git_branch, unity_version, render_pipeline, color_space, graphics_device;
+            public string scene, scene_changes_in_play_mode;
             public string play_config_sha256, look_check_sha256, worker_config_sha256, robot_unity_config_sha256, clip_index_sha256;
             public int recordings, frames, frames_outside_hold;
             public string status, note;
         }
 
-        sealed class Stage
+        /// <summary>One camera of a site: the nominal distance it stands for (2.0 or 4.0 m) and its render targets.</summary>
+        sealed class SiteCamera
         {
-            public int Index;
-            public string Look;
-            public float Distance;
-            public Transform Root, Robot;
+            public float Nominal;
+            public Transform Mount;
             public Camera Cam;
-            public WorkerV4 Worker;
-            public TruthLogger Truth;
-            public SeededRandom Rng;
             public RenderTexture Rt;
             public Texture2D Tex;
+            public float Distance;      // drawn for the current take
+        }
+
+        /// <summary>A Task 2 junction's worker stand with its cameras; a new worker (look) per round.</summary>
+        sealed class Site
+        {
+            public int Index;
+            public string Junction;
+            public Vector3 Stand, Facing;   // stand on the floor; horizontal unit facing (toward the arriving robot)
+            public float Side;              // +1 / -1: the junction lies on this side of Facing (bearings turn toward it)
+            public Transform Root, Robot;
+            public List<SiteCamera> Cams = new List<SiteCamera>();
+            public SeededRandom PoseRng;
+            public float Bearing;
+            public int PoseDraws;
+            // per round
+            public string Look;
+            public int Round;
+            public WorkerV4 Worker;
+            public TruthLogger Truth;
+            public WorkerRecord Record;
+            public int VariationRun;
             public string Error;
             public bool Done;
-            public WorkerRecord Record;
         }
 
         PlayConfig m_Play;
@@ -111,8 +156,12 @@ namespace WarehouseRobot.AvatarCheck
         WorkerV4Config m_Worker;
         readonly List<Task> m_Writes = new List<Task>();
         readonly List<RecordingRecord> m_Records = new List<RecordingRecord>();
+        readonly List<WorkerRecord> m_WorkerRecords = new List<WorkerRecord>();
         readonly List<string> m_WriteErrors = new List<string>();
         int m_Frames, m_Outside;
+        bool m_Quick;   // -lookCheckQuick: diagnostics only (one round, one take per command and arm, every capture logged)
+        string m_Stamp;
+
         static string QuickLook()
         {
             var a = Environment.GetCommandLineArgs();
@@ -120,8 +169,38 @@ namespace WarehouseRobot.AvatarCheck
             return i >= 0 && i + 1 < a.Length && !a[i + 1].StartsWith("-") ? a[i + 1] : "sunbox_m1";
         }
 
-        bool m_Quick;   // -lookCheckQuick: diagnostics only (one stage, one gesture per command and arm, every capture logged)
-        string m_Stamp;
+        void Awake() => SceneChanges = PrepareScene();
+
+        /// <summary>
+        /// Play mode only: switch off the v4 study's runtime parts before their Start, so the scene is only the venue
+        /// (its lights and surroundings). The obstacle colliders built by the robot's ColliderSetup in Awake stay.
+        /// </summary>
+        public static string PrepareScene()
+        {
+            var done = new List<string>();
+            foreach (var r in FindObjectsByType<TrialRunnerV4>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                r.runOnStart = false;
+                r.enabled = false;
+                done.Add("TrialRunnerV4 off");
+            }
+            foreach (var b in FindObjectsByType<RobotBridgeClient>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                b.enabled = false;
+                done.Add("RobotBridgeClient off");
+            }
+            foreach (var g in FindObjectsByType<GestureWorker>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                g.gameObject.SetActive(false);
+                done.Add($"v3 worker '{g.name}' hidden");
+            }
+            foreach (var r in FindObjectsByType<RobotRig>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                r.gameObject.SetActive(false);
+                done.Add($"robot '{r.name}' hidden");
+            }
+            return string.Join("; ", done);
+        }
 
         void Start()
         {
@@ -133,9 +212,9 @@ namespace WarehouseRobot.AvatarCheck
         bool Setup(out string error)
         {
             error = null;
-            if (playConfig == null || lookCheckConfig == null || robotConfig == null || workerPrefab == null || keyLight == null)
+            if (playConfig == null || lookCheckConfig == null || robotConfig == null || workerPrefab == null)
             {
-                error = "assign playConfig, lookCheckConfig, robotConfig, workerPrefab and keyLight (Tools > Warehouse v4 > Look Check > Build LookCheckPlay Scene)";
+                error = "assign playConfig, lookCheckConfig, robotConfig and workerPrefab (Tools > Warehouse v4 > Look Check > Run Play-Mode Look Check adds the driver)";
                 return false;
             }
             m_Play = JsonUtility.FromJson<PlayConfig>(playConfig.text);
@@ -146,17 +225,43 @@ namespace WarehouseRobot.AvatarCheck
             m_Worker = WorkerV4Config.Parse(workerPrefab.config.text);
             var we = m_Worker.Validate();
             if (we.Count > 0) { error = "worker_v4.json: " + string.Join("; ", we); return false; }
-            if (m_Play.looks == null || m_Play.looks.Length == 0) { error = "look_check_play.json: no looks"; return false; }
-            foreach (var l in m_Play.looks) if (m_Worker.Look(l) == null) { error = $"look_check_play.json: look '{l}' is not in worker_v4.json"; return false; }
-            foreach (var cmd in WorkerV4Config.Commands)
-                if (m_Worker.ClipNames(cmd).Count < 2) { error = $"worker_v4.json: fewer than 2 variants of {cmd}"; return false; }
-            if (m_Play.point_side_azimuth_deg == null || m_Play.point_side_azimuth_deg.Length < m_Worker.ClipNames(WorkerV4Config.Point).Count)
-            { error = "look_check_play.json: point_side_azimuth_deg needs one direction per POINT variant"; return false; }
-            if (m_Play.single_point_side_azimuth_deg == null || m_Play.single_point_side_azimuth_deg.Length < m_Play.singles_per_group)
-            { error = "look_check_play.json: single_point_side_azimuth_deg needs one direction per single"; return false; }
-            if (!(m_Worker.variation.hold_s[0] > m_Play.settle_after_hold_s + (m_Look.recording.sequence_frames - 1) * 0.1f + 0.3f))
-            { error = "worker_v4.json hold_s is too short for a full sequence inside the hold"; return false; }
+            var pe = Validate(m_Play, m_Worker, m_Look);
+            if (pe.Count > 0) { error = "look_check_play.json: " + string.Join("; ", pe); return false; }
+            if (gameObject.scene.path != m_Play.venue.scene) { error = $"the driver runs in {m_Play.venue.scene}, not in '{gameObject.scene.path}'"; return false; }
             return true;
+        }
+
+        /// <summary>The play config's own rules (also used by the Edit Mode tests through the JSON).</summary>
+        static List<string> Validate(PlayConfig p, WorkerV4Config w, LookCheckConfig look)
+        {
+            var e = new List<string>();
+            if (p.looks == null || p.looks.Length == 0) e.Add("no looks");
+            else foreach (var l in p.looks) if (w.Look(l) == null) e.Add($"look '{l}' is not in worker_v4.json");
+            foreach (var cmd in WorkerV4Config.Commands)
+                if (w.ClipNames(cmd).Count < 2) e.Add($"worker_v4.json: fewer than 2 variants of {cmd}");
+            var v = p.venue;
+            if (v == null || string.IsNullOrEmpty(v.scene)) { e.Add("venue.scene missing"); return e; }
+            if (v.junctions == null || v.junctions.Length == 0) e.Add("venue.junctions missing");
+            if (v.approach_bearing_deg == null || v.approach_bearing_deg.Length != 2 || !(v.approach_bearing_deg[0] >= 0f) ||
+                !(v.approach_bearing_deg[1] > v.approach_bearing_deg[0]) || v.approach_bearing_deg[1] > 90f)
+                e.Add("venue.approach_bearing_deg must be [low, high] within 0..90");
+            if (!(v.distance_tolerance_m >= 0f && v.distance_tolerance_m < 0.5f)) e.Add("venue.distance_tolerance_m must be 0 to 0.5");
+            if (!(v.camera_clearance_m > 0f)) e.Add("venue.camera_clearance_m must be > 0");
+            if (!(v.head_height_m > v.hips_height_m && v.hips_height_m > 0f)) e.Add("venue.head_height_m and hips_height_m");
+            if (v.max_pose_draws < 1) e.Add("venue.max_pose_draws must be >= 1");
+            var t = p.takes;
+            if (t == null) { e.Add("takes missing"); return e; }
+            int nj = v.junctions != null ? Math.Max(1, v.junctions.Length) : 1;
+            if (t.sequences_per_group < 2) e.Add("takes.sequences_per_group must be >= 2 (docs/look_check_v4.md)");
+            if (t.sequences_per_group < nj) e.Add("takes.sequences_per_group must give every junction a sequence");
+            if (t.sequences_per_group + t.singles_per_group < 10) e.Add("a group needs at least 10 frames");
+            if (t.sequence_point_side_azimuth_deg == null || t.sequence_point_side_azimuth_deg.Length < t.sequences_per_group)
+                e.Add("takes.sequence_point_side_azimuth_deg needs one direction per sequence");
+            if (t.single_point_side_azimuth_deg == null || t.single_point_side_azimuth_deg.Length == 0)
+                e.Add("takes.single_point_side_azimuth_deg missing");
+            if (!(w.variation.hold_s[0] > p.settle_after_hold_s + (look.recording.sequence_frames - 1) * 0.1f + 0.3f))
+                e.Add("worker_v4.json hold_s is too short for a full sequence inside the hold");
+            return e;
         }
 
         IEnumerator Run()
@@ -180,22 +285,39 @@ namespace WarehouseRobot.AvatarCheck
             if (index != null) WriteNew(Path.Combine(used, "clip_index.json"), index.text);
             var info = new RunInfo { created_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv) };
 
-            ApplyLighting();
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
-            var stages = new List<Stage>();
-            foreach (var look in m_Play.looks)
-                foreach (var d in m_Look.recording.distances_m)
-                {
-                    if (m_Quick && (stages.Count > 0 || look != QuickLook())) continue;
-                    var st = BuildStage(stages.Count, look, d);
-                    if (st.Error != null) { Finish($"failed: stage {look} {d} m: {st.Error}"); yield break; }
-                    stages.Add(st);
-                }
+            var sites = new List<Site>();
+            foreach (var j in m_Play.venue.junctions)
+            {
+                var site = BuildSite(sites.Count, j, out string siteError);
+                if (site == null) { Finish($"failed: junction {j}: {siteError}"); yield break; }
+                sites.Add(site);
+            }
             Status = "running";
-            foreach (var st in stages) StartCoroutine(RunStage(st));
-            while (!stages.TrueForAll(s => s.Done)) yield return null;
-            foreach (var st in stages) { st.Truth.End(); st.Record.truth_lines = st.Truth.Lines; st.Record.truth_failed = st.Truth.Failed; }
+            var looks = m_Play.looks;
+            int rounds = m_Quick ? 1 : looks.Length;
+            for (int round = 0; round < rounds; round++)
+            {
+                foreach (var s in sites)
+                {
+                    string look = m_Quick ? QuickLook() : looks[(round + s.Index) % looks.Length];
+                    if (!SpawnWorker(s, round, look)) { Finish($"failed: {look} at {s.Junction}: {s.Error}"); yield break; }
+                }
+                foreach (var s in sites) StartCoroutine(RunSite(s, sites.Count));
+                while (!sites.TrueForAll(s => s.Done)) yield return null;
+                foreach (var s in sites)
+                {
+                    s.Truth.End();
+                    s.Record.truth_lines = s.Truth.Lines;
+                    s.Record.truth_failed = s.Truth.Failed;
+                    m_WorkerRecords.Add(s.Record);
+                    if (s.Error != null) { Finish($"failed: {s.Look} at {s.Junction}: {s.Error}"); yield break; }
+                    Destroy(s.Truth);
+                    Destroy(s.Worker.gameObject);
+                }
+                yield return null;
+            }
 
             Status = "writing";
             var all = Task.WhenAll(m_Writes);
@@ -203,13 +325,11 @@ namespace WarehouseRobot.AvatarCheck
             var lines = new StringBuilder();
             foreach (var r in m_Records) lines.Append(JsonUtility.ToJson(r)).Append('\n');
             WriteNew(Path.Combine(OutputFolder, "recordings.jsonl"), lines.ToString());
-            var wf = new WorkersFile();
-            foreach (var st in stages) wf.workers.Add(st.Record);
+            var wf = new WorkersFile { workers = m_WorkerRecords };
             WriteNew(Path.Combine(OutputFolder, "workers.json"), JsonUtility.ToJson(wf, true).Replace("\r\n", "\n") + "\n");
 
             var errors = new List<string>();
-            foreach (var st in stages) if (st.Error != null) errors.Add($"{st.Look} {st.Distance} m: {st.Error}");
-            foreach (var st in stages) if (!string.IsNullOrEmpty(st.Truth.Failed)) errors.Add($"{st.Look} {st.Distance} m truth: {st.Truth.Failed}");
+            foreach (var w in m_WorkerRecords) if (!string.IsNullOrEmpty(w.truth_failed)) errors.Add($"{w.look} at {w.junction} truth: {w.truth_failed}");
             lock (m_WriteErrors) errors.AddRange(m_WriteErrors);
             Git(out info.git_commit, out info.git_branch);
             info.finished_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv);
@@ -217,6 +337,8 @@ namespace WarehouseRobot.AvatarCheck
             info.render_pipeline = GraphicsSettings.currentRenderPipeline != null ? GraphicsSettings.currentRenderPipeline.name : "built-in";
             info.color_space = QualitySettings.activeColorSpace.ToString();
             info.graphics_device = SystemInfo.graphicsDeviceType + " " + SystemInfo.graphicsDeviceName;
+            info.scene = gameObject.scene.path;
+            info.scene_changes_in_play_mode = SceneChanges;
             info.play_config_sha256 = Sha256(playConfig.text);
             info.look_check_sha256 = Sha256(lookCheckConfig.text);
             info.worker_config_sha256 = Sha256(workerPrefab.config.text);
@@ -226,7 +348,7 @@ namespace WarehouseRobot.AvatarCheck
             info.frames = m_Frames;
             info.frames_outside_hold = m_Outside;
             info.status = errors.Count == 0 ? "done" : "done with problems: " + string.Join("; ", errors);
-            info.note = "v4 Phase 2B Play-mode look check: an engineering check of the worker template's looks and gestures; not an evaluation.";
+            info.note = "v4 Play-mode look check in WarehouseRobot_v4.unity at the Task 2 worker stands (Phase 2D, look_check_changes.md): an engineering check of the worker template's looks and gestures; not an evaluation.";
             WriteNew(Path.Combine(OutputFolder, "run_info.json"), JsonUtility.ToJson(info, true).Replace("\r\n", "\n") + "\n");
             Finish((errors.Count == 0 ? "done: " : "failed: ") + $"{m_Records.Count} recordings, {m_Frames} frames in {Path.GetFileName(OutputFolder)}" +
                    (errors.Count > 0 ? " - " + string.Join("; ", errors) : ""));
@@ -239,228 +361,291 @@ namespace WarehouseRobot.AvatarCheck
             else Debug.LogError("[LookCheckPlay] " + status);
         }
 
-        // ---------------------------------------------------------------- stage
+        // ---------------------------------------------------------------- sites
 
-        void ApplyLighting()
+        Site BuildSite(int index, string junction, out string error)
         {
-            var r = m_Look.render;
-            keyLight.type = LightType.Directional;
-            keyLight.shadows = LightShadows.Soft;
-            keyLight.transform.rotation = Quaternion.Euler(r.light_euler_deg[0], r.light_euler_deg[1], r.light_euler_deg[2]);
-            keyLight.intensity = r.light_intensity;
-            RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = Grey(r.ambient_grey);
-            RenderSettings.skybox = null;
-            RenderSettings.fog = false;
+            error = null;
+            RoadNode node = null;
+            foreach (var n in FindObjectsByType<RoadNode>(FindObjectsSortMode.None)) if (n.name == junction) node = n;
+            if (node == null || !node.IsJunction || node.workerStand == null) { error = "no junction with a worker stand of that name in the scene"; return null; }
+            var stand = node.workerStand;
+            var facing = Vector3.ProjectOnPlane(stand.forward, Vector3.up).normalized;
+            var toJunction = Vector3.ProjectOnPlane(node.transform.position - stand.position, Vector3.up);
+            var site = new Site
+            {
+                Index = index, Junction = junction, Stand = stand.position, Facing = facing,
+                Side = Vector3.SignedAngle(facing, toJunction, Vector3.up) >= 0f ? 1f : -1f,
+                PoseRng = SeededRandom.For(m_Play.seed, 5000 + index, 1),
+            };
+            site.Root = new GameObject($"LookCheckSite_{junction}").transform;
+            site.Robot = new GameObject("Robot").transform;               // stands in for the asking robot (the 2 m camera's floor point)
+            site.Robot.SetParent(site.Root, false);
+            foreach (float d in m_Look.recording.distances_m)
+            {
+                var c = new SiteCamera { Nominal = d };
+                c.Mount = new GameObject($"PanTiltMount_{d.ToString("0.0", Inv)}m").transform;
+                c.Mount.SetParent(site.Root, false);
+                var camGo = new GameObject("PanTiltCamera");
+                camGo.transform.SetParent(c.Mount, false);
+                c.Cam = camGo.AddComponent<Camera>();
+                PanTiltCamera.ApplyCameraSettings(c.Cam, m_Pt);          // local position zero, level: the height is the mount's
+                c.Cam.fieldOfView = m_Look.recording.vertical_fov_deg;
+                c.Cam.enabled = false;                                    // rendered on demand only
+                c.Rt = new RenderTexture(m_Pt.width_px, m_Pt.height_px, 24, RenderTextureFormat.ARGB32) { name = $"LookCheck_{junction}_{d}" };
+                c.Rt.Create();
+                c.Tex = new Texture2D(m_Pt.width_px, m_Pt.height_px, TextureFormat.RGBA32, false);
+                site.Cams.Add(c);
+            }
+            return site;
         }
 
-        static Color Grey(float g) => new Color(g, g, g, 1f);
-
-        Stage BuildStage(int index, string look, float distance)
+        bool SpawnWorker(Site s, int round, string look)
         {
-            var st = new Stage { Index = index, Look = look, Distance = distance };
-            var root = new GameObject($"Stage_{look}_{distance.ToString("0.0", Inv)}m").transform;
-            root.position = new Vector3(index * m_Play.stage_spacing_m, 0f, 0f);
-            st.Root = root;
-            BuildBackdrop(root, distance);
-            st.Robot = new GameObject("Robot").transform;               // stands in for the robot: forward +Z
-            st.Robot.SetParent(root, false);
-            var mount = new GameObject("PanTiltMount");                   // the camera height lives on the mount:
-            mount.transform.SetParent(st.Robot, false);                   // ApplyCameraSettings zeroes the camera's own
-            mount.transform.localPosition = new Vector3(0f, m_Pt.height_m, 0f);   // local position (as on the robot)
-            var camGo = new GameObject("PanTiltCamera");
-            camGo.transform.SetParent(mount.transform, false);
-            st.Cam = camGo.AddComponent<Camera>();
-            PanTiltCamera.ApplyCameraSettings(st.Cam, m_Pt);
-            st.Cam.fieldOfView = m_Look.recording.vertical_fov_deg;
-            st.Cam.clearFlags = CameraClearFlags.SolidColor;
-            st.Cam.backgroundColor = Grey(m_Look.render.backdrop_grey);
-            st.Cam.enabled = false;                                       // rendered on demand only
-            st.Rt = new RenderTexture(m_Pt.width_px, m_Pt.height_px, 24, RenderTextureFormat.ARGB32) { name = "LookCheckPlay_" + index };
-            st.Rt.Create();
-            st.Tex = new Texture2D(m_Pt.width_px, m_Pt.height_px, TextureFormat.RGBA32, false);
-
-            var w = Instantiate(workerPrefab, root);
+            s.Look = look;
+            s.Round = round;
+            s.Done = false;
+            s.Error = null;
+            var w = Instantiate(workerPrefab, s.Root);
             w.name = "WorkerV4_" + look;
             w.lookId = look;
-            w.workerId = index + 1;
-            w.robot = st.Robot;
-            w.robotEye = st.Cam.transform;
-            w.transform.localPosition = new Vector3(0f, 0f, distance);
-            w.transform.localRotation = Quaternion.Euler(0f, 180f + m_Play.initial_yaw_offset_deg, 0f);
-            if (!w.Initialize()) { st.Error = w.Problem; return st; }
-            w.SetRun(m_Play.seed, 1);
-            st.Worker = w;
-            st.Rng = SeededRandom.For(m_Play.seed, 1000 + index, w.workerId);
-            st.Truth = root.gameObject.AddComponent<TruthLogger>();
-            string truthName = $"{look}__{distance.ToString("0.0", Inv)}.jsonl";
-            st.Truth.Begin(Path.Combine(OutputFolder, "truth", truthName), new[] { w }, m_Worker.truth_log.interval_s);
-            st.Record = new WorkerRecord { worker_id = w.workerId, look = look, description = w.LookDescription, distance_m = distance, truth_file = "truth/" + truthName };
-            return st;
+            w.workerId = round * m_Play.venue.junctions.Length + s.Index + 1;
+            w.robot = s.Robot;
+            w.robotEye = s.Cams[0].Cam.transform;
+            w.transform.position = s.Stand;
+            w.transform.rotation = Quaternion.LookRotation(Quaternion.AngleAxis(m_Play.initial_yaw_offset_deg, Vector3.up) * s.Facing, Vector3.up);
+            if (!w.Initialize()) { s.Error = w.Problem; return false; }
+            s.Worker = w;
+            s.VariationRun = 0;
+            s.Truth = s.Root.gameObject.AddComponent<TruthLogger>();
+            string truthName = $"{look}__{s.Junction.ToLowerInvariant()}.jsonl";
+            s.Truth.Begin(Path.Combine(OutputFolder, "truth", truthName), new[] { w }, m_Worker.truth_log.interval_s);
+            s.Record = new WorkerRecord
+            {
+                worker_id = w.workerId, round = round + 1, look = look, junction = s.Junction, description = w.LookDescription,
+                truth_file = "truth/" + truthName, stand_x = s.Stand.x, stand_z = s.Stand.z,
+            };
+            return true;
         }
 
-        void BuildBackdrop(Transform root, float distance)
+        /// <summary>
+        /// Draw this take's camera pose: a bearing toward the junction side and one distance per camera within the
+        /// declared bands; redrawn until both cameras are clear of every collider and see the person's head and hips.
+        /// </summary>
+        bool PlaceCameras(Site s)
         {
-            var r = m_Look.render;
-            var lit = Shader.Find("Universal Render Pipeline/Lit");
-            var floor = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            floor.name = "Floor";
-            floor.transform.SetParent(root, false);
-            floor.transform.localPosition = new Vector3(0f, 0f, r.floor_half_size_m * 0.5f);
-            floor.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            floor.transform.localScale = new Vector3(2f * r.floor_half_size_m, 2f * r.floor_half_size_m, 1f);
-            floor.GetComponent<Renderer>().sharedMaterial = new Material(lit) { color = Grey(r.floor_grey), name = "LookCheckFloor" };
-            var wall = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            wall.name = "Backdrop";
-            wall.transform.SetParent(root, false);
-            float h = 4f * r.floor_half_size_m;
-            wall.transform.localPosition = new Vector3(0f, 0.5f * h, distance + r.backdrop_behind_person_m);
-            wall.transform.localScale = new Vector3(4f * r.floor_half_size_m, h, 1f);
-            wall.GetComponent<Renderer>().sharedMaterial = new Material(lit) { color = Grey(r.backdrop_grey), name = "LookCheckBackdrop" };
-            foreach (var go in new[] { floor, wall }) Destroy(go.GetComponent<Collider>());
+            var v = m_Play.venue;
+            for (int draw = 1; draw <= v.max_pose_draws; draw++)
+            {
+                float bearing = Mathf.Lerp(v.approach_bearing_deg[0], v.approach_bearing_deg[1], (float)s.PoseRng.NextDouble());
+                var dir = Quaternion.AngleAxis(s.Side * bearing, Vector3.up) * s.Facing;
+                bool ok = true;
+                foreach (var c in s.Cams)
+                {
+                    c.Distance = c.Nominal + v.distance_tolerance_m * (2f * (float)s.PoseRng.NextDouble() - 1f);
+                    var floor = s.Stand + dir * c.Distance;
+                    c.Mount.SetPositionAndRotation(floor + Vector3.up * m_Pt.height_m, Quaternion.LookRotation(-dir, Vector3.up));
+                    if (!Clear(s, c.Mount.position)) ok = false;
+                }
+                if (!ok) continue;
+                s.Bearing = bearing;
+                s.PoseDraws = draw;
+                var near = s.Cams[0];
+                s.Robot.SetPositionAndRotation(s.Stand + dir * near.Distance, Quaternion.LookRotation(-dir, Vector3.up));
+                return true;
+            }
+            s.Error = $"no clear camera pose in {v.max_pose_draws} draws";
+            return false;
         }
 
-        // ---------------------------------------------------------------- one stage's recordings
-
-        IEnumerator RunStage(Stage st)
+        bool Clear(Site s, Vector3 cam)
         {
-            var w = st.Worker;
+            var v = m_Play.venue;
+            foreach (var c in Physics.OverlapSphere(cam, v.camera_clearance_m, ~0, QueryTriggerInteraction.Ignore))
+                if (!Mine(s, c)) return false;
+            foreach (float h in new[] { v.head_height_m, v.hips_height_m })
+            {
+                Vector3 to = s.Stand + Vector3.up * h;
+                foreach (var hit in Physics.RaycastAll(cam, to - cam, Vector3.Distance(cam, to), ~0, QueryTriggerInteraction.Ignore))
+                    if (!Mine(s, hit.collider)) return false;
+            }
+            return true;
+        }
+
+        static bool Mine(Site s, Collider c) => s.Worker != null && c.transform.IsChildOf(s.Worker.transform);
+
+        IEnumerator RunSite(Site s, int junctionCount)
+        {
+            var w = s.Worker;
             yield return new WaitForSeconds(0.5f);
-            // Stand the look on the floor (as the Edit-mode check): the lowest mesh point at the floor.
+            // Stand the look on the floor (as the Edit-mode check): the lowest mesh point at the stand's height.
             if (LookInventory.MeshExtentY(w.LookInstance, out float bottom, out float top))
             {
-                st.Record.ground_shift_m = -(bottom - st.Root.position.y);
-                w.transform.position -= new Vector3(0f, bottom - st.Root.position.y, 0f);
-                st.Record.height_m = (float)Math.Round(top - bottom, 3);
+                s.Record.ground_shift_m = -(bottom - s.Stand.y);
+                w.transform.position -= new Vector3(0f, bottom - s.Stand.y, 0f);
+                s.Record.height_m = (float)Math.Round(top - bottom, 3);
             }
-            Measure(st);
-            yield return WaitFacing(st);
-
-            float d = st.Distance;
-            for (int k = 1; k <= m_Play.none_sequences; k++)
-                yield return CaptureIdle(st, LookCheckConfig.RecordingName(st.Look, LookCheckConfig.None, d, "", "seq" + k), m_Look.recording.sequence_frames, 0.1f);
-            for (int k = 1; k <= m_Play.none_singles; k++)
+            Measure(s);
+            var t = m_Play.takes;
+            int takes = m_Quick ? junctionCount : t.sequences_per_group + t.singles_per_group;
+            for (int take = 0; take < takes && s.Error == null; take++)
             {
-                yield return new WaitForSeconds(m_Play.none_frame_spacing_s);
-                yield return CaptureIdle(st, LookCheckConfig.RecordingName(st.Look, LookCheckConfig.None, d, "", "f" + k), 1, 0f);
+                if (!Mine(take, s.Index, junctionCount)) continue;
+                if (!PlaceCameras(s)) break;
+                yield return WaitFacing(s);
+                yield return CaptureIdle(s, take);
             }
             foreach (var cmd in WorkerV4Config.Commands)
             {
                 var clips = m_Worker.ClipNames(cmd);
                 foreach (var arm in m_Look.recording.arms)
-                {
-                    for (int i = 0; i < (m_Quick ? 1 : clips.Count) && st.Error == null; i++)
-                        yield return Perform(st, cmd, arm, clips[i], m_Play.point_side_azimuth_deg[i], false,
-                                             LookCheckConfig.RecordingName(st.Look, cmd, d, arm, clips[i]));
-                    for (int k = 0; k < (m_Quick ? 0 : m_Play.singles_per_group) && st.Error == null; k++)
-                    {
-                        string clip = clips[k % clips.Count];
-                        yield return Perform(st, cmd, arm, clip, m_Play.single_point_side_azimuth_deg[k], true,
-                                             LookCheckConfig.RecordingName(st.Look, cmd, d, arm, $"f{k + 1}_{clip}"));
-                    }
-                }
+                    for (int take = 0; take < takes && s.Error == null; take++)
+                        if (Mine(take, s.Index, junctionCount)) yield return Perform(s, cmd, arm, clips, take);
             }
-            st.Done = true;
+            s.Done = true;
         }
 
-        void Measure(Stage st)
+        /// <summary>Takes are shared out over the junctions: sequence i and single k go to junction i (k) modulo their number.</summary>
+        bool Mine(int take, int site, int junctions)
         {
-            var a = st.Worker.Animator;
+            int seqs = m_Quick ? junctions : m_Play.takes.sequences_per_group;
+            int k = take < seqs ? take : take - seqs;
+            return k % junctions == site;
+        }
+
+        bool IsSequence(int take) => take < (m_Quick ? m_Play.venue.junctions.Length : m_Play.takes.sequences_per_group);
+
+        string TakeName(Site s, int take, string clip)
+        {
+            int seqs = m_Quick ? m_Play.venue.junctions.Length : m_Play.takes.sequences_per_group;
+            string label = IsSequence(take) ? $"s{take + 1}" : $"f{take - seqs + 1}";
+            return $"{label}_{s.Junction.ToLowerInvariant()}" + (string.IsNullOrEmpty(clip) ? "" : "_" + clip);
+        }
+
+        void Measure(Site s)
+        {
+            var a = s.Worker.Animator;
             Transform B(HumanBodyBones b) => a.GetBoneTransform(b);
             float shoulder = Vector3.Distance(B(HumanBodyBones.LeftUpperArm).position, B(HumanBodyBones.RightUpperArm).position);
-            st.Record.arm_length_m = (float)Math.Round(st.Worker.ArmLength, 4);
-            st.Record.shoulder_width_m = (float)Math.Round(shoulder, 4);
-            st.Record.arm_to_shoulder_ratio = shoulder > 0f ? (float)Math.Round(st.Worker.ArmLength / shoulder, 3) : -1f;
+            s.Record.arm_length_m = (float)Math.Round(s.Worker.ArmLength, 4);
+            s.Record.shoulder_width_m = (float)Math.Round(shoulder, 4);
+            s.Record.arm_to_shoulder_ratio = shoulder > 0f ? (float)Math.Round(s.Worker.ArmLength / shoulder, 3) : -1f;
         }
 
-        IEnumerator WaitFacing(Stage st)
+        IEnumerator WaitFacing(Site s)
         {
             float until = Time.time + m_Play.face_wait_max_s;
             yield return null;
-            while (Time.time < until && (st.Worker.Turning || !st.Worker.Noticed)) yield return null;
+            while (Time.time < until && (s.Worker.Turning || !s.Worker.Noticed)) yield return null;
             yield return new WaitForSeconds(0.3f);
         }
 
-        IEnumerator CaptureIdle(Stage st, string name, int frames, float spacing)
+        IEnumerator CaptureIdle(Site s, int take)
         {
-            var rec = NewRecord(st, name, LookCheckConfig.None, "", "", frames);
-            string seqDir = frames > 1 ? Path.Combine(RecordingFolder, name) : null;
-            if (seqDir != null) Directory.CreateDirectory(seqDir);
+            bool seq = IsSequence(take);
+            int frames = seq ? m_Look.recording.sequence_frames : 1;
+            var recs = NewRecords(s, LookCheckConfig.None, "", "", TakeName(s, take, ""), take, frames);
             float t0 = Time.time;
             for (int i = 0; i < frames; i++)
             {
-                while (Time.time < t0 + i * spacing) yield return null;
+                while (Time.time < t0 + i * 0.1f) yield return null;
                 yield return new WaitForEndOfFrame();
-                Capture(st, rec, seqDir, i, "");
+                for (int c = 0; c < recs.Count; c++) Capture(s, s.Cams[c], recs[c], seq, i, "");
             }
-            m_Records.Add(rec);
+            m_Records.AddRange(recs);
         }
 
-        IEnumerator Perform(Stage st, string cmd, string arm, string clip, float sideAz, bool single, string name)
+        IEnumerator Perform(Site s, string cmd, string arm, IList<string> clips, int take)
         {
-            var w = st.Worker;
-            yield return WaitFacing(st);
+            var w = s.Worker;
+            var t = m_Play.takes;
+            bool seq = IsSequence(take);
+            int seqs = m_Quick ? m_Play.venue.junctions.Length : t.sequences_per_group;
+            int k = seq ? take : take - seqs;
+            string clip = clips[k % clips.Count];
+            float sideAz = seq ? t.sequence_point_side_azimuth_deg[take % t.sequence_point_side_azimuth_deg.Length]
+                               : t.single_point_side_azimuth_deg[k % t.single_point_side_azimuth_deg.Length];
+            if (!PlaceCameras(s)) yield break;
+            yield return WaitFacing(s);
+            w.SetRun(m_Play.seed, ++s.VariationRun);                          // an independent variation stream per take
             w.BodyFrame(out _, out var fwd);
             float bodyAz = (arm == "right" ? 1f : -1f) * (90f - sideAz);
-            var req = new GestureRequest
-            {
-                Command = cmd, Clip = clip, Arm = arm, PointDirection = Quaternion.AngleAxis(bodyAz, Vector3.up) * fwd,
-            };
+            var req = new GestureRequest { Command = cmd, Clip = clip, Arm = arm, PointDirection = Quaternion.AngleAxis(bodyAz, Vector3.up) * fwd };
             w.IsCommander = true;
-            if (!w.Request(req, out string error)) { st.Error = $"{name}: {error}"; w.IsCommander = false; yield break; }
+            string name = TakeName(s, take, clip);
+            if (!w.Request(req, out string error)) { s.Error = $"{cmd} {arm} {name}: {error}"; w.IsCommander = false; yield break; }
             yield return new WaitForSeconds(m_Play.question_after_request_s);
             w.SetQuestionVisible(true);                                       // "Which direction?" appears
             float until = Time.time + m_Play.phase_wait_max_s;
             while (w.Phase != WorkerPhase.Holding && Time.time < until) yield return null;
-            if (w.Phase != WorkerPhase.Holding) { st.Error = $"{name}: the worker never reached its hold"; yield break; }
+            if (w.Phase != WorkerPhase.Holding) { s.Error = $"{cmd} {arm} {name}: the worker never reached its hold"; yield break; }
             float holdStart = Time.time;
             int ikBefore = w.HandIkCalls;
-            var rec = NewRecord(st, name, cmd, arm, clip, single ? 1 : m_Look.recording.sequence_frames);
-            rec.point_side_azimuth_deg = cmd == WorkerV4Config.Point ? sideAz : -1f;
+            int frames = seq ? m_Look.recording.sequence_frames : 1;
+            var recs = NewRecords(s, cmd, arm, clip, name, take, frames);
             var p = w.Current;
-            rec.speed = p.speed; rec.size = p.size; rec.start_delay_s = p.start_delay_s; rec.hold_s = p.hold_s;
-            if (single)
+            foreach (var rec in recs)
+            {
+                rec.point_side_azimuth_deg = cmd == WorkerV4Config.Point ? sideAz : -1f;
+                rec.speed = p.speed; rec.size = p.size; rec.start_delay_s = p.start_delay_s; rec.hold_s = p.hold_s;
+                rec.variation_run = s.VariationRun;
+            }
+            if (!seq)
             {
                 float lo = m_Play.settle_after_hold_s, hi = Mathf.Max(lo, p.hold_s - 0.3f);
-                float at = holdStart + lo + (float)st.Rng.NextDouble() * (hi - lo);
+                float at = holdStart + lo + (float)s.PoseRng.NextDouble() * (hi - lo);
                 while (Time.time < at) yield return null;
                 yield return new WaitForEndOfFrame();
-                Capture(st, rec, null, 0, arm);
+                for (int c = 0; c < recs.Count; c++) Capture(s, s.Cams[c], recs[c], false, 0, arm);
             }
             else
             {
-                string seqDir = Path.Combine(RecordingFolder, name);
-                Directory.CreateDirectory(seqDir);
                 float t0 = holdStart + m_Play.settle_after_hold_s;
-                for (int i = 0; i < m_Look.recording.sequence_frames; i++)
+                for (int i = 0; i < frames; i++)
                 {
                     while (Time.time < t0 + i * 0.1f) yield return null;
                     yield return new WaitForEndOfFrame();
-                    Capture(st, rec, seqDir, i, arm);
+                    for (int c = 0; c < recs.Count; c++) Capture(s, s.Cams[c], recs[c], true, i, arm);
                 }
             }
-            rec.hand_ik_calls = w.HandIkCalls - ikBefore;
-            if (rec.hand_ik_calls == 0) { st.Error = $"{name}: Humanoid IK never set the hand (OnAnimatorIK not called)"; yield break; }
-            m_Records.Add(rec);
+            foreach (var rec in recs)
+            {
+                rec.hand_ik_calls = w.HandIkCalls - ikBefore;
+                if (rec.hand_ik_calls == 0) { s.Error = $"{rec.name}: Humanoid IK never set the hand (OnAnimatorIK not called)"; yield break; }
+            }
+            m_Records.AddRange(recs);
             while (w.Phase != WorkerPhase.Idle && Time.time < until + 30f) yield return null;
             w.SetQuestionVisible(false);
             w.IsCommander = false;
             yield return new WaitForSeconds(m_Play.pause_between_s);
         }
 
-        RecordingRecord NewRecord(Stage st, string name, string cmd, string arm, string clip, int frames) => new RecordingRecord
+        /// <summary>One record per camera (nominal distance) for this take.</summary>
+        List<RecordingRecord> NewRecords(Site s, string cmd, string arm, string clip, string take, int takeIndex, int frames)
         {
-            name = name, kind = frames > 1 ? "sequence" : "frame", look = st.Look, command = cmd, arm = arm, clip = clip,
-            worker_id = st.Worker.workerId, n_frames = frames, distance_m = st.Distance, vertical_fov_deg = m_Look.recording.vertical_fov_deg,
-            point_side_azimuth_deg = -1f, point_angle_deg = -1f, time_first_s = -1f, time_last_s = -1f,
-        };
+            var list = new List<RecordingRecord>();
+            foreach (var c in s.Cams)
+            {
+                var cam = c.Cam.transform;
+                list.Add(new RecordingRecord
+                {
+                    name = LookCheckConfig.RecordingName(s.Look, cmd, c.Nominal, arm, take), kind = frames > 1 ? "sequence" : "frame",
+                    look = s.Look, command = cmd, arm = arm, clip = clip, junction = s.Junction, worker_id = s.Worker.workerId, take = takeIndex + 1,
+                    pose_draws = s.PoseDraws, n_frames = frames, distance_m = c.Nominal, camera_distance_m = (float)Math.Round(c.Distance, 3),
+                    approach_bearing_deg = (float)Math.Round(s.Bearing, 2), camera_x = cam.position.x, camera_z = cam.position.z,
+                    camera_yaw_deg = cam.eulerAngles.y, vertical_fov_deg = m_Look.recording.vertical_fov_deg,
+                    point_side_azimuth_deg = -1f, point_angle_deg = -1f, time_first_s = -1f, time_last_s = -1f,
+                });
+            }
+            return list;
+        }
 
         // ---------------------------------------------------------------- capture
 
-        /// <summary>Render the stage camera now (end of frame: after the Animator, IK and the hand shapes) and queue the PNG and header.</summary>
-        void Capture(Stage st, RecordingRecord rec, string seqDir, int frameIndex, string arm)
+        /// <summary>Render one camera now (end of frame: after the Animator, IK and the hand shapes) and queue the PNG and header.</summary>
+        void Capture(Site s, SiteCamera c, RecordingRecord rec, bool sequence, int frameIndex, string arm)
         {
-            var w = st.Worker;
+            var w = s.Worker;
             float t = Time.time;
             bool held = rec.command == LookCheckConfig.None ? w.Phase == WorkerPhase.Idle : w.Phase == WorkerPhase.Holding;
             if (!held) { rec.frames_outside_hold++; m_Outside++; }
@@ -477,20 +662,21 @@ namespace WarehouseRobot.AvatarCheck
                 rec.shoulder_motion_max_m = Mathf.Max(rec.shoulder_motion_max_m, Vector3.Distance(shoulder, rec.FirstShoulder));
             }
 
-            var prevTarget = st.Cam.targetTexture;
             var prevActive = RenderTexture.active;
-            st.Cam.targetTexture = st.Rt;
-            st.Cam.Render();
-            RenderTexture.active = st.Rt;
-            st.Tex.ReadPixels(new Rect(0, 0, st.Rt.width, st.Rt.height), 0, 0, false);
-            st.Tex.Apply(false);
-            st.Cam.targetTexture = prevTarget;
+            c.Cam.targetTexture = c.Rt;
+            c.Cam.Render();
+            RenderTexture.active = c.Rt;
+            c.Tex.ReadPixels(new Rect(0, 0, c.Rt.width, c.Rt.height), 0, 0, false);
+            c.Tex.Apply(false);
+            c.Cam.targetTexture = null;
             RenderTexture.active = prevActive;
-            byte[] raw = st.Tex.GetRawTextureData();
-            var fmt = st.Tex.graphicsFormat;
-            int width = st.Rt.width, height = st.Rt.height;
+            byte[] raw = c.Tex.GetRawTextureData();
+            var fmt = c.Tex.graphicsFormat;
+            int width = c.Rt.width, height = c.Rt.height;
+            string seqDir = sequence ? Path.Combine(RecordingFolder, rec.name) : null;
+            if (seqDir != null && frameIndex == 0) Directory.CreateDirectory(seqDir);
             string stem = seqDir != null ? Path.Combine(seqDir, LookCheckConfig.FrameStem(frameIndex)) : Path.Combine(RecordingFolder, rec.name);
-            string header = Header(st, frameIndex, t, arm, rec, truth);
+            string header = Header(s, c, frameIndex, t, arm, rec, truth);
             m_Frames++;
             m_Writes.Add(Task.Run(() =>
             {
@@ -508,14 +694,14 @@ namespace WarehouseRobot.AvatarCheck
         }
 
         /// <summary>The frame_pan_tilt header of protocol 3 for this render (docs/look_check_v4.md), with the real Time.time.</summary>
-        string Header(Stage st, int frameIndex, float t, string arm, RecordingRecord rec, TruthRow truth)
+        string Header(Site s, SiteCamera c, int frameIndex, float t, string arm, RecordingRecord rec, TruthRow truth)
         {
             int w = m_Pt.width_px, h = m_Pt.height_px;
             double fov = m_Look.recording.vertical_fov_deg;
             LookCheckConfig.Intrinsics(w, h, fov, out double fx, out double fy, out double cx, out double cy);
             string N(double x) => x.ToString("R", Inv);
             string F(float x) => x.ToString("R", Inv);
-            var p = st.Robot.position;
+            var p = c.Cam.transform.position;
             var sb = new StringBuilder();
             sb.Append("{\n  \"version\": 3,\n  \"type\": \"frame_pan_tilt\",\n");
             sb.Append($"  \"time_s\": {N(t)},\n");
@@ -524,11 +710,12 @@ namespace WarehouseRobot.AvatarCheck
             sb.Append($"  \"fx\": {N(fx)},\n  \"fy\": {N(fy)},\n  \"cx\": {N(cx)},\n  \"cy\": {N(cy)},\n");
             sb.Append($"  \"vertical_fov_deg\": {N(fov)},\n  \"pan_deg\": 0.0,\n  \"tilt_deg\": 0.0,\n");
             sb.Append($"  \"camera_height_m\": {F(m_Pt.height_m)},\n");
-            sb.Append($"  \"pose\": {{\"x\": {N(p.x)}, \"z\": {N(p.z)}, \"yaw_deg\": 0.0}},\n");
+            sb.Append($"  \"pose\": {{\"x\": {N(p.x)}, \"z\": {N(p.z)}, \"yaw_deg\": {N(c.Cam.transform.eulerAngles.y)}}},\n");
             sb.Append("  \"encoding\": \"png\",\n");
             if (!string.IsNullOrEmpty(arm)) sb.Append($"  \"arm\": \"{arm}\",\n");
-            sb.Append($"  \"look_check_play\": {{\"worker_id\": {st.Worker.workerId.ToString(Inv)}, \"variant\": \"{rec.clip}\", \"phase\": \"{truth.Phase}\", " +
-                      $"\"speed\": {N(Math.Round(rec.speed, 4))}, \"size\": {N(Math.Round(rec.size, 4))}}}\n");
+            sb.Append($"  \"look_check_play\": {{\"worker_id\": {s.Worker.workerId.ToString(Inv)}, \"variant\": \"{rec.clip}\", \"phase\": \"{truth.Phase}\", " +
+                      $"\"speed\": {N(Math.Round(rec.speed, 4))}, \"size\": {N(Math.Round(rec.size, 4))}, \"junction\": \"{s.Junction}\", " +
+                      $"\"camera_distance_m\": {N(rec.camera_distance_m)}, \"approach_bearing_deg\": {N(rec.approach_bearing_deg)}}}\n");
             sb.Append("}\n");
             return sb.ToString();
         }

@@ -115,12 +115,12 @@
     },
     {
       "id": "sunbox_f1", "family": "sunbox", "role": "candidate",
-      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, blouse, jeans (as look_check.json)",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, white long-sleeved shirt, jeans (as look_check.json). Top changed 2026-11-08 (Phase 2D, appearance only, declared in look_check_changes.md before the rerun): Blouse variation 1 (white, gathered cuff over the wrist) -> Shirt variation 1 (white, plain sleeves).",
       "kind": "sunbox", "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
       "sunbox": {
         "gender": "Female", "skin": 1, "hair_style": 5, "hair_material": 0, "facial_hair_style": 0,
         "clothing": [
-          { "name": "Blouse", "variation": 1 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
+          { "name": "Shirt", "variation": 1 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
           { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
         ]
       }

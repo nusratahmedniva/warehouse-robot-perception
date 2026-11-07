@@ -148,6 +148,9 @@ namespace WarehouseAvatar
             m_Left = HandShaper.BuildArm(bones, false);
             m_Right = HandShaper.BuildArm(bones, true);
             if (!HandShaper.Complete(m_Left) || !HandShaper.Complete(m_Right)) return Fail($"look '{lookId}' lacks arm or finger bones");
+            float mirrored = HandShaper.MirrorRest(m_Right, m_Left);  // both hands start every shape from mirror-image fingers
+            if (mirrored < 0f) return Fail($"look '{lookId}': the hand axes cannot be measured");
+            if (mirrored > 0.001f) LookDescription += $" Left hand's rest fingers mirrored from the right hand (largest joint correction {(mirrored * 1000f).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} mm).";
             m_BindLeft = HandShaper.Capture(m_Left);        // the prefab's bind pose: straight fingers
             m_BindRight = HandShaper.Capture(m_Right);
             ArmLength = 0.5f * (HandShaper.ArmLength(m_Left) + HandShaper.ArmLength(m_Right));

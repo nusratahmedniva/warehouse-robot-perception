@@ -143,14 +143,14 @@
       "id": "sunbox_f1",
       "family": "sunbox",
       "role": "candidate",
-      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, blouse, jeans",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, white long-sleeved shirt (Blouse until 2026-11-08, Phase 2D: look_check_changes.md), jeans",
       "kind": "sunbox",
       "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab",
       "material_override": "",
       "sunbox": {
         "gender": "Female", "skin": 1, "hair_style": 5, "hair_material": 0, "facial_hair_style": 0,
         "clothing": [
-          { "name": "Blouse", "variation": 1 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
+          { "name": "Shirt", "variation": 1 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
           { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
         ]
       }

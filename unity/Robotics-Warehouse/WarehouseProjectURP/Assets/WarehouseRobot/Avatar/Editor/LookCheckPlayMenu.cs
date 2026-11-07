@@ -1,40 +1,38 @@
 using System;
-using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using WarehouseRobot.AvatarCheck;
 using Object = UnityEngine.Object;
 
 namespace WarehouseAvatar.EditorTools
 {
     /// <summary>
-    /// Tools > Warehouse v4 > Look Check > Build LookCheckPlay Scene / Run Play-Mode Look Check (v4 Phase 2B): the look
-    /// check recorded in Play mode with the worker template (LookCheckPlayDriver). The run enters Play mode, waits until the
-    /// driver is done and leaves Play mode (menu) or quits (command line, exit 0 = done, 1 = failed or timeout). Run it
-    /// WITHOUT -batchmode (the capture waits for the end of rendered frames):
+    /// Tools > Warehouse v4 > Look Check > Run Play-Mode Look Check (v4 Phase 2B; since Phase 2D, 2026-11-08, in the study
+    /// scene, look_check_changes.md): opens the venue scene of look_check_play.json (WarehouseRobot_v4.unity), enters Play
+    /// mode and adds LookCheckPlayDriver when the scene has loaded (after Awake, before any Start; the scene file is never
+    /// changed), waits until the driver is done and leaves Play mode (menu) or quits (command line, exit 0 = done,
+    /// 1 = failed or timeout). Run it WITHOUT -batchmode (the capture waits for the end of rendered frames):
     ///   Unity -projectPath P -executeMethod WarehouseAvatar.EditorTools.LookCheckPlayMenu.CommandLineRun -lookCheckTimeout 3600 -logFile play.log
     /// </summary>
     [InitializeOnLoad]
     public static class LookCheckPlayMenu
     {
-        public const string ScenePath = "Assets/WarehouseRobot/Avatar/LookCheckPlay.unity";
         const string PlayConfigPath = "Assets/WarehouseRobot/Avatar/Config/look_check_play.json";
+        const string RobotConfigPath = "Assets/WarehouseRobot/Robot/Config/robot_unity_v4.json";
         const string ActiveKey = "WarehouseAvatar.LookCheckPlay.Active";
+        const string InjectedKey = "WarehouseAvatar.LookCheckPlay.Injected";
         const string QuitKey = "WarehouseAvatar.LookCheckPlay.Quit";
         const string DeadlineKey = "WarehouseAvatar.LookCheckPlay.Deadline";
 
+        [Serializable] class VenueOnly { public LookCheckPlayDriver.PlayVenue venue; }
+
         static LookCheckPlayMenu()
         {
-            if (SessionState.GetBool(ActiveKey, false)) EditorApplication.update += Poll;
-        }
-
-        [MenuItem("Tools/Warehouse v4/Look Check/Build LookCheckPlay Scene")]
-        public static void BuildMenu()
-        {
-            string msg = BuildScene();
-            Debug.Log("[LookCheckPlay] " + msg);
-            EditorUtility.DisplayDialog("Build LookCheckPlay Scene", msg, "OK");
+            if (!SessionState.GetBool(ActiveKey, false)) return;
+            EditorApplication.update += Poll;
+            SceneManager.sceneLoaded += OnSceneLoaded;
         }
 
         [MenuItem("Tools/Warehouse v4/Look Check/Run Play-Mode Look Check")]
@@ -42,12 +40,6 @@ namespace WarehouseAvatar.EditorTools
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
             Start(false, 3600f);
-        }
-
-        public static void BatchBuildScene()
-        {
-            try { Debug.Log("[LookCheckPlay] " + BuildScene()); EditorApplication.Exit(0); }
-            catch (Exception e) { Debug.LogError("[LookCheckPlay] FAILED: " + e); EditorApplication.Exit(1); }
         }
 
         public static void CommandLineRun()
@@ -59,43 +51,50 @@ namespace WarehouseAvatar.EditorTools
             Start(true, timeout);
         }
 
-        public static string BuildScene()
-        {
-            if (File.Exists(Path.Combine(Path.GetDirectoryName(Application.dataPath), ScenePath))) throw new InvalidOperationException(ScenePath + " exists; delete it first to rebuild it");
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(WorkerTemplateMenu.PrefabPath)
-                         ?? throw new FileNotFoundException(WorkerTemplateMenu.PrefabPath + " missing: run Tools > Warehouse v4 > Workers > Build Worker Template first");
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            var go = new GameObject("LookCheckPlay");
-            var d = go.AddComponent<LookCheckPlayDriver>();
-            d.playConfig = Load(PlayConfigPath);
-            d.lookCheckConfig = Load(LookCheckMenu.ConfigPath);
-            d.robotConfig = Load("Assets/WarehouseRobot/Robot/Config/robot_unity_v4.json");
-            d.workerPrefab = prefab.GetComponent<WorkerV4>();
-            var lightGo = new GameObject("KeyLight");
-            lightGo.transform.SetParent(go.transform, false);
-            d.keyLight = lightGo.AddComponent<Light>();
-            d.keyLight.type = LightType.Directional;
-            if (!EditorSceneManager.SaveScene(scene, ScenePath)) throw new IOException("could not save " + ScenePath);
-            return "Saved " + ScenePath + ". Run it with Tools > Warehouse v4 > Look Check > Run Play-Mode Look Check.";
-        }
+        static TextAsset Load(string path) => AssetDatabase.LoadAssetAtPath<TextAsset>(path);
 
-        static TextAsset Load(string path) => AssetDatabase.LoadAssetAtPath<TextAsset>(path) ?? throw new FileNotFoundException(path);
+        static string VenueScene()
+        {
+            var cfg = Load(PlayConfigPath);
+            return cfg != null ? JsonUtility.FromJson<VenueOnly>(cfg.text)?.venue?.scene : null;
+        }
 
         static void Start(bool quit, float timeout)
         {
-            if (!File.Exists(Path.Combine(Path.GetDirectoryName(Application.dataPath), ScenePath)))
+            string scene = VenueScene();
+            if (string.IsNullOrEmpty(scene) || AssetDatabase.LoadAssetAtPath<SceneAsset>(scene) == null)
             {
-                Debug.LogError("[LookCheckPlay] " + ScenePath + " missing: Build LookCheckPlay Scene first");
+                Debug.LogError($"[LookCheckPlay] venue scene '{scene}' of {PlayConfigPath} not found");
                 if (quit) EditorApplication.Exit(1);
                 return;
             }
-            EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            EditorSceneManager.OpenScene(scene, OpenSceneMode.Single);
             SessionState.SetBool(ActiveKey, true);
+            SessionState.SetBool(InjectedKey, false);
             SessionState.SetBool(QuitKey, quit);
             SessionState.SetFloat(DeadlineKey, (float)EditorApplication.timeSinceStartup + timeout);
             EditorApplication.update -= Poll;
             EditorApplication.update += Poll;
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            SceneManager.sceneLoaded += OnSceneLoaded;   // without a domain reload the static constructor does not run again
             EditorApplication.EnterPlaymode();
+        }
+
+        /// <summary>Play mode: add the driver once the venue scene has loaded (its Awake switches off the study's runtime parts).</summary>
+        static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (!Application.isPlaying || !SessionState.GetBool(ActiveKey, false) || SessionState.GetBool(InjectedKey, false)) return;
+            if (scene.path != VenueScene()) return;
+            SessionState.SetBool(InjectedKey, true);
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(WorkerTemplateMenu.PrefabPath);
+            var go = new GameObject("LookCheckPlay");
+            SceneManager.MoveGameObjectToScene(go, scene);
+            var d = go.AddComponent<LookCheckPlayDriver>();
+            d.playConfig = Load(PlayConfigPath);
+            d.lookCheckConfig = Load(LookCheckMenu.ConfigPath);
+            d.robotConfig = Load(RobotConfigPath);
+            d.workerPrefab = prefab != null ? prefab.GetComponent<WorkerV4>() : null;
+            Debug.Log("[LookCheckPlay] driver added to " + scene.path + "; in Play mode: " + d.SceneChanges);
         }
 
         static void Poll()
@@ -113,6 +112,7 @@ namespace WarehouseAvatar.EditorTools
         {
             SessionState.SetBool(ActiveKey, false);
             EditorApplication.update -= Poll;
+            SceneManager.sceneLoaded -= OnSceneLoaded;
             Debug.Log($"[LookCheckPlay] finished ({code}): {status}");
             if (SessionState.GetBool(QuitKey, false)) EditorApplication.Exit(code);
             else EditorApplication.ExitPlaymode();

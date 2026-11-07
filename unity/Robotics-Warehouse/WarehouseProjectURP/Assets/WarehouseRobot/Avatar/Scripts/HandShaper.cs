@@ -57,6 +57,89 @@ namespace WarehouseAvatar
         }
 
         /// <summary>
+        /// Make the rest pose of one hand's fingers the mirror image of the other hand's (Phase 2D, 2026-11-08). Every shape
+        /// starts from the rest pose, so a rig whose hands are not mirror images at rest gets different shapes on its two
+        /// hands. The Sunbox base mesh is such a rig: its left thumb's distal joint lies 17 mm from the mirror image of the
+        /// right one's (left thumb straight, right thumb bent at the intermediate joint), so the left WAIT thumb stuck out
+        /// sideways and MediaPipe did not read Pointing_Up on any look. Rig-independent: the mirror M maps the hand frame of
+        /// <paramref name="from"/> (finger direction, palm normal and their cross product) onto the mirrored frame of
+        /// <paramref name="to"/>; the rig's own left/right bone-axis convention C is measured on the finger bones that are
+        /// already mirror images (index to little; the same C for all of them), and every finger bone of
+        /// <paramref name="to"/> gets the world rotation M * R_from * C, base to tip, so the bones' twist (which turns the
+        /// next phalanx) is mirrored too. A rig without one consistent C falls back to aiming each segment along its mirror
+        /// image. The finger bases are fixed by the hand bone and stay. Call it on the rest pose, before Capture. Returns the
+        /// largest displacement of a joint or fingertip (Tip) in metres (0 for a mirror-symmetric rig), or -1 when a hand
+        /// lacks its bones or axes.
+        /// </summary>
+        public static float MirrorRest(LookPoser.Arm from, LookPoser.Arm to)
+        {
+            if (!Complete(from) || !Complete(to) || !HandAxes(from, out var fdA, out var palmA) || !HandAxes(to, out var fdB, out var palmB)) return -1f;
+            Vector3 sideA = Vector3.Cross(fdA, palmA), sideB = -Vector3.Cross(fdB, palmB);   // a mirror reverses a cross product
+            var m = Columns(sideB, fdB, palmB) * Columns(sideA, fdA, palmA).transpose;
+            var before = Points(to);
+            if (Convention(from, to, m, out var c))
+            {
+                for (int f = 0; f < 5; f++)
+                    for (int j = 0; j < 3; j++)
+                        if (from.Fingers[f][j] != null && to.Fingers[f][j] != null)
+                            to.Fingers[f][j].rotation = (m * Matrix4x4.Rotate(from.Fingers[f][j].rotation) * c).rotation;
+            }
+            else
+            {
+                for (int f = 0; f < 5; f++)
+                    for (int j = 0; j < 2; j++)
+                    {
+                        Transform a0 = from.Fingers[f][j], a1 = from.Fingers[f][j + 1], b0 = to.Fingers[f][j], b1 = to.Fingers[f][j + 1];
+                        if (a0 == null || a1 == null || b0 == null || b1 == null) continue;
+                        Aim(b0, b1.position, m.MultiplyVector(a1.position - a0.position));
+                    }
+            }
+            var after = Points(to);
+            float moved = 0f;
+            for (int i = 0; i < after.Count; i++) moved = Mathf.Max(moved, Vector3.Distance(before[i], after[i]));
+            return moved;
+        }
+
+        static Matrix4x4 Columns(Vector3 a, Vector3 b, Vector3 c)
+        {
+            var x = Matrix4x4.identity;
+            x.SetColumn(0, a);
+            x.SetColumn(1, b);
+            x.SetColumn(2, c);
+            return x;
+        }
+
+        /// <summary>Every finger joint and fingertip of a hand, in a fixed order.</summary>
+        static System.Collections.Generic.List<Vector3> Points(LookPoser.Arm a)
+        {
+            var p = new System.Collections.Generic.List<Vector3>();
+            for (int f = 0; f < 5; f++)
+            {
+                for (int j = 0; j < 3; j++) p.Add(a.Fingers[f][j] != null ? a.Fingers[f][j].position : Vector3.zero);
+                p.Add(a.Fingers[f][1] != null && a.Fingers[f][2] != null ? Tip(a, f) : Vector3.zero);
+            }
+            return p;
+        }
+
+        /// <summary>The local reflection C with R_to = M * R_from * C on every bone of the index to little fingers (rest pose,
+        /// within 0.01 per matrix entry); false if they do not agree.</summary>
+        static bool Convention(LookPoser.Arm from, LookPoser.Arm to, Matrix4x4 m, out Matrix4x4 c)
+        {
+            c = Matrix4x4.identity;
+            bool found = false;
+            for (int f = Index; f <= Little; f++)
+                for (int j = 0; j < 3; j++)
+                {
+                    Transform a = from.Fingers[f][j], b = to.Fingers[f][j];
+                    if (a == null || b == null) continue;
+                    var k = Matrix4x4.Rotate(a.rotation).transpose * m.transpose * Matrix4x4.Rotate(b.rotation);
+                    if (!found) { c = k; found = true; continue; }
+                    for (int i = 0; i < 16; i++) if (Mathf.Abs(k[i] - c[i]) > 0.01f) return false;
+                }
+            return found;
+        }
+
+        /// <summary>
         /// Turn the hand so its fingers point along fingerDir and the palm faces palmWant, then shape the fingers; both
         /// blended from the animated pose by weight (0 = animated, 1 = shaped).
         /// </summary>
@@ -121,7 +204,9 @@ namespace WarehouseAvatar
                 if (f == Middle) continue;
                 var root = a.Fingers[f][0];
                 if (root == null) continue;
-                Vector3 side = Vector3.ProjectOnPlane(root.position - middle.position, palm);
+                // only the sideways offset from the middle finger (Phase 2D fix): the part along the fingers (a little finger's
+                // base lies ~14 mm behind the middle one's) could flip the sign on one hand, fanning that finger inward
+                Vector3 side = Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(root.position - middle.position, palm), fingerDir);
                 if (side.sqrMagnitude < 1e-10f) continue;
                 float deg = spreadDeg * Mathf.Abs(f - Middle);
                 float sign = Vector3.Dot(Quaternion.AngleAxis(deg, palm) * fingerDir, side) >= 0f ? 1f : -1f;
@@ -165,11 +250,17 @@ namespace WarehouseAvatar
         {
             var f = a.Fingers[finger];
             if (f[0] == null || f[1] == null || f[2] == null) return float.NaN;
+            float baseDist = Vector3.Distance(a.Hand.position, f[0].position);
+            return baseDist > 1e-6f ? Vector3.Distance(a.Hand.position, Tip(a, finger)) / baseDist : float.NaN;
+        }
+
+        /// <summary>The fingertip as TipRatio estimates it: one distal-bone length beyond the distal joint (the finger needs all three bones).</summary>
+        public static Vector3 Tip(LookPoser.Arm a, int finger)
+        {
+            var f = a.Fingers[finger];
             float seg = Vector3.Distance(f[1].position, f[2].position);
             Vector3 along = f[2].rotation * Quaternion.Inverse(f[1].rotation) * (f[2].position - f[1].position);
-            Vector3 tip = f[2].position + along.normalized * seg;
-            float baseDist = Vector3.Distance(a.Hand.position, f[0].position);
-            return baseDist > 1e-6f ? Vector3.Distance(a.Hand.position, tip) / baseDist : float.NaN;
+            return f[2].position + along.normalized * seg;
         }
     }
 }
