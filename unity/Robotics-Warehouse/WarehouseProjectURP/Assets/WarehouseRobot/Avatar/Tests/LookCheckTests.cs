@@ -55,8 +55,10 @@ namespace WarehouseAvatar.Tests
     {
         static readonly LookCheckHand Hand = new LookCheckHand
         {
-            fist_curl_deg = 75f, fist_thumb_curl_deg = 40f, relaxed_curl_deg = 25f, relaxed_thumb_curl_deg = 10f, stop_spread_deg = 8f, rest_outward = 0.12f,
+            fist_curl_deg = 75f, fist_thumb_curl_deg = 40f, relaxed_curl_deg = 25f, relaxed_thumb_curl_deg = 10f, rest_outward = 0.12f,
         };
+
+        static string ConfigFile => Path.Combine(Path.GetDirectoryName(Application.dataPath), "Assets/WarehouseRobot/Avatar/Config/look_check.json");
 
         readonly List<GameObject> m_Created = new List<GameObject>();
 
@@ -74,11 +76,19 @@ namespace WarehouseAvatar.Tests
             m_Created.Clear();
         }
 
+        static PoseSpec Spec(string command, bool right, float az, float el, bool forearmUp = false, float spread = 8f) =>
+            new PoseSpec { Command = command, RightArm = right, AzimuthFrontDeg = az, ElevationDeg = el, ForearmUp = forearmUp, SpreadDeg = spread };
+
         static void AssertDir(Vector3 actual, Vector3 expected, float tolDeg, string what) =>
             Assert.Less(Vector3.Angle(actual, expected), tolDeg, $"{what}: {actual} vs {expected}");
 
+        static HumanBodyBones B(bool right, HumanBodyBones leftBone, HumanBodyBones rightBone) => right ? rightBone : leftBone;
+
         static Vector3 Arm(TestRig r, bool right) =>
-            r.P(right ? HumanBodyBones.RightHand : HumanBodyBones.LeftHand) - r.P(right ? HumanBodyBones.RightUpperArm : HumanBodyBones.LeftUpperArm);
+            r.P(B(right, HumanBodyBones.LeftHand, HumanBodyBones.RightHand)) - r.P(B(right, HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm));
+
+        static Vector3 Forearm(TestRig r, bool right) =>
+            r.P(B(right, HumanBodyBones.LeftHand, HumanBodyBones.RightHand)) - r.P(B(right, HumanBodyBones.LeftLowerArm, HumanBodyBones.RightLowerArm));
 
         [Test]
         public void BodyFrame_FromUpperArms()
@@ -90,73 +100,92 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
-        public void Point_Directions_AreTheRobots()
+        public void Point_SidewaysAndFront45_EachOwnArm_OtherArmHangs()
         {
             var r = Rig();
             var poser = new LookPoser(r, Hand);
-            poser.Apply(LookPose.PointLeft);   // robot's left = worker's right arm to the worker's right
-            AssertDir(Arm(r, true), Vector3.right, 1f, "point_left right arm");
-            Assert.Less(Arm(r, false).normalized.y, -0.9f, "point_left: left arm hangs");
-            poser.Apply(LookPose.PointRight);
-            AssertDir(Arm(r, false), Vector3.left, 1f, "point_right left arm");
-            Assert.Less(Arm(r, true).normalized.y, -0.9f, "point_right: right arm hangs");
-            poser.Apply(LookPose.PointUp);
-            AssertDir(Arm(r, true), Vector3.up, 1f, "point_up right arm");
+            poser.Apply(Spec(LookCheckConfig.Point, true, 0f, 0f));          // own right arm out to the own right (image left)
+            AssertDir(Arm(r, true), Vector3.right, 1f, "right arm sideways");
+            Assert.Less(Arm(r, false).normalized.y, -0.9f, "left arm hangs");
+            poser.Apply(Spec(LookCheckConfig.Point, false, 0f, 0f));
+            AssertDir(Arm(r, false), Vector3.left, 1f, "left arm sideways");
+            Assert.Less(Arm(r, true).normalized.y, -0.9f, "right arm hangs");
+            poser.Apply(Spec(LookCheckConfig.Point, true, 45f, 0f));         // 45 deg toward the camera (+Z)
+            AssertDir(Arm(r, true), new Vector3(1f, 0f, 1f), 1f, "right arm 45 deg to the front");
+            poser.Apply(Spec(LookCheckConfig.Point, false, 30f, 20f));
+            AssertDir(Arm(r, false), new Vector3(-Mathf.Cos(30f * Mathf.Deg2Rad) * Mathf.Cos(20f * Mathf.Deg2Rad), Mathf.Sin(20f * Mathf.Deg2Rad),
+                                                 Mathf.Sin(30f * Mathf.Deg2Rad) * Mathf.Cos(20f * Mathf.Deg2Rad)), 1f, "azimuth then elevation");
         }
 
         [Test]
         public void Point_IndexExtended_OthersCurled()
         {
             var r = Rig();
-            new LookPoser(r, Hand).Apply(LookPose.PointUp);
+            new LookPoser(r, Hand).Apply(Spec(LookCheckConfig.Point, true, 0f, 0f));
             Vector3 wrist = r.P(HumanBodyBones.RightHand);
-            AssertDir(r.P(HumanBodyBones.RightIndexDistal) - r.P(HumanBodyBones.RightIndexProximal), Vector3.up, 2f, "index along the arm");
+            AssertDir(r.P(HumanBodyBones.RightIndexDistal) - r.P(HumanBodyBones.RightIndexProximal), Vector3.right, 2f, "index along the arm");
             float indexReach = Vector3.Distance(r.P(HumanBodyBones.RightIndexDistal), wrist);
             float middleReach = Vector3.Distance(r.P(HumanBodyBones.RightMiddleDistal), wrist);
             Assert.Less(middleReach, indexReach - 0.02f, "middle finger curled");
         }
 
-        [Test]
-        public void Wait_ForearmVertical_HandAboveShoulder_IndexUp()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Wait_ForearmVertical_HandAboveShoulder_IndexUp(bool right)
         {
             var r = Rig();
-            new LookPoser(r, Hand).Apply(LookPose.Wait);
-            AssertDir(r.P(HumanBodyBones.RightHand) - r.P(HumanBodyBones.RightLowerArm), Vector3.up, 1f, "forearm");
-            Assert.Greater(r.P(HumanBodyBones.RightHand).y, r.P(HumanBodyBones.RightUpperArm).y, "wrist above the shoulder");
-            Vector3 s = r.P(HumanBodyBones.RightUpperArm), e = r.P(HumanBodyBones.RightLowerArm), w = r.P(HumanBodyBones.RightHand);
+            new LookPoser(r, Hand).Apply(Spec(LookCheckConfig.Wait, right, 20f, -22f, forearmUp: true));
+            AssertDir(Forearm(r, right), Vector3.up, 1f, "forearm");
+            Vector3 s = r.P(B(right, HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm));
+            Vector3 e = r.P(B(right, HumanBodyBones.LeftLowerArm, HumanBodyBones.RightLowerArm));
+            Vector3 w = r.P(B(right, HumanBodyBones.LeftHand, HumanBodyBones.RightHand));
+            Assert.Greater(w.y, s.y, "wrist above the shoulder");
             Assert.Less(Vector3.Angle(s - e, w - e), 130f, "elbow bent");
-            AssertDir(r.P(HumanBodyBones.RightIndexDistal) - r.P(HumanBodyBones.RightIndexProximal), Vector3.up, 5f, "index up");
-            Assert.Less(Vector3.Distance(r.P(HumanBodyBones.RightRingDistal), w), Vector3.Distance(r.P(HumanBodyBones.RightIndexDistal), w) - 0.02f, "ring curled");
+            Vector3 idx = r.P(B(right, HumanBodyBones.LeftIndexDistal, HumanBodyBones.RightIndexDistal)) -
+                          r.P(B(right, HumanBodyBones.LeftIndexProximal, HumanBodyBones.RightIndexProximal));
+            AssertDir(idx, Vector3.up, 5f, "index up");
+            Assert.Less(Vector3.Distance(r.P(B(right, HumanBodyBones.LeftRingDistal, HumanBodyBones.RightRingDistal)), w),
+                        Vector3.Distance(r.P(B(right, HumanBodyBones.LeftIndexDistal, HumanBodyBones.RightIndexDistal)), w) - 0.02f, "ring curled");
+            Assert.Less(Arm(r, !right).normalized.y, -0.9f, "the other arm hangs");
         }
 
-        [Test]
-        public void Stop_PalmTowardTheCamera_FingersUpAndSpread()
+        [TestCase(true, false)]
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        public void Stop_PalmTowardTheCamera_FingersUpAndSpread(bool right, bool bent)
         {
             var r = Rig();
             var poser = new LookPoser(r, Hand);
-            poser.Apply(LookPose.Stop);
-            Assert.Greater(Vector3.Dot(Arm(r, true).normalized, Vector3.forward), 0.8f, "arm toward the camera (+Z)");
-            Vector3 fingers = r.P(HumanBodyBones.RightMiddleProximal) - r.P(HumanBodyBones.RightHand);
+            poser.Apply(bent ? Spec(LookCheckConfig.Stop, right, 45f, -40f, forearmUp: true) : Spec(LookCheckConfig.Stop, right, 79f, 14f));
+            if (bent) AssertDir(Forearm(r, right), Vector3.up, 1f, "bent: forearm vertical");
+            else Assert.Greater(Vector3.Dot(Arm(r, right).normalized, Vector3.forward), 0.8f, "extended toward the camera (+Z)");
+            Vector3 fingers = r.P(B(right, HumanBodyBones.LeftMiddleProximal, HumanBodyBones.RightMiddleProximal)) -
+                              r.P(B(right, HumanBodyBones.LeftHand, HumanBodyBones.RightHand));
             AssertDir(fingers, Vector3.up, 2f, "fingers up");
-            Assert.IsTrue(LookPoser.PalmNormal(poser.Right, fingers.normalized, out var palm));
+            Assert.IsTrue(LookPoser.PalmNormal(right ? poser.Right : poser.Left, fingers.normalized, out var palm));
             Assert.Greater(Vector3.Dot(palm, Vector3.forward), 0.95f, "palm faces +Z (the camera)");
-            Vector3 idx = r.P(HumanBodyBones.RightIndexDistal) - r.P(HumanBodyBones.RightIndexProximal);
-            Vector3 lit = r.P(HumanBodyBones.RightLittleDistal) - r.P(HumanBodyBones.RightLittleProximal);
-            Assert.Greater(Vector3.Angle(idx, lit), 20f, "index and little finger fanned apart");
+            Vector3 idx = r.P(B(right, HumanBodyBones.LeftIndexDistal, HumanBodyBones.RightIndexDistal)) -
+                          r.P(B(right, HumanBodyBones.LeftIndexProximal, HumanBodyBones.RightIndexProximal));
+            Vector3 lit = r.P(B(right, HumanBodyBones.LeftLittleDistal, HumanBodyBones.RightLittleDistal)) -
+                          r.P(B(right, HumanBodyBones.LeftLittleProximal, HumanBodyBones.RightLittleProximal));
+            Assert.AreEqual(24f, Vector3.Angle(idx, lit), 1f, "index and little fanned by 8 + 16 deg");
         }
 
         [Test]
-        public void Neutral_ArmsDown_AndPosesDoNotAccumulate()
+        public void None_BothArmsHangMirrored_AndPosesDoNotAccumulate()
         {
             var r = Rig();
             var poser = new LookPoser(r, Hand);
-            poser.Apply(LookPose.Neutral);
+            var none = Spec(LookCheckConfig.None, false, 0f, -83f);
+            poser.Apply(none);
             var before = r.P(HumanBodyBones.RightIndexDistal);
-            Assert.Less(Arm(r, true).normalized.y, -0.9f);
-            Assert.Less(Arm(r, false).normalized.y, -0.9f);
-            poser.Apply(LookPose.Stop);
-            poser.Apply(LookPose.Wait);
-            poser.Apply(LookPose.Neutral);
+            Vector3 a = Arm(r, true), b = Arm(r, false);
+            Assert.Less(a.normalized.y, -0.9f);
+            Assert.Less(b.normalized.y, -0.9f);
+            Assert.AreEqual(a.x, -b.x, 1e-4f, "mirrored");
+            poser.Apply(Spec(LookCheckConfig.Stop, true, 79f, 14f));
+            poser.Apply(Spec(LookCheckConfig.Wait, false, 20f, -22f, forearmUp: true));
+            poser.Apply(none);
             Assert.Less(Vector3.Distance(before, r.P(HumanBodyBones.RightIndexDistal)), 1e-4f, "same pose after other poses");
         }
 
@@ -229,49 +258,113 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
-        public void ImageName_And_Intrinsics_AreCultureInvariant()
+        public void RecordingNames_FollowLookCheckV4_AndAreCultureInvariant()
         {
             var old = System.Threading.Thread.CurrentThread.CurrentCulture;
             try
             {
                 System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
-                Assert.AreEqual("sunbox_m1__wait__d2.0__fov30.png", LookCheckConfig.ImageName("sunbox_m1", "wait", 2.0f, 30f));
-                Assert.AreEqual("a__stop__d3.0__fov60.png", LookCheckConfig.ImageName("a", "stop", 3.0f, 60f));
+                Assert.AreEqual("sunbox_m1__WAIT__2.0__left_seq1", LookCheckConfig.RecordingName("sunbox_m1", "WAIT", 2.0f, "left", "seq1"));
+                Assert.AreEqual("a__NONE__4.0__f3", LookCheckConfig.RecordingName("a", "NONE", 4.0f, "", "f3"));
+                Assert.AreEqual("frame_000", LookCheckConfig.FrameStem(0));
+                Assert.AreEqual("frame_010", LookCheckConfig.FrameStem(10));
+                StringAssert.Contains("\"fx\": 458.99", LookCheckConfig.HeaderJson(730, 530, 60.0, 1.2f, 0, "left", new LookVariant { take = "f1" }));
             }
             finally { System.Threading.Thread.CurrentThread.CurrentCulture = old; }
-            LookCheckConfig.Intrinsics(730, 530, 60.0, out double fx, out double fy, out double cx, out double cy);
-            Assert.AreEqual(458.993, fy, 0.001);   // CLAUDE.md: fx = fy = 458.99 at 60 deg, 530 px high
-            Assert.AreEqual(fy, fx);
-            Assert.AreEqual(365.0, cx);
-            Assert.AreEqual(265.0, cy);
+            // <look>__<command>__<distance>__<take>: exactly four parts
+            Assert.AreEqual(4, LookCheckConfig.RecordingName("vrm_seed_san", "STOP", 4f, "right", "seq2").Split(new[] { "__" }, System.StringSplitOptions.None).Length);
+        }
+
+        [System.Serializable]
+        class Header
+        {
+            public int version, frame_index, width, height;
+            public string type, arm = "absent", encoding;
+            public double fx, fy, cx, cy, vertical_fov_deg, pan_deg, tilt_deg, camera_height_m;
         }
 
         [Test]
-        public void ShippedConfig_IsValid()
+        public void HeaderJson_IsTheFramePanTiltHeader_WithArm()
         {
-            string path = Path.Combine(Path.GetDirectoryName(Application.dataPath), "Assets/WarehouseRobot/Avatar/Config/look_check.json");
-            var cfg = LookCheckConfig.Parse(File.ReadAllText(path));
+            var v = new LookVariant { take = "seq2", azimuth_front_deg = 45f, forearm_up = false, spread_deg = 0f };
+            string json = LookCheckConfig.HeaderJson(730, 530, 60.0, 1.2f, 7, "left", v);
+            var h = JsonUtility.FromJson<Header>(json);
+            Assert.AreEqual(3, h.version);
+            Assert.AreEqual("frame_pan_tilt", h.type);
+            Assert.AreEqual(7, h.frame_index);
+            Assert.AreEqual(730, h.width);
+            Assert.AreEqual(530, h.height);
+            Assert.AreEqual(458.993, h.fy, 0.001);   // CLAUDE.md: fx = fy = 458.99 at 60 deg, 530 px high
+            Assert.AreEqual(h.fy, h.fx, 1e-9);
+            Assert.AreEqual(365.0, h.cx);
+            Assert.AreEqual(265.0, h.cy);
+            Assert.AreEqual(60.0, h.vertical_fov_deg);
+            Assert.AreEqual(1.2, h.camera_height_m, 1e-6);
+            Assert.AreEqual("left", h.arm);
+            Assert.AreEqual("png", h.encoding);
+            StringAssert.DoesNotContain("time_s", json, "no Unity Time.time in an Edit Mode render: the tool's 10 Hz fallback is used");
+
+            string none = LookCheckConfig.HeaderJson(730, 530, 60.0, 1.2f, 0, "", v);
+            StringAssert.DoesNotContain("\"arm\"", none, "NONE carries no arm label (an empty one would be refused)");
+            foreach (var key in new[] { "goal", "goal_point", "goal_x", "goal_z", "end_point", "end_point_x", "end_point_z", "point_b", "b",
+                                        "true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth" })
+                StringAssert.DoesNotContain($"\"{key}\"", json.ToLowerInvariant(), "protocol 3 forbidden key");
+        }
+
+        [Test]
+        public void ShippedConfig_IsValid_AndMatchesLookCheckV4()
+        {
+            var cfg = LookCheckConfig.Parse(File.ReadAllText(ConfigFile));
             CollectionAssert.IsEmpty(cfg.Validate());
-            CollectionAssert.AreEqual(new[] { "neutral", "point_left", "point_right", "point_up", "wait", "stop" }, cfg.poses);
+            CollectionAssert.AreEqual(new[] { 2.0f, 4.0f }, cfg.recording.distances_m);
+            Assert.AreEqual(60f, cfg.recording.vertical_fov_deg);
+            Assert.AreEqual(11, cfg.recording.sequence_frames);
+            foreach (var c in cfg.commands)
+            {
+                int seq = 0, singles = 0;
+                foreach (var v in c.variants) { if (v.sequence) seq++; else singles++; }
+                Assert.GreaterOrEqual(seq, 2, c.command + ": at least 2 sequences per group");
+                Assert.GreaterOrEqual(seq * cfg.recording.sequence_frames + singles, 10, c.command + ": at least 10 frames per group");
+            }
         }
 
         [Test]
-        public void Validate_RejectsDuplicatesUnknownPosesAndBadIds()
+        public void Validate_RejectsFormatViolations()
         {
-            string path = Path.Combine(Path.GetDirectoryName(Application.dataPath), "Assets/WarehouseRobot/Avatar/Config/look_check.json");
-            var cfg = LookCheckConfig.Parse(File.ReadAllText(path));
-            cfg.poses = new[] { "neutral", "neutral", "wave" };
-            cfg.looks[1].id = cfg.looks[0].id;
-            cfg.looks[2].id = "Bad Id";
-            cfg.looks[3].kind = "vroid";
-            cfg.render.distances_m = new[] { 2f, 0f };
+            var cfg = LookCheckConfig.Parse(File.ReadAllText(ConfigFile));
+            cfg.looks[0].id = "mixamo__worker";
+            cfg.looks[1].id = cfg.looks[2].id;
+            cfg.recording.sequence_frames = 9;
+            cfg.recording.arms = new[] { "left" };
+            cfg.commands[1].variants[0].forearm_up = false;             // WAIT
+            cfg.commands[2].variants[1].sequence = false;               // STOP: one sequence left
+            cfg.commands[0].variants[1].azimuth_front_deg = 0f;         // POINT: no 45 deg sequence
+            cfg.commands[3].command = "WAVE";
             var errors = string.Join("\n", cfg.Validate());
-            StringAssert.Contains("'neutral' listed twice", errors);
-            StringAssert.Contains("unknown pose 'wave'", errors);
+            StringAssert.Contains("'mixamo__worker' must use", errors);
             StringAssert.Contains("listed twice", errors);
-            StringAssert.Contains("'Bad Id' must use only", errors);
-            StringAssert.Contains("kind must be", errors);
-            StringAssert.Contains("every distance must be > 0", errors);
+            StringAssert.Contains("10 to 20 frames", errors);
+            StringAssert.Contains("recording.arms", errors);
+            StringAssert.Contains("WAIT seq1: forearm_up must be true", errors);
+            StringAssert.Contains("commands STOP: at least 2 sequence takes", errors);
+            StringAssert.Contains("one about 45 deg toward the front", errors);
+            StringAssert.Contains("unknown command 'WAVE'", errors);
+
+            cfg = LookCheckConfig.Parse(File.ReadAllText(ConfigFile));
+            cfg.commands = new[] { cfg.commands[0], cfg.commands[1] };
+            StringAssert.Contains("STOP is required", string.Join("\n", cfg.Validate()));
+        }
+
+        [Test]
+        public void IsNamePart_RejectsDoubleAndEdgeUnderscores()
+        {
+            Assert.IsTrue(LookCheckConfig.IsNamePart("sunbox_m1"));
+            Assert.IsTrue(LookCheckConfig.IsNamePart("seq1"));
+            Assert.IsFalse(LookCheckConfig.IsNamePart("a__b"));
+            Assert.IsFalse(LookCheckConfig.IsNamePart("_a"));
+            Assert.IsFalse(LookCheckConfig.IsNamePart("a_"));
+            Assert.IsFalse(LookCheckConfig.IsNamePart("Mixamo"));
+            Assert.IsFalse(LookCheckConfig.IsNamePart(""));
         }
     }
 }

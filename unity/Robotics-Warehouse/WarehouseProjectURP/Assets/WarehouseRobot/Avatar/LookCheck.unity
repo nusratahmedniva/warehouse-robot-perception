@@ -187,9 +187,10 @@ MonoBehaviour:
   keyLight: {fileID: 1836280182}
   stageRoot: {fileID: 463862328}
   previewLook: mixamo_worker
-  previewPose: stop
+  previewCommand: STOP
+  previewArm: right
+  previewTake: seq1
   previewDistanceM: 2
-  previewFovDeg: 60
 --- !u!4 &768950013
 Transform:
   m_ObjectHideFlags: 0

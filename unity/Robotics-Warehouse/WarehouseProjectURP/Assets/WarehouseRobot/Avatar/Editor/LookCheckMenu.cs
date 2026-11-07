@@ -28,10 +28,11 @@ namespace WarehouseAvatar.EditorTools
     /// - Convert Sunbox Materials to URP: the Sunbox pack ships Built-in Standard materials (magenta under URP); converts
     ///   them in place with URP's own StandardUpgrader (the Render Pipeline Converter's material upgrader). The pack is
     ///   git-ignored, so every machine runs this once after importing it.
-    /// - Run Look Check: every look in look_check.json, every pose, distance and field of view, rendered with the pan-tilt
+    /// - Run Look Check: every look in look_check.json, every command, arm, take and distance, rendered with the pan-tilt
     ///   camera settings of robot_unity_v4.json (PanTiltCamera.ApplyCameraSettings) into a new folder
-    ///   robot_vision/outputs/look_check_&lt;time&gt;/ (git-ignored): images/*.png, renders.jsonl, inventory.json,
-    ///   config_used/, run_info.json (git commit). Never overwrites a folder.
+    ///   robot_vision/outputs/look_check_&lt;time&gt;/ (git-ignored): looks_check/ in the input format of docs/look_check_v4.md
+    ///   (Anisha's look_check_v4.py --input), and next to it recordings.jsonl, inventory.json, config_used/, run_info.json
+    ///   (git commit). Never overwrites a folder or a file.
     /// Batch mode: -executeMethod WarehouseAvatar.EditorTools.LookCheckMenu.BatchBuildScene / BatchConvertSunbox /
     /// BatchRun (exit code 0 = done).
     /// Third-party code (Sunbox) is reached by reflection only, so this compiles on a machine without the pack.
@@ -109,7 +110,7 @@ namespace WarehouseAvatar.EditorTools
             var root = new GameObject("StageRoot");
             root.transform.SetParent(stageGo.transform, false);
             stage.stageRoot = root.transform;
-            ApplyStage(stage, cfg, LoadPanTilt(cfg), cfg.render.distances_m[0], cfg.render.vertical_fovs_deg[0]);
+            ApplyStage(stage, cfg, LoadPanTilt(cfg), cfg.recording.distances_m[0], cfg.recording.vertical_fov_deg);
             if (!EditorSceneManager.SaveScene(scene, ScenePath)) throw new IOException("could not save " + ScenePath);
             return "Saved " + ScenePath + ". Open it, select LookCheckStage and press Show in the Inspector to preview a look.";
         }
@@ -166,17 +167,22 @@ namespace WarehouseAvatar.EditorTools
             var pt = LoadPanTilt(cfg);
             var look = cfg.looks.FirstOrDefault(l => l.id == stage.previewLook)
                        ?? throw new ArgumentException($"look '{stage.previewLook}' is not in {ConfigPath}");
-            if (!LookPoses.TryParse(stage.previewPose, out var pose)) throw new ArgumentException($"unknown pose '{stage.previewPose}'");
+            var cmd = cfg.commands.FirstOrDefault(c => c.command == stage.previewCommand)
+                      ?? throw new ArgumentException($"command '{stage.previewCommand}' is not in {ConfigPath} (POINT, WAIT, STOP, NONE)");
+            var v = cmd.variants.FirstOrDefault(x => x.take == stage.previewTake)
+                    ?? throw new ArgumentException($"{cmd.command} has no take '{stage.previewTake}' in {ConfigPath}");
+            string arm = cmd.arm_labelled ? stage.previewArm : "";
+            if (cmd.arm_labelled && Array.IndexOf(cfg.recording.arms, arm) < 0) throw new ArgumentException($"arm '{arm}' must be left or right");
             ClearStage(stage);
             BuildBackdrop(stage, cfg, stage.previewDistanceM);
             var spawned = Spawn(look, stage.stageRoot, cfg);
             if (spawned.Root == null) return $"{look.id}: {spawned.Row.status} ({spawned.Row.note})";
             Place(spawned, stage, stage.previewDistanceM);
-            spawned.Poser?.Apply(pose);
-            ApplyStage(stage, cfg, pt, stage.previewDistanceM, stage.previewFovDeg);
+            spawned.Poser?.Apply(PoseSpec.From(cmd.command, arm, v));
+            ApplyStage(stage, cfg, pt, stage.previewDistanceM, cfg.recording.vertical_fov_deg);
             MarkDontSave(stage.stageRoot);
             SceneView.RepaintAll();
-            return $"{look.id} {stage.previewPose} at {stage.previewDistanceM.ToString("0.0", Inv)} m, fov {stage.previewFovDeg.ToString("0.#", Inv)} deg " +
+            return $"{LookCheckConfig.RecordingName(look.id, cmd.command, stage.previewDistanceM, arm, v.take)} " +
                    $"(select PanTiltCamera_LookCheck for the camera preview). Status: {spawned.Row.status}.";
         }
 
@@ -193,72 +199,96 @@ namespace WarehouseAvatar.EditorTools
 
             string repo = RepoRoot(cfg);
             string outDir = NewOutputFolder(Path.Combine(repo, cfg.paths.output_root), cfg.paths.output_prefix);
-            string imgDir = Path.Combine(outDir, "images");
-            Directory.CreateDirectory(imgDir);
+            string recDir = Path.Combine(outDir, cfg.recording.folder_name);   // recordings only: look_check_v4.py --input
+            Directory.CreateDirectory(recDir);
             Directory.CreateDirectory(Path.Combine(outDir, "config_used"));
             WriteNew(Path.Combine(outDir, "config_used", "look_check.json"), cfgAsset.text);
             var robotAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(cfg.paths.robot_unity_config);
             WriteNew(Path.Combine(outDir, "config_used", Path.GetFileName(cfg.paths.robot_unity_config)), robotAsset.text);
 
-            var poses = cfg.poses.Select(p => { LookPoses.TryParse(p, out var lp); return lp; }).ToArray();
+            float fov = cfg.recording.vertical_fov_deg;
+            var rest = new PoseSpec { Command = LookCheckConfig.None, ElevationDeg = -Mathf.Atan2(1f, cfg.hand.rest_outward) * Mathf.Rad2Deg };
             var rows = new List<LookInventoryRow>();
             var lines = new StringBuilder();
-            int images = 0;
+            int recordings = 0, frames = 0;
             foreach (var look in cfg.looks)
             {
                 ClearStage(stage);
                 var spawned = Spawn(look, stage.stageRoot, cfg);
                 rows.Add(spawned.Row);
                 if (spawned.Root == null || spawned.Poser == null || !spawned.Poser.HasArms) continue;
-                foreach (float d in cfg.render.distances_m)
+                int maxMagenta = 0;
+                bool measured = false;
+                foreach (float d in cfg.recording.distances_m)
                 {
                     ClearBackdrop(stage);
                     BuildBackdrop(stage, cfg, d);
                     Place(spawned, stage, d);
-                    for (int p = 0; p < poses.Length; p++)
+                    if (!measured)
                     {
-                        spawned.Poser.Apply(poses[p]);
-                        foreach (float fov in cfg.render.vertical_fovs_deg)
-                        {
-                            ApplyStage(stage, cfg, pt, d, fov);
-                            var px = Render(stage.checkCamera, pt.width_px, pt.height_px, out byte[] png);
-                            string name = LookCheckConfig.ImageName(look.id, cfg.poses[p], d, fov);
-                            WriteNew(Path.Combine(imgDir, name), png);
-                            int magenta = LookInventory.MagentaPixels(px, cfg.render.magenta_tolerance);
-                            if (p == 0 && d == cfg.render.distances_m[0] && fov == cfg.render.vertical_fovs_deg[0])
-                            {
-                                spawned.Row.magenta_pixels = magenta;
-                                spawned.Row.height_m = LookInventory.Height(spawned.Root);
-                            }
-                            LookCheckConfig.Intrinsics(pt.width_px, pt.height_px, fov, out double fx, out double fy, out double cx, out double cy);
-                            lines.Append(JsonUtility.ToJson(new RenderRecord
-                            {
-                                look = look.id, family = look.family, role = look.role, pose = cfg.poses[p], distance_m = d, vertical_fov_deg = fov,
-                                file = "images/" + name, width = pt.width_px, height = pt.height_px, fx = fx, fy = fy, cx = cx, cy = cy,
-                                camera_height_m = pt.height_m, magenta_pixels = magenta,
-                            })).Append('\n');
-                            images++;
-                        }
+                        spawned.Poser.Apply(rest);
+                        spawned.Row.height_m = LookInventory.Height(spawned.Root);
+                        measured = true;
                     }
+                    ApplyStage(stage, cfg, pt, d, fov);
+                    foreach (var c in cfg.commands)
+                        foreach (string arm in c.arm_labelled ? cfg.recording.arms : new[] { "" })
+                            foreach (var v in c.variants)
+                            {
+                                spawned.Poser.Apply(PoseSpec.From(c.command, arm, v));
+                                var px = Render(stage.checkCamera, pt.width_px, pt.height_px, out byte[] png);
+                                int magenta = LookInventory.MagentaPixels(px, cfg.render.magenta_tolerance);
+                                maxMagenta = Mathf.Max(maxMagenta, magenta);
+                                string name = LookCheckConfig.RecordingName(look.id, c.command, d, arm, v.take);
+                                int n = v.sequence ? cfg.recording.sequence_frames : 1;
+                                if (v.sequence)
+                                {
+                                    string seqDir = Path.Combine(recDir, name);
+                                    if (Directory.Exists(seqDir)) throw new IOException(seqDir + " exists");
+                                    Directory.CreateDirectory(seqDir);
+                                    for (int i = 0; i < n; i++)          // a held pose: the same render for every frame of the second
+                                    {
+                                        string stem = Path.Combine(seqDir, LookCheckConfig.FrameStem(i));
+                                        WriteNew(stem + ".png", png);
+                                        WriteNew(stem + ".json", LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, i, arm, v));
+                                    }
+                                }
+                                else
+                                {
+                                    WriteNew(Path.Combine(recDir, name + ".png"), png);
+                                    WriteNew(Path.Combine(recDir, name + ".json"), LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, 0, arm, v));
+                                }
+                                lines.Append(JsonUtility.ToJson(new RecordingRecord
+                                {
+                                    name = name, kind = v.sequence ? "sequence" : "frame", look = look.id, family = look.family, role = look.role,
+                                    command = c.command, arm = arm, take = v.take, distance_m = d, vertical_fov_deg = fov, n_frames = n,
+                                    azimuth_front_deg = v.azimuth_front_deg, elevation_deg = v.elevation_deg, forearm_up = v.forearm_up,
+                                    spread_deg = v.spread_deg, magenta_pixels = magenta,
+                                })).Append('\n');
+                                recordings++;
+                                frames += n;
+                            }
                 }
-                spawned.Row.renders_in_urp = spawned.Row.material_problems.Length == 0 && spawned.Row.magenta_pixels == 0;
+                spawned.Row.magenta_pixels = maxMagenta;
+                spawned.Row.renders_in_urp = spawned.Row.material_problems.Length == 0 && maxMagenta == 0;
             }
             ClearStage(stage);
-            WriteNew(Path.Combine(outDir, "renders.jsonl"), lines.ToString());
+            WriteNew(Path.Combine(outDir, "recordings.jsonl"), lines.ToString());
             WriteNew(Path.Combine(outDir, "inventory.json"), JsonUtility.ToJson(new InventoryFile { looks = rows.ToArray() }, true));
             WriteNew(Path.Combine(outDir, "run_info.json"), JsonUtility.ToJson(RunInfo(repo, cfgAsset.text, robotAsset.text), true));
-            string rel = Path.GetRelativePath(repo, outDir).Replace('\\', '/');
-            return $"{images} images of {rows.Count(r => r.status == "ok")} usable looks ({rows.Count} listed) in {rel}. " +
-                   string.Join("; ", rows.Select(r => $"{r.id}: {r.status}"));
+            string rel = Path.GetRelativePath(repo, recDir).Replace('\\', '/');
+            return $"{recordings} recordings ({frames} frames) of {rows.Count(r => r.status == "ok")} usable looks ({rows.Count} listed) in {rel}. " +
+                   string.Join("; ", rows.Select(r => $"{r.id}: {r.status}")) +
+                   $". Next, from robot_vision/: look_check_v4.py --input {Path.GetRelativePath(Path.Combine(repo, "robot_vision"), recDir).Replace('\\', '/')}";
         }
 
         [Serializable]
-        class RenderRecord
+        class RecordingRecord
         {
-            public string look, family, role, pose, file;
-            public float distance_m, vertical_fov_deg, camera_height_m;
-            public int width, height, magenta_pixels;
-            public double fx, fy, cx, cy;
+            public string name, kind, look, family, role, command, arm, take;
+            public float distance_m, vertical_fov_deg, azimuth_front_deg, elevation_deg, spread_deg;
+            public bool forearm_up;
+            public int n_frames, magenta_pixels;
         }
 
         [Serializable] class InventoryFile { public LookInventoryRow[] looks; }

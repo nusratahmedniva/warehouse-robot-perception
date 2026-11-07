@@ -4,25 +4,21 @@ using UnityEngine;
 
 namespace WarehouseAvatar
 {
-    public enum LookPose { Neutral, PointLeft, PointRight, PointUp, Wait, Stop }
-
-    public static class LookPoses
+    /// <summary>One held pose: the command, the person's own gesturing arm and the variant's arm direction and hand.</summary>
+    public struct PoseSpec
     {
-        static readonly Dictionary<string, LookPose> k_ByName = new Dictionary<string, LookPose>
+        public string Command;          // LookCheckConfig.Point / Wait / Stop / None
+        public bool RightArm;           // the person's own arm; ignored for NONE (both arms hang)
+        public float AzimuthFrontDeg;   // 0 = straight out to the person's side (in the image plane), 90 = toward the camera
+        public float ElevationDeg;      // above (+) or below (-) horizontal
+        public bool ForearmUp;          // the direction is the upper arm's; the forearm is vertical
+        public float SpreadDeg;         // STOP: fingers fanned away from the middle finger, per finger
+
+        public static PoseSpec From(string command, string arm, LookVariant v) => new PoseSpec
         {
-            { "neutral", LookPose.Neutral }, { "point_left", LookPose.PointLeft }, { "point_right", LookPose.PointRight },
-            { "point_up", LookPose.PointUp }, { "wait", LookPose.Wait }, { "stop", LookPose.Stop },
+            Command = command, RightArm = arm == "right", AzimuthFrontDeg = v.azimuth_front_deg, ElevationDeg = v.elevation_deg,
+            ForearmUp = v.forearm_up, SpreadDeg = v.spread_deg,
         };
-
-        public static IEnumerable<string> Names => k_ByName.Keys;
-
-        public static bool TryParse(string name, out LookPose pose) => k_ByName.TryGetValue(name ?? "", out pose);
-
-        public static string Name(LookPose pose)
-        {
-            foreach (var kv in k_ByName) if (kv.Value == pose) return kv.Key;
-            throw new ArgumentOutOfRangeException(nameof(pose));
-        }
     }
 
     /// <summary>Humanoid bone lookup: an Animator in the Editor, a plain dictionary in the tests.</summary>
@@ -41,9 +37,9 @@ namespace WarehouseAvatar
     /// <summary>
     /// Poses a Humanoid rig for the look check by aiming bones in world space (the method of v3 GestureWorker, which
     /// stays unchanged): no animation clip, any Humanoid rig. Directions are in the body frame measured from the rig
-    /// (right = left upper arm to right upper arm, level; forward = right x up), so it does not depend on the model's
-    /// import orientation. The robot's left is the worker's right (the worker faces the robot).
-    /// Apply() always starts from the captured bind rotations, so poses never accumulate.
+    /// (right = left upper arm to right upper arm, level; forward = right x up), so they do not depend on the model's
+    /// import orientation. Left and right are the person's own arms. Apply() always starts from the captured bind
+    /// rotations, so poses never accumulate.
     /// </summary>
     public sealed class LookPoser
     {
@@ -150,43 +146,52 @@ namespace WarehouseAvatar
             forward = Vector3.Cross(right, Vector3.up).normalized;
         }
 
-        /// <summary>World directions of the left and right arm (shoulder to wrist) for a pose.</summary>
-        public void ArmDirections(LookPose pose, out Vector3 left, out Vector3 right)
+        /// <summary>World direction for an arm: azimuth from the person's own side toward the front, then elevation.</summary>
+        public Vector3 Direction(bool rightArm, float azimuthFrontDeg, float elevationDeg)
         {
             BodyFrame(out var r, out var f);
-            Vector3 u = Vector3.up;
-            left = (-u - r * m_Hand.rest_outward).normalized;
-            right = (-u + r * m_Hand.rest_outward).normalized;
-            switch (pose)
-            {
-                case LookPose.PointLeft: right = r; break;                                 // robot's left = worker's right
-                case LookPose.PointRight: left = -r; break;
-                case LookPose.PointUp: right = u; break;
-                case LookPose.Stop: right = (f + 0.25f * u + 0.2f * r).normalized; break;  // v3 GestureWorker STOP
-                case LookPose.Wait: right = WaitUpperArm(r, f); break;                     // upper arm only; forearm vertical
-            }
+            Vector3 side = rightArm ? r : -r;
+            float az = azimuthFrontDeg * Mathf.Deg2Rad, el = elevationDeg * Mathf.Deg2Rad;
+            Vector3 h = Mathf.Cos(az) * side + Mathf.Sin(az) * f;
+            return (Mathf.Cos(el) * h + Mathf.Sin(el) * Vector3.up).normalized;
         }
 
-        static Vector3 WaitUpperArm(Vector3 r, Vector3 f) => (0.8f * r - 0.35f * Vector3.up + 0.3f * f).normalized;
+        /// <summary>Hanging arm (v3 GestureWorker rest: down and rest_outward to the side).</summary>
+        Vector3 Rest(bool rightArm)
+        {
+            BodyFrame(out var r, out _);
+            return (-Vector3.up + (rightArm ? r : -r) * m_Hand.rest_outward).normalized;
+        }
 
-        public void Apply(LookPose pose)
+        public void Apply(PoseSpec p)
         {
             ResetToBind();
             if (!HasArms) return;
-            ArmDirections(pose, out var dl, out var dr);
             BodyFrame(out _, out var forward);
-            PoseArm(Left, dl, dl, pose == LookPose.PointRight ? HandShape.Pointing : HandShape.Relaxed, forward);
-            switch (pose)
+            if (p.Command == LookCheckConfig.None)
             {
-                case LookPose.PointLeft:
-                case LookPose.PointUp: PoseArm(Right, dr, dr, HandShape.Pointing, forward); break;
-                case LookPose.Wait: PoseArm(Right, dr, Vector3.up, HandShape.IndexUp, forward); break;
-                case LookPose.Stop: PoseArm(Right, dr, dr, HandShape.OpenPalm, forward); break;
-                default: PoseArm(Right, dr, dr, HandShape.Relaxed, forward); break;
+                foreach (var arm in new[] { Left, Right })
+                {
+                    var d = Direction(arm.IsRight, p.AzimuthFrontDeg, p.ElevationDeg);
+                    PoseArm(arm, d, d, HandShape.Relaxed, 0f, forward);
+                }
+                return;
+            }
+            Arm g = p.RightArm ? Right : Left, other = p.RightArm ? Left : Right;
+            var rest = Rest(other.IsRight);
+            PoseArm(other, rest, rest, HandShape.Relaxed, 0f, forward);
+            var dir = Direction(p.RightArm, p.AzimuthFrontDeg, p.ElevationDeg);
+            var fore = p.ForearmUp ? Vector3.up : dir;
+            switch (p.Command)
+            {
+                case LookCheckConfig.Point: PoseArm(g, dir, fore, HandShape.Pointing, 0f, forward); break;
+                case LookCheckConfig.Wait: PoseArm(g, dir, Vector3.up, HandShape.IndexUp, 0f, forward); break;
+                case LookCheckConfig.Stop: PoseArm(g, dir, fore, HandShape.OpenPalm, p.SpreadDeg, forward); break;
+                default: throw new ArgumentException($"unknown command '{p.Command}'");
             }
         }
 
-        void PoseArm(Arm arm, Vector3 upperDir, Vector3 foreDir, HandShape shape, Vector3 forward)
+        void PoseArm(Arm arm, Vector3 upperDir, Vector3 foreDir, HandShape shape, float spreadDeg, Vector3 forward)
         {
             Aim(arm.Upper, arm.Lower.position, upperDir);
             Aim(arm.Lower, arm.Hand.position, foreDir);
@@ -196,7 +201,7 @@ namespace WarehouseAvatar
                 case HandShape.OpenPalm:
                     if (middle != null) Aim(arm.Hand, middle.position, Vector3.up);     // fingers up
                     AlignPalm(arm, Vector3.up, forward);                               // palm toward the camera (the body faces it)
-                    Spread(arm, forward);
+                    Spread(arm, forward, spreadDeg);
                     break;
                 case HandShape.IndexUp:
                     if (middle != null) Aim(arm.Hand, middle.position, Vector3.up);
@@ -265,10 +270,10 @@ namespace WarehouseAvatar
             }
         }
 
-        /// <summary>Fan index, ring and little fingers away from the middle finger about the palm normal.</summary>
-        void Spread(Arm arm, Vector3 palmWant)
+        /// <summary>Fan index, ring and little fingers away from the middle finger about the palm normal (deg per finger step).</summary>
+        static void Spread(Arm arm, Vector3 palmWant, float spreadDeg)
         {
-            if (!HandAxes(arm, out var fingerDir, out _)) return;
+            if (spreadDeg <= 0f || !HandAxes(arm, out var fingerDir, out _)) return;
             var middle = arm.Fingers[Middle][0];
             Vector3 n = palmWant.normalized;
             for (int f = Index; f <= Little; f++)
@@ -278,7 +283,7 @@ namespace WarehouseAvatar
                 if (root == null) continue;
                 Vector3 side = Vector3.ProjectOnPlane(root.position - middle.position, n);
                 if (side.sqrMagnitude < 1e-10f) continue;
-                float deg = m_Hand.stop_spread_deg * Mathf.Abs(f - Middle);
+                float deg = spreadDeg * Mathf.Abs(f - Middle);
                 float sign = Vector3.Dot(Quaternion.AngleAxis(deg, n) * fingerDir, side) >= 0f ? 1f : -1f;
                 root.rotation = Quaternion.AngleAxis(sign * deg, n) * root.rotation;
             }

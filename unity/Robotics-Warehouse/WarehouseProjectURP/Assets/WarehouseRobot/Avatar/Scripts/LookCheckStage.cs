@@ -17,10 +17,14 @@ namespace WarehouseAvatar
         [Tooltip("Parent of the spawned look, the floor and the backdrop (rebuilt at every preview; never saved with the scene).")]
         public Transform stageRoot;
 
-        [Header("Preview (Inspector button 'Show')")]
+        [Header("Preview (Inspector button 'Show'); field of view: look_check.json recording.vertical_fov_deg")]
         public string previewLook = "mixamo_worker";
-        public string previewPose = "stop";
+        [Tooltip("POINT, WAIT, STOP or NONE")]
+        public string previewCommand = "STOP";
+        [Tooltip("The person's own arm: left or right (ignored for NONE)")]
+        public string previewArm = "right";
+        [Tooltip("A take of that command in look_check.json, e.g. seq1, seq2, f1 .. f5")]
+        public string previewTake = "seq1";
         public float previewDistanceM = 2.0f;
-        public float previewFovDeg = 60.0f;
     }
 }

@@ -24,7 +24,7 @@ namespace WarehouseAvatar
         public float height_m;
         public string[] shaders = new string[0];
         public string[] material_problems = new string[0];
-        /// <summary>Error-shader magenta pixels in the neutral 2.0 m / 60 deg render (-1 = not rendered).</summary>
+        /// <summary>Most error-shader magenta pixels in any render of this look (-1 = not rendered).</summary>
         public int magenta_pixels = -1;
         /// <summary>No material problem and no magenta pixel: the look renders in URP.</summary>
         public bool renders_in_urp;
