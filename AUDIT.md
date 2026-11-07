@@ -1195,7 +1195,8 @@ Anything done differently from this section is disclosed here, dated, before the
 ### 14.14 Server timing: the v4 models in worker processes (6 November 2026)
 
 **Status: implemented and measured on Anisha's Mac only. Not yet measured on the machine of the finals (B10, Nusrat's PC), and the limits below
-are NOT shown to be met there.** The rule for choosing the perception mode is decided (6 November 2026, "What is decided" below) and has not been applied yet. Nothing here changes a
+are NOT shown to be met there.** The rule for choosing the perception mode is decided (6 November 2026, "What is decided" below) and has not been applied yet.
+**PC timing analysis pending (7 November 2026): measured on Nusrat's PC.** Nusrat ran `timing_check_v4.py` in both modes on her PC under the 14.8 run protocol; her results are analysed on that PC and the numbers (limits per mode, memory, GC pauses, loop lag) are to be recorded here, dated, when they arrive. Until then the rule below is not applied and no mode is chosen. Nothing here changes a
 v3 file or a v3 result.
 
 **Problem.** Unity stops the robot when Python is silent for 0.3 s (`watchdog_timeout_s`). The v3 server runs the models on two threads of the
