@@ -1194,9 +1194,9 @@ Anything done differently from this section is disclosed here, dated, before the
 
 ### 14.14 Server timing: the v4 models in worker processes (6 November 2026)
 
-**Status: implemented and measured on Anisha's Mac only. Not yet measured on the machine of the finals (B10, Nusrat's PC), and the limits below
-are NOT shown to be met there.** The rule for choosing the perception mode is decided (6 November 2026, "What is decided" below) and has not been applied yet.
-**PC timing analysis pending (7 November 2026): measured on Nusrat's PC.** Nusrat ran `timing_check_v4.py` in both modes on her PC under the 14.8 run protocol; her results are analysed on that PC and the numbers (limits per mode, memory, GC pauses, loop lag) are to be recorded here, dated, when they arrive. Until then the rule below is not applied and no mode is chosen. Nothing here changes a
+**Status (updated 7 November 2026): implemented; measured on Anisha's Mac and, in the replay without Unity, on Nusrat's PC (the machine of the finals, B10).** On the PC both modes
+meet every declared limit (section "PC measurement" below). The mode is **not decided yet**: step 4 of the rule (a real Play development session with Unity running, in both modes, with the
+free system memory recorded) is still to be done. The rule for choosing the perception mode is decided (6 November 2026, "What is decided" below). Nothing here changes a
 v3 file or a v3 result.
 
 **Problem.** Unity stops the robot when Python is silent for 0.3 s (`watchdog_timeout_s`). The v3 server runs the models on two threads of the
@@ -1263,6 +1263,24 @@ panorama and 1037 to 1154 of 1200 pan-tilt, end-to-end latency p99 218 to 399 ms
 threads 1.57 GB in one process; processes 0.23 GB (server) + 1.74 GB (workers) = 1.96 GB, about 25 % more. Cost of the controller itself per telemetry
 (`GuideControllerV4.on_message`, the test rig with four people in view, 2000 messages): mean 0.04 ms, p99 0.15 ms, max 0.33 ms (not in the replay, which is idle; negligible next to the limits).
 
+**PC measurement (Nusrat's PC, recorded 7 November 2026).** Windows 11, NVIDIA RTX 3060, 60 s replay (`timing_check_v4.py`, no Unity, real models, 20 / 5 / 10 Hz), the run protocol of 14.8 followed.
+`threads` was run at commit `80a64d1`, `processes` at `650bf53`; `robot_vision/` is identical between these two commits, so the comparison is fair. The results were analysed on that PC
+(Nusrat's Claude Code) and the numbers below were passed on as text; the result folders are not in the repository and were not read here.
+
+| | loop lag p99 / max (ms) | round trip p99 / max (ms) | longest reply gap (ms) | unanswered | worker events | memory | limits |
+|---|---|---|---|---|---|---|---|
+| threads | 21 / 22 | 2.3 / 21.9 | 68.2 | 0 | 0 | 1.5 GB | all met |
+| processes | 21 / 68 | 2.3 / 79.5 | 125.4 | 0 | 0 | 2.9 GB | all met |
+
+*Garbage collection.* Every pause over 10 ms happened **before Unity connected** (threads: between 16 s and 58 s after the start, Unity connected at 59.9 s; processes: 58.9 to 62.6 s, connected at 63.1 s).
+The largest ones, 294 ms (threads) and 125 ms (processes), are `freeze_heap`'s own `gc.collect()` (`full_collect_ms_before` 294.53 and 124.72 ms), which runs once before the server listens; after the freeze a full collection takes
+0.01 ms. No pause over 10 ms happened while Unity was connected, so the loop lag maximum stayed at 22 ms with threads. The heap freeze works as it did in v3 (section 9).
+
+*Reading.* Step 1 of the rule: both modes meet every limit in the replay, so `processes` is preferred. This is **not a decision**: the replay has no Unity. Step 4 (a real Play session with Unity running) is still open, to be run in both modes.
+`processes` costs 1.4 GB more memory (2.9 GB against 1.5 GB), and free memory fell to 13 MB on this PC in a v3 session (as reported by Nusrat; see also section 9 item 17), so memory is the condition to watch.
+**Recorded condition for that Play session: the free system memory** (lowest value and the value at the end, from the resource log, `--resource-log`), for each mode, next to the watchdog stops, the worker events, the loop lag and the round trip.
+In the replay `processes` had a larger loop-lag maximum (68 against 22 ms), round-trip maximum (79.5 against 21.9 ms) and longest reply gap (125.4 against 68.2 ms), all inside the limits (100, 150, 150 ms) but with less margin on the reply gap.
+
 **What the numbers show.**
 1. **The thread design cannot use the Apple GPU at all:** with both perception threads on MPS the server process aborts at the first frames with the Metal assertion
    `A command encoder is already encoding to this command buffer` (`..._171152/server.log`). With one process per camera the same models run on the Apple GPU. (The v3
@@ -1288,11 +1306,11 @@ threads 1.57 GB in one process; processes 0.23 GB (server) + 1.74 GB (workers) =
 - Status of the rule: **not yet applied** (no PC measurement and no Play session exist yet).
 
 **Not shown / limits of this check.** The replay is not Unity (Editor rendering, physics and the network threads share the PC in a real run); the controller's step and the commander rule are not in it (measured separately, tiny);
-the frames are of the 2026-10-20 scene; one Mac only; the "behind" threshold (0.5 s, equal to `gesture_stale_s`) is untested on the PC; a dead worker is not restarted (the trial then times out or aborts on stale perception, which is the honest outcome).
+the frames are of the 2026-10-20 scene; one Mac and, for the PC, a replay without Unity (the Play session is step 4); the "behind" threshold (0.5 s, equal to `gesture_stale_s`) produced no event on the PC replay (0 worker events in both modes); a dead worker is not restarted (the trial then times out or aborts on stale perception, which is the honest outcome).
 
 **For the next Play run (Nusrat).** (1) Before it: the two timing checks above on the PC, send both `outputs/timing_check_v4_*` folders. (2) In the run: the console shows `[perception] worker people ready`, `... worker gesture ready` before Unity may connect (loading takes
 longer than with threads), and any `died` / `behind` / `error` line; afterwards `summary.json` -> `perception.worker_events` must be empty, `event_loop_lag.all_samples` gives p99 / max, `stall_tracebacks.txt` (dumps at 0.1 s), and Unity's own watchdog and frame-time figures as before.
-(3) `nvidia-smi` during the run: two CUDA contexts now (people and gesture worker), memory of the GPU and free RAM (the process mode uses about 400 MB more). (4) The run folder keeps `perception_events.jsonl` and `run_info.json` -> `perception_workers`.
+(3) `nvidia-smi` during the run: two CUDA contexts now (people and gesture worker), memory of the GPU and free RAM (the process mode used about 400 MB more on the Mac and 1.4 GB more on the PC, 2.9 against 1.5 GB). (4) The run folder keeps `perception_events.jsonl` and `run_info.json` -> `perception_workers`.
 
 ### 14.15 Findings of 7 November 2026: zoom with a level camera, and the first look check (decisions before any development data)
 
