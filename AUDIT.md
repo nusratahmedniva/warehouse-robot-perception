@@ -1187,15 +1187,16 @@ Anything done differently from this section is disclosed here, dated, before the
 
 | | what | waiting for |
 |---|---|---|
-| B7 | which test looks, clips and bystander layout each setting uses (`test_assignment`) | Nusrat's real looks and clips, then both of us |
+| B7 | which test looks, clips and bystander layout each setting uses (`test_assignment`). **Note (7 November 2026, 14.15):** some final cases must place the commander at about 4 m, otherwise the zoom comparison (`zoom_on` against `zoom_off`) measures almost nothing: with a level camera the zoom hardly acts at 2 m | Nusrat's real looks and clips, then both of us |
 | B8 | real look and clip names, their numbers, the unseen test look, the look styles (`data_splits.json` still has placeholders) | Nusrat |
 | B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`). Agreed 29 Oct 2026 so far: `bridge_unity_v4.json` and `robot_unity_v4.json` are on the list (14.7a); the rest of the list and the `TrialRunnerV4` guard are open. (The leak-test `session.json` key is no longer open: confirmed 4 Nov 2026, 14.7b item 4.) | Nusrat |
 | B11 | v4 acceptance criteria for RQ1 to RQ4 (`acceptance_criteria`) | both of us |
 
 ### 14.14 Server timing: the v4 models in worker processes (6 November 2026)
 
-**Status: implemented and measured on Anisha's Mac only. Not yet measured on the machine of the finals (B10, Nusrat's PC), and the limits below
-are NOT shown to be met there.** The rule for choosing the perception mode is decided (6 November 2026, "What is decided" below) and has not been applied yet. Nothing here changes a
+**Status (updated 7 November 2026): implemented; measured on Anisha's Mac and, in the replay without Unity, on Nusrat's PC (the machine of the finals, B10).** On the PC both modes
+meet every declared limit (section "PC measurement" below). The mode is **not decided yet**: step 4 of the rule (a real Play development session with Unity running, in both modes, with the
+free system memory recorded) is still to be done. The rule for choosing the perception mode is decided (6 November 2026, "What is decided" below). Nothing here changes a
 v3 file or a v3 result.
 
 **Problem.** Unity stops the robot when Python is silent for 0.3 s (`watchdog_timeout_s`). The v3 server runs the models on two threads of the
@@ -1262,6 +1263,25 @@ panorama and 1037 to 1154 of 1200 pan-tilt, end-to-end latency p99 218 to 399 ms
 threads 1.57 GB in one process; processes 0.23 GB (server) + 1.74 GB (workers) = 1.96 GB, about 25 % more. Cost of the controller itself per telemetry
 (`GuideControllerV4.on_message`, the test rig with four people in view, 2000 messages): mean 0.04 ms, p99 0.15 ms, max 0.33 ms (not in the replay, which is idle; negligible next to the limits).
 
+**PC measurement (Nusrat's PC, recorded 7 November 2026).** Windows 11, NVIDIA RTX 3060, 60 s replay (`timing_check_v4.py`, no Unity, real models, 20 / 5 / 10 Hz), the run protocol of 14.8 followed.
+`threads` was run at commit `80a64d1`, `processes` at `650bf53`; `robot_vision/` is identical between these two commits, so the comparison is fair. Source of the numbers: they were read
+directly from Nusrat's result zip `timing_checks_20261107.zip` (the two `timing_check_v4_*` `report.md` files, `gc_pauses.csv`, `loop_lag.csv`, `server.log` and `summary.json` of the two `bridge_guide_20261107_*` runs)
+by Anisha's assistant, not taken from a second-hand analysis. The zip is outside the repository and nothing from it was copied in. Recorded here on Anisha's instruction.
+
+| | loop lag p99 / max (ms) | round trip p99 / max (ms) | longest reply gap (ms) | unanswered | worker events | memory | limits |
+|---|---|---|---|---|---|---|---|
+| threads | 21 / 22 | 2.3 / 21.9 | 68.2 | 0 | 0 | 1.5 GB | all met |
+| processes | 21 / 68 | 2.3 / 79.5 | 125.4 | 0 | 0 | 2.9 GB | all met |
+
+*Garbage collection.* Every pause over 10 ms happened **before Unity connected** (threads: between 16 s and 58 s after the start, Unity connected at 59.9 s; processes: 58.9 to 62.6 s, connected at 63.1 s).
+The largest ones, 294 ms (threads) and 125 ms (processes), are `freeze_heap`'s own `gc.collect()` (`full_collect_ms_before` 294.53 and 124.72 ms), which runs once before the server listens; after the freeze a full collection takes
+0.01 ms. No pause over 10 ms happened while Unity was connected, so the loop lag maximum stayed at 22 ms with threads. The heap freeze works as it did in v3 (section 9).
+
+*Reading.* Step 1 of the rule: both modes meet every limit in the replay, so `processes` is preferred. This is **not a decision**: the replay has no Unity. Step 4 (a real Play session with Unity running) is still open, to be run in both modes.
+`processes` costs 1.4 GB more memory (2.9 GB against 1.5 GB), and free memory fell to 13 MB on this PC in a v3 session (as reported by Nusrat; see also section 9 item 17), so memory is the condition to watch.
+**Recorded condition for that Play session: the free system memory** (lowest value and the value at the end, from the resource log, `--resource-log`), for each mode, next to the watchdog stops, the worker events, the loop lag and the round trip.
+In the replay `processes` had a larger loop-lag maximum (68 against 22 ms), round-trip maximum (79.5 against 21.9 ms) and longest reply gap (125.4 against 68.2 ms), all inside the limits (100, 150, 150 ms) but with less margin on the reply gap.
+
 **What the numbers show.**
 1. **The thread design cannot use the Apple GPU at all:** with both perception threads on MPS the server process aborts at the first frames with the Metal assertion
    `A command encoder is already encoding to this command buffer` (`..._171152/server.log`). With one process per camera the same models run on the Apple GPU. (The v3
@@ -1282,12 +1302,40 @@ threads 1.57 GB in one process; processes 0.23 GB (server) + 1.74 GB (workers) =
   1. On Nusrat's PC, under the run protocol of 14.8, run `timing_check_v4.py` in both modes (`--workers threads`, `--workers processes`, 60 s or more).
   2. Use `processes` if it meets every declared limit; otherwise use `threads` if it does; if neither does, **no v4 final starts until the cause is found** (resource log, `stall_tracebacks.txt`).
   3. **Addition:** the chosen mode must also pass **one real Play development session with Unity running** before the freeze: 0 watchdog stops, 0 worker events, and loop lag and round trip within the declared limits. If it fails there, the same rule applies again (the other mode is tried; if neither passes, no freeze and no final).
+     **Recorded condition (7 November 2026, Anisha):** the free system memory during that Play session is recorded with the result (lowest value and the value at the end, from the resource log, `--resource-log`), because the worker processes need about 400 MB more than threads and memory pressure was a measured candidate cause of the earlier stalls (section 9 item 17).
   4. The mode in `bridge.json` is what the freeze pins (14.7). The result of each step is recorded here, dated, with the run folders.
 - Status of the rule: **not yet applied** (no PC measurement and no Play session exist yet).
 
 **Not shown / limits of this check.** The replay is not Unity (Editor rendering, physics and the network threads share the PC in a real run); the controller's step and the commander rule are not in it (measured separately, tiny);
-the frames are of the 2026-10-20 scene; one Mac only; the "behind" threshold (0.5 s, equal to `gesture_stale_s`) is untested on the PC; a dead worker is not restarted (the trial then times out or aborts on stale perception, which is the honest outcome).
+the frames are of the 2026-10-20 scene; one Mac and, for the PC, a replay without Unity (the Play session is step 4); the "behind" threshold (0.5 s, equal to `gesture_stale_s`) produced no event on the PC replay (0 worker events in both modes); a dead worker is not restarted (the trial then times out or aborts on stale perception, which is the honest outcome).
 
 **For the next Play run (Nusrat).** (1) Before it: the two timing checks above on the PC, send both `outputs/timing_check_v4_*` folders. (2) In the run: the console shows `[perception] worker people ready`, `... worker gesture ready` before Unity may connect (loading takes
 longer than with threads), and any `died` / `behind` / `error` line; afterwards `summary.json` -> `perception.worker_events` must be empty, `event_loop_lag.all_samples` gives p99 / max, `stall_tracebacks.txt` (dumps at 0.1 s), and Unity's own watchdog and frame-time figures as before.
-(3) `nvidia-smi` during the run: two CUDA contexts now (people and gesture worker), memory of the GPU and free RAM (the process mode uses about 400 MB more). (4) The run folder keeps `perception_events.jsonl` and `run_info.json` -> `perception_workers`.
+(3) `nvidia-smi` during the run: two CUDA contexts now (people and gesture worker), memory of the GPU and free RAM (the process mode used about 400 MB more on the Mac and 1.4 GB more on the PC, 2.9 against 1.5 GB). (4) The run folder keeps `perception_events.jsonl` and `run_info.json` -> `perception_workers`.
+
+### 14.15 Findings of 7 November 2026: zoom with a level camera, and the first look check (decisions before any development data)
+
+Written on 2026-11-07, before any v4 development recording was evaluated and before any threshold was set on one.
+
+**Decisions (Anisha, 2026-11-07).**
+1. **VRoid is dropped as an avatar look.** The look check (Nusrat, Unity, commit `63a6aed`, merged in PR #22) found 0 hands in 20 VRoid images: the MediaPipe hand model does not see the stylised hands, so neither WAIT nor STOP could be read on it. This is a finding to report in the paper, not a defect to work around.
+2. **WAIT clips are made clearer for all looks** (Nusrat). A change to the animations before recording; no threshold changes.
+3. **The look check saw every look, including the future test look, and nothing was tuned on it.** It decides only which looks are kept (docs/look_check_v4.md); no reader, commander, perception or control value was changed because of it, and the test look's appearance was not used to choose any setting.
+4. **B8 stays open** until Nusrat answers whether a test look with an unseen body exists (RQ4: new looks); B7 gets the note below.
+
+**Zoom with a level camera: decision (c).** Nusrat found in Unity that at 2.0 m a raised hand is about 22 to 24 degrees above the level pan-tilt camera, so a 30 degree view (half angle 15 degrees) loses the hand. Decided: **the camera stays level** (`tilt_deg` is not used and no tilt command is added), and the zoom is limited by distance through the existing `arm_fit` rule (`configs/v4/control.json` -> `zoom`, unchanged: `arm_fit_margin` 0.1, `fov_min_deg` 15). No v4 code or config was changed for this.
+
+*Check* (`tests/test_zoom_geometry_v4.py`, 10 tests, pure arithmetic): the real `ZoomController` in a closed loop with a pinhole camera 1.2 m above the floor, a person centred in front of it, shoulder 1.5 m, a raised arm (upper arm 0.30 m, forearm 0.26 m, hand 0.19 m), YOLO taken to miss a keypoint outside the image, Unity taken to apply the commanded view by the next frame, 60 s at 10 Hz. **The camera height of 1.2 m is inferred, not read from a config** (it is not in any Python config): with it a vertical arm puts the wrist 23.3 degrees above the axis at 2.0 m, Nusrat's measurement. If the real pan-tilt camera height differs, the angles and the table change; Nusrat is asked to confirm it.
+
+| distance | wrist above the axis (arm vertical / 60 degrees up) | floor: narrowest view that keeps shoulder, elbow and wrist inside the margin | narrowest view the controller commands | magnification of that view |
+|---|---|---|---|---|
+| 2 m | 23.3 / 21.4 degrees | 56.5 / 52.3 degrees | 60 / 54 degrees | 1.0x / 1.1x |
+| 3 m | 16.0 / 14.7 degrees | 39.4 / 36.2 degrees | 41 / 37 degrees | 1.5x / 1.7x |
+| 4 m | 12.1 / 11.1 degrees | 30.1 / 27.6 degrees | 31 / 28 degrees | 2.1x / 2.3x |
+| 6 m | 8.2 / 7.5 degrees | 20.3 / 18.6 degrees | 20 / 18 degrees | 3.3x / 3.6x |
+
+What the check shows: (a) **at 2.0 m the controller never narrows below the floor** (tested for arms raised 90, 75, 60 and 45 degrees: the narrowest commanded view is 60, 60, 54 and 48 degrees against floors of 56.5, 55.5, 52.3 and 47.0, so the zoom is absent or small at the asking distance); (b) at 3 and 4 m it stays above the floor; (c) at 6 m it overshoots the floor by 0.3 degrees (arm vertical) and 0.6 degrees (60 degrees), within one rate-limited step (the arm stays inside the image in every frame, only inside the margin band for a moment); (d) the arm is in the image in 100 % of the frames at every distance and the view never sits at `fov_min_deg`; (e) from 3 m on the commanded view moves in and out (for example 41 to 53 degrees at 3 m): the rule narrows until the hand reaches the edge margin, counts it lost, widens by `widen_step_deg`, and narrows again. This pumping is an observation for the development evaluation, not a reason to tune anything now.
+
+**Expectation, recorded before any data:** the zoom is expected to matter **only from about 3 m** (1.5x at 3 m against 1.0x to 1.1x at 2 m). RQ3 compares `zoom_on` with `zoom_off`; if every final case has the commander at the 2 m asking distance the comparison would measure almost nothing. **B7 note:** some final cases should place the commander at about 4 m. Which cases, and how many, is for B7 (both of us).
+
+**Not shown.** Real Unity frames with the zoom active (this is a model of the geometry); the pan-tilt camera height; how Unity ramps the field of view; the effect of the pumping on the readings.
