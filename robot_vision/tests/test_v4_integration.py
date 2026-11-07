@@ -256,7 +256,7 @@ class GuideV4Tests(unittest.TestCase):
 
 class ServerWiringTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_3_guide_run_uses_the_v4_classes_and_writes_their_files(self):
-        cfg = {**V3_CFG, "port": 0}
+        cfg = {**V3_CFG, "port": 0, "perception_workers": {"mode": "threads"}}     # this test patches the thread factory
         real = S.make_perception_worker_v4
         S.make_perception_worker_v4 = lambda *a, **k: FakeWorkerV4()
         try:

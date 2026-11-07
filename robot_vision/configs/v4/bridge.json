@@ -21,6 +21,31 @@
     "log_messages_per_direction": 15,
     "log_note": "Each command carries the last N message summaries per direction (in and out), N chosen within the 10-20 range Anisha gave on 2026-10-23."
   },
+  "timing": {
+    "loop_lag_threshold_ms": 50.0,
+    "stall_dump_after_s": 0.1,
+    "note": "Instrument settings of the v4 server (bridge/timing_v4.py), not decision thresholds. The loop-lag monitor wakes every 10 ms and logs a wake-up later than loop_lag_threshold_ms; a stall longer than stall_dump_after_s writes the Python stacks of every thread to stall_tracebacks.txt (protocol 2 keeps 0.25 s). Declared 2026-11-06 for AUDIT.md section 14.14."
+  },
+  "timing_limits": {
+    "loop_lag_p99_ms": 25,
+    "loop_lag_max_ms": 100,
+    "round_trip_p99_ms": 50,
+    "round_trip_max_ms": 150,
+    "reply_gap_max_ms": 150,
+    "unanswered_telemetry": 0,
+    "perception_worker_events": 0,
+    "declared": "2026-11-06, BEFORE the worker-process fix was measured; accepted by Anisha as proposed. Derived from the watchdog (watchdog_timeout_s 0.3 s) and a safety margin, not from any measurement of the fix. The baseline of the thread design (AUDIT.md section 14.14) was measured before this was declared and is not used to set them.",
+    "note": "Checked by timing_check_v4.py on a replay (real models, 20 Hz telemetry, 5 Hz panorama, 10 Hz pan-tilt) of 60 s or more; every entry is 'measured <= limit'. loop_lag: how late the server's 10 ms asyncio sleep wakes up. round_trip: telemetry written -> its command read, by the client. reply_gap: time between two consecutive commands (the replay's telemetry period is 50 ms). unanswered_telemetry: telemetry with no command. perception_worker_events: deaths, errors and 'behind' episodes of the worker processes (0 when the workers are threads). The limits are at most half the watchdog."
+  },
+  "perception_workers": {
+    "mode": "processes",
+    "start_method": "spawn",
+    "ready_timeout_s": 300,
+    "behind_after_s": 0.5,
+    "health_poll_s": 0.1,
+    "stop_timeout_s": 15,
+    "note": "Where the models of the v4 server run (protocol 3 only; protocol 2 always uses threads). 'threads': two threads in the server process (bridge/perception_v4.py, the design measured as the baseline). 'processes': two worker processes started with 'spawn' (Windows and macOS), one per camera, latest frame only, results swapped in by receiver threads; the asyncio loop never waits for a model and never touches a pipe (bridge/perception_mp_v4.py). behind_after_s: a worker that has not answered a frame for this long is logged as 'behind' (nothing waiting, e.g. before the first frame, is never behind) (the controller sees its results as stale by their capture times, unknown, never a guess); ready_timeout_s: how long the server waits for the models to load before it listens. Set to 'processes' on 2026-11-06 as the v4 design; it is NOT yet measured on the machine of the finals: AUDIT.md section 14.14 proposes running timing_check_v4.py in both modes there and keeping the mode that meets every timing limit."
+  },
   "intrinsics_rel_tol": 0.001,
   "intrinsics_note": "frame_pan_tilt fx, fy, cx, cy must match vertical_fov_deg, width and height within this relative tolerance (float32 rounding in Unity). A consistency check, not a decision threshold."
 }

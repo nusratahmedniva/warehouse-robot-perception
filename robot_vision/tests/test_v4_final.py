@@ -345,7 +345,7 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
         S.make_perception_worker_v4 = factory
         try:
             with tempfile.TemporaryDirectory() as d:
-                cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}}
+                cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}, "perception_workers": {"mode": "threads"}}   # these tests patch the thread factory
                 cfg_path = ROOT / "configs" / "v4" / "bridge.json"
                 out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on")
                 self.assertTrue((out / "FINAL_SETTING.json").exists())
@@ -367,7 +367,7 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
         S.make_perception_worker_v4 = factory
         try:
             with tempfile.TemporaryDirectory() as d:
-                cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}}
+                cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}, "perception_workers": {"mode": "threads"}}   # these tests patch the thread factory
                 cfg_path = ROOT / "configs" / "v4" / "bridge.json"
                 out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on")
                 marker = json.loads((out / "FINAL_RUN_DONE.json").read_text())

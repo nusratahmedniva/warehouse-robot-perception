@@ -13,7 +13,8 @@
     "robot_vision/configs/v4/final_plan.json",
     "robot_vision/configs/v4/gesture_data.json",
     "robot_vision/configs/v4/gesture_reader.json",
-    "robot_vision/configs/v4/gt_eval.json"
+    "robot_vision/configs/v4/gt_eval.json",
+    "robot_vision/configs/v4/look_check.json"
   ],
   "sha256": {},
   "v3_dependencies": {},
