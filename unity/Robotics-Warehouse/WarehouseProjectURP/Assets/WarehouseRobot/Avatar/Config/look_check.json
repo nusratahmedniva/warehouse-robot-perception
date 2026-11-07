@@ -1,0 +1,186 @@
+{
+  "note": "v4 Phase 2A look check (2026-11-05, Nusrat; recording format changed 2026-11-07 to docs/look_check_v4.md, Anisha's look_check_v4.py): renders every candidate look in held Humanoid poses with the pan-tilt camera settings and writes them in her input format, so her tool runs the real models on them. An engineering check, not an evaluation: no threshold is set or changed from it. Read by Tools > Warehouse v4 > Look Check (Editor only); nothing in the v3 or v4 study scenes reads it.",
+  "paths": {
+    "repo_root_relative_to_unity_project": "../../..",
+    "output_root": "robot_vision/outputs",
+    "output_prefix": "look_check",
+    "robot_unity_config": "Assets/WarehouseRobot/Robot/Config/robot_unity_v4.json"
+  },
+  "recording": {
+    "folder_name": "looks_check",
+    "distances_m": [2.0, 4.0],
+    "vertical_fov_deg": 60.0,
+    "sequence_frames": 11,
+    "arms": ["left", "right"],
+    "why": {
+      "format": "docs/look_check_v4.md: names <look>__<COMMAND>__<distance_m>__<take>; a single frame is <name>.png + <name>.json, a sequence is a folder <name>/ with frame_000.png + frame_000.json ... ; the header is the bridge's frame_pan_tilt header (protocol 3) plus the person's own gesturing arm under 'arm' (POINT, WAIT, STOP). The take label starts with the arm (e.g. left_seq1), because the arm is not part of the name. folder_name holds the recordings only (the tool reads every subfolder as a sequence); the run's own files sit next to it.",
+      "distances_m": "docs/look_check_v4.md: 2.0 m decides the verdict (the asking distance), 4.0 m is the secondary distance.",
+      "vertical_fov_deg": "docs/look_check_v4.md: the default field of view (robot_unity_v4.json pan_tilt_camera.vertical_fov_deg). Camera size, height, clip planes and the level tilt come from robot_unity_v4.json through PanTiltCamera.ApplyCameraSettings, the code the robot uses.",
+      "sequence_frames": "docs/look_check_v4.md: 1 s at 10 Hz, t = 0.0 to 1.0 s, 11 frames. The pose is held still for the whole second (rendered in Edit Mode, so the 11 frames are identical). time_s is left out of the header (there is no Unity Time.time in an Edit Mode render), so the tool uses its 10 Hz fallback."
+    }
+  },
+  "commands": [
+    {
+      "command": "POINT",
+      "arm_labelled": true,
+      "variants": [
+        { "take": "seq1", "sequence": true,  "azimuth_front_deg": 0.0,  "elevation_deg": 0.0,   "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "seq2", "sequence": true,  "azimuth_front_deg": 45.0, "elevation_deg": 0.0,   "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f1",   "sequence": false, "azimuth_front_deg": 0.0,  "elevation_deg": 10.0,  "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f2",   "sequence": false, "azimuth_front_deg": 15.0, "elevation_deg": 0.0,   "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f3",   "sequence": false, "azimuth_front_deg": 30.0, "elevation_deg": -10.0, "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f4",   "sequence": false, "azimuth_front_deg": 45.0, "elevation_deg": 10.0,  "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f5",   "sequence": false, "azimuth_front_deg": 20.0, "elevation_deg": 5.0,   "forearm_up": false, "spread_deg": 0.0 }
+      ]
+    },
+    {
+      "command": "WAIT",
+      "arm_labelled": true,
+      "variants": [
+        { "take": "seq1", "sequence": true,  "azimuth_front_deg": 20.0, "elevation_deg": -22.0, "forearm_up": true, "spread_deg": 0.0 },
+        { "take": "seq2", "sequence": true,  "azimuth_front_deg": 35.0, "elevation_deg": -10.0, "forearm_up": true, "spread_deg": 0.0 },
+        { "take": "f1",   "sequence": false, "azimuth_front_deg": 20.0, "elevation_deg": -30.0, "forearm_up": true, "spread_deg": 0.0 },
+        { "take": "f2",   "sequence": false, "azimuth_front_deg": 10.0, "elevation_deg": -22.0, "forearm_up": true, "spread_deg": 0.0 },
+        { "take": "f3",   "sequence": false, "azimuth_front_deg": 30.0, "elevation_deg": -15.0, "forearm_up": true, "spread_deg": 0.0 },
+        { "take": "f4",   "sequence": false, "azimuth_front_deg": 20.0, "elevation_deg": -5.0,  "forearm_up": true, "spread_deg": 0.0 },
+        { "take": "f5",   "sequence": false, "azimuth_front_deg": 40.0, "elevation_deg": -25.0, "forearm_up": true, "spread_deg": 0.0 }
+      ]
+    },
+    {
+      "command": "STOP",
+      "arm_labelled": true,
+      "variants": [
+        { "take": "seq1", "sequence": true,  "azimuth_front_deg": 79.0, "elevation_deg": 14.0,  "forearm_up": false, "spread_deg": 8.0 },
+        { "take": "seq2", "sequence": true,  "azimuth_front_deg": 45.0, "elevation_deg": -40.0, "forearm_up": true,  "spread_deg": 8.0 },
+        { "take": "f1",   "sequence": false, "azimuth_front_deg": 79.0, "elevation_deg": 25.0,  "forearm_up": false, "spread_deg": 6.0 },
+        { "take": "f2",   "sequence": false, "azimuth_front_deg": 70.0, "elevation_deg": 5.0,   "forearm_up": false, "spread_deg": 10.0 },
+        { "take": "f3",   "sequence": false, "azimuth_front_deg": 30.0, "elevation_deg": -30.0, "forearm_up": true,  "spread_deg": 8.0 },
+        { "take": "f4",   "sequence": false, "azimuth_front_deg": 60.0, "elevation_deg": -50.0, "forearm_up": true,  "spread_deg": 12.0 },
+        { "take": "f5",   "sequence": false, "azimuth_front_deg": 85.0, "elevation_deg": 14.0,  "forearm_up": false, "spread_deg": 7.0 }
+      ]
+    },
+    {
+      "command": "NONE",
+      "arm_labelled": false,
+      "variants": [
+        { "take": "seq1", "sequence": true,  "azimuth_front_deg": 0.0,  "elevation_deg": -83.0, "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "seq2", "sequence": true,  "azimuth_front_deg": 0.0,  "elevation_deg": -80.0, "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f1",   "sequence": false, "azimuth_front_deg": 0.0,  "elevation_deg": -86.0, "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f2",   "sequence": false, "azimuth_front_deg": 5.0,  "elevation_deg": -84.0, "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f3",   "sequence": false, "azimuth_front_deg": 0.0,  "elevation_deg": -82.0, "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f4",   "sequence": false, "azimuth_front_deg": 10.0, "elevation_deg": -80.0, "forearm_up": false, "spread_deg": 0.0 },
+        { "take": "f5",   "sequence": false, "azimuth_front_deg": 0.0,  "elevation_deg": -78.0, "forearm_up": false, "spread_deg": 0.0 }
+      ]
+    }
+  ],
+  "commands_note": "Pose design, declared before any model was run on these variants. Every arm direction is in the worker's body frame (the worker faces the camera): azimuth_front_deg turns the arm from straight out to the person's own side (0 = sideways in the image plane) toward the camera (90 = straight at it); elevation_deg is above (+) or below (-) horizontal. forearm_up: the direction is the upper arm's and the forearm is vertical (bent elbow), else the whole arm is straight. POINT: index finger extended along the arm, other fingers curled; seq1 sideways in the image plane and seq2 45 deg toward the front, as docs/look_check_v4.md asks. WAIT: forearm vertical, hand beside the head, index up, other fingers curled, palm toward the camera; seq1 is the Phase 2A pose (0.8 side + 0.3 front, 0.35 down). STOP: fingers up, palm toward the camera, the four fingers fanned by spread_deg per finger away from the middle finger; seq1 extended toward the robot (v3 GestureWorker STOP: front + 0.25 up + 0.2 side), seq2 bent. The other arm hangs relaxed. NONE (optional negative control, no arm label): both arms hang, mirrored, relaxed hands. Singles f1..f5 differ a little in arm direction, hand height and finger spread, as docs/look_check_v4.md recommends.",
+  "render": {
+    "backdrop_behind_person_m": 4.0,
+    "floor_half_size_m": 15.0,
+    "floor_grey": 0.45,
+    "backdrop_grey": 0.70,
+    "light_euler_deg": [40.0, 160.0, 0.0],
+    "light_intensity": 1.2,
+    "ambient_grey": 0.45,
+    "magenta_tolerance": 16,
+    "why": {
+      "scene": "Neutral grey floor and backdrop and one directional light, so the looks are compared under the same light; the warehouse background is not part of this check.",
+      "magenta_tolerance": "A pixel counts as error-shader magenta when R and B are >= 255 - tolerance and G <= tolerance (8-bit)."
+    }
+  },
+  "hand": {
+    "fist_curl_deg": 75.0,
+    "fist_thumb_curl_deg": 40.0,
+    "relaxed_curl_deg": 25.0,
+    "relaxed_thumb_curl_deg": 10.0,
+    "rest_outward": 0.12,
+    "why": "fist_curl_deg, fist_thumb_curl_deg and rest_outward are v3 GestureWorker's values (fingerCurlDeg, thumbCurlDeg, restOutward); relaxed values are pose design (a loosely open hand hanging), chosen before any model was run."
+  },
+  "looks": [
+    {
+      "id": "mixamo_worker",
+      "family": "mixamo",
+      "role": "candidate",
+      "source": "Mixamo character used as the v3 worker (Assets/WarehouseRobot/Characters/worker.fbx, git-ignored)",
+      "kind": "prefab",
+      "asset": "Assets/WarehouseRobot/Characters/worker.fbx",
+      "material_override": "Assets/WarehouseRobot/Characters/worker_textures/Worker_URP.mat",
+      "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
+    },
+    {
+      "id": "sunbox_m1",
+      "family": "sunbox",
+      "role": "candidate",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: male base, long-sleeved shirt, jeans",
+      "kind": "sunbox",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab",
+      "material_override": "",
+      "sunbox": {
+        "gender": "Male", "skin": 0, "hair_style": 1, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [
+          { "name": "Shirt", "variation": 2 }, { "name": "Pants", "variation": 1 }, { "name": "Suit Shoes", "variation": 0 },
+          { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
+        ]
+      }
+    },
+    {
+      "id": "sunbox_m2",
+      "family": "sunbox",
+      "role": "candidate",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: male base, darker skin, T-shirt, tracksuit pants, cap",
+      "kind": "sunbox",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab",
+      "material_override": "",
+      "sunbox": {
+        "gender": "Male", "skin": 2, "hair_style": 3, "hair_material": 1, "facial_hair_style": 1,
+        "clothing": [
+          { "name": "TShirt", "variation": 1 }, { "name": "Tracksuit Pants", "variation": 1 }, { "name": "Basketball Shoes", "variation": 0 },
+          { "name": "Baseball cap", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
+        ]
+      }
+    },
+    {
+      "id": "sunbox_f1",
+      "family": "sunbox",
+      "role": "candidate",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, blouse, jeans",
+      "kind": "sunbox",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab",
+      "material_override": "",
+      "sunbox": {
+        "gender": "Female", "skin": 1, "hair_style": 5, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [
+          { "name": "Blouse", "variation": 1 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
+          { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
+        ]
+      }
+    },
+    {
+      "id": "sunbox_f2",
+      "family": "sunbox",
+      "role": "candidate",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, darker skin, black T-shirt, tracksuit pants, beanie, glasses",
+      "kind": "sunbox",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab",
+      "material_override": "",
+      "sunbox": {
+        "gender": "Female", "skin": 2, "hair_style": 6, "hair_material": 1, "facial_hair_style": 0,
+        "clothing": [
+          { "name": "TShirt", "variation": 0 }, { "name": "Tracksuit Pants", "variation": 0 }, { "name": "Basketball Shoes", "variation": 1 },
+          { "name": "Beanie", "variation": 0 }, { "name": "Classic Round Glasses Clear", "variation": 0 }
+        ]
+      }
+    },
+    {
+      "id": "vrm_seed_san",
+      "family": "vrm",
+      "role": "pipeline_test_only",
+      "source": "Seed-san by VirtualCast, Inc. (VRM Consortium sample, vrm-c/vrm-specification samples/Seed-san, VRM Public License 1.0). Tests the UniVRM import and MToon under URP before the VRoid looks exist; not a candidate look.",
+      "kind": "prefab",
+      "asset": "Assets/ThirdParty/VrmSamples/Seed-san.vrm",
+      "material_override": "",
+      "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
+    }
+  ],
+  "looks_note": "Look ids are the <look> part of the recording names: a-z, 0-9 and single underscores (never '__', which separates the name's parts). VRoid looks: copy each .vrm into Assets/ThirdParty/VRoid/ (git-ignored) and add one entry like vrm_seed_san (kind prefab, asset = the .vrm path, family vrm, role candidate). Sunbox variants: the pack's preset .txt files are not used (the free pack has no preset loader, and the presets name items and hair styles of the paid pack); each variant is the free pack's own items named here. A look whose asset is not installed is reported as not_installed, never skipped silently."
+}

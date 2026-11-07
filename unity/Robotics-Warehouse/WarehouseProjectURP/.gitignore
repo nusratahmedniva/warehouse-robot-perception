@@ -73,3 +73,9 @@ crashlytics-build.properties
 # Warehouse HRI (not upstream): git-ignored Mixamo textures folder and local config overlays
 /[Aa]ssets/WarehouseRobot/Characters/worker_textures.meta
 /[Aa]ssets/**/*.local.json.meta
+# Third-party avatars (v4 Phase 2A; the folders are ignored in the repo root .gitignore): their .meta files too
+/[Aa]ssets/SunboxGames.meta
+/[Aa]ssets/SunboxGames/**
+/[Aa]ssets/ThirdParty.meta
+/[Aa]ssets/ThirdParty/**
+/[Aa]ssets/**/*.vrm.meta

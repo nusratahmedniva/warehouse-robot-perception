@@ -84,3 +84,13 @@ unity/**/Assets/WarehouseRobot/Characters/**/*.tga
 unity/**/Assets/WarehouseRobot/Characters/worker_textures/
 unity/**/Assets/WarehouseRobot/Characters/worker_textures.meta
 *.local.json.meta
+# Third-party avatar assets (v4 Phase 2A): their licences forbid redistribution; download steps in the README
+# Stylized Customizable Avatars (Free), Sunbox Games, Unity Asset Store (imports to Assets/SunboxGames)
+unity/**/Assets/SunboxGames/
+unity/**/Assets/SunboxGames.meta
+# VRM models (VRoid etc.): import them only into Assets/ThirdParty/VRoid/; UniVRM writes its generated
+# prefab, materials, textures and meshes next to the .vrm file, so the whole folder stays local
+unity/**/Assets/ThirdParty/
+unity/**/Assets/ThirdParty.meta
+unity/**/*.vrm
+unity/**/*.vrm.meta
