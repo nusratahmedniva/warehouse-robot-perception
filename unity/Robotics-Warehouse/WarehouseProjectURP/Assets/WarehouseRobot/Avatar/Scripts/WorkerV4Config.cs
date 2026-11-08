@@ -26,6 +26,7 @@ namespace WarehouseAvatar
         public WorkerHandShapes hand_shapes;
         public WorkerVariation variation;
         public WorkerLimits limits;
+        public WorkerPointing pointing;
         public WorkerTruthLog truth_log;
         public GestureClipSpec[] clips;
         public LookEntry[] looks;
@@ -158,6 +159,12 @@ namespace WarehouseAvatar
             Range(e, "limits.stop_reach", l.stop_reach, 0.7f, 1.0f);
             if (!(l.wait_min_up_l > 0f)) e.Add("limits.wait_min_up_l must be > 0 (the WAIT hand stays above the shoulder)");
             if (!(l.point_max_body_azimuth_deg > 0f && l.point_max_body_azimuth_deg <= 150f)) e.Add("limits.point_max_body_azimuth_deg must be in (0, 150]");
+            var p = pointing;
+            if (p == null) { e.Add("pointing: missing (Avatar/Config/pointing_design.md)"); return; }
+            if (!(p.arm_target_body_azimuth_deg > 0f && p.arm_target_body_azimuth_deg <= l.point_max_body_azimuth_deg))
+                e.Add("pointing.arm_target_body_azimuth_deg must be in (0, limits.point_max_body_azimuth_deg]");
+            if (p.stand_angle_max_deg < 0f || p.stand_angle_max_deg > 45f) e.Add("pointing.stand_angle_max_deg must be in [0, 45]");
+            if (p.torso_turn_max_deg < 0f || p.torso_turn_max_deg > 60f) e.Add("pointing.torso_turn_max_deg must be in [0, 60]");
         }
 
         void ValidateClips(List<string> e)
@@ -344,6 +351,35 @@ namespace WarehouseAvatar
         public float[] stop_reach;
         public float wait_min_up_l;
         public float point_max_body_azimuth_deg;
+    }
+
+    /// <summary>Option A for POINT (Avatar/Config/pointing_design.md, 2026-11-09): an angled stance and a torso turn toward
+    /// the pointed direction, so a branch behind the worker is shown without the body-azimuth clamp. 0 and 0 = Phase 3A.</summary>
+    [Serializable]
+    public class WorkerPointing
+    {
+        public float arm_target_body_azimuth_deg;
+        public float stand_angle_max_deg;
+        public float torso_turn_max_deg;
+    }
+
+    /// <summary>One POINT split into stance, torso turn and arm (signed degrees, + = the worker's right, all relative to
+    /// the body front at the request). Shown = the direction the arm actually shows after the body-azimuth clamp.</summary>
+    public struct PointingSplit
+    {
+        public float Stand, Torso, Arm, Shown;
+
+        /// <summary>need = |alpha| - arm target; the stance takes up to stand_angle_max_deg of it, the torso up to
+        /// torso_turn_max_deg of the rest; the arm keeps what is left, clamped to maxArmDeg from the turned chest.</summary>
+        public static PointingSplit For(float alphaDeg, WorkerPointing p, float maxArmDeg)
+        {
+            float a = Mathf.Abs(alphaDeg), sign = alphaDeg < 0f ? -1f : 1f;
+            float need = p != null ? Mathf.Max(0f, a - p.arm_target_body_azimuth_deg) : 0f;
+            float stand = p != null ? Mathf.Min(need, p.stand_angle_max_deg) : 0f;
+            float torso = p != null ? Mathf.Min(need - stand, p.torso_turn_max_deg) : 0f;
+            float arm = Mathf.Min(a - stand - torso, maxArmDeg);
+            return new PointingSplit { Stand = sign * stand, Torso = sign * torso, Arm = sign * arm, Shown = sign * (stand + torso + arm) };
+        }
     }
 
     [Serializable]

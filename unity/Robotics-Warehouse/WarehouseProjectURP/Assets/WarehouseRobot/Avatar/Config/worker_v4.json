@@ -67,6 +67,12 @@
     "point_max_body_azimuth_deg": 120.0,
     "why": "Keep every varied gesture inside its definition. POINT: shoulder-to-wrist distance 0.95 to 0.99 arm lengths keeps the elbow at 144 to 163 deg (straight; the reader's point_arm_extension_min_deg is 140). STOP: an extended arm. WAIT: the hand at least 0.2 arm lengths above the shoulder (at or above shoulder height). POINT directions more than 120 deg from the worker's front (behind the body) are clamped to 120 deg, and truth.jsonl logs the direction actually shown."
   },
+  "pointing": {
+    "arm_target_body_azimuth_deg": 110.0,
+    "stand_angle_max_deg": 15.0,
+    "torso_turn_max_deg": 30.0,
+    "why": "Option A, declared 2026-11-09 in Avatar/Config/pointing_design.md before it was implemented or tested (decision rule there). POINT only: with alpha = the pointed direction's azimuth from the body front at the request, need = |alpha| - arm_target_body_azimuth_deg; the worker turns its whole body (root, during the start delay) by up to stand_angle_max_deg of it toward the pointed side and keeps that stance until the gesture has returned, then turns its chest (spine bones, faded with the arm's IK weight; legs fixed, the head kept on the robot) by up to torso_turn_max_deg of the rest; the arm shows what is left, still clamped by limits.point_max_body_azimuth_deg. 110 = 10 deg inside the 120 deg clamp, so the body turns only as far as needed (the commander's facing test needs square shoulders); 15 = a half-step of the feet (= behaviour.turn_start_deg); 30 = a comfortable chest twist on fixed hips. 0 and 0 = the Phase 3A behaviour. Geometry only, not tuned on any result."
+  },
   "truth_log": {
     "interval_s": 0.05,
     "why": "A truth frame every 0.05 s (and on every phase change) keeps every 10 Hz pan-tilt frame within 0.025 s plus one render frame of a truth row, well inside truth_join_max_s 0.06 (configs/v4/gesture_data.json); docs/protocol_v3.md asks for at least every 0.1 s."

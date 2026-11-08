@@ -85,6 +85,11 @@ namespace WarehouseAvatar
         public int HandIkCalls { get; private set; }
         public float HandToTargetM { get; private set; } = -1f;
 
+        /// <summary>The current POINT split into stance, torso turn and arm (pointing_design.md); zero for WAIT and STOP.</summary>
+        public PointingSplit CurrentSplit { get; private set; }
+        /// <summary>The worker holds an angled stance for the current POINT (until the gesture has returned).</summary>
+        public bool InStance => m_Stance;
+
         readonly GestureScheduler m_Scheduler = new GestureScheduler();
         readonly Dictionary<string, AnimationClip> m_Clips = new Dictionary<string, AnimationClip>();
         ClipIndex m_Index;
@@ -94,6 +99,13 @@ namespace WarehouseAvatar
         Vector3 m_Target, m_Hint, m_PointDir;
         float m_IkWeight, m_LookWeight, m_LayerWeight;
         bool m_Mixamo;
+        // option A (pointing_design.md): the stance's root rotation, the torso turn, the bones it uses, and the
+        // gesturing shoulder as the Animator left it (before the turn) for the next frame's IK target
+        bool m_Stance, m_Twisted;
+        Quaternion m_StanceRotation;
+        Transform[] m_Spine = new Transform[0];
+        Transform m_Neck, m_Head;
+        Vector3 m_AnimShoulder;
 
         bool m_InitDone;
 
@@ -156,6 +168,13 @@ namespace WarehouseAvatar
             m_BindLeft = HandShaper.Capture(m_Left);        // the prefab's bind pose: straight fingers
             m_BindRight = HandShaper.Capture(m_Right);
             ArmLength = 0.5f * (HandShaper.ArmLength(m_Left) + HandShaper.ArmLength(m_Right));
+            var spine = new List<Transform>();
+            foreach (var b in new[] { HumanBodyBones.Spine, HumanBodyBones.Chest, HumanBodyBones.UpperChest })
+                if (bones.Get(b) != null) spine.Add(bones.Get(b));
+            m_Spine = spine.ToArray();
+            m_Neck = bones.Get(HumanBodyBones.Neck);
+            m_Head = bones.Get(HumanBodyBones.Head);
+            if (m_Spine.Length == 0 || m_Head == null) return Fail($"look '{lookId}' lacks spine or head bones");
 
             if (controller == null) return Fail("no AnimatorController assigned (Tools > Warehouse v4 > Workers > Build Worker Template)");
             var aoc = new AnimatorOverrideController(controller) { name = "WorkerV4_" + lookId };
@@ -243,13 +262,14 @@ namespace WarehouseAvatar
             if (Array.IndexOf(WorkerV4Config.Commands, req.Command) < 0) { error = $"command '{req.Command}' must be POINT, WAIT or STOP"; return false; }
             BodyFrame(out var right, out var fwd);
             float bodyAz = 0f;
+            var split = new PointingSplit();
             if (req.Command == WorkerV4Config.Point)
             {
                 var d = Vector3.ProjectOnPlane(req.PointDirection, Vector3.up);
                 if (d.sqrMagnitude < 1e-8f) { error = "POINT needs a horizontal direction"; return false; }
                 bodyAz = Vector3.SignedAngle(fwd, d, Vector3.up);
-                float max = Config.limits.point_max_body_azimuth_deg;
-                m_PointDir = Quaternion.AngleAxis(Mathf.Clamp(bodyAz, -max, max), Vector3.up) * fwd;
+                split = PointingSplit.For(bodyAz, Config.pointing, Config.limits.point_max_body_azimuth_deg);
+                m_PointDir = Quaternion.AngleAxis(split.Shown, Vector3.up) * fwd;
             }
             GestureParams p;
             try { p = GestureVariation.Draw(m_Rng, Config, req.Command, req.Clip, req.AllowedClips, req.Arm, bodyAz); }
@@ -266,13 +286,29 @@ namespace WarehouseAvatar
             CurrentSpec = spec;
             m_Mixamo = spec.IsMixamo;
             m_MixamoEntry = entry;
+            CurrentSplit = split;
+            m_Stance = Mathf.Abs(split.Stand) > 0f;
+            m_StanceRotation = Quaternion.AngleAxis(split.Stand, Vector3.up) * transform.rotation;
+            m_Twisted = false;
             return true;
         }
 
         ClipIndexEntry m_MixamoEntry;
 
         /// <summary>Drop a gesture that has not started yet.</summary>
-        public void CancelPending() => m_Scheduler.Cancel();
+        public void CancelPending()
+        {
+            bool wasPending = m_Scheduler.Pending;
+            m_Scheduler.Cancel();
+            if (wasPending) EndStance();
+        }
+
+        void EndStance()
+        {
+            m_Stance = false;
+            m_Twisted = false;
+            CurrentSplit = new PointingSplit();
+        }
 
         // ---------------------------------------------------------------- per frame
 
@@ -304,6 +340,15 @@ namespace WarehouseAvatar
 
         void UpdateTurn()
         {
+            if (m_Stance)
+            {
+                // option A: turn in place to the stance (a fixed root rotation, so the torso turn cannot pull it back)
+                float left = Quaternion.Angle(transform.rotation, m_StanceRotation);
+                Turning = left > 0.5f;
+                if (Turning) transform.rotation = Quaternion.RotateTowards(transform.rotation, m_StanceRotation, Config.behaviour.turn_speed_deg_per_s * Time.deltaTime);
+                Animator.SetBool(ParamTurning, Turning);
+                return;
+            }
             bool canTurn = facesRobot && Noticed && robot != null && (m_Scheduler.Phase == WorkerPhase.Idle || m_Scheduler.Phase == WorkerPhase.StartDelay);
             float err = 0f;
             if (canTurn)
@@ -325,6 +370,7 @@ namespace WarehouseAvatar
 
         void OnPhase(WorkerPhase before, WorkerPhase now)
         {
+            if (now == WorkerPhase.Idle) EndStance();         // the gesture has returned: face the robot again
             if (!m_Mixamo) return;
             string state = GestureStatePrefix + CurrentSpec.name;
             var e = m_MixamoEntry;
@@ -363,7 +409,8 @@ namespace WarehouseAvatar
             if (!WorkerPhases.Performing(m_Scheduler.Phase)) return;
             var arm = Current.arm == "right" ? m_Right : m_Left;
             BodyFrame(out var right, out var fwd);
-            Vector3 side = arm.IsRight ? right : -right, up = Vector3.up, s = arm.Upper.position;
+            // after a torso turn the bones hold the turned pose; the IK runs on the Animator's (unturned) one
+            Vector3 side = arm.IsRight ? right : -right, up = Vector3.up, s = m_Twisted ? m_AnimShoulder : arm.Upper.position;
             float L = ArmLength, k = Current.size;
             var spec = CurrentSpec;
             var lim = Config.limits;
@@ -435,10 +482,12 @@ namespace WarehouseAvatar
         /// <summary>After the Animator: the gesturing hand's orientation and finger shape, blended in by the IK weight.</summary>
         void LateUpdate()
         {
+            m_Twisted = false;
             if (!Ready || !WorkerPhases.Performing(m_Scheduler.Phase) || m_IkWeight <= 0f) return;
             bool r = Current.arm == "right";
             var arm = r ? m_Right : m_Left;
             var bind = r ? m_BindRight : m_BindLeft;
+            if (CurrentSpec.command == WorkerV4Config.Point && Mathf.Abs(CurrentSplit.Torso) > 0f) TurnTorso(arm, CurrentSplit.Torso * m_IkWeight);
             HandToTargetM = Vector3.Distance(arm.Hand.position, m_Target);
             var shape = Config.hand_shapes.For(CurrentSpec.command);
             Vector3 fingerDir, palm;
@@ -456,6 +505,22 @@ namespace WarehouseAvatar
                 if (palm.sqrMagnitude < 1e-6f) palm = transform.forward;
             }
             HandShaper.Apply(arm, bind, shape, fingerDir, palm.normalized, m_IkWeight);
+        }
+
+        /// <summary>Option A torso turn (after the Animator): the spine bones share the yaw; the gesturing arm keeps its
+        /// world orientation (so it still points exactly where the IK aimed it) and the neck and head keep theirs (the
+        /// head stays on the robot, as the look-at left it).</summary>
+        void TurnTorso(LookPoser.Arm arm, float yawDeg)
+        {
+            m_AnimShoulder = arm.Upper.position;
+            Quaternion upper = arm.Upper.rotation, head = m_Head.rotation;
+            Quaternion neck = m_Neck != null ? m_Neck.rotation : Quaternion.identity;
+            var step = Quaternion.AngleAxis(yawDeg / m_Spine.Length, Vector3.up);
+            foreach (var b in m_Spine) b.rotation = step * b.rotation;     // each child already carries its parents' share
+            if (m_Neck != null) m_Neck.rotation = neck;
+            m_Head.rotation = head;
+            arm.Upper.rotation = upper;
+            m_Twisted = true;
         }
 
         // ---------------------------------------------------------------- truth (files only, never the bridge)
