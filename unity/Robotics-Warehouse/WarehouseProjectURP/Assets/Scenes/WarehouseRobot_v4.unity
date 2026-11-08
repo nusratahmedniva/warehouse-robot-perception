@@ -98448,6 +98448,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   repoRootRelativeToProject: ../../..
   runOnStart: 1
+  workerPrefab: {fileID: 4091523445532248971, guid: 232baafada07a8341bf0fe839cb2b09b, type: 3}
+  workersConfig: {fileID: 4900000, guid: 370230e131394b4ea3d9b9dea813e001, type: 3}
 --- !u!1 &2002784019
 GameObject:
   m_ObjectHideFlags: 0

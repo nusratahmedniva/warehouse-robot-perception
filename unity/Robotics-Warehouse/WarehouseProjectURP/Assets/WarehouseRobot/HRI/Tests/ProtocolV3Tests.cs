@@ -18,10 +18,25 @@ namespace WarehouseHRI.Tests
         }
 
         [Test]
+        public void ForbiddenKeys_EqualPythonsTruthKeys()
+        {
+            // robot_vision/bridge/protocol.py TRUTH_KEYS (2026-11-08): the six label names plus the truth.jsonl fields.
+            string py = System.IO.File.ReadAllText(System.IO.Path.Combine(Application.dataPath, "../../../../robot_vision/bridge/protocol.py"));
+            var m = System.Text.RegularExpressions.Regex.Match(py, @"TRUTH_KEYS\s*=\s*frozenset\(\{([^}]*)\}\)");
+            Assert.IsTrue(m.Success, "TRUTH_KEYS not found in bridge/protocol.py");
+            var keys = new System.Collections.Generic.SortedSet<string>();
+            foreach (System.Text.RegularExpressions.Match k in System.Text.RegularExpressions.Regex.Matches(m.Groups[1].Value, "\"([^\"]+)\"")) keys.Add(k.Groups[1].Value);
+            CollectionAssert.AreEquivalent(keys, ProtocolV3.TruthKeys);
+            Assert.AreEqual("is_commander", ProtocolV3.FindForbiddenKey("{\"people\": [{\"is_commander\": true}]}"));
+            Assert.AreEqual("Worker_ID", ProtocolV3.FindForbiddenKey("{\"Worker_ID\": 1}"));
+        }
+
+        [Test]
         public void ForbiddenKeys_ValuesAndSimilarKeysAreNotKeys()
         {
             Assert.IsNull(ProtocolV3.FindForbiddenKey("{\"state\": \"truth\", \"text\": \"goal\"}"));
-            Assert.IsNull(ProtocolV3.FindForbiddenKey("{\"bearing_deg\": 1, \"is_commander\": true, \"by\": 2, \"goals\": 3}"));
+            Assert.IsNull(ProtocolV3.FindForbiddenKey("{\"bearing_deg\": 1, \"is_commander_x\": true, \"by\": 2, \"goals\": 3, \"looks\": 4, \"arms\": 5}"));
+            Assert.IsNull(ProtocolV3.FindForbiddenKey("{\"time_s\": 1.0, \"pose\": {\"x\": 1, \"z\": 2}}"), "time_s, x and z are legitimate Unity keys");
             Assert.IsNull(ProtocolV3.FindForbiddenKey("{\"screen_text\": \"\\\"truth\\\": no\"}"));
             Assert.IsNull(ProtocolV3.FindForbiddenKey(""));
         }

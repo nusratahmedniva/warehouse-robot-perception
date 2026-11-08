@@ -663,19 +663,22 @@ namespace WarehouseAvatar.Tests
         {
             string text = File.ReadAllText(Path.Combine(RepoRoot, "robot_vision/configs/v4/data_splits.json"));
             var missing = TruthFormat.Unlisted(new[] { "sunbox_m1", "placeholder_look_dev_1" }, new[] { "point_mixamo_01", "placeholder_point_dev_1", "" }, text, out bool placeholder);
-            CollectionAssert.Contains(missing, "look sunbox_m1");
-            CollectionAssert.Contains(missing, "clip point_mixamo_01");
-            CollectionAssert.DoesNotContain(missing, "look placeholder_look_dev_1");
-            CollectionAssert.DoesNotContain(missing, "clip placeholder_point_dev_1");
+            // Since 2026-11-08 the file lists the real names (AUDIT.md 14.16) and no placeholder names.
+            CollectionAssert.DoesNotContain(missing, "look sunbox_m1");
+            CollectionAssert.DoesNotContain(missing, "clip point_mixamo_01");
+            CollectionAssert.Contains(missing, "look placeholder_look_dev_1");
+            CollectionAssert.Contains(missing, "clip placeholder_point_dev_1");
             Assert.AreEqual(Regex.IsMatch(text, "\"placeholder\"\\s*:\\s*true"), placeholder);
         }
 
         // ---------------------------------------------------------------- forbidden keys
 
-        static IEnumerable<string> Forbidden => ProtocolV3.GoalKeys.Concat(ProtocolV3.TruthKeys);
+        // 2026-11-08: the truth.jsonl field names (look, clip, arm, phase, worker_id, ...) became forbidden keys too, so a
+        // worker's truth that ever reached a Unity message is refused. Avatar data types may carry those names (they ARE
+        // the truth); what they must never carry is a goal key or a Color (whose 'b' would make a message look like goal B).
 
         [Test]
-        public void ForbiddenKeys_NoAvatarDataTypeHasAColorOrAForbiddenFieldName()
+        public void ForbiddenKeys_NoAvatarDataTypeHasAColorOrAGoalKeyFieldName()
         {
             var problems = new List<string>();
             foreach (var t in typeof(WorkerV4).Assembly.GetTypes())
@@ -684,20 +687,20 @@ namespace WarehouseAvatar.Tests
                 foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
                 {
                     if (f.FieldType == typeof(Color) || f.FieldType == typeof(Color32)) problems.Add($"{t.Name}.{f.Name} is a Color (serialises a key 'b')");
-                    if (Forbidden.Any(k => string.Equals(k, f.Name, StringComparison.OrdinalIgnoreCase))) problems.Add($"{t.Name}.{f.Name} is a forbidden key");
+                    if (ProtocolV3.GoalKeys.Any(k => string.Equals(k, f.Name, StringComparison.OrdinalIgnoreCase))) problems.Add($"{t.Name}.{f.Name} is a goal key");
                 }
             }
             Assert.IsEmpty(problems, string.Join("\n", problems));
         }
 
         [Test]
-        public void ForbiddenKeys_WorkerDataSerialisesWithoutAForbiddenKey()
+        public void ForbiddenKeys_WorkerTruthIsCaught_TheTemplateConfigIsNot()
         {
             var cfg = LoadConfig();
             var p = GestureVariation.Draw(SeededRandom.For(1, 1, 1), cfg, "POINT", "", null, "", 40f);
-            Assert.IsNull(ProtocolV3.FindForbiddenKey(JsonUtility.ToJson(p)));
-            Assert.IsNull(ProtocolV3.FindForbiddenKey(JsonUtility.ToJson(cfg)));
-            Assert.IsNull(ProtocolV3.FindForbiddenKey(TruthFormat.Line(Row())), "the truth file's own keys are not bridge keys");
+            Assert.IsNotNull(ProtocolV3.FindForbiddenKey(JsonUtility.ToJson(p)), "a gesture's parameters (clip, arm) are truth");
+            Assert.AreEqual("worker_id", ProtocolV3.FindForbiddenKey(TruthFormat.Line(Row())), "a truth line in a message is refused at its first key after time_s");
+            Assert.IsNull(ProtocolV3.FindForbiddenKey(JsonUtility.ToJson(cfg)), "the template config is not truth");
         }
 
         [Test]

@@ -78,6 +78,8 @@ namespace WarehouseAvatar
         public Vector3 ShownPointDirection { get; private set; }
         public float ArmLength { get; private set; }
         public bool QuestionVisible => m_Scheduler.QuestionVisible;
+        /// <summary>A gesture is queued or under way (not idle): the worker can neither be moved nor asked again.</summary>
+        public bool Busy => m_Scheduler.Phase != WorkerPhase.Idle || m_Scheduler.Pending;
         /// <summary>Diagnostics: OnAnimatorIK calls that set the gesturing hand, and the hand's distance to its IK target
         /// after the Animator (both read by the Play-mode look check).</summary>
         public int HandIkCalls { get; private set; }
