@@ -76,10 +76,16 @@ Version 2 rejects, at any depth, a key named `goal`, `goal_point`, `goal_x`, `go
 
 `true_gesture`, `true_commander`, `commander_truth`, `gesture_truth`, `worker_label`, `truth`
 
-(compared case-insensitively, as in version 2). A message from Unity containing any of them, even nested inside a list
-or object, is answered with `error` (`fatal: false`) and ignored. Truth about the workers reaches Python only through the
-run files below, and only evaluation code reads them. Python-to-Unity messages are not checked for these keys (the HUD
-`is_commander` is a perception result, not truth).
+and, since 2026-11-08, every field name of a `truth.jsonl` row (below) that never appears legitimately in a message Unity sends:
+
+`true_command`, `is_commander`, `worker_id`, `point_angle_deg`, `look`, `clip`, `phase`, `arm`
+
+(14 names, compared case-insensitively, as in version 2). Not forbidden: `time_s`, `x`, `z`, which Unity sends in telemetry,
+frame headers and `nav_corners`. A message from Unity containing any of them, even nested inside a list or object, is
+answered with `error` (`fatal: false`) and ignored. Truth about the workers reaches Python only through the run files below,
+and only evaluation code reads them. **Only messages FROM Unity are checked.** Python-to-Unity messages are not (the HUD
+fields `is_commander` and `point_angle_deg` that Python sends TO Unity are perception results, not truth, and stay as they are).
+The check applies to version 3 only; version 2 still rejects only the goal keys.
 
 ## Per-run files Unity writes (never sent over the bridge)
 
@@ -223,7 +229,7 @@ The `session.json` key is the named setting `unity_leak_result_key` in `configs/
    in every `frame_pan_tilt`.
 3. **HUD panel**: draw `hud` in the game view only (state, screen text, people list with bearing and distance, gesture
    class with score, raw and accepted gesture, commander, POINT angle, the message log); invisible to both robot cameras.
-4. **Forbidden keys**: never put the six truth keys (or the goal keys) in any message to Python.
+4. **Forbidden keys**: never put any of the 14 truth keys of section 3 (or the goal keys) in any message to Python; `time_s`, `x`, `z` are fine.
 5. **Run files**: `run_###/run.json`, `grid.json`, `optimal_path.json`, `trail.csv`, `truth.jsonl` (all `time_s` in Unity
    `Time.time`), and the session `leak_test/`
    with the layer-on/off image pairs, in the formats above; the A* in Unity must follow the stated rules exactly (8
@@ -294,6 +300,13 @@ The `session.json` key is the named setting `unity_leak_result_key` in `configs/
   `leak_test.passed`, a boolean inside the nested object `leak_test`. `configs/v4/gt_eval.json` now has `unity_leak_result_key` = `"leak_test.passed"` and
   `unity_leak_result_key_confirmed` = `true` (it replaces the placeholder of 2026-10-29). Only a boolean `true` passes; the string `"true"` does not.
   Nothing else changed: `gt_path.session_leak_check` and the rule that a final evaluation needs both Unity's and Python's check to pass are as decided on 2026-10-29.
+- 2026-11-08 (Anisha, before any development recording): **more forbidden keys from Unity (version 3 only).** `true_command`, `is_commander`, `worker_id`,
+  `point_angle_deg`, `look`, `clip`, `phase` and `arm` join the six truth keys, because each is a field of `truth.jsonl` that no message Unity sends carries (checked
+  against the version 3 schemas of `hello`, `telemetry`, `frame_360` and `frame_pan_tilt` and against Unity's bridge client). `time_s`, `x`, `z` stay allowed (telemetry, frame
+  headers, `nav_corners`). Messages to Unity are not scanned: `hud.people[].is_commander` and `hud.point_angle_deg` are sent TO Unity and are unchanged.
+- 2026-11-08 (truth meanings, accepted from Nusrat's Phase 2B-2D update): `true_command` is `NONE` during `start_delay`; `returning` keeps the command; for POINT `arm` is the
+  same-side arm unless the target is within 25 degrees of straight ahead; a hold lasts 3.0 to 4.5 s; truth rows are written every 0.05 s (the join tolerance of 0.06 s covers it).
+  The development evaluation counts frame-level accuracy only in the phases `gesturing` and `holding`.
 
 ## Changes
 

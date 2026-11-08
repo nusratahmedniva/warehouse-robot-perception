@@ -22,8 +22,8 @@ import test_hri_sim_v4_trials as tt  # noqa: E402
 import test_v4_frozen as tfz  # noqa: E402
 from bridge import server as S  # noqa: E402
 
-TEST_SPEC = dict(commander_look="placeholder_look_test_1",
-                 clips={"POINT": "placeholder_point_test_1", "WAIT": "placeholder_wait_test_1", "STOP": "placeholder_stop_test_1"})
+TEST_SPEC = dict(commander_look="sunbox_f2",
+                 clips={"POINT": "point_mixamo_02", "WAIT": "wait_ik_02", "STOP": "stop_ik_02"})
 
 
 def final_repo(tmp: Path, freeze: bool = True, runs: int = 2) -> Path:
@@ -213,14 +213,14 @@ class FinalEvaluationTests(unittest.TestCase):
         self.assertEqual(called, [])
 
     def test_development_data_is_refused_in_the_final(self):
-        pairs = [session(self.root, "dev", spec_kw={"commander_look": "placeholder_look_dev_1",
-                                                    "clips": {"POINT": "placeholder_point_dev_1", "WAIT": "placeholder_wait_dev_1",
-                                                              "STOP": "placeholder_stop_dev_1"}})]
+        pairs = [session(self.root, "dev", spec_kw={"commander_look": "sunbox_m1",
+                                                    "clips": {"POINT": "point_mixamo_01", "WAIT": "wait_ik_01",
+                                                              "STOP": "stop_ik_01"}})]
         with self.assertRaisesRegex(SystemExit, "--final-evaluation given"):
             ef.evaluate_final("zoom_on", pairs, self.repo, self.out)
 
     def test_a_mix_of_development_and_test_is_refused(self):
-        pairs = [session(self.root, "mix", spec_kw={"bystander_offsets_m": [(1.2, 0.3)], "bystander_looks": ["placeholder_look_dev_1"]})]
+        pairs = [session(self.root, "mix", spec_kw={"bystander_offsets_m": [(1.2, 0.3)], "bystander_looks": ["sunbox_m1"]})]
         with self.assertRaisesRegex(SystemExit, "mixes development and test"):
             ef.evaluate_final("bystanders", pairs, self.repo, self.out)
 

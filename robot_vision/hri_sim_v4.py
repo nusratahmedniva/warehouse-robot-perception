@@ -258,9 +258,9 @@ class SceneSpec:
     bystander_offsets_m: list = field(default_factory=list)      # (dx, dz) from the commander's stand
     bystander_looks: list = field(default_factory=list)
     bystander_facing: list = field(default_factory=list)         # per bystander; missing = facing
-    commander_look: str = "placeholder_look_dev_1"
-    clips: dict = field(default_factory=lambda: {"POINT": "placeholder_point_dev_1", "WAIT": "placeholder_wait_dev_1",
-                                                  "STOP": "placeholder_stop_dev_1"})     # animation clip names (the placeholder development names of the v4 split config)
+    commander_look: str = "sunbox_m1"
+    clips: dict = field(default_factory=lambda: {"POINT": "point_mixamo_01", "WAIT": "wait_ik_01",
+                                                  "STOP": "stop_ik_01"})     # animation clip names (development clip names of the v4 split config)
     arm: str = "right"
     wait_first_s: float = 0.0                                    # the commander shows WAIT this long, then the POINT
     distractors: list = field(default_factory=list)              # (bystander index, command, seconds after the ask, world angle | None)

@@ -138,7 +138,9 @@ class FramePanTiltTests(unittest.TestCase):
 
 
 class TruthKeyTests(unittest.TestCase):
-    KEYS = ("true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth")
+    KEYS_2026_10_23 = ("true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth")
+    TRUTH_JSONL_FIELDS = ("true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm")   # added 2026-11-08
+    KEYS = KEYS_2026_10_23 + TRUTH_JSONL_FIELDS
 
     def test_each_truth_key_rejected_at_any_depth(self):
         for key in self.KEYS:
@@ -166,6 +168,56 @@ class TruthKeyTests(unittest.TestCase):
         self.assertEqual(P.FORBIDDEN_KEYS_V3 - P.FORBIDDEN_KEYS, frozenset(self.KEYS))
         for key in self.KEYS:
             check(telemetry(1, **{key: "x"}), P.FROM_UNITY, 2)    # version 2 is unchanged
+
+    def test_every_truth_jsonl_field_that_unity_never_sends_is_forbidden_from_unity(self):
+        """The fields of a truth.jsonl row (gesture_data.TruthRow) minus the three names Unity legitimately sends (time_s, x, z)."""
+        import dataclasses
+
+        import gesture_data as gd
+        fields = {f.name for f in dataclasses.fields(gd.TruthRow)} - {"line"}      # `line` is the loader's own line number
+        legit = {"time_s", "x", "z"}
+        self.assertEqual(fields - legit, set(self.TRUTH_JSONL_FIELDS))
+        self.assertTrue(set(self.TRUTH_JSONL_FIELDS) <= P.TRUTH_KEYS)
+        self.assertFalse(legit & P.TRUTH_KEYS)
+
+    def test_the_forbidden_names_are_not_fields_of_any_message_unity_sends(self):
+        """If one of them were a legitimate field of telemetry, hello or a frame header it would be refused by its own schema."""
+        def names(x, out):
+            if isinstance(x, dict):
+                for k, v in x.items():
+                    out.add(k.lower())
+                    names(v, out)
+            elif isinstance(x, (list, tuple)):
+                for v in x:
+                    names(v, out)
+            return out
+        for t in sorted(P.FROM_UNITY):
+            self.assertEqual(names(P.SCHEMAS_BY_VERSION[3][t], set()) & P.FORBIDDEN_KEYS_V3, set(), t)
+
+    def test_messages_to_unity_are_never_checked_for_truth_keys(self):
+        """The HUD carries is_commander and point_angle_deg TO Unity; only messages FROM Unity are scanned (by direction, not by name)."""
+        check(command(hud=hud(commander_id=3, point_angle_deg=42.0, gesture="POINT",
+                              people=[{"id": 3, "bearing_deg": 1.0, "distance_m": 2.0, "is_commander": True},
+                                      {"id": 5, "bearing_deg": 9.0, "distance_m": 4.0, "is_commander": False}])), P.TO_UNITY, 3)
+        self.assertFalse(P.TO_UNITY & P.FROM_UNITY)
+        import inspect
+        src = inspect.getsource(P.validate)
+        self.assertIn("if t in FROM_UNITY:", src.replace("P.", ""))                 # the scan sits under the FROM_UNITY branch
+
+    def test_the_new_keys_are_refused_from_unity_in_a_real_frame_and_a_hello(self):
+        for key in self.TRUTH_JSONL_FIELDS:
+            for header, att in ((hello(), None), (telemetry(1), None), (frame_pan_tilt(), {"image": JPEG})):
+                with self.assertRaisesRegex(P.MessageError, "forbidden", msg=key):
+                    check({**header, "extra": [{"a": {key: 1}}]}, P.FROM_UNITY, 3, att)
+
+    def test_the_legitimate_names_time_s_x_z_pose_still_pass(self):
+        check(telemetry(1), P.FROM_UNITY, 3)
+        check(frame_pan_tilt(), P.FROM_UNITY, 3, {"image": JPEG})
+        check(telemetry(1, nav_corners=[{"x": 1.0, "z": 2.0}]), P.FROM_UNITY, 3)
+
+    def test_version_2_ignores_the_new_names_too(self):
+        for key in self.TRUTH_JSONL_FIELDS:
+            check(telemetry(1, **{key: "x"}), P.FROM_UNITY, 2)
 
     def test_hud_is_commander_is_not_a_truth_key(self):
         check(command(hud=hud(people=[{"id": 1, "bearing_deg": 0.0, "distance_m": 1.0, "is_commander": True}])),

@@ -135,7 +135,7 @@ Per group (look, command, distance, arm), over **all frames of the group; a fram
 | arm valid | both shoulders, both hips, the elbow and the wrist of the recorded arm above it: what the reader needs to use the arm |
 | hand found / linked / 21 landmarks inside / world landmarks / hand box height | MediaPipe found a hand in the person crop; it is linked to the recorded arm by its wrist; all 21 landmarks are inside the image; its size in pixels |
 | arm-to-shoulder ratio | `|shoulder to wrist| / shoulder width` in the image (median, min, max, 95th percentile) against the assumed 1.4 (POINT geometry). Foreshortening only shortens it, so the 95th percentile of a group with a sideways take reaches the true ratio |
-| cues per frame | raised arm, finger up (index extended, others curled, pointing up), open palm (four fingers extended and spread), MediaPipe category as the command needs it; `own cue` = **all** cues of the recorded command pass in that frame (`gesture_motion.frame_flags`) |
+| cues per frame | raised arm, finger up (index extended, others curled, pointing up), open palm (four fingers extended and spread), MediaPipe category as the command needs it (**reported only**, since 2026-11-08 the reader does not require it); `own cue` = **all** cues of the recorded command pass in that frame (`gesture_motion.frame_flags`: finger geometry and arm pose, **not** the MediaPipe label) |
 | wrong class | the frame alone would read as another command (STOP > WAIT > POINT as in the reader) |
 | sequence read | the reader's answer at the last frame of each sequence (the live window and thresholds): as recorded, or another command (`NONE` and `insufficient_history` are lost coverage, not a wrong command) |
 | facing | the commander rule's facing test passes (both eyes and the nose visible, shoulders wide enough). **Reported only**, not in the verdict: if a look never shows its face keypoints it can never be the commander, which is a reason to look at it |
@@ -191,3 +191,7 @@ A look is checked before the clips are recorded; a swapped look is checked again
   file name format stays `<look>__<command>__<distance_m>__<n>`.
 - 2026-11-06: `arm valid` is not checked for STOP (the reader reads STOP from the linked hand alone); this refinement is part of the
   declared config.
+- 2026-11-08 (Anisha): the reader no longer requires MediaPipe's label for STOP and WAIT (AUDIT.md 14.16), so `own cue` and the sequence reads of a look check
+  now follow the finger geometry; the label stays in the report per frame (`category`). The declared verdict rules of `configs/v4/look_check.json` are unchanged (its
+  `own_cue_rate` text still lists "category and score" among the cues; the check itself uses `frame_flags`). Results of look checks made before this date were
+  computed with the label required.

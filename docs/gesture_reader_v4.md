@@ -165,10 +165,12 @@ for v4 (it is a frozen v3 value for v3 and is not changed for v3).
 
 ## WAIT (index finger up) versus STOP (open palm)
 
-They must look clearly different (spec), so the reader uses three independent cues and requires them to agree:
+They must look clearly different (spec), so the reader uses independent cues and requires them to agree. **Since 2026-11-08 the first
+cue below, MediaPipe's label, is read and logged but no longer required** (see Decided): STOP and WAIT are decided by cues 2 and 3.
 
-1. **MediaPipe category and score** from the adapter: `Pointing_Up` for WAIT, `Open_Palm` for STOP. Its raw score must
-   reach `wait_score_min` or `stop_score_min`.
+1. **MediaPipe category and score** from the adapter: `Pointing_Up` for WAIT, `Open_Palm` for STOP. **Logged, not required**
+   (`Reading.hand_label`, `hand_label_score`, `label_agrees`; the look check reports it per frame). `wait_score_min` and `stop_score_min`
+   only decide whether the logged label counts as agreeing.
 2. **Finger extension from the 21 landmarks.** A finger is *extended* when its tip is farther from the wrist than its
    MCP joint by at least `finger_extended_ratio` (tip distance over MCP distance, from the wrist). WAIT: index extended,
    middle, ring and pinky curled (ratio under `finger_curled_ratio`). STOP: the four fingers extended, and the hand
@@ -180,7 +182,7 @@ They must look clearly different (spec), so the reader uses three independent cu
    hand growing: hand-box scale ratio, last frame over first, at least `push_scale_ratio_min` (the "pushed toward the
    robot" movement; the arm may foreshorten at the same time).
 
-A window passes as `WAIT` or `STOP` only when all three cues agree and the other class's cues clearly fail (margin
+A window passes as `WAIT` or `STOP` only when the finger geometry and the arm pose agree (cues 2 and 3) and the other class's cues clearly fail (margin
 `class_margin_min` between the two class scores); a window that matches neither or both is `NONE` with `why`. Three
 confusions get explicit checks, because they are the research question: WAIT/STOP (finger up vs palm), WAIT/POINT
 (both use the index: WAIT has a bent arm and a short shoulder-to-wrist distance, POINT a long arm; separated by the
@@ -226,8 +228,8 @@ proposals for Anisha to confirm or replace. No value is chosen from test data or
 | 11 | `segment_disagreement_max_deg` | largest difference between the shoulder-to-wrist and elbow-to-wrist directions (v3: 45) | deg | development POINT clips: disagreement when the keypoints are right vs wrong | |
 | 12 | `arm_length_min` | shoulder-to-wrist length as a multiple of shoulder width below which the arm is too foreshortened for an angle (v3: 0.8) | shoulder widths | development POINT clips at each distance | |
 | 13 | `branch_match_max_deg` | largest angle between the read angle and the nearest branch for the robot to take it | deg | angle error of development POINT clips against the junction geometry (branch spacing is fixed by the map) | |
-| 14 | `wait_score_min` | MediaPipe `Pointing_Up` score needed for WAIT | 0 to 1 | scores on development WAIT clips vs all other development clips | |
-| 15 | `stop_score_min` | MediaPipe `Open_Palm` score needed for STOP | 0 to 1 | same, for STOP | |
+| 14 | `wait_score_min` | MediaPipe `Pointing_Up` score at which the logged label counts as agreeing with a WAIT (**logged only since 2026-11-08, not a requirement**) | 0 to 1 | scores on development WAIT clips vs all other development clips | |
+| 15 | `stop_score_min` | MediaPipe `Open_Palm` score at which the logged label counts as agreeing with a STOP (**logged only since 2026-11-08, not a requirement**) | 0 to 1 | same, for STOP | |
 | 16 | `finger_extended_ratio` | tip-to-wrist over MCP-to-wrist distance above which a finger is extended | ratio | landmarks of development hands with known finger states | |
 | 17 | `finger_curled_ratio` | the same ratio below which a finger is curled | ratio | same | |
 | 18 | `palm_spread_min` | spread of the four fingers needed for an open palm | deg | development STOP hands vs closed or pointing hands | |
@@ -278,6 +280,21 @@ proposals for Anisha to confirm or replace. No value is chosen from test data or
   vertical arm, 54 for an arm 60 degrees up and 48 for one 45 degrees up; at 3 / 4 / 6 m it is about 41 / 31 / 20 degrees (vertical arm), i.e. about 1.5x / 2.1x / 3.3x. **The zoom is therefore expected to matter only
   from about 3 m**, and some final cases have to place the commander at about 4 m (`AUDIT.md` B7 note). The reader itself is unaffected: it works on angles from keypoint
   differences, which do not depend on the field of view.
+- 2026-11-08 (decided before any development recording; `AUDIT.md` 14.16): **STOP and WAIT no longer require MediaPipe's label.** STOP = open-palm finger
+  geometry (four fingers extended, spread at least `palm_spread_min_deg`); WAIT = index-up geometry (index extended and up, the other three curled) with the arm
+  pose of `wait_*`. The label and its score are still read, logged per frame and reported (`Reading.hand_label`, `hand_label_score`, `label_agrees`), and the two
+  score thresholds stay in the config as logged fields. An open palm is kept from being read as POINT by its geometry, not by its label. Reason: in the look check
+  MediaPipe said Open_Palm in 5 per cent of the STOP frames although the geometry passed in 66 to 97 per cent, and Pointing_Up in 13 per cent of the WAIT frames of
+  look f2; the gesture classifier was trained on real hands, and a false STOP is safe (a missed STOP is not). A v3 difference for RQ1 (v3 STOP was the Open_Palm label at
+  score 0.5): listed in `configs/v4/analysis.json`.
+- 2026-11-08: **the arm ratio** (`point.arm_length_in_shoulder_widths`, 1.4) is set in the development evaluation as the median YOLO keypoint ratio (shoulder to wrist over
+  shoulder width) on the development looks only (`sunbox_m1`, `sunbox_f1`), never on the test look. The value is not changed now. The look check measured 1.87 to 2.00
+  (the bones give 1.587).
+- 2026-11-08: **standoff.** `approach_distance_m` stays 2.0, measured from the robot centre to the person centre, as in v3. Nusrat measured 1.65 to 1.89 m in the v4
+  scene (which points she measured is still to be asked); the development evaluation reports the measured standoff, not the nominal 2.0 m: its distance bins are already the measured robot-to-worker distance (from the truth positions); a per-ask standoff summary is still to be added to `hri_eval_dev_v4.py` (not implemented yet).
+- 2026-11-08: **truth meanings accepted** (Nusrat's update): the truth is NONE during `start_delay`; `returning` keeps the command; POINT uses the same-side arm unless
+  the target is within 25 degrees of straight ahead; a hold lasts 3.0 to 4.5 s; truth rows come every 0.05 s. Frame-level accuracy counts only the phases `gesturing` and
+  `holding` (`configs/v4/eval_dev.json` `accuracy_phases`); `idle` and `start_delay` rows feed only the false-read rate; `returning` rows are counted in neither.
 
 ## Phase 3: initial values
 
@@ -294,6 +311,7 @@ inherited unchanged from v3 are marked as such. WAIT timeout 20 s and its action
    from the camera), or should the angle be calibrated against the true angle per distance?
 2. **Which cues are mandatory.** All three cues for WAIT/STOP (category, finger landmarks, arm pose), or does the
    category score alone count when it is high? (Proposal: all three, cost is lower coverage.)
+   **Resolved for the label on 2026-11-08:** the label is not required, the finger geometry and the arm pose are (see Decided).
 3. **Selection rules.** The "set from" column proposes what data each threshold is read from; the decision rule that turns
    the data into a value (a percentile, a coverage target, an equal-error point) has to be declared before the sweep and
    written to `configs/v4/` with the date. Which rules?

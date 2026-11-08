@@ -984,7 +984,7 @@ Rule kept from v3: no v3 config, frozen hash or v3 behaviour is changed for v4 (
 1. **RQ1 moving vs fixed:** can the robot understand natural, moving gestures as reliably as v3's fixed poses?
 2. **RQ2 who commands:** can it tell which of several people is giving the command?
 3. **RQ3 zoom:** does zooming onto the hand improve recognition at a distance? (The same runs with zoom on and off.)
-4. **RQ4 new looks:** does it still work on avatar looks it never saw in development?
+4. **RQ4 new looks:** does it still work on avatar looks it never saw in development? (Wording of 2026-11-08, 14.16: an **unseen appearance of the Sunbox body family**; the test look has the body family of the development looks, not a new body or a new avatar source.)
 
 ### 14.3 Metrics (all reported with their coverage and the number of runs behind them)
 
@@ -1188,7 +1188,7 @@ Anything done differently from this section is disclosed here, dated, before the
 | | what | waiting for |
 |---|---|---|
 | B7 | which test looks, clips and bystander layout each setting uses (`test_assignment`). **Note (7 November 2026, 14.15):** some final cases must place the commander at about 4 m, otherwise the zoom comparison (`zoom_on` against `zoom_off`) measures almost nothing: with a level camera the zoom hardly acts at 2 m | Nusrat's real looks and clips, then both of us |
-| B8 | real look and clip names, their numbers, the unseen test look, the look styles (`data_splits.json` still has placeholders) | Nusrat |
+| B8 | **decided 2026-11-08 (14.16):** real look and clip names (`data_splits.json`: looks `sunbox_m1`, `sunbox_f1` development, `sunbox_f2` test; the nine clips; `placeholder` false), one look style `sunbox`; RQ4 = unseen appearance of the Sunbox body family | decided |
 | B9 | the Unity-side files of the v4 scene to freeze and the Unity final-run guard (`unity_files_and_guard`). Agreed 29 Oct 2026 so far: `bridge_unity_v4.json` and `robot_unity_v4.json` are on the list (14.7a); the rest of the list and the `TrialRunnerV4` guard are open. (The leak-test `session.json` key is no longer open: confirmed 4 Nov 2026, 14.7b item 4.) | Nusrat |
 | B11 | v4 acceptance criteria for RQ1 to RQ4 (`acceptance_criteria`) | both of us |
 
@@ -1296,7 +1296,7 @@ In the replay `processes` had a larger loop-lag maximum (68 against 22 ms), roun
    (memory pressure, CPU contention, antivirus, power), in which case moving the models out of the process removes one cause (the shared GIL, by construction) but cannot be shown to remove that stall.
    **Whether it does can only be measured on the PC.**
 
-**What is decided.**
+**What is decided.** (The choice of the mode itself was made on 8 November 2026, with a disclosed departure from step 1 of the rule below: see 14.16 item 1.)
 - Decided (6 November 2026, Anisha): v4 uses worker processes for the models; the thread design stays selectable (`perception_workers.mode`), protocol 2 always uses threads. The limits are not changed because of any result.
 - **Decided (6 November 2026, Anisha): the rule for choosing the mode.**
   1. On Nusrat's PC, under the run protocol of 14.8, run `timing_check_v4.py` in both modes (`--workers threads`, `--workers processes`, 60 s or more).
@@ -1325,7 +1325,7 @@ Written on 2026-11-07, before any v4 development recording was evaluated and bef
 
 **Zoom with a level camera: decision (c).** Nusrat found in Unity that at 2.0 m a raised hand is about 22 to 24 degrees above the level pan-tilt camera, so a 30 degree view (half angle 15 degrees) loses the hand. Decided: **the camera stays level** (`tilt_deg` is not used and no tilt command is added), and the zoom is limited by distance through the existing `arm_fit` rule (`configs/v4/control.json` -> `zoom`, unchanged: `arm_fit_margin` 0.1, `fov_min_deg` 15). No v4 code or config was changed for this.
 
-*Check* (`tests/test_zoom_geometry_v4.py`, 10 tests, pure arithmetic): the real `ZoomController` in a closed loop with a pinhole camera 1.2 m above the floor, a person centred in front of it, shoulder 1.5 m, a raised arm (upper arm 0.30 m, forearm 0.26 m, hand 0.19 m), YOLO taken to miss a keypoint outside the image, Unity taken to apply the commanded view by the next frame, 60 s at 10 Hz. **The camera height of 1.2 m is inferred, not read from a config** (it is not in any Python config): with it a vertical arm puts the wrist 23.3 degrees above the axis at 2.0 m, Nusrat's measurement. If the real pan-tilt camera height differs, the angles and the table change; Nusrat is asked to confirm it.
+*Check* (`tests/test_zoom_geometry_v4.py`, 10 tests, pure arithmetic): the real `ZoomController` in a closed loop with a pinhole camera 1.2 m above the floor, a person centred in front of it, shoulder 1.5 m, a raised arm (upper arm 0.30 m, forearm 0.26 m, hand 0.19 m), YOLO taken to miss a keypoint outside the image, Unity taken to apply the commanded view by the next frame, 60 s at 10 Hz. **The camera height of 1.2 m is inferred, not read from a config (measured on 8 November 2026 by Nusrat: 1.200 m, level, so this table stands; 14.16 item 8)** (it is not in any Python config): with it a vertical arm puts the wrist 23.3 degrees above the axis at 2.0 m, Nusrat's measurement. If the real pan-tilt camera height differs, the angles and the table change; Nusrat is asked to confirm it.
 
 | distance | wrist above the axis (arm vertical / 60 degrees up) | floor: narrowest view that keeps shoulder, elbow and wrist inside the margin | narrowest view the controller commands | magnification of that view |
 |---|---|---|---|---|
@@ -1339,3 +1339,47 @@ What the check shows: (a) **at 2.0 m the controller never narrows below the floo
 **Expectation, recorded before any data:** the zoom is expected to matter **only from about 3 m** (1.5x at 3 m against 1.0x to 1.1x at 2 m). RQ3 compares `zoom_on` with `zoom_off`; if every final case has the commander at the 2 m asking distance the comparison would measure almost nothing. **B7 note:** some final cases should place the commander at about 4 m. Which cases, and how many, is for B7 (both of us).
 
 **Not shown.** Real Unity frames with the zoom active (this is a model of the geometry); the pan-tilt camera height; how Unity ramps the field of view; the effect of the pumping on the readings.
+
+### 14.16 Decisions of 8 November 2026 (Nusrat's Phase 2B-2D update), made before any development recording
+
+Decided by Anisha on 2026-11-08 from Nusrat's Phase 2B-2D update. **No development recording exists yet, and none of these decisions uses a result on the test look.** Numbers quoted from Nusrat's runs and
+look checks are as she reported them (the run folders are on her machine).
+
+**1. Perception mode = `threads`** (`configs/v4/bridge.json` -> `perception_workers.mode`). Nusrat's Play runs in the v4 scene (3 trials each, before her Unity stall fix):
+
+| mode | watchdog stops | loop lag max | free memory, minimum |
+|---|---|---|---|
+| `threads` | 0 | 52 ms | 519 MB |
+| `processes` | 0 | 100 ms (exactly the declared limit of 100 ms) | 92 MB, with heavy paging |
+
+**Disclosed departure from the rule of 14.14.** Step 1 of that rule prefers `processes` because both modes met every limit in the replay on the PC. We depart from it: with Unity running `processes` passed only at the
+limit, with almost no free memory left (it needs 1.4 GB more than `threads`, 14.14; free memory fell to 13 MB on this PC in a v3 session, section 9 item 17). The rule is otherwise unchanged. **Condition before the freeze:** `threads` must
+still pass a Play development session **after Nusrat's Unity stall fix** (0 watchdog stops, loop lag and round trip within the declared limits, free system memory recorded); if it fails, the rule of 14.14 applies again.
+
+**2. STOP and WAIT no longer require MediaPipe's label** (`gesture_motion.py`, `configs/v4/gesture_reader.json`). STOP = the open-palm finger geometry (four fingers extended and spread); WAIT = the index-up geometry (index extended and up, the
+other three curled) plus the arm pose. The label (`Open_Palm`, `Pointing_Up`) and its score are read, logged per frame and reported (`Reading.hand_label`, `hand_label_score`, `label_agrees`; the look check), but are not required; `wait_score_min` and
+`stop_score_min` stay in the config as logged thresholds. An open palm is kept from being read as POINT by its geometry. **Reason:** in the look check MediaPipe said `Open_Palm` in 5 per cent of the STOP frames although the geometry passed in 66 to
+97 per cent, and `Pointing_Up` in 13 per cent of the WAIT frames of look f2; the classifier was trained on real hands, and a false STOP is safe (a missed STOP is not). **A v4 difference from v3** (v3 STOP was the `Open_Palm` label at score 0.5): listed
+in `configs/v4/analysis.json` -> `declared_differences` for RQ1. Look checks made before this date were computed with the label required (docs/look_check_v4.md). Tests: `tests/test_gesture_motion.py` (`LabelNotRequiredTests`): STOP and WAIT are read with any label or score, a label cannot
+make a stop or a wait the geometry does not show, and no decision path reads the label.
+
+**3. The arm ratio** (`point.arm_length_in_shoulder_widths`, 1.4) is **set in the development evaluation as the median YOLO keypoint ratio on the development looks only** (`sunbox_m1`, `sunbox_f1`), never on the test look (`sunbox_f2`). The value is
+**not changed now.** The look check measured 1.87 to 2.00 (the bones give 1.587); that is a reason to look, not the value.
+
+**4. Standoff.** `approach_distance_m` stays 2.0, measured from the robot centre to the person centre, as in v3. Nusrat measured 1.65 to 1.89 m (which points she measured is still to be asked of her). The development evaluation is to report the measured standoff, not the
+nominal 2.0 m: its distance bins are already the measured robot-to-worker distance from the truth positions; a per-ask standoff summary is **not implemented yet** (to add to `hri_eval_dev_v4.py`).
+
+**5. Forbidden keys from Unity (protocol 3 only).** `true_command`, `is_commander`, `worker_id`, `point_angle_deg`, `look`, `clip`, `phase` and `arm` join the six truth keys in the keys refused from Unity (`bridge/protocol.py`, `docs/protocol_v3.md` section 3). Checked: none of
+them is a field of any version 3 message Unity sends (`hello`, `telemetry`, the two frame headers), and `time_s`, `x`, `z` stay allowed. Only Unity's incoming messages are scanned: `is_commander` and `point_angle_deg` are HUD fields Python sends TO Unity and are unchanged
+(tests in `tests/test_protocol_v3.py`). Version 2 is unchanged.
+
+**6. Truth meanings accepted:** `NONE` during `start_delay`; `returning` keeps the command; POINT uses the same-side arm unless the target is within 25 degrees of straight ahead; a hold lasts 3.0 to 4.5 s; truth rows every 0.05 s. **Frame-level accuracy counts only the phases `gesturing`
+and `holding`** (`configs/v4/eval_dev.json` -> `accuracy_phases`; checked, and fixed in `hri_eval_dev_v4.py`: it had counted every phase with a gesture truth). `idle` and `start_delay` rows feed only the false-read rate, `returning` rows are in neither accuracy nor coverage. Tests in
+`tests/test_hri_eval_dev_v4.py` (`AccuracyPhaseTests`). `gesture_data.py` needed no change: it already accepts these phases and builds clips from the rows with the same non-NONE command.
+
+**7. Data splits** (`configs/v4/data_splits.json`, `placeholder` false): looks `sunbox_m1` and `sunbox_f1` development, `sunbox_f2` test; clips development / test: POINT `point_mixamo_01`, `point_ik_01` / `point_mixamo_02`; WAIT `wait_ik_01`, `wait_raise_01` / `wait_ik_02`;
+STOP `stop_ik_01`, `stop_ik_03` / `stop_ik_02`. **The test look is never replaced because of its results**; a development look may still be replaced before the recordings (recorded here if it happens). All three looks are of the Sunbox body family, so there is **one look style (`sunbox`)** and the per-style table has
+one row. **RQ4 wording: an unseen appearance of the Sunbox body family.** This closes B8 (14.13); B7 (which clips, looks and bystander layouts each setting uses) stays open. The simulator and the tests use the real names (the placeholder names are gone from the shipped config; the refusal on placeholder names is tested on a copy).
+
+**8. Records (Nusrat's side, for the paper).** The look check moved from the backlit stage to the real scene (declared before the rerun in `Avatar/Config/look_check_changes.md`); the top of look f1 was changed; hand rest-pose and finger fixes were made; the look checks saw all looks including the future
+test look and nothing was tuned on them; the Unity stall fix is in `RobotBridgeClient.cs` (protocol 3 only, the v3 path byte-identical, checked with a v3 smoke run); the pan-tilt camera height was measured at 1.200 m and level, so the zoom table of 14.15 stands (its height was inferred).

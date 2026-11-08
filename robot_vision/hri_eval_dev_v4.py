@@ -153,7 +153,8 @@ def frame_table(run: Run, ecfg: dict, gcfg: dict) -> tuple[list, list]:
             if w is not None:
                 t = lab_of[w]["row"]
                 e.update(truth=t.true_command, phase=t.phase, look=t.look, distance_m=lab_of[w]["distance_m"],
-                         angle=t.point_angle_deg, truth_commander=t.is_commander)
+                         angle=t.point_angle_deg, truth_commander=t.is_commander,
+                         counts=t.true_command == "NONE" or t.phase in ecfg["accuracy_phases"])
             entries.append(e)
         commander = [lab for lab in labs if lab["row"].is_commander and lab["row"].true_command != "NONE"]
         rec = {"run": run.name, "trial": run.trial, "frame": i, "bystanders": run.bystanders, "zoom_on": run.zoom_on,
@@ -175,8 +176,9 @@ def _ratio(k: int, n: int):
 
 def accuracy_block(entries: list) -> dict:
     """Per truth command: frames, frames the reader answered (coverage), correct among the answered. Truth NONE gives the
-    false-read rate. Frames with no matched worker are counted apart."""
-    matched = [e for e in entries if e["truth"] is not None]
+    false-read rate. Frames with no matched worker are counted apart. Only the truth phases gesturing and holding count for a
+    command (`counts`, eval_dev.json accuracy_phases, decided 2026-11-08); truth-NONE frames (idle, start_delay) feed the false-read rate."""
+    matched = [e for e in entries if e["truth"] is not None and e.get("counts", True)]     # gesturing / holding phases only (eval_dev.json)
     conf: dict = {s: Counter() for s in GESTURES + ("NONE",)}
     for e in matched:
         conf[e["truth"]][e["read"]] += 1
@@ -195,11 +197,11 @@ def accuracy_block(entries: list) -> dict:
 
 
 def group(entries: list, key, label_order=None) -> dict:
-    """accuracy_block of the gesturing frames per key value (a look, a distance bin, a zoom setting)."""
+    """accuracy_block of the frames in the accuracy phases (gesturing, holding) per key value (a look, a distance bin, a zoom setting)."""
     g = defaultdict(list)
     for e in entries:
         k = key(e)
-        if k is not None and e["truth"] in GESTURES:
+        if k is not None and e["truth"] in GESTURES and e.get("counts", True):
             g[k].append(e)
     keys = label_order or sorted(g)
     out = {}

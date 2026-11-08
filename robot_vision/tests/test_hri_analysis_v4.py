@@ -27,7 +27,7 @@ import test_hri_sim_v4_trials as tt  # noqa: E402
 import test_v4_final as tf  # noqa: E402
 
 CFG = an.load_config()
-DEV = dict(bystander_offsets_m=[(1.2, 0.3), (2.0, -0.5)], bystander_looks=["placeholder_look_dev_2", "placeholder_look_dev_1"])
+DEV = dict(bystander_offsets_m=[(1.2, 0.3), (2.0, -0.5)], bystander_looks=["sunbox_f1", "sunbox_m1"])
 
 
 class IntervalTests(unittest.TestCase):
@@ -191,9 +191,9 @@ class AnalysisTests(unittest.TestCase):
 
     def test_groups_per_look_style_distance_and_zoom(self):
         s = self.res["settings"]["zoom_on"]
-        self.assertEqual(set(s["per_look"]), {"placeholder_look_dev_1"})
-        self.assertEqual(set(s["per_style"]), {"placeholder_style_a"})
-        self.assertIn("accuracy_interval", s["per_look"]["placeholder_look_dev_1"])
+        self.assertEqual(set(s["per_look"]), {"sunbox_m1"})
+        self.assertEqual(set(s["per_style"]), {"sunbox"})
+        self.assertIn("accuracy_interval", s["per_look"]["sunbox_m1"])
         self.assertTrue(any(v["frames"] for v in s["per_distance"].values()))
         self.assertEqual(s["per_zoom"]["zoom_off"], an.NE)                             # this setting has only zoom-on runs
         self.assertEqual(s["per_zoom"]["zoom_on"]["runs"], 4)
@@ -250,9 +250,9 @@ class GuardAndOutputTests(unittest.TestCase):
             u, b = tf.session(Path(d), "z", zoom=False)
             with self.assertRaisesRegex(SystemExit, "needs zoom on"):
                 an.analyse([("zoom_on", u, b)], CFG, final=True, repo=repo)
-            du, db = tf.session(Path(d), "dev", spec_kw={"commander_look": "placeholder_look_dev_1",
-                                                         "clips": {"POINT": "placeholder_point_dev_1", "WAIT": "placeholder_wait_dev_1",
-                                                                   "STOP": "placeholder_stop_dev_1"}})
+            du, db = tf.session(Path(d), "dev", spec_kw={"commander_look": "sunbox_m1",
+                                                         "clips": {"POINT": "point_mixamo_01", "WAIT": "wait_ik_01",
+                                                                   "STOP": "stop_ik_01"}})
             with self.assertRaisesRegex(SystemExit, "--final-evaluation given"):
                 an.analyse([("zoom_on", du, db)], CFG, final=True, repo=repo)
 
