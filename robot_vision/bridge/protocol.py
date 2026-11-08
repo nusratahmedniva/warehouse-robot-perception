@@ -22,8 +22,12 @@ LENGTH = struct.Struct(">I")
 FORBIDDEN_KEYS = frozenset({"goal", "goal_point", "goal_x", "goal_z", "end_point", "end_point_x", "end_point_z",
                             "point_b", "b"})
 
-# Version 3 (v4 study) also rejects keys that would carry ground truth about the workers, at any depth.
-TRUTH_KEYS = frozenset({"true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth"})
+# Version 3 (v4 study) also rejects keys that would carry ground truth about the workers, at any depth, in messages FROM Unity only.
+# 2026-11-08: besides the six names of 2026-10-23, every field name of the per-run worker truth file (docs/protocol_v3.md) that never
+# appears legitimately in a message Unity sends. Not in the list: time_s, x, z (they are in telemetry and frame headers). is_commander and
+# point_angle_deg are HUD fields Python sends TO Unity; messages to Unity are not checked (validate() looks only at FROM_UNITY).
+TRUTH_KEYS = frozenset({"true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth",
+                        "true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm"})
 FORBIDDEN_KEYS_V3 = FORBIDDEN_KEYS | TRUTH_KEYS
 
 NUM, INT, STR, BOOL = "number", "int", "string", "bool"

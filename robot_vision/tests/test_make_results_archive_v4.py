@@ -47,8 +47,8 @@ class World:
             fg.write_done(self.eval, "zoom_on", "evaluation")
             (self.eval / "eval.json").write_text("{}")
         du, db = tf.session(self.out, "dev", mode="development", seed=1, spec_kw={
-            "commander_look": "placeholder_look_dev_1", "clips": {"POINT": "placeholder_point_dev_1", "WAIT": "placeholder_wait_dev_1",
-                                                                  "STOP": "placeholder_stop_dev_1"}})
+            "commander_look": "sunbox_m1", "clips": {"POINT": "point_mixamo_01", "WAIT": "wait_ik_01",
+                                                                  "STOP": "stop_ik_01"}})
         self.ana = self.out / "hri_analysis_v4_20261201_080000"
         self.ana.mkdir()
         (self.ana / "analysis.md").write_text("# analysis\n")

@@ -226,27 +226,48 @@ def hand_cues(hand, cfg: dict) -> dict:
             "index_up_deg": angle_from_up(d[0], d[1]), "category": hand.category, "score": float(hand.score)}
 
 
+def open_palm_geometry(cues: dict, cfg: dict) -> bool:
+    """All four fingers extended and spread: the hand geometry of STOP (and what keeps an open palm from being read as POINT)."""
+    return bool(all(cues["extended"].values()) and cues["spread_deg"] >= cfg["hand"]["palm_spread_min_deg"])
+
+
+def index_up_geometry(cues: dict, cfg: dict) -> bool:
+    """Index finger extended and pointing up, the other three curled: the hand geometry of WAIT."""
+    return bool(cues["extended"]["index"] and all(cues["curled"][n] for n in ("middle", "ring", "pinky"))
+                and abs(cues["index_up_deg"]) <= cfg["hand"]["index_up_tol_deg"])
+
+
+def label_agrees(hand, command: str, cfg: dict) -> bool | None:
+    """Would MediaPipe's own label (Open_Palm for STOP, Pointing_Up for WAIT, at its score threshold) have agreed? Logged only: since
+    2026-11-08 the reader does not require it (configs/v4/gesture_reader.json, docs/gesture_reader_v4.md). None for other commands."""
+    h = cfg["hand"]
+    if command == "STOP":
+        return bool(hand.category == "Open_Palm" and float(hand.score) >= h["stop_score_min"])
+    if command == "WAIT":
+        return bool(hand.category == "Pointing_Up" and float(hand.score) >= h["wait_score_min"])
+    return None
+
+
 def frame_flags(s: Sample, side: str, af: ArmFrame, cfg: dict) -> dict:
-    """Does each class's full set of cues pass in this frame, for this arm? Keys point_ok, wait_ok, stop_ok (+ why)."""
+    """Does each class's full set of cues pass in this frame, for this arm? Keys point_ok, wait_ok, stop_ok (+ why).
+
+    Since 2026-11-08 STOP and WAIT are decided by the finger geometry of the 21 landmarks and the arm pose only: MediaPipe's gesture
+    label and its score are NOT required (in the look check the label said Open_Palm in 5 per cent of STOP frames although the
+    geometry passed in 66 to 97 per cent). They are still read and reported per frame (hand_cues, Reading.hand_label)."""
     p, h = cfg["point"], cfg["hand"]
     out = {"point_ok": False, "wait_ok": False, "stop_ok": False, "why": ""}
     hand = s.hands.get(side)
     cues = hand_cues(hand, cfg) if hand is not None else None
     if cues is not None:
-        fingers4 = all(cues["extended"].values())
-        out["stop_ok"] = bool(cues["category"] == "Open_Palm" and cues["score"] >= h["stop_score_min"] and fingers4
-                              and cues["spread_deg"] >= h["palm_spread_min_deg"])
+        out["stop_ok"] = open_palm_geometry(cues, cfg)
     if not af.valid:
         out["why"] = af.reason
         return out
     if cues is not None:
-        wait_hand = (cues["category"] == "Pointing_Up" and cues["score"] >= h["wait_score_min"]
-                     and cues["extended"]["index"] and all(cues["curled"][n] for n in ("middle", "ring", "pinky"))
-                     and abs(cues["index_up_deg"]) <= h["index_up_tol_deg"])
-        out["wait_ok"] = bool(wait_hand and af.raised and af.wrist_above_shoulder >= h["wait_raise_margin"]
+        out["wait_ok"] = bool(index_up_geometry(cues, cfg) and af.raised and af.wrist_above_shoulder >= h["wait_raise_margin"]
                               and abs(af.forearm_up_deg) <= h["wait_forearm_vertical_tol_deg"]
                               and af.elbow_deg <= h["wait_arm_extension_max_deg"])
-    open_palm = cues is not None and cues["category"] == "Open_Palm" and cues["score"] >= h["stop_score_min"]
+    open_palm = cues is not None and open_palm_geometry(cues, cfg)
     out["point_ok"] = bool(af.raised and af.disagreement_deg <= p["segment_disagreement_max_deg"]
                            and af.length_ratio >= p["arm_length_min"] and af.elbow_deg >= p["point_arm_extension_min_deg"]
                            and not open_palm and arm_solutions(s, side, cfg) is not None)
@@ -407,12 +428,16 @@ class Reading:
     arm_box: tuple | None = None          # px, shoulder + elbow + wrist of that arm
     frame_wh: tuple | None = None
     fov_deg: float | None = None
+    hand_label: str | None = None         # MediaPipe's label of the hand of the read arm in the latest frame (logged, not required)
+    hand_label_score: float | None = None
+    label_agrees: bool | None = None      # would that label (at wait_score_min / stop_score_min) have agreed with the command read?
 
     def to_dict(self) -> dict:
         d = {"command": self.command, "score": _r(self.score), "why": self.why, "t": _r(self.t), "arm": self.arm,
              "frame_class": self.frame_class, "moving": self.moving, "raised": self.raised, "hold_s": _r(self.hold_s),
              "valid_frames": self.valid_frames, "n_frames": self.n_frames, "scores": {k: _r(v) for k, v in self.scores.items()},
-             "arms": self.arms, "hand_box": self.hand_box, "arm_box": self.arm_box, "fov_deg": _r(self.fov_deg)}
+             "arms": self.arms, "hand_box": self.hand_box, "arm_box": self.arm_box, "fov_deg": _r(self.fov_deg),
+             "hand_label": self.hand_label, "hand_label_score": _r(self.hand_label_score), "label_agrees": self.label_agrees}
         d["point"] = self.point.to_dict() if self.point is not None else None
         return d
 
@@ -503,6 +528,8 @@ def read_window(samples: list[Sample], cfg: dict, t_now: float | None = None) ->
         _fill_boxes(r, samples, side)
         r.command, r.score, r.arm, r.why = "STOP", score, side, "open palm"
         r.scores = {"STOP": score}
+        hs = samples[-1].hands.get(side)
+        r.label_agrees = label_agrees(hs, "STOP", cfg) if hs is not None else None
         return r
     cands = []
     for side, a in arms.items():
@@ -541,6 +568,8 @@ def read_window(samples: list[Sample], cfg: dict, t_now: float | None = None) ->
         return r
     _fill_boxes(r, samples, side)
     r.command, r.score, r.arm, r.why, r.hold_s = cmd, score, side, "ok", arms[side]["hold_s"]
+    hl = samples[-1].hands.get(side)
+    r.label_agrees = label_agrees(hl, cmd, cfg) if hl is not None else None
     if cmd == "POINT":
         hold_samples = [s for s, _, _ in arms[side]["hold"]]
         r.point = point_estimate(hold_samples, side, cfg)
@@ -553,6 +582,8 @@ def _fill_boxes(r: Reading, samples: list[Sample], side: str) -> None:
     last = samples[-1]
     h = last.hands.get(side)
     r.hand_box = tuple(round(float(x), 1) for x in h.box) if h is not None else None
+    if h is not None:
+        r.hand_label, r.hand_label_score = h.category, float(h.score)
     sh, el, wr = ARMS[side]
     pts = np.array([last.kp[i] for i in (sh, el, wr)], float)
     r.arm_box = (round(float(pts[:, 0].min()), 1), round(float(pts[:, 1].min()), 1), round(float(pts[:, 0].max()), 1),

@@ -5,7 +5,9 @@
   "match_bearing_deg": 10.0,
   "distance_bins_m": [0.0, 1.5, 2.5, 4.0, 6.0],
   "commands": ["POINT", "WAIT", "STOP", "NONE"],
+  "accuracy_phases": ["gesturing", "holding"],
   "why": {
+    "accuracy_phases": "DECIDED 2026-11-08 (AUDIT.md 14.16), before any development recording: frame-level accuracy per command counts only the truth phases gesturing and holding (the worker is performing the command). idle and start_delay rows have the truth NONE (they feed only the false-read rate); returning rows keep the command while the arm goes down and are counted in neither the accuracy nor the coverage. Truth rows come every 0.05 s, a hold lasts 3.0 to 4.5 s.",
     "match_bearing_deg": "A person in the pan-tilt view is matched to the truth worker whose true bearing from the robot is nearest, if within this many degrees and not equally near to another. Same value as commander.json link_bearing_tol_deg: two people 1 m apart at 2 m differ by about 26 deg.",
     "distance_bins_m": "Robot-to-worker distance bins for the per-distance report: the ask distance is 2.0 m (v3 approach_distance_m), so the bins separate 'at the ask distance' (1.5 to 2.5) from nearer and farther views; 6 m is the gesture range of the v3 simulator."
   }

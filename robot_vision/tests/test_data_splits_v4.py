@@ -1,5 +1,6 @@
 """v4 data splits by avatar look and animation clip (data_splits_v4.py): the guard refuses any run that mixes
-development and test looks or clips, unknown names, and a final evaluation on placeholder names."""
+development and test looks or clips, unknown names, and a final evaluation on placeholder names (the shipped file has the real
+names since 2026-11-08; the placeholder rule is tested on a copy with placeholder true)."""
 
 import copy
 import sys
@@ -22,13 +23,29 @@ REAL = {
 
 
 class ConfigTests(unittest.TestCase):
-    def test_shipped_config_is_valid_and_placeholder(self):
+    def test_shipped_config_is_valid_and_has_the_real_names_of_2026_11_08(self):
         s = ds.load()
-        self.assertTrue(s["placeholder"])
+        self.assertFalse(s["placeholder"])
         self.assertEqual(ds.check_config(s), [])
         self.assertFalse(s["final_evaluation_done"])
-        names = list(s["looks"]) + list(s["clips"])
-        self.assertTrue(all(n.startswith("placeholder_") for n in names))
+        self.assertEqual(s["looks"], {"sunbox_m1": "development", "sunbox_f1": "development", "sunbox_f2": "test"})
+        self.assertEqual(s["clips"], {
+            "point_mixamo_01": "development", "point_ik_01": "development", "point_mixamo_02": "test",
+            "wait_ik_01": "development", "wait_raise_01": "development", "wait_ik_02": "test",
+            "stop_ik_01": "development", "stop_ik_03": "development", "stop_ik_02": "test"})
+        self.assertFalse(any(n.startswith("placeholder_") for n in list(s["looks"]) + list(s["clips"])))
+        self.assertIn("2026-11-08", s["recorded"]["looks_and_clips"])
+
+    def test_one_style_for_the_sunbox_family(self):
+        s = ds.load()
+        self.assertEqual(set(s["styles"]), set(s["looks"]))
+        self.assertEqual(set(s["styles"].values()), {"sunbox"})
+
+    def test_every_gesture_has_a_development_and_a_test_clip(self):
+        s = ds.load()
+        for g in ("point", "wait", "stop"):
+            splits = {v for k, v in s["clips"].items() if k.startswith(g + "_")}
+            self.assertEqual(splits, {"development", "test"}, g)
 
     def test_no_name_is_development_and_test(self):
         s = ds.load()
@@ -116,14 +133,23 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "placeholders"):
             ds.guard_run(["test_a"], ["pt1"], True, ph)
 
-    def test_shipped_placeholder_config_end_to_end(self):
-        self.assertEqual(ds.guard_run(["placeholder_look_dev_1"], ["placeholder_point_dev_2"]), "development")
+    def test_shipped_config_end_to_end(self):
+        self.assertEqual(ds.guard_run(["sunbox_m1"], ["point_ik_01"]), "development")
+        self.assertEqual(ds.guard_run(["sunbox_m1", "sunbox_f1"], ["wait_ik_01", "wait_raise_01", "stop_ik_03"]), "development")
         with self.assertRaisesRegex(SystemExit, "final evaluation only"):
-            ds.guard_run(["placeholder_look_test_1"], ["placeholder_point_test_1"])
+            ds.guard_run(["sunbox_f2"], ["point_mixamo_02"])
         with self.assertRaisesRegex(SystemExit, "mixes"):
-            ds.guard_run(["placeholder_look_dev_1"], ["placeholder_wait_test_1"])
-        with self.assertRaisesRegex(SystemExit, "placeholders"):
-            ds.guard_run(["placeholder_look_test_1"], ["placeholder_point_test_1"], True)
+            ds.guard_run(["sunbox_m1"], ["wait_ik_02"])
+        with self.assertRaisesRegex(SystemExit, "mixes"):
+            ds.guard_run(["sunbox_f2"], ["stop_ik_01"], True)
+        self.assertEqual(ds.guard_run(["sunbox_f2"], ["point_mixamo_02", "wait_ik_02", "stop_ik_02"], True), "test")   # no longer placeholders
+        with self.assertRaisesRegex(SystemExit, "--final-evaluation given"):
+            ds.guard_run(["sunbox_f1"], ["point_ik_01"], True)
+
+    def test_the_test_look_is_never_replaced_because_of_its_results_is_written_in_the_rules(self):
+        rules = " ".join(ds.load()["rules"])
+        self.assertIn("never replaced because of its results", rules)
+        self.assertIn("2026-11-08", rules)
 
     def test_works_with_clips_built_from_a_truth_file(self):
         import gesture_data as gd

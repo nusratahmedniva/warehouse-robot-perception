@@ -22,7 +22,7 @@ import test_hri_sim_v4_trials as tt  # noqa: E402
 
 GC, EC = gd.load_config(), ev.load_config()
 DEV = dict(bystander_offsets_m=[(1.2, 0.3), (-1.6, -0.2)],
-           bystander_looks=["placeholder_look_dev_2", "placeholder_look_dev_1"])
+           bystander_looks=["sunbox_f1", "sunbox_m1"])
 
 
 def session(root: Path, name: str, results: list, zoom: bool) -> tuple:
@@ -80,7 +80,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(sum(conf["POINT"].values()), pc["frames"])
 
     def test_grouping_by_look_distance_and_zoom(self):
-        self.assertEqual(set(self.res["per_look"]), {"placeholder_look_dev_1"})                  # only the commander gestured
+        self.assertEqual(set(self.res["per_look"]), {"sunbox_m1"})                  # only the commander gestured
         d = self.res["per_distance"]
         self.assertEqual(sum(v["frames"] for v in d.values()), self.res["gesture"]["per_command"]["POINT"]["frames"])
         # the robot approaches the NEAREST person (the v3 rule), here a bystander, so the commander is seen from 2.5 to 4 m
@@ -118,7 +118,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(self.res["branch"]["second_view"]["asks_with_a_second_view"], 0)      # tie-break sessions need none
         with tempfile.TemporaryDirectory() as d:
             results = [tt.trial("E3", sv.SceneSpec(), seed=1), tt.trial("E2", sv.SceneSpec(), seed=2),
-                       tt.trial("E1", sv.SceneSpec(bystander_offsets_m=[(-1.95, -0.7)], bystander_looks=["placeholder_look_dev_2"]), seed=1)]
+                       tt.trial("E1", sv.SceneSpec(bystander_offsets_m=[(-1.95, -0.7)], bystander_looks=["sunbox_f1"]), seed=1)]
             res = ev.evaluate(ev.load_sessions([session(Path(d), "tv", results, True)], GC), EC, GC)
         b = res["branch"]
         self.assertEqual((b["second_view"]["asks_with_a_second_view"], b["second_view"]["accepted_after_it"]), (2, 2))
@@ -144,6 +144,53 @@ class EvaluationTests(unittest.TestCase):
         md = ev.markdown(self.res)
         for word in ("coverage", "Per look", "Per distance", "Zoom on vs off", "not_evaluated", "Commander", "answered"):
             self.assertIn(word, md)
+
+
+class AccuracyPhaseTests(unittest.TestCase):
+    """Decided 2026-11-08: frame-level accuracy counts only the truth phases gesturing and holding (eval_dev.json accuracy_phases)."""
+
+    @staticmethod
+    def entry(truth, read, phase, look="L1", counts=None):
+        e = {"truth": truth, "read": read, "phase": phase, "look": look, "distance_m": 2.0, "zoom_on": True}
+        if counts is not None:
+            e["counts"] = counts
+        return e
+
+    def test_the_config_names_the_two_phases(self):
+        self.assertEqual(EC["accuracy_phases"], ["gesturing", "holding"])
+        self.assertIn("2026-11-08", EC["why"]["accuracy_phases"])
+
+    def test_returning_rows_are_in_neither_accuracy_nor_coverage(self):
+        es = [self.entry("POINT", "POINT", "gesturing", counts=True), self.entry("POINT", "POINT", "holding", counts=True),
+              self.entry("POINT", "NONE", "returning", counts=False), self.entry("POINT", "NONE", "returning", counts=False)]
+        pc = ev.accuracy_block(es)["per_command"]["POINT"]
+        self.assertEqual((pc["frames"], pc["answered"], pc["coverage"], pc["correct"], pc["accuracy_of_answered"]), (2, 2, 1.0, 2, 1.0))
+
+    def test_truth_none_rows_still_give_the_false_read_rate(self):
+        es = [self.entry("NONE", "NONE", "idle", counts=True), self.entry("NONE", "STOP", "start_delay", counts=True),
+              self.entry("POINT", "POINT", "holding", counts=True)]
+        fr = ev.accuracy_block(es)["false_reads"]
+        self.assertEqual((fr["frames_nothing_shown"], fr["read_as_a_command"], fr["rate"]), (2, 1, 0.5))
+
+    def test_the_groups_use_the_same_rule(self):
+        es = [self.entry("WAIT", "WAIT", "holding", counts=True), self.entry("WAIT", "STOP", "returning", counts=False)]
+        g = ev.group(es, lambda e: e["look"])["L1"]
+        self.assertEqual((g["frames"], g["correct"], g["accuracy_of_answered"]), (1, 1, 1.0))
+
+    def test_entries_without_the_flag_are_counted_as_before(self):
+        es = [self.entry("POINT", "POINT", "gesturing"), self.entry("POINT", "NONE", "holding")]
+        self.assertEqual(ev.accuracy_block(es)["per_command"]["POINT"]["frames"], 2)
+
+    def test_the_frame_table_sets_the_flag_from_the_phase(self):
+        with tempfile.TemporaryDirectory() as d:
+            spec = sv.SceneSpec(**DEV)
+            pairs = [session(Path(d), "on", [tt.good("E2", spec, seed=1)], True)]
+            entries, _ = ev.frame_table(ev.load_sessions(pairs, GC)[0], EC, GC)
+        matched = [e for e in entries if e["truth"] is not None]
+        self.assertTrue(matched)
+        for e in matched:
+            self.assertEqual(e["counts"], e["truth"] == "NONE" or e["phase"] in EC["accuracy_phases"], e["phase"])
+        self.assertTrue({"gesturing", "holding"} <= {e["phase"] for e in matched})
 
 
 class LossyAndWaitTests(unittest.TestCase):
@@ -183,15 +230,15 @@ class SplitGuardTests(unittest.TestCase):
 
     def test_a_test_look_is_refused(self):
         with tempfile.TemporaryDirectory() as d:
-            pairs = self.pairs(Path(d), lambda t: t.replace("placeholder_look_dev_2", "placeholder_look_test_1"))
+            pairs = self.pairs(Path(d), lambda t: t.replace("sunbox_f1", "sunbox_f2"))
             with self.assertRaisesRegex(SystemExit, "mixes development and test"):
                 ev.load_sessions(pairs, GC)
 
     def test_only_test_data_is_refused_without_the_final_flag(self):
         with tempfile.TemporaryDirectory() as d:
             def edit(t):
-                for a, b in (("placeholder_look_dev_1", "placeholder_look_test_1"), ("placeholder_look_dev_2", "placeholder_look_test_1"),
-                             ("placeholder_point_dev_1", "placeholder_point_test_1")):
+                for a, b in (("sunbox_m1", "sunbox_f2"), ("sunbox_f1", "sunbox_f2"),
+                             ("point_mixamo_01", "point_mixamo_02")):
                     t = t.replace(a, b)
                 return t
             with self.assertRaisesRegex(SystemExit, "final evaluation only"):
@@ -199,21 +246,21 @@ class SplitGuardTests(unittest.TestCase):
 
     def test_a_test_clip_with_a_development_look_is_refused(self):
         with tempfile.TemporaryDirectory() as d:
-            pairs = self.pairs(Path(d), lambda t: t.replace("placeholder_point_dev_1", "placeholder_point_test_1"))
+            pairs = self.pairs(Path(d), lambda t: t.replace("point_mixamo_01", "point_mixamo_02"))
             with self.assertRaisesRegex(SystemExit, "mixes development and test"):
                 ev.load_sessions(pairs, GC)
 
     def test_unknown_names_and_missing_clip_names_are_refused(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaisesRegex(SystemExit, "not listed"):
-                ev.load_sessions(self.pairs(Path(d), lambda t: t.replace("placeholder_look_dev_2", "stranger")), GC)
+                ev.load_sessions(self.pairs(Path(d), lambda t: t.replace("sunbox_f1", "stranger")), GC)
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaisesRegex(SystemExit, "no animation clip name"):
-                ev.load_sessions(self.pairs(Path(d), lambda t: t.replace('"clip": "placeholder_point_dev_1"', '"clip": ""')), GC)
+                ev.load_sessions(self.pairs(Path(d), lambda t: t.replace('"clip": "point_mixamo_01"', '"clip": ""')), GC)
 
     def test_the_refusal_names_the_run(self):
         with tempfile.TemporaryDirectory() as d:
-            pairs = self.pairs(Path(d), lambda t: t.replace("placeholder_look_dev_2", "stranger"))
+            pairs = self.pairs(Path(d), lambda t: t.replace("sunbox_f1", "stranger"))
             with self.assertRaises(SystemExit) as cm:
                 ev.load_sessions(pairs, GC)
             self.assertIn("trials_s/run_001", str(cm.exception))
@@ -250,7 +297,7 @@ class MainTests(unittest.TestCase):
             root = Path(d)
             u, b = session(root, "m", [tt.good("E2", sv.SceneSpec(**DEV), seed=1)], True)
             f = u / "run_001" / "truth.jsonl"
-            f.write_text(f.read_text().replace("placeholder_look_dev_2", "placeholder_look_test_1"))
+            f.write_text(f.read_text().replace("sunbox_f1", "sunbox_f2"))
             with self.assertRaises(SystemExit):
                 ev.main(["--session", str(u), str(b)])
 

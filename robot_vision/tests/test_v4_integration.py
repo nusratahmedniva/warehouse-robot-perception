@@ -49,7 +49,7 @@ class PipelineTests(unittest.TestCase):
         for i in range(14):
             kp1, c1 = vs.body(left=vs.direction(90.0))                 # the commander, straight ahead
             kp2, c2 = vs.body(x0=-1.2)                                  # a bystander standing with arms down
-            hands = {1: [vs.hand(kp1[gm.L_WRIST], axis=(1.0, 0.0), category="Pointing_Up")]}
+            hands = {1: [vs.hand(kp1[gm.L_WRIST], axis=(1.0, 0.0), category="Pointing_Up", extended=("index",))]}   # pointing geometry: the label alone decides nothing since 2026-11-08
             out = pipe.update([det(1, kp1, c1), det(2, kp2, c2)], hands, {**META, "t": 0.1 * i})
         by = {p.track_id: p for p in out}
         self.assertEqual(by[1].reading.command, "POINT")

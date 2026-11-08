@@ -92,7 +92,7 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertEqual(fz.blanks(REPO), want)
 
     def test_decided_values_of_the_plan_and_the_blanks_still_open(self):
-        """Decided 2026-10-24 by Anisha; B7, B9, B11 and the real names (B8) are open and must keep the freeze refused."""
+        """Decided 2026-10-24 by Anisha; B7, B9 and B11 are open and must keep the freeze refused (the real look and clip names, B8, are in since 2026-11-08)."""
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
         v3 = json.loads((ROOT / "configs/trials.json").read_text())
         self.assertEqual((plan["task"], plan["dev_seed"], plan["final_seed"], plan["runs_per_setting"], plan["success_radius_m"]),
@@ -105,7 +105,7 @@ class RecordedFreezeTests(unittest.TestCase):
         if not REC["frozen"]:
             for k in ("test_assignment", "unity_files_and_guard", "acceptance_criteria"):
                 self.assertIsNone(plan[k], k)
-            self.assertEqual(len(fz.blanks(REPO)), 4)                                              # B7, B9, B11 and the placeholder names
+            self.assertEqual(len(fz.blanks(REPO)), 3)                                              # B7, B9, B11 (the real names were decided 2026-11-08)
 
     def test_the_goal_order_of_the_final_seed_is_that_of_the_v3_final(self):
         import hri_trials as ht

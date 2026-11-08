@@ -399,5 +399,113 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(CFG["point"]["arm_length_min"], 0.8)
 
 
+class LabelNotRequiredTests(unittest.TestCase):
+    """Since 2026-11-08 STOP and WAIT are read from the finger geometry; MediaPipe's label and score are logged, not required."""
+    FOUR = ("index", "middle", "ring", "pinky")
+
+    def read(self, builder, n=12):
+        s = vs.arm_sequence(builder, n)
+        win = s[-10:]
+        return gm.read_window(win, CFG, win[-1].t)
+
+    def stop(self, category, score=0.9, extended=FOUR, fan=18.0):
+        def b(i):
+            kp, conf = vs.body(left=vs.direction(90.0, 10.0))
+            return kp, conf, {"left": vs.hand(kp[gm.L_WRIST], axis=(1.0, 0.0), category=category, score=score, extended=extended, fan_deg=fan)}
+        return b
+
+    def wait(self, category, score=0.9, extended=("index",)):
+        def b(i):
+            kp, conf = vs.body(left=vs.direction(90.0), left_fore=(0.0, -1.0, 0.0))
+            return kp, conf, {"left": vs.hand(kp[gm.L_WRIST], axis=(0.0, -1.0), category=category, score=score, extended=extended, fan_deg=4.0)}
+        return b
+
+    def test_an_open_palm_is_a_stop_whatever_mediapipe_called_it(self):
+        for category, score in (("Open_Palm", 0.9), ("None", 0.0), ("Closed_Fist", 0.8), ("Pointing_Up", 0.9), ("Open_Palm", 0.05)):
+            r = self.read(self.stop(category, score))
+            self.assertEqual(r.command, "STOP", (category, score))
+            self.assertEqual((r.hand_label, r.hand_label_score), (category, score))
+
+    def test_index_up_is_a_wait_whatever_mediapipe_called_it(self):
+        for category, score in (("Pointing_Up", 0.9), ("None", 0.0), ("Open_Palm", 0.9), ("Closed_Fist", 0.7), ("Pointing_Up", 0.05)):
+            r = self.read(self.wait(category, score))
+            self.assertEqual(r.command, "WAIT", (category, score))
+            self.assertEqual(r.frame_class, "WAIT")
+
+    def test_a_label_cannot_make_a_stop_or_a_wait_the_geometry_does_not_show(self):
+        fist = self.read(self.stop("Open_Palm", 0.99, extended=()))                  # labelled Open_Palm, fingers curled
+        self.assertNotEqual(fist.command, "STOP")
+        one = self.read(self.stop("Open_Palm", 0.99, extended=("index",)))            # one finger out only
+        self.assertNotEqual(one.command, "STOP")
+        palm_as_wait = self.read(self.wait("Pointing_Up", 0.99, extended=self.FOUR))  # labelled Pointing_Up, four fingers out
+        self.assertNotEqual(palm_as_wait.command, "WAIT")
+        fist_wait = self.read(self.wait("Pointing_Up", 0.99, extended=()))            # no finger up
+        self.assertNotEqual(fist_wait.command, "WAIT")
+
+    def test_the_open_palm_geometry_on_an_extended_arm_is_not_a_point_with_any_label(self):
+        for category in ("Open_Palm", "None", "Pointing_Up"):
+            r = self.read(self.stop(category))
+            self.assertEqual(r.command, "STOP", category)
+            self.assertEqual(r.frame_class, "STOP", category)
+
+    def test_a_pointing_hand_labelled_open_palm_is_still_a_point(self):
+        """The label no longer blocks POINT: only the geometry of an open palm does."""
+        r = self.read(point_builder(0, hand_cat="Open_Palm"))
+        self.assertEqual(r.command, "POINT")
+
+    def test_the_label_is_logged_and_says_whether_it_agreed(self):
+        agree = self.read(self.stop("Open_Palm", 0.9))
+        self.assertEqual((agree.hand_label, agree.label_agrees), ("Open_Palm", True))
+        wrong = self.read(self.stop("None", 0.0))
+        self.assertEqual((wrong.command, wrong.hand_label, wrong.label_agrees), ("STOP", "None", False))
+        low = self.read(self.wait("Pointing_Up", 0.1))                                  # right label, score under wait_score_min
+        self.assertEqual((low.command, low.label_agrees), ("WAIT", False))
+        good = self.read(self.wait("Pointing_Up", 0.9))
+        self.assertEqual(good.label_agrees, True)
+        d = json.loads(json.dumps(wrong.to_dict()))
+        self.assertEqual((d["hand_label"], d["hand_label_score"], d["label_agrees"]), ("None", 0.0, False))
+
+    def test_a_point_has_no_label_verdict(self):
+        r = self.read(point_builder(0, hand_cat="Closed_Fist"))
+        self.assertEqual((r.command, r.label_agrees), ("POINT", None))
+
+    def test_the_label_thresholds_stay_in_the_config_as_logged_fields(self):
+        h = CFG["hand"]
+        self.assertEqual((h["wait_score_min"], h["stop_score_min"]), (0.5, 0.5))
+        self.assertIn("LOGGED ONLY", h["why"]["wait_score_min"])
+        self.assertIn("LOGGED ONLY", h["why"]["stop_score_min"])
+        self.assertIn("2026-11-08", h["why"]["stop_wait_geometry_only"])
+
+    def test_no_decision_path_reads_the_label_or_its_score(self):
+        import ast
+        import inspect
+        import textwrap
+        names = {"category", "score", "Open_Palm", "Pointing_Up", "stop_score_min", "wait_score_min"}
+        for fn in (gm.frame_flags, gm.open_palm_geometry, gm.index_up_geometry):
+            tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+            node = tree.body[0]
+            if node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant):
+                node.body = node.body[1:]                                  # the docstring may talk about the label
+            used = {n.value for n in ast.walk(node) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+            used |= {n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute)}
+            self.assertEqual(used & names, set(), fn.__name__)
+
+
+class ArmRatioDeclarationTests(unittest.TestCase):
+    """Decided 2026-11-08: the arm ratio is set in the development evaluation on development looks only; the value is not changed now."""
+
+    def test_the_value_is_unchanged_and_the_rule_for_setting_it_is_declared(self):
+        self.assertEqual(CFG["point"]["arm_length_in_shoulder_widths"], 1.4)
+        why = CFG["point"]["why"]["arm_length_in_shoulder_widths"]
+        for word in ("DECLARED 2026-11-08", "median YOLO keypoint ratio", "sunbox_m1", "sunbox_f1", "never on the test look", "sunbox_f2", "1.87 to 2.00"):
+            self.assertIn(word, why)
+
+    def test_the_declared_development_looks_are_the_development_looks_of_the_split(self):
+        import data_splits_v4 as ds
+        looks = ds.load()["looks"]
+        self.assertEqual(sorted(k for k, v in looks.items() if v == "development"), ["sunbox_f1", "sunbox_m1"])
+        self.assertEqual([k for k, v in looks.items() if v == "test"], ["sunbox_f2"])
+
+
 if __name__ == "__main__":
     unittest.main()
