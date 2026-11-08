@@ -1,0 +1,142 @@
+{
+  "note": "v4 Phase 2B worker template (2026-11-07, Nusrat; declared before the Play-mode look check ran): looks, gesture variants ('clips' in truth.jsonl and data_splits.json), hand shapes, behaviour and the random variation of every gesture. Read by WorkerV4 at Play and by Tools > Warehouse v4 > Workers. Every value is pose or behaviour design (no Python threshold is set or changed here); nothing in the v3 scene reads it. Lengths ending in _l are fractions of the worker's own arm length (shoulder to wrist), so one variant fits every look.",
+  "paths": {
+    "repo_root_relative_to_unity_project": "../../..",
+    "clip_source_folder": "unity/downloads",
+    "clip_import_folder": "Assets/ThirdParty/MixamoV4/Resources/MixamoV4",
+    "clip_resources_path": "MixamoV4",
+    "clip_index_name": "clip_index",
+    "question_prompt_source": "robot_vision/configs/hri_control.json",
+    "why": "Mixamo clips are downloaded by hand (licence: never committed) into unity/downloads (git-ignored) and copied by Import Mixamo Clips into the git-ignored Assets/ThirdParty/ (Humanoid import, one clip each, clip_index.json next to them). The worker loads them with Resources.Load, so no committed asset refers to a clip GUID. question_prompt_source: a test checks that question.prompt equals the 'prompt' of that file (Python's question text)."
+  },
+  "question": {
+    "prompt": "Which direction?",
+    "why": "Python's screen text for the question (configs/hri_control.json gesture.prompt; ' (asking again)' may follow). The commander starts a gesture only while it is visible."
+  },
+  "behaviour": {
+    "notice_distance_m": 8.0,
+    "turn_speed_deg_per_s": 120.0,
+    "turn_start_deg": 15.0,
+    "face_tolerance_deg": 5.0,
+    "look_at": { "weight": 1.0, "body": 0.2, "head": 0.8, "eyes": 1.0, "clamp": 0.5, "fade_s": 0.5 },
+    "why": "notice_distance_m: the robot slows and scans near a junction and approaches the commander to 2.0 m; 8 m lets the worker notice it before the approach. A worker turns (in place, root yaw) when its body is more than turn_start_deg off the robot and stops within face_tolerance_deg; 120 deg/s is a calm human turn. look_at: Humanoid look-at toward the robot's pan-tilt camera, head mostly, a little upper body, faded in over fade_s once the robot is noticed."
+  },
+  "animation": {
+    "idle_clip_file": "Idle.fbx",
+    "turn_clip_file": "",
+    "gesture_layer_fade_s": 0.2,
+    "controller": "Assets/WarehouseRobot/Avatar/Animation/WorkerV4.controller",
+    "hold_body_speed": 0.0,
+    "why": "Idle.fbx: the Mixamo idle of v3 (unity/downloads). No Mixamo turn clip is downloaded, so the turn state plays the idle while the root turns ('' = idle); a turn clip can be named here later. gesture_layer_fade_s: fade of the gesture layer in and out around a Mixamo variant, so the arm does not jump between the idle and the clip. hold_body_speed (Phase 2C, 2026-11-08, Nusrat): the Animator's speed during the holding phase; 0 = the body under the held arm stands still (no idle motion), as the pose of docs/look_check_v4.md is 'held still'. The idle plays at normal speed in every other phase (idle, start delay, raising, returning) and resumes from the same pose, so nothing jumps."
+  },
+  "hand_shapes": {
+    "point": {
+      "thumb_deg": [30, 40, 35], "thumb_across_deg": 20,
+      "index_deg": [0, 0, 0], "middle_deg": [90, 100, 70], "ring_deg": [90, 100, 70], "little_deg": [90, 100, 70],
+      "spread_deg": 0
+    },
+    "wait": {
+      "thumb_deg": [35, 45, 40], "thumb_across_deg": 30,
+      "index_deg": [0, 0, 0], "middle_deg": [95, 105, 75], "ring_deg": [95, 105, 75], "little_deg": [95, 105, 75],
+      "spread_deg": 0
+    },
+    "stop": {
+      "thumb_deg": [0, 0, 0], "thumb_across_deg": 0,
+      "index_deg": [0, 0, 0], "middle_deg": [0, 0, 0], "ring_deg": [0, 0, 0], "little_deg": [0, 0, 0],
+      "spread_deg": 9
+    },
+    "why": "Applied after the Animator, from the bind pose (straight fingers), per joint (proximal, intermediate, distal) toward the palm. POINT: index straight, the other fingers in a fist. WAIT (docs/gesture_reader_v4.md: index up, the other three curled): the other fingers TIGHTLY curled, more than the Phase 2A pose (75 deg per joint), because the reader calls a finger curled only below a tip ratio of 1.2 and the Phase 2A WAIT frames had the ring finger at about 1.25 (Nusrat's reading of look_check_v4_20261107_171722); the thumb is tucked across the curled fingers. STOP: all five straight, the four fingers fanned 9 deg per finger step from the middle finger (the Phase 2A STOP takes used 6 to 12)."
+  },
+  "variation": {
+    "speed": [0.8, 1.25],
+    "size": [0.9, 1.1],
+    "start_delay_s": [0.3, 1.2],
+    "hold_s": [3.0, 4.5],
+    "left_arm_probability": 0.5,
+    "point_elevation_deg": [0.0, 12.0],
+    "point_either_arm_within_deg": 25.0,
+    "sway_amplitude_m": [0.004, 0.012],
+    "sway_frequency_hz": [0.25, 0.6],
+    "hold_sway_amplitude_m": [0.0, 0.0],
+    "why": "Drawn uniformly per gesture from a stream seeded per (session seed, run, worker id). speed divides the raise and return durations (and plays a Mixamo variant faster or slower); size scales the gesture's extent (POINT elevation, WAIT hand offsets, STOP reach, push and sway) inside the limits below; start_delay_s: the time between the question appearing and the arm starting to move; hold_s: how long the pose is held, long enough for the reader's 1 s window, its 0.4 s stillness and the dialog's 0.5 s hold (configs/v4/gesture_reader.json, control.json) with margin. Arm: left with left_arm_probability, except POINT uses the arm on the side it points to unless the direction is within point_either_arm_within_deg of straight ahead. Sway: while the arm moves (raising, returning) the hand sways by sway_amplitude_m per axis; while the pose is held the amplitude is hold_sway_amplitude_m, blended by the IK weight so the hand never jumps. Phase 2C (2026-11-08, Nusrat): hold_sway_amplitude_m is 0, so the held pose is still as docs/look_check_v4.md asks ('held still'); it stays a config value in case Anisha decides otherwise. It is drawn after every other value, so the other draws of a seeded stream are unchanged."
+  },
+  "limits": {
+    "point_reach": [0.95, 0.99],
+    "stop_reach": [0.85, 0.97],
+    "wait_min_up_l": 0.2,
+    "point_max_body_azimuth_deg": 120.0,
+    "why": "Keep every varied gesture inside its definition. POINT: shoulder-to-wrist distance 0.95 to 0.99 arm lengths keeps the elbow at 144 to 163 deg (straight; the reader's point_arm_extension_min_deg is 140). STOP: an extended arm. WAIT: the hand at least 0.2 arm lengths above the shoulder (at or above shoulder height). POINT directions more than 120 deg from the worker's front (behind the body) are clamped to 120 deg, and truth.jsonl logs the direction actually shown."
+  },
+  "truth_log": {
+    "interval_s": 0.05,
+    "why": "A truth frame every 0.05 s (and on every phase change) keeps every 10 Hz pan-tilt frame within 0.025 s plus one render frame of a truth row, well inside truth_join_max_s 0.06 (configs/v4/gesture_data.json); docs/protocol_v3.md asks for at least every 0.1 s."
+  },
+  "clips": [
+    { "name": "point_mixamo_01", "command": "POINT", "kind": "mixamo", "source_file": "point_01.fbx", "raise_s": 0, "return_s": 0, "ease": "smooth",
+      "reach": 0.98, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0, "elbow_down_l": 0.08,
+      "why": "Nusrat's Mixamo point clip 1 on the gesture layer (its own timing: raise to the clip's peak, release to its end); IK steers the hand to the requested direction, index extended by script." },
+    { "name": "point_mixamo_02", "command": "POINT", "kind": "mixamo", "source_file": "point_02.fbx", "raise_s": 0, "return_s": 0, "ease": "quick",
+      "reach": 0.97, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0, "elbow_down_l": 0.12,
+      "why": "Mixamo point clip 2, IK eased in quickly." },
+    { "name": "point_ik_01", "command": "POINT", "kind": "procedural", "source_file": "", "raise_s": 0.9, "return_s": 0.8, "ease": "smooth",
+      "reach": 0.98, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0, "elbow_down_l": 0.10,
+      "why": "A third POINT variant without a clip (only two Mixamo point clips exist): the straight arm raised by IK alone." },
+    { "name": "wait_ik_01", "command": "WAIT", "kind": "procedural", "source_file": "", "raise_s": 0.8, "return_s": 0.7, "ease": "smooth",
+      "reach": 0, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0.40, "hand_forward_l": 0.20, "hand_up_l": 0.32, "push_l": 0, "elbow_down_l": 0.10,
+      "why": "Hand beside the head, out to the side, forearm vertical (elbow hint straight below the hand), palm to the robot, index up." },
+    { "name": "wait_ik_02", "command": "WAIT", "kind": "procedural", "source_file": "", "raise_s": 0.55, "return_s": 0.6, "ease": "quick",
+      "reach": 0, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0.30, "hand_forward_l": 0.38, "hand_up_l": 0.42, "push_l": 0, "elbow_down_l": 0.05,
+      "why": "Higher and more in front of the shoulder, raised quickly." },
+    { "name": "wait_raise_01", "command": "WAIT", "kind": "mixamo", "source_file": "arm_raise_01.fbx", "raise_s": 0, "return_s": 0, "ease": "smooth",
+      "reach": 0, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0.42, "hand_forward_l": 0.15, "hand_up_l": 0.30, "push_l": 0, "elbow_down_l": 0.12,
+      "why": "The lifting motion of Nusrat's Mixamo arm_raise_01 clip, the hand held at the WAIT pose by IK, fingers shaped by script." },
+    { "name": "stop_ik_01", "command": "STOP", "kind": "procedural", "source_file": "", "raise_s": 0.6, "return_s": 0.7, "ease": "smooth",
+      "reach": 0.93, "elevation_deg": 5, "azimuth_out_deg": 10, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0, "elbow_down_l": 0.10,
+      "why": "Arm extended forward at shoulder height, open palm toward the robot, fingers up and spread." },
+    { "name": "stop_ik_02", "command": "STOP", "kind": "procedural", "source_file": "", "raise_s": 0.45, "return_s": 0.6, "ease": "quick",
+      "reach": 0.90, "elevation_deg": 10, "azimuth_out_deg": 20, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0, "elbow_down_l": 0.14,
+      "why": "A quick STOP, a little higher and more to the arm's own side." },
+    { "name": "stop_ik_03", "command": "STOP", "kind": "procedural", "source_file": "", "raise_s": 0.7, "return_s": 0.7, "ease": "smooth",
+      "reach": 0.88, "elevation_deg": 0, "azimuth_out_deg": 4, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0.07, "elbow_down_l": 0.08,
+      "why": "Straight ahead with a short push toward the robot at the end of the raise (STOP needs no push; it is one natural way of showing it)." }
+  ],
+  "looks": [
+    {
+      "id": "sunbox_m1", "family": "sunbox", "role": "candidate",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: male base, long-sleeved shirt, jeans (as look_check.json)",
+      "kind": "sunbox", "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": {
+        "gender": "Male", "skin": 0, "hair_style": 1, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [
+          { "name": "Shirt", "variation": 2 }, { "name": "Pants", "variation": 1 }, { "name": "Suit Shoes", "variation": 0 },
+          { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
+        ]
+      }
+    },
+    {
+      "id": "sunbox_f1", "family": "sunbox", "role": "candidate",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, white long-sleeved shirt, jeans (as look_check.json). Top changed 2026-11-08 (Phase 2D, appearance only, declared in look_check_changes.md before the rerun): Blouse variation 1 (white, gathered cuff over the wrist) -> Shirt variation 1 (white, plain sleeves).",
+      "kind": "sunbox", "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": {
+        "gender": "Female", "skin": 1, "hair_style": 5, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [
+          { "name": "Shirt", "variation": 1 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
+          { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
+        ]
+      }
+    },
+    {
+      "id": "sunbox_f2", "family": "sunbox", "role": "candidate",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, darker skin, black T-shirt, tracksuit pants, beanie (as look_check.json). Glasses removed 2026-11-08 (Phase 2C, appearance only): the clear round glasses render as bright white ellipses over both eyes in the Play-mode look check frames, hiding the eyes from the face keypoints the commander's facing test needs.",
+      "kind": "sunbox", "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": {
+        "gender": "Female", "skin": 2, "hair_style": 6, "hair_material": 1, "facial_hair_style": 0,
+        "clothing": [
+          { "name": "TShirt", "variation": 0 }, { "name": "Tracksuit Pants", "variation": 0 }, { "name": "Basketball Shoes", "variation": 1 },
+          { "name": "Beanie", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
+        ]
+      }
+    }
+  ],
+  "looks_note": "In scope for Phase 2B (2026-11-07): sunbox_m1, sunbox_f1, sunbox_f2, with the look_check.json parameters. Excluded with the evidence of look_check_v4_20261107_171722: mixamo_worker and sunbox_m2 (face keypoints in 0 to 11 per cent of the frames, so the commander's facing test could never pass), VRoid (no hand found). Which look is the unseen test look is Anisha's decision (data_splits.json)."
+}

@@ -143,14 +143,14 @@
       "id": "sunbox_f1",
       "family": "sunbox",
       "role": "candidate",
-      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, blouse, jeans",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, white long-sleeved shirt (Blouse until 2026-11-08, Phase 2D: look_check_changes.md), jeans",
       "kind": "sunbox",
       "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab",
       "material_override": "",
       "sunbox": {
         "gender": "Female", "skin": 1, "hair_style": 5, "hair_material": 0, "facial_hair_style": 0,
         "clothing": [
-          { "name": "Blouse", "variation": 1 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
+          { "name": "Shirt", "variation": 1 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
           { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
         ]
       }
@@ -159,7 +159,7 @@
       "id": "sunbox_f2",
       "family": "sunbox",
       "role": "candidate",
-      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, darker skin, black T-shirt, tracksuit pants, beanie, glasses",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base, darker skin, black T-shirt, tracksuit pants, beanie. Glasses ('Classic Round Glasses Clear') removed 2026-11-08 (Phase 2C, appearance only, kept equal to worker_v4.json); the earlier look checks used them and keep their own copy in config_used/.",
       "kind": "sunbox",
       "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab",
       "material_override": "",
@@ -167,7 +167,7 @@
         "gender": "Female", "skin": 2, "hair_style": 6, "hair_material": 1, "facial_hair_style": 0,
         "clothing": [
           { "name": "TShirt", "variation": 0 }, { "name": "Tracksuit Pants", "variation": 0 }, { "name": "Basketball Shoes", "variation": 1 },
-          { "name": "Beanie", "variation": 0 }, { "name": "Classic Round Glasses Clear", "variation": 0 }
+          { "name": "Beanie", "variation": 0 }, { "name": "No Glasses", "variation": 0 }
         ]
       }
     },
