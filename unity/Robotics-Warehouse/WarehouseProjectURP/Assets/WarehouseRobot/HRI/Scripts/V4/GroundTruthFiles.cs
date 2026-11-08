@@ -57,6 +57,8 @@ namespace WarehouseHRI.V4
     {
         public const string TrailHeader = "time_s,x,z,yaw_deg";
         public const string LeakFolder = "leak_test";
+        /// <summary>run_###/truth.jsonl: one line per worker per truth frame (docs/protocol_v3.md), written by TruthLogger.</summary>
+        public const string TruthFile = "truth.jsonl";
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         /// <summary>run_### with the trial number zero-padded to 3, as in truth_run###.json.</summary>

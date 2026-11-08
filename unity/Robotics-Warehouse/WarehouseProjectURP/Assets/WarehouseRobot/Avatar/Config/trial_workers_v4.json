@@ -1,0 +1,24 @@
+{
+  "note": "v4 trial workers (Phase 3A, 2026-11-08, Nusrat; declared before the first Phase 3A session). Read by TrialRunnerV4 in WarehouseRobot_v4.unity only; nothing in the v3 scene reads it. Every value is scenario design (who stands where, what the commander shows); no Python threshold is set or changed here.",
+  "data_splits": "robot_vision/configs/v4/data_splits.json",
+  "data_splits_note": "Anisha's file, read only. Each run's looks and clips must lie wholly in the session mode's split (Python's data_splits_v4.guard_run, repeated in Unity: DataSplitsV4.GuardRun); a development session refuses the test look and the test clips before anything is recorded.",
+  "commander_command": "POINT",
+  "commander_note": "The commander answers every 'Which direction?' (worker_v4.json question.prompt; a new ask also when the text changes to ' (asking again)') with a POINT along the branch toward goal B: the world direction from the junction to the branch's next node (Python's branch yaw, hri_control_v4.branch_directions). The gesture starts only after the question is shown (WorkerV4 scheduler); a gesture not yet started is dropped when the question disappears. WAIT-then-POINT and STOP scripts are Phase 3B.",
+  "looks": [],
+  "looks_note": "Empty = every look of the session mode's split in data_splits.json, in name order. Run r: commander looks[(r - 1) mod n], bystander k looks[(r - 1 + k) mod n]. Each worker keeps its look for the whole run (the workers are spawned per run).",
+  "commander_worker_id": 1,
+  "layout_note": "ONE commander, moved to the stand of the junction the robot is sent to (the moved-worker layout of both reported v3 Task 2 results, AUDIT.md section 12), and moved only once it is idle. Not one standing worker per junction: truth.jsonl lists every worker in the scene, and Python's evaluation calls a run a bystander run when truth.jsonl has more than one worker_id (hri_eval_dev_v4.Run.bystanders), so standing workers would mark every run as a bystander run.",
+  "bystanders": {
+    "count": 0,
+    "stands": [
+      { "junction": "J1", "ahead_m": 2.5, "right_m": -2.5 },
+      { "junction": "J2", "ahead_m": 2.5, "right_m": -2.5 },
+      { "junction": "J1", "ahead_m": -2.5, "right_m": 2.5 }
+    ],
+    "min_road_clearance_m": 1.5,
+    "min_commander_distance_m": 4.0,
+    "note": "count: extra workers (worker_id 2, 3, ...) at the first count stands, in the same frame as the roadmap's worker stand (ahead_m along the arrival direction at the junction, right_m to its right): J1 and J2 ahead-left (the corner opposite the commander's stand) and J1 behind-right. They notice and face the robot like the commander but never gesture, so they never gesture after the question (CLAUDE.local.md: no distractor gestures unless declared with Anisha). is_commander is false for them. Each stand is refused unless it is at least min_road_clearance_m from every roadmap road (the robot never drives into a bystander), at least min_commander_distance_m from every commander stand (the robot's ask positions are about 2 m from the commander), on a free cell of the ground-truth grid and not inside a collider. 0 = no bystanders."
+  },
+  "max_active_avatars": 4,
+  "max_active_avatars_note": "A session is refused when 1 commander + bystanders.count is above this, or when more WorkerV4 avatars are active in the scene. 4 = the three bystander stands plus the commander; frame times are logged in every telemetry message (frame_ms_list, frame_ms_max) so the cost of each extra avatar is measured in the development sessions."
+}

@@ -62,7 +62,7 @@ namespace WarehouseRobot.ScenarioEditor
             if (r == null) return;
             Capture(Object.FindFirstObjectByType<RobotBridgeClient>());
             if (r.Status.StartsWith("done")) Finish(0, r.Status + " (" + r.SessionFolder + ")");
-            else if (r.Status.StartsWith("not started")) Finish(1, r.Status);
+            else if (r.Status.StartsWith("not started") || r.Status.StartsWith("stopped")) Finish(1, r.Status);
         }
 
         static void Capture(RobotBridgeClient bridge)

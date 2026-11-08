@@ -62,9 +62,14 @@ namespace WarehouseHRI.V4
         public static readonly string[] GoalKeys =
             { "goal", "goal_point", "goal_x", "goal_z", "end_point", "end_point_x", "end_point_z", "point_b", "b" };
 
-        /// <summary>Truth keys version 3 adds (docs/protocol_v3.md, "Forbidden keys from Unity").</summary>
+        /// <summary>Truth keys version 3 adds (docs/protocol_v3.md, "Forbidden keys from Unity"; Python's
+        /// bridge/protocol.py TRUTH_KEYS): the six label names of 2026-10-23 and, since 2026-11-08, every field name of
+        /// truth.jsonl that no Unity message carries legitimately (time_s, x and z are not in the list).</summary>
         public static readonly string[] TruthKeys =
-            { "true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth" };
+        {
+            "true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth",
+            "true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm",
+        };
 
         static readonly Regex KeyPattern = new Regex("\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:", RegexOptions.Compiled);
 
