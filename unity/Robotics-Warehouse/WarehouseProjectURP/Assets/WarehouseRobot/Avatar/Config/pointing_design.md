@@ -88,6 +88,33 @@ How it is measured (fixed now):
 
 The result, whatever it is, is added below this line with the session folders, before anything else is done.
 
-## 5. Result
+## 5. Result (2026-11-09): option A is NOT adopted (decision rule not met). Stop and report; no fallback.
 
-(to be filled after the check)
+Check session as declared: `trials_development_Task2_20261109_055602` (Unity) + `bridge_guide_20261109_055411` (bridge), commit
+`7a86aad` (option A as implemented), development seed 1, 20 trials, `sunbox_f1` / `sunbox_m1`, development POINT clips,
+threads, zoom on. Leak test passed (Unity `leak_test.passed` true; Python `gt_path.py session`: max diff 0 for both cameras).
+0 watchdog stops; 2 Unity frame stalls (4.4 s before trial 1 started, 0.36 s in trial 2), no robot stop. 9 of 20 trials SUCCESS.
+Scores by the declared measure (script and outputs: `robot_vision/outputs/pointing_check_20261109_option_a/`, git-ignored):
+
+| junction | branch | held frames f1 / m1 | correct branch (all) | facing (all) | met |
+|---|---|---|---|---|---|
+| J1 | FORWARD (E1) | 192 / 128 | 0 of 320 (0.00) | 0.47 | no |
+| J1 | RIGHT (E2) | 31 / 9 | 26 of 40 (0.65) | 1.00 | yes |
+| J1 | LEFT (E3, E4) | 195 / 368 | 89 of 563 (0.16) | 1.00 | no |
+| J2 | FORWARD (E3) | 134 / 125 | 6 of 259 (0.02) | 0.77 | no |
+| J2 | RIGHT (E4) | 0 / 199 | 40 of 199 (0.20) | 1.00 | no (no f1 frame) |
+
+Facing rate over all 1,381 held frames: 0.833 (>= 0.8, met). Every branch >= 0.5: not met (1 of 5).
+
+Junction outcomes (accepted at the junction / runs that reached it): J1 FORWARD 0 / 5, J1 RIGHT 4 / 4, J1 LEFT 9 / 11, J2 FORWARD 1 / 5,
+J2 RIGHT 4 / 4. Before option A (2026-11-08, section 1): J1 FORWARD 0 / 5, RIGHT 1 / 6, LEFT 4 / 6. Phase 3A baseline by the same
+measure (`_235531` + `_235657`, 3 runs): J1 FORWARD 0.00, RIGHT 0.11, LEFT 0.13, J2 RIGHT 0.14, facing 1.00.
+
+What the frames show (reported, nothing changed because of it): on FORWARD the arm points away from the robot's camera; the
+reader answered "no raised arm" (206 rows) or "cues not met or classes ambiguous" (126) at J1 and never read POINT there, and
+the turned chest failed the facing test on 0.53 of the held J1 FORWARD frames (shoulders 0.38 to 0.48 of the torso), as the
+risk in section 3 said. On the branches the robot accepted, most held frames still read "moving, no hold yet" or "no hold", so
+the per-frame rate stays low although the dialog accepts.
+
+`worker_v4.json` keeps the tested values (commit `7a86aad`); whether to keep, revert (0 and 0 = Phase 3A) or redesign is
+Nusrat's and Anisha's decision. Nothing was tuned on this result.
