@@ -97,8 +97,11 @@ class RecordedFreezeTests(unittest.TestCase):
         v3 = json.loads((ROOT / "configs/trials.json").read_text())
         self.assertEqual((plan["task"], plan["dev_seed"], plan["final_seed"], plan["runs_per_setting"], plan["success_radius_m"]),
                          ("Task2", 1, 2, 20, 0.3))
-        self.assertEqual((plan["timeout_s"], plan["success_radius_m"], plan["dev_seed"], plan["final_seed"]),
-                         (v3["timeout_s"], v3["success_radius_m"], v3["dev_seed"], v3["final_seed"]))     # the v3 values, read from the v3 config
+        self.assertEqual((plan["success_radius_m"], plan["dev_seed"], plan["final_seed"]),
+                         (v3["success_radius_m"], v3["dev_seed"], v3["final_seed"]))     # the v3 values, read from the v3 config
+        # 2026-11-12 (P7): the timeout follows the declared rule for the longer v4 route (upgrade_design.md section 6), not v3's 240 s
+        self.assertEqual(plan["timeout_s"], max(240, 10 * -(-(1.5 * 65.0 / 0.3944 + 20) // 10)))
+        self.assertGreaterEqual(plan["timeout_s"], v3["timeout_s"])
         self.assertIn("RTX 3060", plan["machine"])
         self.assertIn("highest development accuracy", plan["threshold_rule"])
         self.assertIn("coverage >= 0.8", plan["threshold_rule"])
@@ -111,7 +114,12 @@ class RecordedFreezeTests(unittest.TestCase):
         import hri_trials as ht
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
         self.assertEqual(ht.goal_order(plan["final_seed"], ["E1", "E2", "E3", "E4"], 10),
-                         ["E1", "E2", "E4", "E2", "E1", "E3", "E4", "E1", "E4", "E1"])               # AUDIT.md section 2
+                         ["E1", "E2", "E4", "E2", "E1", "E3", "E4", "E1", "E4", "E1"])               # AUDIT.md section 2 (v3 map)
+        # 2026-11-12 (P7): the v4 map has six endpoints; the final goal order on it (a declared difference for RQ1)
+        road = json.loads((ROOT / plan["roadmap"]).read_text(encoding="utf-8"))
+        ends = sorted(k for k, v in road["nodes"].items() if v["kind"] == "endpoint")
+        self.assertEqual(ht.goal_order(plan["final_seed"], ends, plan["runs_per_setting"]),
+                         ["E5", "E1", "E5", "E2", "E5", "E3", "E5", "E3", "E4", "E3", "E5", "E3", "E5", "E6", "E2", "E5", "E3", "E1", "E4", "E2"])
 
     def test_v4_re_ask_shift_is_a_declared_difference_and_v3_is_unchanged(self):
         import hri_control as hc

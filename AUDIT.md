@@ -1446,3 +1446,21 @@ The design and every decision rule were declared before any code in `unity/.../A
   list it as evaluation code in their import-isolation checks. Not run on data yet (Stage D3).
 - U6 (3-trial development session, seed 1; bridge `bridge_guide_20261112_160553`): 2 of 3 SUCCESS; dialogs 7: 6 correct, 0 wrong, 1 abort (J1 POINT
   LEFT, sunbox_f1); PROCEED accepted at 4 of 4 dialogs (A x3, J1 x1); leak test passed (Unity and Python); 0 watchdog stops.
+
+### 2026-11-12, Stage C (development check, 20 runs; the rules of upgrade_design.md section 11, declared before it)
+
+Session `trials_development_Task2_20261112_163710` + `bridge_guide_20261112_163011` (seed 1, sunbox_f1 / sunbox_m1 alternating, development
+clips, zoom on, threads, no bystanders, commander PROCEED / POINT; ankle height 0.0927 m). Leak test passed (Unity and Python, max diff 0).
+**19 of 20 SUCCESS** (run 12 aborted: PROCEED at A unclear after 2 asks).
+
+- **Rule 1 (junction level): MET.** 62 dialogs: 61 correct, **0 wrong**, 1 abort; every (look, node, shown) pair at least 0.8 (sunbox_m1 A PROCEED
+  9 of 10; all others 100 per cent: f1 A PROCEED 10/10, J1 POINT 8/8, J1 PROCEED 2/2, J2 POINT 2/2, J2 PROCEED 2/2, J3 POINT 4/4, J4 POINT 2/2;
+  m1 J1 POINT 9/9, J2 POINT 1/1, J2 PROCEED 4/4, J3 POINT 4/4, J4 POINT 4/4).
+- **Rule 2 (distance): MET.** Median |360 estimate - true distance| at the 94 asks **0.011 m** (signed median -0.005 m; true standoff median 2.031 m).
+- **Timeout (P7, the declared rule):** v_run 0.3944 m/s (median over the 19 successful runs) -> `configs/v4/final_plan.json` `timeout_s` **270**
+  (was 240), with the numbers in `timeout_s_source`; `final_seed_note` and a new `roadmap` key state the v4 map and its final goal order.
+  `tests/test_v4_frozen.py`: the timeout follows the rule, and the v4 final goal order is pinned (approved minimal test updates).
+- Reported, not rule items: frame-level accuracy POINT 1.0 (coverage 0.375 of 1097 frames), PROCEED 1.0 (0.334 of 353); 1 false read in
+  401 frames with nothing shown; commander accuracy 1.0 (coverage 0.60); ask to accepted median 13.4 s. **Timing finding:** loop lag max 193 ms
+  and round trip max 196.8 ms exceed the declared limits (100 and 150 ms, 14.14) in this Play session, 0 watchdog stops; free memory minimum 1073 MB.
+  The 14.16 condition (threads must pass a Play session within the limits before the freeze) is therefore not yet met.
