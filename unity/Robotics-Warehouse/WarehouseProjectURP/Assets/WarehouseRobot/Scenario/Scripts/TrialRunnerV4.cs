@@ -308,7 +308,8 @@ namespace WarehouseRobot.Scenario
             return true;
         }
 
-        /// <summary>The bystander stands of the config: on a free grid cell, clear of colliders, the roads and every commander stand.</summary>
+        /// <summary>The bystander stands of the config: on a free grid cell, clear of colliders, the roads and every commander stand,
+        /// and farther than the commander along the approach to every ask node.</summary>
         bool CheckBystanderStands(out string error)
         {
             error = null;
@@ -339,6 +340,14 @@ namespace WarehouseRobot.Scenario
                     d.y = 0f;
                     if (d.magnitude < b.min_commander_distance_m)
                         return Fail(out error, $"{label}: {d.magnitude.ToString("0.00", Inv)} m from the commander stand of {a.name} (< min_commander_distance_m)");
+                    // 2026-11-12 (upgrade_design.md section 13): the robot approaches the nearest person it sees, so along its
+                    // approach to every ask node the bystander must be nearer_margin_m farther away than that node's commander stand.
+                    var arriveFrom = ArrivalNode(a);
+                    float margin = TrialWorkerGeometry.NearerMargin(p, a.workerStand.position, a.Position,
+                        arriveFrom != null ? arriveFrom.Position : (Vector3?)null, b.approach_m, out var at);
+                    if (margin < b.nearer_margin_m)
+                        return Fail(out error, $"{label}: on the approach to {a.name}, at ({at.x.ToString("0.00", Inv)}, {at.z.ToString("0.00", Inv)}), only " +
+                                               $"{margin.ToString("0.00", Inv)} m farther than the commander stand (< nearer_margin_m {b.nearer_margin_m.ToString("0.00", Inv)})");
                 }
                 var cell = gt.Grid.CellOf(p.x, p.z);
                 if (!gt.Grid.Free(cell.x, cell.y)) return Fail(out error, label + ": on a blocked cell of the ground-truth grid");

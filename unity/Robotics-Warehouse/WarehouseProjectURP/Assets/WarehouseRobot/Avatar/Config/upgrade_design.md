@@ -370,3 +370,26 @@ Dated entries, each written before the changed design is tested in a Play sessio
      bias the median low; the ratio models the full arm).
   3. Frames are scored against the commander's truth row nearest in time (within `truth_join_max_s`); the person read is the one
      whose bearing is nearest the commander's true bearing within `match_bearing_deg` (the matching of `hri_eval_dev_v4.py`).
+- **2026-11-12 (Stage D2, bystander stands; written after the failed R3 session and before it is recorded again).**
+  1. *Finding:* R3 (`trials_development_Task2_20261112_175544` + `bridge_guide_20261112_175450`, 10 runs) aborted 10 of 10 at J1
+     ("gesture unclear after 2 asks"). The robot chooses the nearest person when it scans, stopped up to `arrive_junction_m`
+     (0.3 m) before the node. The stand "J1 behind-right" (ahead -2.5, right +2.5) is exactly as far from J1 as the commander's
+     stand, so a robot that stops short of the node is nearer to that bystander and approaches it. The commander was then behind
+     the robot and out of the pan-tilt view. The two ahead-left stands were exact ties at the node as well (margin 0.0 m).
+     It was a fault in where the bystanders stood; the reader played no part in it. The session is kept and reported; it is not
+     used for the bystander measures.
+  2. *New rule:* every bystander is at least `bystanders.nearer_margin_m` = **1.0 m** farther from the robot than the commander's
+     stand at every point of the robot's approach to every ask node. The approach is the last `bystanders.approach_m` = **3.0 m**
+     of the arrival road up to the node (= `drive.junction_slow_radius_m` of `configs/hri_control.json`, where the robot slows
+     for the junction; an Edit Mode test pins the equality); at the start node A, the start position itself. Why 1.0 m: it covers
+     the stop tolerance (0.3 m), the robot's lateral offset from the road centre and the error of the 360 distance estimate at
+     once, with room to spare. `TrialRunnerV4` refuses a session whose stand breaks the rule (sampled every 0.05 m), next to
+     the existing road-clearance, commander-distance, free-cell and collider checks, and the Edit Mode test checks every
+     configured stand on `configs/v4/roadmap.json` (it checked the v3 map before).
+  3. *New stands (the smallest 0.5 m steps that pass every check):* the J1 behind-right stand is **removed**; J1 ahead-left
+     moves **ahead** to (ahead 4.0, right -2.5) = (3.75, 4.0), worst margin 1.18 m (moving it left instead would bring it
+     nearer to J2's approach road); J2 ahead-left moves **left** to (ahead 2.5, right -4.5) = (-8.75, -4.5), worst margin
+     1.07 m (moving it ahead would bring it nearer to J4's approach road). `bystanders.count` becomes **2** (D1 said 3), in
+     `trial_workers_v4.json` and all three session copies; `max_active_avatars` stays 4.
+  4. *R3 again:* 10 runs, seed 1, development looks, as declared in `recording_plan_d1.md` apart from the two points above.
+     The calibration (D3) reports the failed R3 session but takes the bystander measures from the new one only.

@@ -106,7 +106,7 @@ namespace WarehouseAvatar.Tests
             var basis = Trial("Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json");
             var expect = new Dictionary<string, Action<TrialWorkersConfig>>
             {
-                { "dev_bystanders.json", t => Assert.AreEqual(3, t.bystanders.count) },
+                { "dev_bystanders.json", t => Assert.AreEqual(2, t.bystanders.count) },   // 3 -> 2 on 2026-11-12 (upgrade_design.md section 13)
                 { "dev_wait_then_direction.json", t => Assert.AreEqual(TrialWorkersConfig.ScenarioWaitThenDirection, t.scenario) },
                 { "dev_stop.json", t => Assert.AreEqual(TrialWorkersConfig.ScenarioStop, t.scenario) },
             };

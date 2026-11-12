@@ -16,14 +16,15 @@
   "bystanders": {
     "count": 0,
     "stands": [
-      { "junction": "J1", "ahead_m": 2.5, "right_m": -2.5 },
-      { "junction": "J2", "ahead_m": 2.5, "right_m": -2.5 },
-      { "junction": "J1", "ahead_m": -2.5, "right_m": 2.5 }
+      { "junction": "J1", "ahead_m": 4.0, "right_m": -2.5 },
+      { "junction": "J2", "ahead_m": 2.5, "right_m": -4.5 }
     ],
     "min_road_clearance_m": 1.5,
     "min_commander_distance_m": 4.0,
-    "note": "count: extra workers (worker_id 2, 3, ...) at the first count stands, in the same frame as the roadmap's worker stand (ahead_m along the arrival direction at the junction, right_m to its right): J1 and J2 ahead-left (the corner opposite the commander's stand) and J1 behind-right. They notice and face the robot like the commander but never gesture, so they never gesture after the question (CLAUDE.local.md: no distractor gestures unless declared with Anisha). is_commander is false for them. Each stand is refused unless it is at least min_road_clearance_m from every roadmap road (the robot never drives into a bystander), at least min_commander_distance_m from every commander stand (the robot's ask positions are about 2 m from the commander), on a free cell of the ground-truth grid and not inside a collider. 0 = no bystanders."
+    "approach_m": 3.0,
+    "nearer_margin_m": 1.0,
+    "note": "count: extra workers (worker_id 2, 3, ...) at the first count stands, in the same frame as the roadmap's worker stand (ahead_m along the arrival direction at the junction, right_m to its right): J1 ahead-left, moved ahead to 4.0 m, and J2 ahead-left, moved left to 4.5 m (the corner opposite the commander's stand; 2026-11-12 upgrade_design.md section 13: the J1 behind-right stand of the first R3 session is removed and both ahead-left stands moved out). They notice and face the robot like the commander but never gesture, so they never gesture after the question (CLAUDE.local.md: no distractor gestures unless declared with Anisha). is_commander is false for them. Each stand is refused unless it is at least min_road_clearance_m from every roadmap road (the robot never drives into a bystander), at least min_commander_distance_m from every commander stand (the robot's ask positions are about 2 m from the commander), on a free cell of the ground-truth grid and not inside a collider. Since 2026-11-12 each stand must also be at least nearer_margin_m farther from the robot than the commander's stand at every point of the robot's approach to every ask node: the last approach_m of the arrival road up to the node (= drive.junction_slow_radius_m of robot_vision/configs/hri_control.json; at the start node, the start position), so the robot, which approaches the nearest person it sees when it scans, never chooses a bystander. 0 = no bystanders."
   },
   "max_active_avatars": 4,
-  "max_active_avatars_note": "A session is refused when 1 commander + bystanders.count is above this, or when more WorkerV4 avatars are active in the scene. 4 = the three bystander stands plus the commander; frame times are logged in every telemetry message (frame_ms_list, frame_ms_max) so the cost of each extra avatar is measured in the development sessions."
+  "max_active_avatars_note": "A session is refused when 1 commander + bystanders.count is above this, or when more WorkerV4 avatars are active in the scene. 4 was set for three bystander stands plus the commander and is kept (two stands since 2026-11-12, upgrade_design.md section 13); frame times are logged in every telemetry message (frame_ms_list, frame_ms_max) so the cost of each extra avatar is measured in the development sessions."
 }
