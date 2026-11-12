@@ -1464,3 +1464,45 @@ clips, zoom on, threads, no bystanders, commander PROCEED / POINT; ankle height 
   401 frames with nothing shown; commander accuracy 1.0 (coverage 0.60); ask to accepted median 13.4 s. **Timing finding:** loop lag max 193 ms
   and round trip max 196.8 ms exceed the declared limits (100 and 150 ms, 14.14) in this Play session, 0 watchdog stops; free memory minimum 1073 MB.
   The 14.16 condition (threads must pass a Play session within the limits before the freeze) is therefore not yet met.
+
+### 2026-11-12/13, Stage D2 and D3 (development recordings and the calibration; the plan `Avatar/Config/recording_plan_d1.md`, declared before)
+
+Every session: seed 1, sunbox_f1 / sunbox_m1 alternating, development clips, threads, leak test passed (Unity and Python, max diff 0), every
+`truth.jsonl` accepted by `gesture_data.py`.
+
+| id | condition | Unity + bridge folders | runs | result |
+|---|---|---|---|---|
+| R1 | zoom on (the Stage C session) | `..._163710` + `bridge_guide_20261112_163011` | 20 | 19 SUCCESS (above) |
+| R2 | zoom off (`control_zoom_off.json`) | `..._173220` + `..._173119` | 10 | 9 SUCCESS; run 5 **wrong branch** at J1 (a POINT left, `point_mixamo_01`, read as PROCEED, score 0.834, during the arm's rise) |
+| R3 (first) | 3 bystanders | `..._175544` + `..._175450` | 10 | 0 SUCCESS: all aborted at J1, the robot asked a bystander (Unity stand fault, below). Kept, reported, not used |
+| R3 | 2 bystanders (fixed stands) | `..._214837` + `..._214449` | 10 | 9 SUCCESS; the robot chose the commander in 34 of 34 dialogs; run 5 aborted at J1 (POINT left, sunbox_f1) |
+| R4 | WAIT then the direction | `..._180743` + `..._180650` | 6 | 1 SUCCESS; sunbox_f1's WAIT unread at A in runs 1, 3, 5; two aborts at J1 (a WAIT unread; a POINT not matched to a branch, then the 20 s WAIT timeout) |
+| R5 | STOP while driving | `..._181558` + `..._181504` | 6 | 5 SUCCESS; STOP stopped the robot in 6 of 6 (2.5 to 8.9 s) and it resumed; run 1 aborted at J1 (POINT not matched to a branch) |
+
+- **Bystander stand fault (Unity, declared fix before the second R3: `upgrade_design.md` section 13, commit 285878d).** The robot approaches the
+  nearest person when it scans, stopped up to 0.3 m before the node; the "J1 behind-right" stand was as far from J1 as the commander's stand, so
+  the robot approached that bystander. New rule: every bystander at least 1.0 m farther than the commander's stand along the last 3.0 m of every
+  approach (`hri_control.json` `junction_slow_radius_m`); J1 behind-right removed, the two ahead-left stands moved out; 2 bystanders.
+- **D3 (`calibrate_v4.py --write`, B12 exactly, on R1, R2, R3 (second), R4, R5; evidence `outputs/calibrate_v4_20261113_005017`).** No swept
+  value reaches coverage 0.8 (frame-level coverage 0.24 to 0.49 across every grid), so all 24 swept thresholds keep their committed values
+  (`upgrade_design.md` section 13, calibration details item 1). One value changed: **`gesture_reader.json` `point.arm_length_in_shoulder_widths`
+  1.4 -> 1.683** (measured, median YOLO ratio over 880 held in-plane POINT frames, p25 1.435, p75 1.785; AUDIT.md 14.16 item 3), written by the
+  tool with its `calibrated` record. The first R3 session was run through the tool without `--write` (`outputs/calibrate_v4_20261112_222639`):
+  coverage 0.255 everywhere, branch match 0 frames, nothing changed.
+- **Per look (frame level, the tool's scoring, after D3).** Branch match on held POINT frames (accuracy / coverage): sunbox_f1 1.0 / 0.48,
+  sunbox_m1 1.0 / 0.52 (before D3: 1.0 / 0.19 and 1.0 / 0.23). Commander rule: f1 0.996 / 0.49 alone, 0.991 / 0.52 with bystanders; m1 1.0 /
+  0.50 alone, 1.0 / 0.45 with bystanders. WAIT: **sunbox_f1 0.0 / 0.07**, sunbox_m1 0.78 / 0.41 (not changed by D3: f1's WAIT stays weak; not
+  replaced, as decided). POINT f1 0.94 / 0.29, m1 0.88 / 0.36; STOP f1 0.89 / 0.25, m1 1.0 / 0.29.
+- **Tests and config updated to the measured arm ratio (approved by Nusrat 2026-11-13; no other change).**
+  `tests/test_gesture_motion.py`: `ArmRatioDeclarationTests` checks the configured, calibrated value (1.683, and the config's `calibrated`
+  record) instead of 1.4; the module's synthetic arms (`v4_synth` upper arm and forearm, same proportion) are built from the configured ratio
+  in `setUpModule` and restored in `tearDownModule`, so the 11 geometry and window tests that assumed 1.4 pass and the other modules that use
+  `v4_synth` are unchanged. `configs/v4/look_check.json` `checks.arm_ratio_p95.assumed` 1.4 -> 1.683 (so `tests/test_look_check_v4.py` line 240
+  matches); its `why` text still names 1.4 and the range 0.98 to 1.75 (left as it is: only the number was approved; for Anisha to reword).
+- **Tool bug for Anisha (not fixed; `calibrate_v4.py` is not changed): the calibration replay does not reproduce the live reader.** On R1, `calibrate_v4.replay` (the reader re-run on
+  `model_outputs.jsonl`) reads STOP on 419 of 894 PROCEED frames and 47 POINT frames; the live readings logged in `v4_log.jsonl` at the same
+  times read STOP on none. The reader accuracies in the D3 report (e.g. PROCEED 0.34) therefore do not describe the live reader. The D3 outcome
+  does not depend on it: the live readings answer 34 per cent of the gesturing and holding frames of R1, so B12's coverage 0.8 is not reached
+  with them either, and the arm ratio is measured from the YOLO keypoints, not from the replay. Not fixed here (`calibrate_v4.py` is not an
+  allowed change of this task). Also for Anisha: with frame-level coverage, which counts every frame of the arm's movement, B12's coverage 0.8
+  is out of reach for every threshold, so B12 cannot move any threshold on these data.
