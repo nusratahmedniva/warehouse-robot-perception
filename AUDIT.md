@@ -1558,3 +1558,30 @@ Chrome, the Claude app, the NVIDIA overlay and warp-svc running (reported, not c
   Unity file for the setting's evaluation.
 - **Checked:** Unity Edit Mode 194/194 (19 new `FinalGuardV4Tests`); in a Play session `TrialPlayV4 -finalSetting zoom_on` was refused with
   every open reason (blanks B7, B9, B11; not frozen; each B9 file unrecorded) and wrote no folder. Python files unchanged in this stage.
+
+### 2026-11-13, B7 check against the unchanged Python guard (read-only; `data_splits_v4.guard_run` with `final_evaluation=True`)
+
+Each setting's runs 1 and 2 (the look rotation; bystanders with two bystanders), direction scenario (POINT and PROCEED clips):
+- **Plan (a)** zoom_on, zoom_off, bystanders = development looks (sunbox_f1 / sunbox_m1 alternating) + development clips; unseen_look =
+  sunbox_f2 + test clips: **refused for zoom_on, zoom_off and bystanders** ("--final-evaluation given, but the run uses development data":
+  a final evaluation accepts only the test split); **accepted for unseen_look** (split test).
+- **Plan (b)** all four settings = sunbox_f2 + test clips (point_mixamo_02, proceed_ik_03): **accepted for all four** (split test); in the
+  bystanders setting all three workers wear sunbox_f2.
+- The B7 recorded above (development looks + test clips) is refused for the same three settings ("run mixes development and test data").
+  Unity's Stage F `PlanFinal` also refuses plan (a): a final's clip split must be a final-evaluation split. Only plan (b) runs through both
+  guards unchanged; with it `final_v4.json` needs `look_split` "test" for every setting (a declared Unity change once B7 is decided).
+
+### 2026-11-13, B11 acceptance criteria: DRAFT, proposed by Nusrat, PENDING ANISHA
+
+Validity criteria per final session (a session that fails one is reported as invalid with the reason; it is never re-run without a
+repetition declared here first). No performance thresholds: results are reported whatever they are, with coverage and intervals.
+1. **Leak test passed**, Unity and Python: `session.json` `leak_test.passed` is true and `gt_path.py session <unity folder>` passes.
+2. **Every outcome recorded**: `results_unity.csv` has one row per run (`runs_per_setting`), `run_###/` and `python_trial_###.json` exist
+   for every run with the same numbers, `summary_unity.json` and `UNITY_FINAL_DONE.json` are written, and the bridge folder holds
+   `FINAL_RUN_DONE.json` and `summary.json`.
+3. **Every truth file accepted**: `gesture_data.py` accepts every `run_###/truth.jsonl`, and `gt_path.py run` every run folder (run.json,
+   grid.json, optimal_path.json, trail.csv).
+4. **No watchdog stop after start-up**: the bridge `summary.json` reports `watchdog.stops_reported_by_unity` 0 for the runs (a stop before
+   trial 1 starts is reported, not counted).
+5. **Run protocol recorded**: the bridge `run_info.json` machine state (power mode, power source) and `resources.csv`, and the programs
+   running and free memory before the session (written in the session report).
