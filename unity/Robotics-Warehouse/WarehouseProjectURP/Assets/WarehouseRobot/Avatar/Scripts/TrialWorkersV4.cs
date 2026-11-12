@@ -228,6 +228,41 @@ namespace WarehouseAvatar
             if (plan.Split == null) { error = $"run {run}: {error}"; return null; }
             return plan;
         }
+
+        /// <summary>
+        /// Plan run <paramref name="run"/> (1-based) of a FINAL session of <paramref name="setting"/> (Stage F, upgrade_design.md
+        /// section 13; B7, pending Anisha): looks from the setting's look_split (config.looks, or every look of that split), rotated
+        /// per run as in development; clips: every worker_v4.json clip of each command in the setting's clip_split, which must be a
+        /// final-evaluation split (test). Every look must lie in the look split and every clip in the clip split; the names must not
+        /// be placeholders. Only TrialRunnerV4's final mode calls it, after the final-run guard.
+        /// </summary>
+        public static TrialRunWorkers PlanFinal(int run, FinalSettingV4 setting, TrialWorkersConfig cfg, WorkerV4Config workers, DataSplitsV4 splits, out string error)
+        {
+            error = null;
+            if (setting == null) { error = "no final setting"; return null; }
+            if (splits.Placeholder) { error = "the look and clip names in configs/v4/data_splits.json are still placeholders"; return null; }
+            if (!splits.FinalEvaluationSplits.Contains(setting.clip_split)) { error = $"setting {setting.name}: clip_split '{setting.clip_split}' is not a final-evaluation split"; return null; }
+            var looks = cfg.looks != null && cfg.looks.Count > 0 ? new List<string>(cfg.looks) : splits.Names(true, setting.look_split);
+            if (looks.Count == 0) { error = $"data_splits.json has no {setting.look_split} look"; return null; }
+            foreach (var l in looks)
+            {
+                if (workers.Look(l) == null) { error = $"look '{l}' is not in worker_v4.json"; return null; }
+                if (!splits.Looks.TryGetValue(l, out var ls) || ls != setting.look_split) { error = $"setting {setting.name}: look '{l}' is not a {setting.look_split} look"; return null; }
+            }
+            var plan = new TrialRunWorkers { CommanderLook = looks[(run - 1) % looks.Count] };
+            for (int k = 1; k <= cfg.bystanders.count; k++) plan.BystanderLooks.Add(looks[(run - 1 + k) % looks.Count]);
+            foreach (var command in cfg.CommanderCommands())
+            {
+                var mine = new List<string>();
+                foreach (var c in workers.ClipNames(command))
+                    if (splits.Clips.TryGetValue(c, out var split) && split == setting.clip_split) mine.Add(c);
+                if (mine.Count == 0) { error = $"no {command} clip of worker_v4.json is a {setting.clip_split} clip in data_splits.json"; return null; }
+                plan.m_ByCommand[command] = mine;
+                plan.AllowedClips.AddRange(mine);
+            }
+            plan.Split = $"final {setting.name}: looks {setting.look_split}, clips {setting.clip_split}";
+            return plan;
+        }
     }
 
     /// <summary>

@@ -48,6 +48,8 @@ namespace WarehouseRobot.Scenario
         public string commander_command, worker_layout;
         // 2026-11-12 (upgrade_design.md sections 2 and 6): the v4 map, what the commander shows straight on, the scenario, the timeout used
         public string roadmap, forward_command, scenario;
+        // Stage F (2026-11-13): the final setting of a final session ("" in development)
+        public string final_setting = "";
         public float timeout_s;
         public int bystanders, max_active_avatars;
         public List<string> run_workers = new List<string>();
@@ -62,8 +64,9 @@ namespace WarehouseRobot.Scenario
 
     /// <summary>
     /// v4 trial runner (used only in WarehouseRobot_v4.unity; the v3 TrialRunner and its scene are unchanged). Task 2,
-    /// development mode only for now: the v4 Unity final-run guard is AUDIT.md section 14 blank B9, so final and
-    /// replication are refused. It reads the same robot_vision/configs/trials.json (or trials.local.json) and
+    /// development mode from trials.json; a final only with TrialPlayV4 -finalSetting NAME (Stage F, 2026-11-13: final_v4.json,
+    /// FinalGuardV4, the numbers of final_plan.json, UNITY_FINAL_DONE.json); replication is refused. It reads the same
+    /// robot_vision/configs/trials.json (or trials.local.json) and
     /// roadmap.json as v3 (read only; configs/v4/final_plan.json names these very values) and writes the v3 session files
     /// (session.json, config_used/, truth_run###.json/.csv, results_unity.csv, summary_unity.json, so hri_trials.py merges
     /// it as before) plus, per docs/protocol_v3.md:
@@ -105,7 +108,16 @@ namespace WarehouseRobot.Scenario
 #if UNITY_EDITOR
         /// <summary>Editor session key: a session's trial_workers config (TrialPlayV4 -workersConfig); "" = the scene's asset.</summary>
         public const string WorkersOverrideKey = "WarehouseRobot.TrialRunnerV4.WorkersConfig";
+        /// <summary>Editor session key: the final setting (TrialPlayV4 -finalSetting); "" = a development session.</summary>
+        public const string FinalSettingKey = "WarehouseRobot.TrialRunnerV4.FinalSetting";
 #endif
+        // Stage F (2026-11-13, upgrade_design.md section 13): a final session of one setting, guarded by FinalGuardV4
+        const string FinalConfigAsset = "Assets/WarehouseRobot/Avatar/Config/final_v4.json";
+        string finalSetting = "", finalCfgText = "", finalPlanText = "", frozenText = "";
+        FinalConfigV4 fcfg;
+        FinalSettingV4 fset;
+        FinalPlanV4 fplan;
+        bool Final => finalSetting.Length > 0;
         [Serializable] class TrialPlanV4 { public float development_timeout_s; }
         [Serializable] class ControlDialog { public string wait_text = ""; }
         [Serializable] class ControlFileV4 { public ControlDialog dialog = new ControlDialog(); }
@@ -208,6 +220,10 @@ namespace WarehouseRobot.Scenario
                 waitText = JsonUtility.FromJson<ControlFileV4>(File.ReadAllText(RepoFile(ControlFile))).dialog.wait_text ?? "";
             }
             catch (Exception e) { return Fail(out error, "cannot read " + TrialPlanAsset + " or " + ControlFile + ": " + e.Message); }
+#if UNITY_EDITOR
+            finalSetting = UnityEditor.SessionState.GetString(FinalSettingKey, "");
+#endif
+            if (Final && !SetupFinal(out error)) return false;
 
             robot = FindFirstObjectByType<RobotRig>();
             bridge = FindFirstObjectByType<RobotBridgeClient>();
@@ -222,7 +238,8 @@ namespace WarehouseRobot.Scenario
             if (!string.Equals(cfg.task, "Task2", StringComparison.OrdinalIgnoreCase))
                 return Fail(out error, $"the v4 runner runs Task2 only (configs/v4/final_plan.json task); {cfgName} says '{cfg.task}'");
             if (FinalRunGuard.Mode(cfg.mode) != FinalRunGuard.Development)
-                return Fail(out error, $"v4 {cfg.mode} runs are refused: the v4 Unity final-run guard is not decided yet (AUDIT.md section 14, blank B9)");
+                return Fail(out error, $"v4 {cfg.mode} runs from {cfgName} are refused: {cfgName} keeps mode development; a v4 final starts only with " +
+                                       "TrialPlayV4 -finalSetting NAME and its final-run guard (Stage F, upgrade_design.md section 13)");
             if (cfg.dev_seed == cfg.final_seed) return Fail(out error, "dev_seed and final_seed must differ");
             if (Task2Workers.Junctions(nodes.Values, out string problem) == null)
                 return Fail(out error, "Task 2 junctions: " + problem + " (run Tools > Warehouse v4 > Build v4 Roadmap)");
@@ -255,6 +272,35 @@ namespace WarehouseRobot.Scenario
             return false;
         }
 
+        /// <summary>Stage F: final_v4.json, final_plan.json and frozen.json read; every reason of FinalGuardV4 refuses the session;
+        /// the final numbers (timeout, success radius) from final_plan.json replace those of trials.json.</summary>
+        bool SetupFinal(out string error)
+        {
+            error = null;
+            try
+            {
+                finalCfgText = File.ReadAllText(Path.Combine(Application.dataPath, "..", FinalConfigAsset));
+                fcfg = FinalConfigV4.Parse(finalCfgText);
+                finalPlanText = File.ReadAllText(RepoFile(fcfg.final_plan));
+                frozenText = File.ReadAllText(RepoFile(fcfg.frozen));
+            }
+            catch (Exception e) { return Fail(out error, $"final {finalSetting}: cannot read {FinalConfigAsset}, final_plan.json or frozen.json: {e.Message}"); }
+            string outputRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
+            var problems = FinalGuardV4.Problems(fcfg, finalSetting, finalPlanText, frozenText,
+                p => { string f = RepoFile(p); return File.Exists(f) ? FinalGuardV4.Sha256Lf(File.ReadAllBytes(f)) : null; },
+                outputRoot, cfgName != "trials.json");
+#if UNITY_EDITOR
+            if (UnityEditor.SessionState.GetString(WorkersOverrideKey, "").Length > 0)
+                problems.Add("-workersConfig is refused with -finalSetting (the setting names its workers config)");
+#endif
+            if (problems.Count > 0) return Fail(out error, $"final {finalSetting} refused: " + string.Join("; ", problems));
+            fset = fcfg.Setting(finalSetting);
+            fplan = FinalPlanV4.Parse(finalPlanText);
+            cfg.timeout_s = fplan.TimeoutS;
+            cfg.success_radius_m = fplan.SuccessRadiusM;
+            return true;
+        }
+
         /// <summary>The worker template, trial_workers_v4.json and the data splits; the v3 workers hidden; every run planned
         /// (looks and clips) and checked against the splits before anything is written.</summary>
         bool SetupWorkers(out string error)
@@ -267,8 +313,14 @@ namespace WarehouseRobot.Scenario
             if (templateErrors.Count > 0) return Fail(out error, "worker_v4.json: " + string.Join("; ", templateErrors));
             workersText = workersConfig.text;
             workersSource = TrialWorkersAsset;
+            if (Final)
+            {
+                // the setting's declared final workers config (final_v4.json, Avatar/Config/sessions/final_<setting>.json)
+                try { workersText = File.ReadAllText(Path.Combine(Application.dataPath, "..", fset.workers_config)); workersSource = fset.workers_config; }
+                catch (Exception e) { return Fail(out error, "cannot read the final workers config " + fset.workers_config + ": " + e.Message); }
+            }
 #if UNITY_EDITOR
-            string over = UnityEditor.SessionState.GetString(WorkersOverrideKey, "");
+            string over = Final ? "" : UnityEditor.SessionState.GetString(WorkersOverrideKey, "");
             if (over.Length > 0)
             {
                 // a declared session config (Avatar/Config/sessions/), given by TrialPlayV4 -workersConfig
@@ -284,11 +336,13 @@ namespace WarehouseRobot.Scenario
             splits = DataSplitsV4.Parse(splitsText);
 
             string mode = FinalRunGuard.Mode(cfg.mode);
-            TrialTotal = Mathf.Max(1, cfg.trial_count);
+            TrialTotal = Final ? fplan.RunsPerSetting : Mathf.Max(1, cfg.trial_count);
             plans.Clear();
             for (int run = 1; run <= TrialTotal; run++)
             {
-                var plan = TrialRunWorkers.Plan(run, mode, wcfg, workerTemplate, splits, out string planError);
+                string planError;
+                var plan = Final ? TrialRunWorkers.PlanFinal(run, fset, wcfg, workerTemplate, splits, out planError)
+                                 : TrialRunWorkers.Plan(run, mode, wcfg, workerTemplate, splits, out planError);
                 if (plan == null) return Fail(out error, "worker looks and clips: " + planError);
                 plans.Add(plan);
             }
@@ -386,15 +440,15 @@ namespace WarehouseRobot.Scenario
                 yield break;
             }
 
-            string mode = FinalRunGuard.Mode(cfg.mode);
-            int seed = cfg.dev_seed;
+            string mode = Final ? FinalRunGuard.Final : FinalRunGuard.Mode(cfg.mode);
+            int seed = Final ? fplan.FinalSeed : cfg.dev_seed;
             sessionSeed = seed;
             var endpoints = Endpoints();
             var order = new List<string>();
             var gp = new GoalSequence(seed);
             for (int i = 0; i < TrialTotal; i++) order.Add(endpoints[gp.NextGoalIndex(endpoints.Count)]);
 
-            SessionFolder = NewFolder($"trials_{mode}_{cfg.task}");
+            SessionFolder = NewFolder(Final ? $"trials_final_{cfg.task}_{finalSetting}" : $"trials_{mode}_{cfg.task}");
             string used = Path.Combine(SessionFolder, "config_used");
             Directory.CreateDirectory(used);
             GroundTruthFiles.WriteNew(Path.Combine(used, cfgName), cfgText);
@@ -407,6 +461,12 @@ namespace WarehouseRobot.Scenario
             GroundTruthFiles.WriteNew(Path.Combine(used, "worker_v4.json"), workerPrefab.config.text);
             GroundTruthFiles.WriteNew(Path.Combine(used, "trial_workers_v4.json"), workersText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "data_splits.json"), splitsText);
+            if (Final)
+            {
+                GroundTruthFiles.WriteNew(Path.Combine(used, "final_v4.json"), finalCfgText);
+                GroundTruthFiles.WriteNew(Path.Combine(used, "final_plan.json"), finalPlanText);
+                GroundTruthFiles.WriteNew(Path.Combine(used, "frozen.json"), frozenText);
+            }
 
             // Leak test from the pose of trial 1's start (run 1's workers in place), with trial 1's ground truth drawn (A, B, path) and the blocked cells.
             if (!ResetForTrial(order[0], 1, out error))
@@ -443,7 +503,7 @@ namespace WarehouseRobot.Scenario
                 commander_command = wcfg.commander_command, worker_layout = Layout,
                 bystanders = wcfg.bystanders.count, max_active_avatars = wcfg.max_active_avatars,
                 v3_workers_hidden = new List<string>(hiddenV3),
-                ground_truth_layer = robot.Config.Unity.v4.ground_truth.layer,
+                ground_truth_layer = robot.Config.Unity.v4.ground_truth.layer, final_setting = finalSetting,
                 grid_cell_size_m = gt.Grid.CellSize, grid_widening_m = gt.Grid.InflationM, grid_report = gt.GridReport,
                 leak_test = leak,
             };
@@ -683,6 +743,13 @@ namespace WarehouseRobot.Scenario
 
             string summary = $"{{\n  \"study\": \"v4\",\n  \"trials\": {TrialTotal},\n  \"successes\": {Successes},\n  \"mode\": \"{mode}\",\n  \"task\": \"{cfg.task}\",\n  \"seed\": {seed}\n}}\n";
             GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, "summary_unity.json"), summary);
+            if (Final && Completed == TrialTotal)
+            {
+                // Stage F: the setting's run-once marker, written last (a session that stops early writes none)
+                ReadGit(out var commit, out _);
+                GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, fcfg.done_file),
+                    FinalGuardV4.DoneJson(finalSetting, TrialTotal, Successes, commit, Path.GetFileName(SessionFolder), DateTime.Now.ToString("s", Inv)));
+            }
             Status = $"done: {Successes}/{TrialTotal} SUCCESS";
             Debug.Log($"[TrialRunnerV4] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
         }

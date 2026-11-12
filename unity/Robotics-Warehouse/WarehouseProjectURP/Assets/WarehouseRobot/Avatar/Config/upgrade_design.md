@@ -404,3 +404,30 @@ Dated entries, each written before the changed design is tested in a Play sessio
      R2 with `--control-config configs/v4/control_zoom_off.json`, R3 to R5 with their `Avatar/Config/sessions/` copies (R3: the two
      fixed bystander stands). Leak and truth checks as in D2.
   3. *Unit of the rule:* every dialog of the 15 runs, scored against goal B with the roadmap (`python_trial_###.json` junction reads).
+- **2026-11-13 (Stage F, final setup; declared before it is built; no final run and no freeze in this stage).**
+  1. *Selecting a final:* only `TrialPlayV4 -finalSetting NAME` (NAME in `zoom_on`, `zoom_off`, `bystanders`, `unseen_look`, the settings of
+     `final_v4.json` and of Python's `final_plan.json`) puts `TrialRunnerV4` in final mode; `trials.json` keeps `mode` development and its
+     v3 meaning. Refused together with `-workersConfig` (the setting names its workers config) and while `trials.local.json` (the
+     development trial-count override) exists.
+  2. *Numbers:* read from `robot_vision/configs/v4/final_plan.json` at Play, never copied: task Task2, `final_seed` (2), `runs_per_setting`
+     (20), `timeout_s` (270), `success_radius_m` (0.3). The development timeout of `trial_plan_v4.json` applies in development only.
+  3. *Final-run guard (`FinalGuardV4`, Edit Mode tested), every reason listed, nothing started on any:* unknown setting (in either file);
+     a blank (null) in `final_plan.json` (`task`, `final_seed`, `runs_per_setting`, `timeout_s`, `success_radius_m`, `test_assignment`,
+     `unity_files_and_guard`, `acceptance_criteria`); `frozen.json` not `"frozen": true`; a B9 file missing, not recorded in `frozen.json`,
+     or with an LF-normalised SHA-256 other than the recorded one (looked up by its repository path in any hash table of `frozen.json`);
+     the development override present; the setting already run (a Unity `UNITY_FINAL_DONE.json` with this `final_setting`, or Python's
+     `FINAL_RUN_DONE.json` with this `setting`, in any folder under the output root).
+  4. *Run once:* a completed final session (all runs) writes `UNITY_FINAL_DONE.json` (`final_setting`, runs, successes, commit, folder)
+     into its folder `trials_final_Task2_<setting>_<time>/`, created once and never overwritten. Not `FINAL_DONE.json`: Python's
+     `final_guard_v4.markers` scans every folder for that name and would take it for the setting's evaluation. A started session that does
+     not finish writes no marker (as v3). `session.json` gains `final_setting` ("" in development).
+  5. *B7 (AUDIT.md section 15, pending Anisha):* each setting's workers config is a copy of `trial_workers_v4.json` in
+     `Avatar/Config/sessions/final_<setting>.json` (bystanders: `count` 2, the two stands of the D2 fix; the others 0), and `final_v4.json`
+     gives its `look_split` (development for zoom_on, zoom_off, bystanders; test for unseen_look) and `clip_split` (test). A final run
+     plans its looks from the look split (alternating per run) and its clips from the clip split; every look must lie in the look split and
+     every clip in the test split, else refused. Development sessions are unchanged (development data only). Python's `guard_run` refuses
+     the mixed settings today; until Anisha fills `test_assignment`, item 3 refuses every final anyway.
+  6. *B9, the Unity files to freeze (`final_v4.json` `freeze_files`):* the scene `Assets/Scenes/WarehouseRobot_v4.unity`,
+     `bridge_unity_v4.json`, `robot_unity_v4.json`, `worker_v4.json`, the prefab `WorkerV4.prefab`, `trial_workers_v4.json`, `final_v4.json`,
+     the four `sessions/final_*.json` and `trial_plan_v4.json`. Code is pinned by the commit recorded in `session.json`. The avatar look
+     assets are third-party and not in git, so they cannot be frozen by hash; each final session records their appearance text as now.

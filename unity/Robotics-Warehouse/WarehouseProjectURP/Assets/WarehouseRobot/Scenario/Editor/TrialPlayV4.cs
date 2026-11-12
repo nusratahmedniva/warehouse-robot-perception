@@ -18,6 +18,9 @@ namespace WarehouseRobot.ScenarioEditor
     ///   Unity -projectPath P -executeMethod WarehouseRobot.ScenarioEditor.TrialPlayV4.Run -trialTimeout 1800 -checkDir D -logFile run.log
     /// -workersConfig F (2026-11-12): a declared session config instead of trial_workers_v4.json, F relative to the Unity project
     /// (e.g. Assets/WarehouseRobot/Avatar/Config/sessions/dev_bystanders.json); TrialRunnerV4 records which one it used.
+    /// -finalSetting NAME (2026-11-13, Stage F): a FINAL session of that setting (zoom_on, zoom_off, bystanders, unseen_look), refused
+    /// by TrialRunnerV4's final-run guard unless the v4 configs and the B9 files are frozen, the plan has no blank, the development
+    /// override is absent and the setting has not run before. The Python server must run with --final-setting NAME.
     /// </summary>
     [InitializeOnLoad]
     public static class TrialPlayV4
@@ -43,15 +46,17 @@ namespace WarehouseRobot.ScenarioEditor
         public static void Run()
         {
             float timeout = 1800f;
-            string checkDir = "", workers = "";
+            string checkDir = "", workers = "", finalSetting = "";
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
                 if (args[i] == "-trialTimeout") float.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out timeout);
                 if (args[i] == "-checkDir") checkDir = Path.GetFullPath(Path.Combine(RepoRoot, args[i + 1]));   // relative = to the repo root
                 if (args[i] == "-workersConfig") workers = args[i + 1];
+                if (args[i] == "-finalSetting") finalSetting = args[i + 1];
             }
             SessionState.SetString(TrialRunnerV4.WorkersOverrideKey, workers);
+            SessionState.SetString(TrialRunnerV4.FinalSettingKey, finalSetting);
             if (checkDir.Length > 0) Directory.CreateDirectory(checkDir);
             EditorSceneManager.OpenScene(Scene);
             SessionState.SetBool(ActiveKey, true);
@@ -115,6 +120,7 @@ namespace WarehouseRobot.ScenarioEditor
         {
             SessionState.SetBool(ActiveKey, false);
             SessionState.SetString(TrialRunnerV4.WorkersOverrideKey, "");
+            SessionState.SetString(TrialRunnerV4.FinalSettingKey, "");
             EditorApplication.update -= Poll;
             Debug.Log($"[TrialPlayV4] finished ({code}): {status}");
             EditorApplication.Exit(code);

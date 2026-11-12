@@ -1536,3 +1536,25 @@ Chrome, the Claude app, the NVIDIA overlay and warp-svc running (reported, not c
   so the current Python final evaluation would refuse them (unseen_look passes). Her guard needs a per-setting rule (looks from the setting's
   split, clips from the test split), or B7 changes. Until she fills `final_plan.json` `test_assignment`, the Unity final guard (Stage F)
   refuses every final run.
+
+### 2026-11-13, Stage F (final setup, Unity side; no final run, no freeze; declared in `upgrade_design.md` section 13 before it was built)
+
+- **B9, the Unity files to freeze** (Nusrat; `Avatar/Config/final_v4.json` `freeze_files`, repository paths): `unity/Robotics-Warehouse/
+  WarehouseProjectURP/Assets/` + `Scenes/WarehouseRobot_v4.unity`, `WarehouseRobot/Bridge/Config/bridge_unity_v4.json`,
+  `WarehouseRobot/Robot/Config/robot_unity_v4.json`, `WarehouseRobot/Avatar/Config/worker_v4.json`, `WarehouseRobot/Avatar/Prefabs/
+  WorkerV4.prefab`, `WarehouseRobot/Avatar/Config/trial_workers_v4.json`, `WarehouseRobot/Avatar/Config/final_v4.json`,
+  `WarehouseRobot/Avatar/Config/sessions/final_zoom_on.json`, `final_zoom_off.json`, `final_bystanders.json`, `final_unseen_look.json`,
+  `WarehouseRobot/Scenario/Config/trial_plan_v4.json`. For Anisha: add them to `frozen.json` (any hash table, keyed by these paths,
+  LF-normalised SHA-256 as `freeze_v4.sha256_lf`); the Unity guard looks each one up by its path. The avatar look assets are third-party and
+  not in git, so they are not hashed (each session records their appearance text).
+- **The Unity final-run guard** (`FinalGuardV4`, called by `TrialRunnerV4` when `TrialPlayV4 -finalSetting NAME` is given): refuses an unknown
+  setting, any null among `task`, `final_seed`, `runs_per_setting`, `timeout_s`, `success_radius_m`, `test_assignment`,
+  `unity_files_and_guard`, `acceptance_criteria`, an unfrozen `frozen.json`, a B9 file missing, unrecorded or changed, the development
+  override `trials.local.json`, `-workersConfig` with `-finalSetting`, and a setting already run (Unity's `UNITY_FINAL_DONE.json` with
+  `final_setting`, or Python's `FINAL_RUN_DONE.json` with `setting`, in any folder under `outputs/`). A final uses `final_plan.json`'s seed,
+  runs, timeout and success radius, writes `trials_final_Task2_<setting>_<time>/` with `session.json` `mode` "final" and `final_setting`,
+  copies `final_v4.json`, `final_plan.json` and `frozen.json` into `config_used/`, and writes `UNITY_FINAL_DONE.json` after its last run.
+  The Unity marker is deliberately not named `FINAL_DONE.json`: `final_guard_v4.markers` scans every folder for that name and would take a
+  Unity file for the setting's evaluation.
+- **Checked:** Unity Edit Mode 194/194 (19 new `FinalGuardV4Tests`); in a Play session `TrialPlayV4 -finalSetting zoom_on` was refused with
+  every open reason (blanks B7, B9, B11; not frozen; each B9 file unrecorded) and wrote no folder. Python files unchanged in this stage.

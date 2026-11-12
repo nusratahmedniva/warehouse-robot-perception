@@ -1,0 +1,30 @@
+{
+  "note": "v4 final setup, Unity side (Stage F, 2026-11-13, Nusrat; Avatar/Config/upgrade_design.md section 13, declared before it was built). Read by TrialRunnerV4 only when TrialPlayV4 -finalSetting NAME is given. The numbers of a final (task, final seed, runs per setting, timeout, success radius) are NOT here: they are read from robot_vision/configs/v4/final_plan.json (Anisha's file, read only). No final run and no freeze are made by this file.",
+  "final_plan": "robot_vision/configs/v4/final_plan.json",
+  "frozen": "robot_vision/configs/v4/frozen.json",
+  "done_file": "UNITY_FINAL_DONE.json",
+  "done_file_note": "Written into a final session folder after its last run; one per setting, never overwritten. Not FINAL_DONE.json: Python's final_guard_v4.markers scans every folder under the output root for that name and would take a Unity file for the setting's evaluation. The guard also refuses a setting with Python's FINAL_RUN_DONE.json (key setting).",
+  "python_run_marker": "FINAL_RUN_DONE.json",
+  "settings": [
+    { "name": "zoom_on", "workers_config": "Assets/WarehouseRobot/Avatar/Config/sessions/final_zoom_on.json", "look_split": "development", "clip_split": "test" },
+    { "name": "zoom_off", "workers_config": "Assets/WarehouseRobot/Avatar/Config/sessions/final_zoom_off.json", "look_split": "development", "clip_split": "test" },
+    { "name": "bystanders", "workers_config": "Assets/WarehouseRobot/Avatar/Config/sessions/final_bystanders.json", "look_split": "development", "clip_split": "test" },
+    { "name": "unseen_look", "workers_config": "Assets/WarehouseRobot/Avatar/Config/sessions/final_unseen_look.json", "look_split": "test", "clip_split": "test" }
+  ],
+  "settings_note": "B7 as decided by Nusrat on 2026-11-13, pending Anisha's confirmation (AUDIT.md section 15): zoom_on, zoom_off and bystanders use the development looks (alternating per run) with the test clips; unseen_look uses the test look with the test clips. zoom_on and zoom_off differ only on the Python side (bridge.server --final-setting picks control_zoom_on.json or control_zoom_off.json). Every clip of a final must be a test clip.",
+  "freeze_files": [
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/Scenes/WarehouseRobot_v4.unity",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Bridge/Config/bridge_unity_v4.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Robot/Config/robot_unity_v4.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/worker_v4.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Prefabs/WorkerV4.prefab",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/final_v4.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_zoom_on.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_zoom_off.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_bystanders.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_unseen_look.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/trial_plan_v4.json"
+  ],
+  "freeze_files_note": "B9 (AUDIT.md section 14.7, Nusrat): the Unity files of the v4 scene to freeze, as repository paths. Anisha adds them to configs/v4/frozen.json the way the v3 Unity files were added; a final is refused unless every file is recorded there (looked up by this path in any of its hash tables) with its LF-normalised SHA-256. Code is pinned by the commit in session.json. The avatar look assets are third-party and not in git, so they are not hashed; each session records their appearance text."
+}
