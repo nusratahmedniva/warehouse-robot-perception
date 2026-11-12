@@ -16,6 +16,8 @@ namespace WarehouseRobot.ScenarioEditor
     /// screenshot and the hud block (JSON) the first time the HUD lists a person and the first time it shows screen text
     /// (D absolute, or relative to the repository root, e.g. robot_vision/outputs/v4_play_check_20261103_215431).
     ///   Unity -projectPath P -executeMethod WarehouseRobot.ScenarioEditor.TrialPlayV4.Run -trialTimeout 1800 -checkDir D -logFile run.log
+    /// -workersConfig F (2026-11-12): a declared session config instead of trial_workers_v4.json, F relative to the Unity project
+    /// (e.g. Assets/WarehouseRobot/Avatar/Config/sessions/dev_bystanders.json); TrialRunnerV4 records which one it used.
     /// </summary>
     [InitializeOnLoad]
     public static class TrialPlayV4
@@ -26,6 +28,10 @@ namespace WarehouseRobot.ScenarioEditor
         const string CheckDirKey = "WarehouseRobot.TrialPlayV4.CheckDir";
         const string RepoRootRelativeToProject = "../../..";
         static bool shotPeople, shotText;
+        static int shotTrials;
+        static double exitAt = -1;
+        static int exitCode;
+        static string exitStatus;
 
         static string RepoRoot => Path.GetFullPath(Path.Combine(Application.dataPath, "..", RepoRootRelativeToProject));
 
@@ -37,13 +43,15 @@ namespace WarehouseRobot.ScenarioEditor
         public static void Run()
         {
             float timeout = 1800f;
-            string checkDir = "";
+            string checkDir = "", workers = "";
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
                 if (args[i] == "-trialTimeout") float.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out timeout);
                 if (args[i] == "-checkDir") checkDir = Path.GetFullPath(Path.Combine(RepoRoot, args[i + 1]));   // relative = to the repo root
+                if (args[i] == "-workersConfig") workers = args[i + 1];
             }
+            SessionState.SetString(TrialRunnerV4.WorkersOverrideKey, workers);
             if (checkDir.Length > 0) Directory.CreateDirectory(checkDir);
             EditorSceneManager.OpenScene(Scene);
             SessionState.SetBool(ActiveKey, true);
@@ -61,8 +69,21 @@ namespace WarehouseRobot.ScenarioEditor
             var r = Object.FindFirstObjectByType<TrialRunnerV4>();
             if (r == null) return;
             Capture(Object.FindFirstObjectByType<RobotBridgeClient>());
-            if (r.Status.StartsWith("done")) Finish(0, r.Status + " (" + r.SessionFolder + ")");
-            else if (r.Status.StartsWith("not started") || r.Status.StartsWith("stopped")) Finish(1, r.Status);
+            // 2026-11-12 (U6): with -checkDir, a Game view screenshot at the end of every trial (trail, ask markers, minimap, HUD)
+            // and at the end of the session; the exit waits 3 s so the last screenshot is written
+            string dir = SessionState.GetString(CheckDirKey, "");
+            if (dir.Length > 0 && r.Completed > shotTrials)
+            {
+                shotTrials = r.Completed;
+                ScreenCapture.CaptureScreenshot(Path.Combine(dir, $"trial_{shotTrials:000}_end.png"));
+            }
+            if (exitAt > 0)
+            {
+                if (EditorApplication.timeSinceStartup >= exitAt) Finish(exitCode, exitStatus);
+                return;
+            }
+            if (r.Status.StartsWith("done")) Delayed(dir, 0, r.Status + " (" + r.SessionFolder + ")");
+            else if (r.Status.StartsWith("not started") || r.Status.StartsWith("stopped")) Delayed(dir, 1, r.Status);
         }
 
         static void Capture(RobotBridgeClient bridge)
@@ -82,9 +103,18 @@ namespace WarehouseRobot.ScenarioEditor
             return true;
         }
 
+        static void Delayed(string dir, int code, string status)
+        {
+            if (dir.Length > 0) ScreenCapture.CaptureScreenshot(Path.Combine(dir, "session_end.png"));
+            exitCode = code;
+            exitStatus = status;
+            exitAt = EditorApplication.timeSinceStartup + 3.0;
+        }
+
         static void Finish(int code, string status)
         {
             SessionState.SetBool(ActiveKey, false);
+            SessionState.SetString(TrialRunnerV4.WorkersOverrideKey, "");
             EditorApplication.update -= Poll;
             Debug.Log($"[TrialPlayV4] finished ({code}): {status}");
             EditorApplication.Exit(code);

@@ -125,7 +125,9 @@ namespace WarehouseAvatar.Tests
                 Assert.IsNotNull(p, error);
                 Assert.AreEqual("development", p.Split);
                 foreach (var l in p.AllLooks()) Assert.AreEqual("development", s.Looks[l], l);
-                CollectionAssert.AreEquivalent(new[] { "point_mixamo_01", "point_ik_01" }, p.AllowedClips);
+                CollectionAssert.AreEquivalent(new[] { "point_mixamo_01", "point_ik_01" }, p.AllowedFor("POINT"));
+                CollectionAssert.AreEquivalent(new[] { "proceed_ik_01", "proceed_ik_02" }, p.AllowedFor("PROCEED"));   // forward_command (2026-11-12)
+                CollectionAssert.AreEquivalent(new[] { "point_mixamo_01", "point_ik_01", "proceed_ik_01", "proceed_ik_02" }, p.AllowedClips);
                 Assert.AreEqual(2, p.BystanderLooks.Count);
                 looks.Add(p.CommanderLook);
             }

@@ -17,6 +17,10 @@ namespace WarehouseAvatar
         public const string KindMixamo = "mixamo", KindProcedural = "procedural";
         public const string EaseSmooth = "smooth", EaseQuick = "quick";
         public static readonly string[] Commands = { Point, Wait, Stop };
+        /// <summary>PROCEED (2026-11-12, Avatar/Config/upgrade_design.md section 2): the forearm swing that sends the robot
+        /// straight on. Kept out of Commands (the Phase 2 look checks iterate that list); AllCommands is what a worker can show.</summary>
+        public const string Proceed = "PROCEED";
+        public static readonly string[] AllCommands = { Point, Wait, Stop, Proceed };
 
         public string note;
         public WorkerPaths paths;
@@ -133,6 +137,8 @@ namespace WarehouseAvatar
             Shape("wait", h.wait, true, false);
             Shape("stop", h.stop, true, true);
             if (h.stop != null && !(h.stop.spread_deg > 0f)) e.Add("hand_shapes.stop.spread_deg must be > 0 (fingers spread)");
+            Shape("proceed", h.proceed, true, true);
+            if (h.proceed != null && h.proceed.spread_deg > 3f) e.Add("hand_shapes.proceed.spread_deg must be <= 3 (fingers together: never an open-palm STOP)");
         }
 
         void ValidateVariation(List<string> e)
@@ -149,6 +155,7 @@ namespace WarehouseAvatar
             Range(e, "variation.hold_sway_amplitude_m", v.hold_sway_amplitude_m, 0f, 0.05f);
             if (!In01(v.left_arm_probability)) e.Add("variation.left_arm_probability must be in [0, 1]");
             if (v.point_either_arm_within_deg < 0f || v.point_either_arm_within_deg > 90f) e.Add("variation.point_either_arm_within_deg must be in [0, 90]");
+            Range(e, "variation.proceed_rate_hz", v.proceed_rate_hz, 0.5f, 3f);
         }
 
         void ValidateLimits(List<string> e)
@@ -176,7 +183,7 @@ namespace WarehouseAvatar
             {
                 if (c == null || !LookCheckConfig.IsNamePart(c.name)) { e.Add($"clips: name '{c?.name}' must use a-z, 0-9 and single inner '_' only"); continue; }
                 if (!names.Add(c.name)) e.Add($"clips: '{c.name}' listed twice");
-                if (Array.IndexOf(Commands, c.command) < 0) { e.Add($"clips '{c.name}': command must be POINT, WAIT or STOP"); continue; }
+                if (Array.IndexOf(AllCommands, c.command) < 0) { e.Add($"clips '{c.name}': command must be POINT, WAIT, STOP or PROCEED"); continue; }
                 if (!c.name.StartsWith(c.command.ToLowerInvariant() + "_", StringComparison.Ordinal))
                     e.Add($"clips '{c.name}': the name must start with '{c.command.ToLowerInvariant()}_' (one clip name per command)");
                 perCommand[c.command] = (perCommand.TryGetValue(c.command, out int n) ? n : 0) + 1;
@@ -204,13 +211,19 @@ namespace WarehouseAvatar
                         if (Mathf.Abs(c.elevation_deg) > 20f) e.Add($"clips '{c.name}': STOP elevation_deg must be within +-20 (shoulder height)");
                         if (c.push_l < 0f || c.push_l > 0.2f) e.Add($"clips '{c.name}': push_l must be in [0, 0.2]");
                         break;
+                    case Proceed:
+                        if (c.kind != KindProcedural) e.Add($"clips '{c.name}': PROCEED variants are procedural (IK only)");
+                        if (c.upper_forward_deg < 0f || c.upper_forward_deg > 60f) e.Add($"clips '{c.name}': PROCEED upper_forward_deg must be in [0, 60]");
+                        if (!(c.swing_low_deg >= -45f && c.swing_low_deg < c.swing_high_deg && c.swing_high_deg <= 90f))
+                            e.Add($"clips '{c.name}': PROCEED needs -45 <= swing_low_deg < swing_high_deg <= 90 (forearm above horizontal, forward)");
+                        break;
                     case Wait:
                         if (!(c.hand_up_l > 0f)) e.Add($"clips '{c.name}': WAIT hand_up_l must be > 0 (hand above the shoulder)");
                         if (!(c.hand_side_l >= 0f) || !(c.hand_forward_l >= 0f)) e.Add($"clips '{c.name}': WAIT hand_side_l and hand_forward_l must be >= 0");
                         break;
                 }
             }
-            foreach (var cmd in Commands)
+            foreach (var cmd in AllCommands)
             {
                 int n = perCommand.TryGetValue(cmd, out int k) ? k : 0;
                 if (n < 2 || n > 3) e.Add($"clips: {cmd} needs 2 to 3 variants (has {n})");
@@ -323,8 +336,10 @@ namespace WarehouseAvatar
         public HandShapeSpec point;
         public HandShapeSpec wait;
         public HandShapeSpec stop;
+        public HandShapeSpec proceed;
 
-        public HandShapeSpec For(string command) => command == WorkerV4Config.Point ? point : command == WorkerV4Config.Wait ? wait : stop;
+        public HandShapeSpec For(string command) => command == WorkerV4Config.Point ? point : command == WorkerV4Config.Wait ? wait :
+                                                    command == WorkerV4Config.Proceed ? proceed : stop;
     }
 
     /// <summary>[min, max] ranges drawn uniformly per gesture (seeded per run and worker).</summary>
@@ -341,6 +356,8 @@ namespace WarehouseAvatar
         public float[] sway_amplitude_m;
         public float[] sway_frequency_hz;
         public float[] hold_sway_amplitude_m;
+        /// <summary>PROCEED: swings (up and back down) per second, drawn per gesture (2 to 4 swings in 2.0 s = 1 to 2 Hz).</summary>
+        public float[] proceed_rate_hz;
     }
 
     /// <summary>Clamps that keep every varied gesture inside its command's definition (docs/gesture_reader_v4.md poses).</summary>
@@ -411,6 +428,11 @@ namespace WarehouseAvatar
         public float hand_up_l;
         public float push_l;
         public float elbow_down_l;
+        // PROCEED (2026-11-12): upper arm angle forward from hanging; forearm elevation above horizontal at the bottom and the
+        // top of a swing (the size draw scales the top)
+        public float upper_forward_deg;
+        public float swing_low_deg;
+        public float swing_high_deg;
         public string why;
 
         public bool IsMixamo => kind == WorkerV4Config.KindMixamo;

@@ -60,6 +60,11 @@ namespace WarehouseRobot.Bridge
                 return;
             }
 
+            var pt = bridge.Robot != null ? bridge.Robot.PanTilt : null;
+            if (pt != null)
+                Line("Zoom: " + (pt.FovDeg < pt.DefaultFovDeg - 0.05f || pt.TiltDeg > pt.DefaultTiltDeg + 0.05f ? "ACTIVE" : "default") +
+                     "  fov " + pt.FovDeg.ToString("0.0", Inv) + " deg  tilt " + pt.TiltDeg.ToString("0.0", Inv) + " deg  pan " +
+                     pt.PanDeg.ToString("+0;-0;0", Inv) + " deg");
             Line("State: " + hud.state);
             Line("Screen: " + (hud.screen_text.Length > 0 ? "\"" + hud.screen_text + "\"" : "-"));
             Line("Commander: " + (hud.commander_id >= 0 ? "#" + hud.commander_id.ToString(Inv) : "none"));

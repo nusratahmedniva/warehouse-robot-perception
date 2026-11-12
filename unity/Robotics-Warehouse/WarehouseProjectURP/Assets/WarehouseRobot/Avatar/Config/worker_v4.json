@@ -45,6 +45,12 @@
       "index_deg": [0, 0, 0], "middle_deg": [0, 0, 0], "ring_deg": [0, 0, 0], "little_deg": [0, 0, 0],
       "spread_deg": 9
     },
+    "proceed": {
+      "thumb_deg": [5, 5, 5], "thumb_across_deg": 5,
+      "index_deg": [5, 5, 5], "middle_deg": [5, 5, 5], "ring_deg": [5, 5, 5], "little_deg": [5, 5, 5],
+      "spread_deg": 0
+    },
+    "proceed_why": "PROCEED (2026-11-12, Avatar/Config/upgrade_design.md section 2, declared before it was built): a flat hand, fingers straight and TOGETHER (spread 0), the thumb along them, palm toward the body. Together, the fingers stay far below the reader's open-palm spread (palm_spread_min_deg 20), so the swing can never read as STOP.",
     "why": "Applied after the Animator, from the bind pose (straight fingers), per joint (proximal, intermediate, distal) toward the palm. POINT: index straight, the other fingers in a fist. WAIT (docs/gesture_reader_v4.md: index up, the other three curled): the other fingers TIGHTLY curled, more than the Phase 2A pose (75 deg per joint), because the reader calls a finger curled only below a tip ratio of 1.2 and the Phase 2A WAIT frames had the ring finger at about 1.25 (Nusrat's reading of look_check_v4_20261107_171722); the thumb is tucked across the curled fingers. STOP: all five straight, the four fingers fanned 9 deg per finger step from the middle finger (the Phase 2A STOP takes used 6 to 12)."
   },
   "variation": {
@@ -58,6 +64,8 @@
     "sway_amplitude_m": [0.004, 0.012],
     "sway_frequency_hz": [0.25, 0.6],
     "hold_sway_amplitude_m": [0.0, 0.0],
+    "proceed_rate_hz": [1.0, 2.0],
+    "proceed_rate_why": "PROCEED (2026-11-12, upgrade_design.md section 2): swings (up and back down) per second, so a 2.0 s reading window holds 2 to 4 swings; drawn last and only for PROCEED, so every POINT, WAIT and STOP draw of a seeded stream is unchanged. The swinging lasts the drawn hold_s (3.0 to 4.5 s), long enough for the 2.0 s window and the dialog's 0.5 s hold.",
     "why": "Drawn uniformly per gesture from a stream seeded per (session seed, run, worker id). speed divides the raise and return durations (and plays a Mixamo variant faster or slower); size scales the gesture's extent (POINT elevation, WAIT hand offsets, STOP reach, push and sway) inside the limits below; start_delay_s: the time between the question appearing and the arm starting to move; hold_s: how long the pose is held, long enough for the reader's 1 s window, its 0.4 s stillness and the dialog's 0.5 s hold (configs/v4/gesture_reader.json, control.json) with margin. Arm: left with left_arm_probability, except POINT uses the arm on the side it points to unless the direction is within point_either_arm_within_deg of straight ahead. Sway: while the arm moves (raising, returning) the hand sways by sway_amplitude_m per axis; while the pose is held the amplitude is hold_sway_amplitude_m, blended by the IK weight so the hand never jumps. Phase 2C (2026-11-08, Nusrat): hold_sway_amplitude_m is 0, so the held pose is still as docs/look_check_v4.md asks ('held still'); it stays a config value in case Anisha decides otherwise. It is drawn after every other value, so the other draws of a seeded stream are unchanged."
   },
   "limits": {
@@ -104,7 +112,19 @@
       "why": "A quick STOP, a little higher and more to the arm's own side." },
     { "name": "stop_ik_03", "command": "STOP", "kind": "procedural", "source_file": "", "raise_s": 0.7, "return_s": 0.7, "ease": "smooth",
       "reach": 0.88, "elevation_deg": 0, "azimuth_out_deg": 4, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0.07, "elbow_down_l": 0.08,
-      "why": "Straight ahead with a short push toward the robot at the end of the raise (STOP needs no push; it is one natural way of showing it)." }
+      "why": "Straight ahead with a short push toward the robot at the end of the raise (STOP needs no push; it is one natural way of showing it)." },
+    { "name": "proceed_ik_01", "command": "PROCEED", "kind": "procedural", "source_file": "", "raise_s": 0.6, "return_s": 0.6, "ease": "smooth",
+      "reach": 0, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0, "elbow_down_l": 0,
+      "upper_forward_deg": 15, "swing_low_deg": -20, "swing_high_deg": 60,
+      "why": "Development variant 1 (upgrade_design.md section 2): elbow about 90 deg, the forearm from about 20 deg below to 60 deg above horizontal, toward the robot." },
+    { "name": "proceed_ik_02", "command": "PROCEED", "kind": "procedural", "source_file": "", "raise_s": 0.5, "return_s": 0.6, "ease": "quick",
+      "reach": 0, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0, "elbow_down_l": 0,
+      "upper_forward_deg": 35, "swing_low_deg": 0, "swing_high_deg": 75,
+      "why": "Development variant 2: a larger upper-arm lift, the forearm from horizontal to about 75 deg above it." },
+    { "name": "proceed_ik_03", "command": "PROCEED", "kind": "procedural", "source_file": "", "raise_s": 0.7, "return_s": 0.7, "ease": "smooth",
+      "reach": 0, "elevation_deg": 0, "azimuth_out_deg": 0, "hand_side_l": 0, "hand_forward_l": 0, "hand_up_l": 0, "push_l": 0, "elbow_down_l": 0,
+      "upper_forward_deg": 10, "swing_low_deg": 0, "swing_high_deg": 50,
+      "why": "TEST variant (data_splits.json): a smaller swing from the forearm and wrist, elbow about 70 deg." }
   ],
   "looks": [
     {

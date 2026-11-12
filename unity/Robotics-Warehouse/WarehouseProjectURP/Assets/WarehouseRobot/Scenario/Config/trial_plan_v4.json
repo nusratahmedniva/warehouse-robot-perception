@@ -1,0 +1,5 @@
+{
+  "note": "v4 trial plan values of the Unity trial runner (TrialRunnerV4), 2026-11-12 (Avatar/Config/upgrade_design.md section 6, declared before any run on the v4 map).",
+  "development_timeout_s": 420,
+  "development_timeout_note": "Provisional development timeout for the longer v4 route (65 m longest at a pessimistic 0.2 m/s average, plus the 20 s WAIT timeout, rounded up). Not a result and not the final value: the final timeout is computed once from the Stage C development session by the declared rule (timeout_s = ceil_to_10(1.5 * L_max / v_run + wait_timeout_s), never below 240 s) and written to robot_vision/configs/v4/final_plan.json. Overrides trials.json timeout_s in development mode only."
+}

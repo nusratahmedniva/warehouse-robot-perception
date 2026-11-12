@@ -21,6 +21,8 @@ namespace WarehouseAvatar
         public string Phase;            // idle, start_delay, gesturing, holding, returning
         public bool IsCommander;
         public string Clip;             // "" when true_command is NONE
+        public bool HasAnkle;           // 2026-11-12 (P1): ankle_height_m is written only when true
+        public double AnkleHeightM;     // mean height of the two ankle (foot) bones above the worker's floor
         // Extra fields (allowed by docs/protocol_v3.md, ignored by Python): the random parameters of the gesture.
         public bool HasParams;
         public double Speed, Size, StartDelayS, HoldS;
@@ -61,6 +63,7 @@ namespace WarehouseAvatar
             if ((r.TrueCommand != "NONE") != performing) return "a command is performed exactly in the phases gesturing, holding and returning";
             if ((r.TrueCommand == "NONE") != string.IsNullOrEmpty(r.Clip)) return "clip is required exactly while a command is performed (and empty otherwise)";
             if (!string.IsNullOrEmpty(r.Clip) && !LookCheckConfig.IsNamePart(r.Clip)) return $"clip '{r.Clip}' must use a-z, 0-9 and single inner '_' only";
+            if (r.HasAnkle && !(r.AnkleHeightM >= 0.0 && r.AnkleHeightM < 0.5)) return $"ankle_height_m {r.AnkleHeightM} must be in [0, 0.5)";
             return null;
         }
 
@@ -79,6 +82,7 @@ namespace WarehouseAvatar
             sb.Append(", \"phase\": \"").Append(r.Phase).Append('"');
             sb.Append(", \"is_commander\": ").Append(r.IsCommander ? "true" : "false");
             sb.Append(", \"clip\": \"").Append(r.Clip ?? "").Append('"');
+            if (r.HasAnkle) sb.Append(", \"ankle_height_m\": ").Append(r.AnkleHeightM.ToString("0.0000", Inv));
             if (r.HasParams)
             {
                 sb.Append(", \"speed\": ").Append(r.Speed.ToString("0.000", Inv));

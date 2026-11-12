@@ -1434,3 +1434,15 @@ The design and every decision rule were declared before any code in `unity/.../A
   `tests/test_hri_control_v4.py` (the STOP-while-navigating test uses the v3 map, whose start drives). New: `tests/test_v4_upgrades.py`.
 - `hri_sim_v4.export_session` now moves the junction records onto the session clock like the truth rows and the log (a simulator
   inconsistency found by the new junction metrics; real sessions share Unity's clock).
+
+### 2026-11-12, Stage U (Unity upgrades; Python files touched: two)
+
+- **P1 value measured.** `configs/v4/perception.json` `ankle_height_m` = **0.0927 m**: the median of the new truth field over the 3,195 idle rows of
+  the development looks in the U6 session `trials_development_Task2_20261112_160917` (sunbox_f1 0.0908, sunbox_m1 0.0953; range 0.0875 to 0.1046).
+  Measured, not fitted: before it the same session showed the predicted bias (360 estimate minus true distance at the 9 asks: median +0.094 m, all
+  positive; true standoff median 1.81 m against the nominal 2.0 m).
+- **P4 tool.** `calibrate_v4.py` (new, evaluation code; B12 exactly, grids of upgrade_design.md section 10, development looks sunbox_m1 and sunbox_f1
+  only, replays the reader on `model_outputs.jsonl`) and `tests/test_calibrate_v4.py`; `tests/test_gesture_data.py` and `tests/test_hri_eval_dev_v4.py`
+  list it as evaluation code in their import-isolation checks. Not run on data yet (Stage D3).
+- U6 (3-trial development session, seed 1; bridge `bridge_guide_20261112_160553`): 2 of 3 SUCCESS; dialogs 7: 6 correct, 0 wrong, 1 abort (J1 POINT
+  LEFT, sunbox_f1); PROCEED accepted at 4 of 4 dialogs (A x3, J1 x1); leak test passed (Unity and Python); 0 watchdog stops.

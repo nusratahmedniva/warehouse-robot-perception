@@ -342,4 +342,31 @@ new.
 
 ## 13. Changes after this declaration
 
-(none yet; dated entries are added here before the changed design is tested)
+Dated entries, each written before the changed design is tested in a Play session.
+
+- **2026-11-12 (Stage U, before U6).**
+  1. *New robot body (section 7):* built by `Tools > Warehouse v4 > Build v4 Robot Body` as additions to the robot instance in
+     `WarehouseRobot_v4.unity` (child `BodyV4`, restyled wheel visuals, `RobotStatusDisplay`), with the v3 visuals of that instance
+     deactivated, instead of a separate v4 prefab. Reason: every reference of the v4 scene (bridge, HUD, follow camera, trial
+     runner) keeps pointing at the same robot root; root, Rigidbody, colliders, NavMesh settings, drive and both camera mounts and
+     heights are untouched; the v3 prefab and scene are unchanged. The status "ring" is a lit collar on the mast plus a light bar
+     above the front bumper.
+  2. *Toggle keys (section 8):* F4 stays the HUD (as before); F5 trail, F6 ask markers, F7 instructed path, F8 optimal path, F9 the
+     robot's minimap, F10 the ground-truth minimap.
+  3. *STOP while driving (section 6):* the commander shows it the first moment the robot, driving toward the commander's node, is
+     6 to 9 m away AND the commander has noticed it (`behaviour.notice_distance_m` 8 m), i.e. in practice at 6 to 8 m, so the open
+     palm faces the robot.
+  4. *Truth `ankle_height_m` (section 3):* the mean height of the two Humanoid foot bones (the ankle joints) above the worker's root
+     (which stands on the floor), 4 decimals, in every row.
+  5. *Commander at A:* spawned at A's stand at the start of each run; the moved-commander layout otherwise as before.
+  6. *Session options:* the WAIT-then-direction, STOP and bystander sessions use declared copies of `trial_workers_v4.json` in
+     `Avatar/Config/sessions/` (each differs only in its option; an Edit Mode test checks it), selected with `TrialPlayV4 -workersConfig`.
+- **2026-11-12 (calibration details, before any calibration data exists; `robot_vision/calibrate_v4.py`).**
+  1. B12 leaves open what happens when no grid value reaches coverage 0.8: the committed value stays, and the report says so.
+     A tie in accuracy and coverage that B12 does not break keeps the committed value if it is among the tied, else the first of
+     the grid.
+  2. The arm ratio (`point.arm_length_in_shoulder_widths`, measured, AUDIT.md 14.16 item 3) is the median over held POINT frames of
+     the development looks whose TRUE pointed direction lies within 30 deg of the camera's image plane (a foreshortened arm would
+     bias the median low; the ratio models the full arm).
+  3. Frames are scored against the commander's truth row nearest in time (within `truth_join_max_s`); the person read is the one
+     whose bearing is nearest the commander's true bearing within `match_bearing_deg` (the matching of `hri_eval_dev_v4.py`).

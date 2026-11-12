@@ -22,8 +22,11 @@ namespace WarehouseAvatar
         public Vector3 PointDirection;
         /// <summary>"left", "right" or "" (the variation rule).</summary>
         public string Arm;
-        /// <summary>Start without waiting for the question (a STOP demonstration only; never for the commander's answer).</summary>
+        /// <summary>Start without waiting for the question: a STOP shown while the robot drives, or the direction that follows a
+        /// WAIT within the same ask (the question appeared before the WAIT); never the first answer to a question.</summary>
         public bool IgnoreQuestion;
+        /// <summary>&gt; 0: hold the gesture this long instead of the drawn hold_s (declared scenarios only, e.g. STOP while driving).</summary>
+        public float HoldS;
     }
 
     /// <summary>
@@ -105,6 +108,7 @@ namespace WarehouseAvatar
         Quaternion m_StanceRotation;
         Transform[] m_Spine = new Transform[0];
         Transform m_Neck, m_Head;
+        Transform m_LeftFoot, m_RightFoot;       // ankle joints of the Humanoid (truth ankle_height_m, P1)
         Vector3 m_AnimShoulder;
 
         bool m_InitDone;
@@ -174,6 +178,8 @@ namespace WarehouseAvatar
             m_Spine = spine.ToArray();
             m_Neck = bones.Get(HumanBodyBones.Neck);
             m_Head = bones.Get(HumanBodyBones.Head);
+            m_LeftFoot = bones.Get(HumanBodyBones.LeftFoot);
+            m_RightFoot = bones.Get(HumanBodyBones.RightFoot);
             if (m_Spine.Length == 0 || m_Head == null) return Fail($"look '{lookId}' lacks spine or head bones");
 
             if (controller == null) return Fail("no AnimatorController assigned (Tools > Warehouse v4 > Workers > Build Worker Template)");
@@ -259,7 +265,7 @@ namespace WarehouseAvatar
             error = null;
             if (!Ready) { error = "worker not ready: " + Problem; return false; }
             if (m_Scheduler.Phase != WorkerPhase.Idle || m_Scheduler.Pending) { error = "worker is busy"; return false; }
-            if (Array.IndexOf(WorkerV4Config.Commands, req.Command) < 0) { error = $"command '{req.Command}' must be POINT, WAIT or STOP"; return false; }
+            if (Array.IndexOf(WorkerV4Config.AllCommands, req.Command) < 0) { error = $"command '{req.Command}' must be POINT, WAIT, STOP or PROCEED"; return false; }
             BodyFrame(out var right, out var fwd);
             float bodyAz = 0f;
             var split = new PointingSplit();
@@ -274,6 +280,7 @@ namespace WarehouseAvatar
             GestureParams p;
             try { p = GestureVariation.Draw(m_Rng, Config, req.Command, req.Clip, req.AllowedClips, req.Arm, bodyAz); }
             catch (ArgumentException e) { error = e.Message; return false; }
+            if (req.HoldS > 0f) p.hold_s = req.HoldS;
             var spec = Config.Clip(p.clip);
             ClipIndexEntry entry = null;
             if (spec.IsMixamo)
@@ -426,6 +433,23 @@ namespace WarehouseAvatar
                     ShownPointDirection = m_PointDir;
                     break;
                 }
+                case WorkerV4Config.Proceed:
+                {
+                    // PROCEED (upgrade_design.md section 2): the elbow bent below the shoulder, the forearm swinging forward and
+                    // up between swing_low_deg and swing_high_deg (the size draw scales the top) at swing_hz while held;
+                    // raising and returning bring the forearm to the bottom of the swing (the IK weight blends it in and out).
+                    float Lu = 0.53f * L, Lf = 0.47f * L;            // upper arm and forearm shares of the shoulder-to-wrist length
+                    float au = spec.upper_forward_deg * Mathf.Deg2Rad;
+                    Vector3 elbow = s + Lu * (Mathf.Cos(au) * -up + Mathf.Sin(au) * fwd) + side * (0.08f * L);
+                    float lo = spec.swing_low_deg, hi = lo + (spec.swing_high_deg - spec.swing_low_deg) * k;
+                    float phi = lo;
+                    if (m_Scheduler.Phase == WorkerPhase.Holding)
+                        phi = lo + (hi - lo) * 0.5f * (1f - Mathf.Cos(2f * Mathf.PI * Current.swing_hz * m_Scheduler.Elapsed(t)));
+                    float pr = phi * Mathf.Deg2Rad;
+                    m_Target = elbow + (Mathf.Cos(pr) * fwd + Mathf.Sin(pr) * up) * Lf;
+                    m_Hint = elbow + side * (0.1f * L) - up * (0.02f * L);
+                    break;
+                }
                 case WorkerV4Config.Wait:
                 {
                     float upL = Mathf.Max(spec.hand_up_l * k, lim.wait_min_up_l);
@@ -491,7 +515,16 @@ namespace WarehouseAvatar
             HandToTargetM = Vector3.Distance(arm.Hand.position, m_Target);
             var shape = Config.hand_shapes.For(CurrentSpec.command);
             Vector3 fingerDir, palm;
-            if (CurrentSpec.command == WorkerV4Config.Point)
+            if (CurrentSpec.command == WorkerV4Config.Proceed)
+            {
+                // fingers along the forearm, together; the palm toward the body (up when the forearm is level, toward the
+                // chest when it is raised): never an open palm to the robot
+                fingerDir = (arm.Hand.position - arm.Lower.position).normalized;
+                BodyFrame(out var rr, out _);
+                palm = Vector3.Cross(fingerDir, rr);
+                if (palm.sqrMagnitude < 1e-6f) palm = Vector3.up;
+            }
+            else if (CurrentSpec.command == WorkerV4Config.Point)
             {
                 fingerDir = (arm.Hand.position - arm.Lower.position).normalized;      // a straight wrist
                 palm = Vector3.ProjectOnPlane(Vector3.down, fingerDir);
@@ -537,6 +570,8 @@ namespace WarehouseAvatar
                 TrueCommand = cmd, PointAngleDeg = -1.0, Arm = performing ? Current.arm : "none",
                 Phase = WorkerPhases.Name(phase), IsCommander = IsCommander, Clip = performing ? Current.clip : "",
             };
+            double ankle = AnkleHeight();
+            if (!double.IsNaN(ankle)) { row.HasAnkle = true; row.AnkleHeightM = ankle; }
             if (performing && cmd == WorkerV4Config.Point && robot != null) row.PointAngleDeg = Math.Round(TruthFormat.PointAngle(robot.forward, ShownPointDirection), 2);
             if (performing)
             {
@@ -544,6 +579,15 @@ namespace WarehouseAvatar
                 row.Speed = Current.speed; row.Size = Current.size; row.StartDelayS = Current.start_delay_s; row.HoldS = Current.hold_s;
             }
             return row;
+        }
+
+        /// <summary>Truth ankle_height_m (P1): the mean height of the two ankle (Humanoid foot) bones above the worker's root,
+        /// which stands on the floor; NaN when a bone is missing (the field is then left out).</summary>
+        public double AnkleHeight()
+        {
+            if (m_LeftFoot == null || m_RightFoot == null) return double.NaN;
+            double h = 0.5 * (m_LeftFoot.position.y + m_RightFoot.position.y) - transform.position.y;
+            return Math.Round(Math.Max(0.0, h), 4);
         }
 
         // ---------------------------------------------------------------- geometry

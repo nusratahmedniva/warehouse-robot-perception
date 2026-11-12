@@ -46,6 +46,9 @@ namespace WarehouseRobot.Scenario
         public string worker_config, worker_config_sha256_lf, trial_workers_config, trial_workers_config_sha256_lf;
         public string data_splits, data_splits_sha256_lf, data_split;
         public string commander_command, worker_layout;
+        // 2026-11-12 (upgrade_design.md sections 2 and 6): the v4 map, what the commander shows straight on, the scenario, the timeout used
+        public string roadmap, forward_command, scenario;
+        public float timeout_s;
         public int bystanders, max_active_avatars;
         public List<string> run_workers = new List<string>();
         public List<string> v3_workers_hidden = new List<string>();
@@ -95,7 +98,22 @@ namespace WarehouseRobot.Scenario
         const string GtEvalFile = "robot_vision/configs/v4/gt_eval.json";
         const string WorkerConfigAsset = "Assets/WarehouseRobot/Avatar/Config/worker_v4.json";
         const string TrialWorkersAsset = "Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json";
-        const string Layout = "one commander moved to the stand of each junction the robot is sent to (moved once idle); bystanders fixed";
+        const string Layout = "one commander at the start node's stand, moved to the stand of each junction the robot is sent to (moved once idle); bystanders fixed";
+        const string RoadmapFileV4 = "robot_vision/configs/v4/roadmap.json";            // P7: the v4 map (the v3 roadmap.json is not read)
+        const string TrialPlanAsset = "WarehouseRobot/Scenario/Config/trial_plan_v4.json";
+        const string ControlFile = "robot_vision/configs/v4/control.json";
+#if UNITY_EDITOR
+        /// <summary>Editor session key: a session's trial_workers config (TrialPlayV4 -workersConfig); "" = the scene's asset.</summary>
+        public const string WorkersOverrideKey = "WarehouseRobot.TrialRunnerV4.WorkersConfig";
+#endif
+        [Serializable] class TrialPlanV4 { public float development_timeout_s; }
+        [Serializable] class ControlDialog { public string wait_text = ""; }
+        [Serializable] class ControlFileV4 { public ControlDialog dialog = new ControlDialog(); }
+        string waitText = "", workersText = "", workersSource = "";
+        SeededRandom stopRng;
+        bool stopShown, thenDirectionPending;
+        string thenCommand;
+        Vector3 thenDirection;
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         RobotRig robot;
@@ -103,6 +121,8 @@ namespace WarehouseRobot.Scenario
         GroundTruthLayer gt;
         TrailRecorder trail;
         TruthLogger truthLog;
+        RunVisualsV4 visuals;          // U4: trail by state, ask markers, instructed path (GroundTruth layer)
+        MinimapV4 minimap;             // U5: the robot's map and the ground-truth map (Game view only)
         Material trailMat;
         readonly Dictionary<string, RoadNode> nodes = new Dictionary<string, RoadNode>();
         TrialsConfig cfg;
@@ -167,7 +187,7 @@ namespace WarehouseRobot.Scenario
                 string local = RepoFile("robot_vision/configs/trials.local.json");
                 cfgName = File.Exists(local) ? "trials.local.json" : "trials.json";
                 cfgText = File.ReadAllText(RepoFile("robot_vision/configs/" + cfgName));
-                roadText = File.ReadAllText(RepoFile("robot_vision/configs/roadmap.json"));
+                roadText = File.ReadAllText(RepoFile(RoadmapFileV4));
                 gtEvalText = File.ReadAllText(RepoFile(GtEvalFile));
                 cfg = JsonUtility.FromJson<TrialsConfig>(cfgText);
                 meta = JsonUtility.FromJson<RoadmapMetaV4>(roadText);
@@ -175,10 +195,19 @@ namespace WarehouseRobot.Scenario
             }
             catch (Exception e)
             {
-                error = "cannot read trials.json, roadmap.json or " + GtEvalFile + ": " + e.Message;
+                error = "cannot read trials.json, " + RoadmapFileV4 + " or " + GtEvalFile + ": " + e.Message;
                 return false;
             }
             if (leakMaxDiff < 0) return Fail(out error, GtEvalFile + " has no leak_max_pixel_diff");
+            try
+            {
+                // development timeout (upgrade_design.md section 6: provisional 420 s until the Stage C rule sets the final one)
+                var plan = JsonUtility.FromJson<TrialPlanV4>(File.ReadAllText(Path.Combine(Application.dataPath, TrialPlanAsset)));
+                if (!(plan.development_timeout_s > 0f)) return Fail(out error, TrialPlanAsset + ": development_timeout_s must be > 0");
+                if (FinalRunGuard.Mode(cfg.mode) == FinalRunGuard.Development) cfg.timeout_s = plan.development_timeout_s;
+                waitText = JsonUtility.FromJson<ControlFileV4>(File.ReadAllText(RepoFile(ControlFile))).dialog.wait_text ?? "";
+            }
+            catch (Exception e) { return Fail(out error, "cannot read " + TrialPlanAsset + " or " + ControlFile + ": " + e.Message); }
 
             robot = FindFirstObjectByType<RobotRig>();
             bridge = FindFirstObjectByType<RobotBridgeClient>();
@@ -196,7 +225,9 @@ namespace WarehouseRobot.Scenario
                 return Fail(out error, $"v4 {cfg.mode} runs are refused: the v4 Unity final-run guard is not decided yet (AUDIT.md section 14, blank B9)");
             if (cfg.dev_seed == cfg.final_seed) return Fail(out error, "dev_seed and final_seed must differ");
             if (Task2Workers.Junctions(nodes.Values, out string problem) == null)
-                return Fail(out error, "Task 2 junctions: " + problem + " (run Tools > Warehouse HRI > Add Worker and Roadmap)");
+                return Fail(out error, "Task 2 junctions: " + problem + " (run Tools > Warehouse v4 > Build v4 Roadmap)");
+            if (nodes[meta.start].kind != RoadNodeKind.Start || nodes[meta.start].workerStand == null)
+                return Fail(out error, $"the start node {meta.start} must be a Start node with a worker stand (v4 map, P8: run Tools > Warehouse v4 > Build v4 Roadmap)");
 
             if (!SetupWorkers(out error)) return false;
 
@@ -211,6 +242,8 @@ namespace WarehouseRobot.Scenario
             trail = gt.GetComponent<TrailRecorder>();
             if (trail == null) trail = gt.gameObject.AddComponent<TrailRecorder>();
             truthLog = gameObject.AddComponent<TruthLogger>();
+            visuals = gt.GetComponent<RunVisualsV4>() ?? gt.gameObject.AddComponent<RunVisualsV4>();
+            minimap = FindFirstObjectByType<MinimapV4>() ?? gameObject.AddComponent<MinimapV4>();
             trailMat = GroundTruthLayer.NewMaterial(new Color(1f, 0.3f, 0.9f, 0.95f));
             outRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
             return true;
@@ -232,7 +265,18 @@ namespace WarehouseRobot.Scenario
             workerTemplate = WorkerV4Config.Parse(workerPrefab.config.text);
             var templateErrors = workerTemplate.Validate();
             if (templateErrors.Count > 0) return Fail(out error, "worker_v4.json: " + string.Join("; ", templateErrors));
-            wcfg = TrialWorkersConfig.Parse(workersConfig.text);
+            workersText = workersConfig.text;
+            workersSource = TrialWorkersAsset;
+#if UNITY_EDITOR
+            string over = UnityEditor.SessionState.GetString(WorkersOverrideKey, "");
+            if (over.Length > 0)
+            {
+                // a declared session config (Avatar/Config/sessions/), given by TrialPlayV4 -workersConfig
+                try { workersText = File.ReadAllText(Path.Combine(Application.dataPath, "..", over)); workersSource = over; }
+                catch (Exception e) { return Fail(out error, "cannot read the session workers config " + over + ": " + e.Message); }
+            }
+#endif
+            wcfg = TrialWorkersConfig.Parse(workersText);
             var errors = wcfg.Validate();
             if (errors.Count > 0) return Fail(out error, "trial_workers_v4.json: " + string.Join("; ", errors));
             try { splitsText = File.ReadAllText(RepoFile(wcfg.data_splits)); }
@@ -290,7 +334,7 @@ namespace WarehouseRobot.Scenario
                     }
                 foreach (var a in nodes.Values)
                 {
-                    if (!a.IsJunction || a.workerStand == null) continue;
+                    if (!a.IsAskNode || a.workerStand == null) continue;          // junctions and the start node A
                     Vector3 d = a.workerStand.position - p;
                     d.y = 0f;
                     if (d.magnitude < b.min_commander_distance_m)
@@ -346,12 +390,13 @@ namespace WarehouseRobot.Scenario
             Directory.CreateDirectory(used);
             GroundTruthFiles.WriteNew(Path.Combine(used, cfgName), cfgText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "roadmap.json"), roadText);
+            GroundTruthFiles.WriteNew(Path.Combine(used, "trial_plan_v4.json"), File.ReadAllText(Path.Combine(Application.dataPath, TrialPlanAsset)));
             GroundTruthFiles.WriteNew(Path.Combine(used, "gt_eval.json"), gtEvalText);
             string robotUnityText = robot.Config.UnityConfigText;
             GroundTruthFiles.WriteNew(Path.Combine(used, robot.Config.UnityConfigName + ".json"), robotUnityText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "control_zoom_source.json"), File.ReadAllText(robot.Config.ZoomConfigPath));
             GroundTruthFiles.WriteNew(Path.Combine(used, "worker_v4.json"), workerPrefab.config.text);
-            GroundTruthFiles.WriteNew(Path.Combine(used, "trial_workers_v4.json"), workersConfig.text);
+            GroundTruthFiles.WriteNew(Path.Combine(used, "trial_workers_v4.json"), workersText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "data_splits.json"), splitsText);
 
             // Leak test from the pose of trial 1's start (run 1's workers in place), with trial 1's ground truth drawn (A, B, path) and the blocked cells.
@@ -383,7 +428,8 @@ namespace WarehouseRobot.Scenario
                 python_map_required = ExpectedRoute,
                 worker_appearance = string.Join(" | ", allWorkers.ConvertAll(w => w.name + ": " + w.LookDescription)),
                 worker_config = WorkerConfigAsset, worker_config_sha256_lf = Sha256(workerPrefab.config.text.Replace("\r\n", "\n")),
-                trial_workers_config = TrialWorkersAsset, trial_workers_config_sha256_lf = Sha256(workersConfig.text.Replace("\r\n", "\n")),
+                trial_workers_config = workersSource, trial_workers_config_sha256_lf = Sha256(workersText.Replace("\r\n", "\n")),
+                roadmap = RoadmapFileV4, forward_command = wcfg.forward_command, scenario = wcfg.scenario, timeout_s = cfg.timeout_s,
                 data_splits = wcfg.data_splits, data_splits_sha256_lf = Sha256(splitsText.Replace("\r\n", "\n")), data_split = plans[0].Split,
                 commander_command = wcfg.commander_command, worker_layout = Layout,
                 bystanders = wcfg.bystanders.count, max_active_avatars = wcfg.max_active_avatars,
@@ -397,7 +443,7 @@ namespace WarehouseRobot.Scenario
             for (int i = 0; i < plans.Count; i++)
                 session.run_workers.Add($"run {i + 1}: commander {plans[i].CommanderLook}" +
                                         (plans[i].BystanderLooks.Count > 0 ? "; bystanders " + string.Join(", ", plans[i].BystanderLooks) : "") +
-                                        $"; {wcfg.commander_command} clips {string.Join(", ", plans[i].AllowedClips)} ({plans[i].Split})");
+                                        $"; clips {string.Join(", ", plans[i].AllowedClips)} ({plans[i].Split})");
             GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, "session.json"), JsonUtility.ToJson(session, true).Replace("\r\n", "\n") + "\n");
 
             if (!leak.passed)
@@ -450,15 +496,14 @@ namespace WarehouseRobot.Scenario
             return $"{meta.start}: x {p.x.ToString("0.000", Inv)}, z {p.z.ToString("0.000", Inv)}, yaw {robot.transform.eulerAngles.y.ToString("0.0", Inv)} deg";
         }
 
-        /// <summary>Robot to A facing the first node; run's workers spawned (once per run): the commander at the first
-        /// junction's stand, the bystanders at theirs.</summary>
+        /// <summary>Robot to A facing its start heading (the Start node's rotation, P8); run's workers spawned (once per run):
+        /// the commander at the start node's stand (it answers the first ask there), the bystanders at theirs.</summary>
         bool ResetForTrial(string goal, int run, out string error)
         {
             error = null;
             var start = nodes[meta.start];
-            var first = start.OnlyNext;
             Vector3 a = start.Position;
-            float yaw = first != null ? Mathf.Atan2(first.Position.x - a.x, first.Position.z - a.z) * Mathf.Rad2Deg : start.transform.eulerAngles.y;
+            float yaw = start.transform.eulerAngles.y;
             Teleport(new Vector3(a.x, robot.transform.position.y, a.z), yaw);
             bridge.ReachedEndPoint = false;
             goalNode = nodes[goal];
@@ -466,12 +511,12 @@ namespace WarehouseRobot.Scenario
 
             DestroyWorkers();
             runPlan = plans[run - 1];
-            var j1 = first != null && first.IsJunction ? first : null;
-            if (j1 == null || j1.workerStand == null) return Fail(out error, "the first node after A is not a junction with a worker stand");
-            commander = Spawn("WorkerV4_Commander", runPlan.CommanderLook, wcfg.commander_worker_id, j1.workerStand.position, j1.workerStand.rotation, run, out error);
+            commander = Spawn("WorkerV4_Commander", runPlan.CommanderLook, wcfg.commander_worker_id, start.workerStand.position, start.workerStand.rotation, run, out error);
             if (commander == null) return false;
             commander.IsCommander = true;
-            commanderAt = j1;
+            commanderAt = start;
+            stopRng = SeededRandom.For(sessionSeed, run, 9973);         // the STOP scenario's own stream (distance never drawn: first moment in range)
+            stopShown = thenDirectionPending = false;
             for (int k = 0; k < bystanderStands.Count; k++)
             {
                 var s = bystanderStands[k];
@@ -521,13 +566,26 @@ namespace WarehouseRobot.Scenario
                 commanderAt = moveTo;
                 moveTo = null;
             }
-            if (!question.Visible)
+            UpdateStopScenario();
+            // "One moment..." (Python's wait text) continues the ask: the direction that follows a WAIT belongs to it
+            bool waiting = waitText.Length > 0 && bridge.ScreenText == waitText;
+            if (!question.Visible && !waiting)
             {
                 commander.SetQuestionVisible(false);
-                commander.CancelPending();      // a gesture that has not started belongs to the question that is gone
+                // a gesture that has not started belongs to the question that is gone (a STOP shown while driving does not)
+                if (!(commander.Busy && commander.Current.command == WorkerV4Config.Stop)) commander.CancelPending();
+                thenDirectionPending = false;
                 return;
             }
             commander.SetQuestionVisible(true);
+            if (thenDirectionPending && !commander.Busy && moveTo == null)
+            {
+                // wait_then_direction: the WAIT has returned; now the direction, within the same ask (IgnoreQuestion: the
+                // question appeared before the WAIT, so the gesture still starts after it)
+                thenDirectionPending = false;
+                Show(thenCommand, thenDirection, true, "after the WAIT");
+                return;
+            }
             if (servedAsk == question.Ask || moveTo != null || commander.Busy || commanderAt == null) return;
             servedAsk = question.Ask;
             var cmd = commanderAt.CommandToward(goalNode);
@@ -537,16 +595,51 @@ namespace WarehouseRobot.Scenario
                 Debug.LogError($"[TrialRunnerV4] ask {question.Ask} at {commanderAt.name}: no branch leads to {goalNode.name}; the commander shows nothing");
                 return;
             }
+            // PROCEED for the branch straight ahead (upgrade_design.md section 2), POINT (option A stance) otherwise
+            string direction = cmd == GestureCommand.FORWARD && !string.IsNullOrEmpty(wcfg.forward_command) ? wcfg.forward_command : wcfg.commander_command;
+            Vector3 dir = TrialWorkerGeometry.BranchDirection(commanderAt.Position, next.Position);
+            if (wcfg.scenario == TrialWorkersConfig.ScenarioWaitThenDirection)
+            {
+                thenCommand = direction;
+                thenDirection = dir;
+                thenDirectionPending = Show(WorkerV4Config.Wait, dir, false, $"first, then {direction} toward {cmd}");
+                return;
+            }
+            Show(direction, dir, false, cmd.ToString());
+        }
+
+        bool Show(string command, Vector3 direction, bool ignoreQuestion, string what, float holdS = 0f)
+        {
             var req = new GestureRequest
             {
-                Command = wcfg.commander_command, AllowedClips = runPlan.AllowedClips,
-                PointDirection = TrialWorkerGeometry.BranchDirection(commanderAt.Position, next.Position),
+                Command = command, AllowedClips = runPlan.AllowedFor(command), PointDirection = direction,
+                IgnoreQuestion = ignoreQuestion, HoldS = holdS,
             };
             if (!commander.Request(req, out string error))
-                Debug.LogError($"[TrialRunnerV4] ask {question.Ask} at {commanderAt.name}: the commander cannot show {cmd}: {error}");
-            else
-                Debug.Log($"[TrialRunnerV4] ask {question.Ask} at {commanderAt.name} (\"{bridge.ScreenText}\"): commander {commander.lookId} shows {cmd} " +
-                          $"with {commander.Current.clip}, {commander.Current.arm} arm");
+            {
+                Debug.LogError($"[TrialRunnerV4] ask {question.Ask} at {commanderAt.name}: the commander cannot show {command} ({what}): {error}");
+                return false;
+            }
+            Debug.Log($"[TrialRunnerV4] ask {question.Ask} at {commanderAt.name} (\"{bridge.ScreenText}\"): commander {commander.lookId} shows {command} " +
+                      $"({what}) with {commander.Current.clip}, {commander.Current.arm} arm");
+            return true;
+        }
+
+        /// <summary>stop_while_driving (upgrade_design.md section 6): once per run, while the robot drives toward the node where
+        /// the commander already stands and is between stop.distance_m from it (and the commander has noticed it), the
+        /// commander shows STOP for a hold drawn from stop.hold_s, then lowers it.</summary>
+        void UpdateStopScenario()
+        {
+            if (wcfg.scenario != TrialWorkersConfig.ScenarioStop || stopShown || moveTo != null || commander.Busy || commanderAt == null) return;
+            string st = bridge.State ?? "";
+            if (!st.StartsWith("navigate") || !commander.Noticed) return;
+            Vector3 d = commander.transform.position - robot.transform.position;
+            d.y = 0f;
+            float dist = d.magnitude;
+            if (dist < wcfg.stop.distance_m[0] || dist > wcfg.stop.distance_m[1]) return;
+            stopShown = true;
+            float hold = stopRng.Range(wcfg.stop.hold_s);
+            Show(WorkerV4Config.Stop, Vector3.zero, true, $"STOP while driving, {dist.ToString("0.0", Inv)} m, hold {hold.ToString("0.0", Inv)} s", hold);
         }
 
         // ---------------- trials (scoring and truth files as the v3 TrialRunner) ----------------
@@ -592,8 +685,7 @@ namespace WarehouseRobot.Scenario
             Vector3 a = nodes[meta.start].Position, gpos = nodes[goal].Position;
             var shown = new List<ShownRecord>();
             var placed = new HashSet<string>();
-            var first = nodes[meta.start].OnlyNext;
-            if (first != null && first.IsJunction) Place(first, shown, placed);
+            Place(nodes[meta.start], shown, placed);                // the commander answers the first ask at A (P8)
             int collisionBase = robot.Collisions != null ? robot.Collisions.Records.Count : 0;
             var body = robot.GetComponent<Collider>();
             if (body == null) body = robot.GetComponentInChildren<Collider>();
@@ -615,6 +707,9 @@ namespace WarehouseRobot.Scenario
             truthLog.Begin(Path.Combine(runDir, GroundTruthFiles.TruthFile), allWorkers, workerTemplate.truth_log.interval_s);
             question = new QuestionWatch(workerTemplate.question.prompt);
             servedAsk = 0;
+            visuals.Begin(gt, robot, bridge, goalNode, workerTemplate.question.prompt, () => commanderAt,
+                          () => commander != null && commander.CurrentSpec != null ? commander.Current.command : "-");
+            minimap.BeginRun(goalNode.transform);
             trialActive = true;
 
             Vector3 last = robot.transform.position, progressPos = last;
@@ -665,6 +760,7 @@ namespace WarehouseRobot.Scenario
             }
 
             trialActive = false;
+            visuals.End();
             if (commander != null) { commander.SetQuestionVisible(false); commander.CancelPending(); }
             bridge.TrialRunning = false;
             robot.Drive.Stop();

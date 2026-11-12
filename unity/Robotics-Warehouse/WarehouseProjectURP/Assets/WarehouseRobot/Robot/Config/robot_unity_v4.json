@@ -35,8 +35,11 @@
     "near_m": 0.1,
     "far_m": 100.0,
     "pan_min_deg": -180.0,
-    "pan_max_deg": 180.0
+    "pan_max_deg": 180.0,
+    "tilt_min_deg": 0.0,
+    "tilt_max_deg": 35.0
   },
+  "pan_tilt_tilt_note": "2026-11-12 (P6, Avatar/Config/upgrade_design.md section 5; supersedes AUDIT.md 14.15 decision (c)): the pan-tilt camera tilts up toward the commander's hand while it is read (command tilt_deg, -1 = the default tilt_deg 0, level); SetTiltDeg clamps to tilt_min_deg..tilt_max_deg, which must equal configs/v4/control.json zoom.tilt_min_deg..tilt_max_deg (checked at load). Every frame_pan_tilt header reports the tilt it was rendered with. The 360 camera stays level.",
   "debug": {
     "keyboard_pan_speed_dps": 60.0
   },

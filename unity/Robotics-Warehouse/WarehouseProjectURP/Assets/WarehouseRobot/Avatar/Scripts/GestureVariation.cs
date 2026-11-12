@@ -73,6 +73,7 @@ namespace WarehouseAvatar
         public Vector3 sway_amplitude_m, sway_frequency_hz, sway_phase_rad;
         /// <summary>The sway amplitude while the pose is held (variation.hold_sway_amplitude_m; 0 = held still).</summary>
         public Vector3 hold_sway_amplitude_m;
+        public float swing_hz;            // PROCEED only (0 otherwise)
     }
 
     public static class GestureVariation
@@ -109,6 +110,9 @@ namespace WarehouseAvatar
             p.sway_phase_rad = new Vector3((float)(rng.NextDouble() * 2 * Math.PI), (float)(rng.NextDouble() * 2 * Math.PI), (float)(rng.NextDouble() * 2 * Math.PI));
             // drawn last, so every value above is the same as before the hold amplitude existed (Phase 2C)
             p.hold_sway_amplitude_m = new Vector3(rng.Range(v.hold_sway_amplitude_m), rng.Range(v.hold_sway_amplitude_m), rng.Range(v.hold_sway_amplitude_m));
+            // PROCEED (2026-11-12): the swing rate, drawn after everything else and only for PROCEED, so the streams of
+            // POINT, WAIT and STOP are exactly as before
+            if (command == WorkerV4Config.Proceed) p.swing_hz = rng.Range(v.proceed_rate_hz);
             return p;
         }
 
