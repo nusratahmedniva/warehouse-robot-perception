@@ -1506,3 +1506,33 @@ Every session: seed 1, sunbox_f1 / sunbox_m1 alternating, development clips, thr
   with them either, and the arm ratio is measured from the YOLO keypoints, not from the replay. Not fixed here (`calibrate_v4.py` is not an
   allowed change of this task). Also for Anisha: with frame-level coverage, which counts every frame of the arm's movement, B12's coverage 0.8
   is out of reach for every threshold, so B12 cannot move any threshold on these data.
+
+### 2026-11-13, Stage D4 (3 runs per condition with the calibrated configs of commit fa226f8)
+
+Rule declared before the runs (`upgrade_design.md` section 13, commit 582212a, replacing the D4 rule of section 11): stop only on a wrong-branch
+decision; aborts are recorded and reported per look and condition. Seed 1 (goals E2, E3, E1), runs 1 and 3 sunbox_f1, run 2 sunbox_m1; leak
+test passed (Unity and Python) and every `truth.jsonl` accepted in all five sessions. Run protocol: free memory 3.4 to 4.9 GB, Best performance;
+Chrome, the Claude app, the NVIDIA overlay and warp-svc running (reported, not closed).
+
+| id | Unity + bridge folders | SUCCESS | dialogs sunbox_f1 (correct / wrong / abort) | dialogs sunbox_m1 | aborts |
+|---|---|---|---|---|---|
+| R1 zoom on | `trials_development_Task2_20261113_014205` + `bridge_guide_20261113_014023` | 3 / 3 | 5 / 0 / 0 | 3 / 0 / 0 | none |
+| R2 zoom off | `..._20261113_014921` + `..._014803` | 3 / 3 | 5 / 0 / 0 | 3 / 0 / 0 | none |
+| R3 bystanders | `..._20261113_015635` + `..._015518` | 3 / 3 | 5 / 0 / 0 | 3 / 0 / 0 | none |
+| R4 WAIT then direction | `..._20261113_020350` + `..._020230` | 0 / 3 | 0 / 0 / 2 | 1 / 0 / 1 | f1 at A twice (its WAIT unread: "cues not met"), m1 at J1 (a WAIT read briefly, then unclear) |
+| R5 STOP while driving | `..._20261113_020709` + `..._020614` | 2 / 3 | 5 / 0 / 0 | 0 / 0 / 1 | m1 at A (PROCEED unclear after 2 asks); STOP stopped the robot in 3 of 3 (3.0, 5.9, 11.3 s) |
+
+**Rule: MET, 0 wrong-branch decisions** (34 dialogs: 30 correct, 4 aborts; 11 of 15 runs SUCCESS). Per look: sunbox_f1 20 correct, 2 aborts
+(both its unreadable WAIT); sunbox_m1 10 correct, 2 aborts. sunbox_f1's WAIT is a known per-look finding (D3: frame accuracy 0.0 at coverage
+0.07), not fixed.
+
+### 2026-11-13, B7 test assignment (decided by Nusrat, PENDING ANISHA'S CONFIRMATION; recorded before the Stage F tests)
+
+- **zoom_on, zoom_off, bystanders:** the development looks (sunbox_m1 and sunbox_f1, alternating by run) with the **test** clips.
+- **unseen_look:** sunbox_f2 with the **test** clips.
+- **Conflict for Anisha to resolve when she confirms:** `data_splits_v4.guard_run` refuses a run that mixes development and test data (looks
+  and clips together), and `hri_eval_final_v4.py` applies it with `final_evaluation=True`; `final_plan.json` `settings_note` also says every
+  final session lies wholly in the test split. As decided, the zoom_on, zoom_off and bystanders finals mix development looks with test clips,
+  so the current Python final evaluation would refuse them (unseen_look passes). Her guard needs a per-setting rule (looks from the setting's
+  split, clips from the test split), or B7 changes. Until she fills `final_plan.json` `test_assignment`, the Unity final guard (Stage F)
+  refuses every final run.
