@@ -393,3 +393,14 @@ Dated entries, each written before the changed design is tested in a Play sessio
      `trial_workers_v4.json` and all three session copies; `max_active_avatars` stays 4.
   4. *R3 again:* 10 runs, seed 1, development looks, as declared in `recording_plan_d1.md` apart from the two points above.
      The calibration (D3) reports the failed R3 session but takes the bystander measures from the new one only.
+- **2026-11-13 (Stage D4 rule, declared by Nusrat after D3 and before any D4 run).**
+  1. *Changed rule (replaces the D4 rule of section 11):* D4 **stops only on a wrong-branch decision** (a dialog that ends with a branch other
+     than the one toward goal B). Aborts no longer stop it: they are recorded and reported per look and per condition. Reason: D3 changed
+     only the measured arm ratio (no swept value reached coverage 0.8), so the known abort causes remain, above all sunbox_f1's WAIT, which
+     is unreadable in the development data (frame accuracy 0.0 at coverage 0.07). It is reported as a per-look finding and not fixed;
+     sunbox_f1 is not replaced.
+  2. *Sessions:* as `recording_plan_d1.md` "After the calibration": one 3-trial session per condition R1 to R5 (15 runs), seed 1
+     (goals E2, E3, E1), development looks alternating (runs 1 and 3 sunbox_f1, run 2 sunbox_m1), the calibrated configs of commit D3;
+     R2 with `--control-config configs/v4/control_zoom_off.json`, R3 to R5 with their `Avatar/Config/sessions/` copies (R3: the two
+     fixed bystander stands). Leak and truth checks as in D2.
+  3. *Unit of the rule:* every dialog of the 15 runs, scored against goal B with the roadmap (`python_trial_###.json` junction reads).
