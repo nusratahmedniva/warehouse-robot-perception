@@ -92,7 +92,7 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertEqual(fz.blanks(REPO), want)
 
     def test_decided_values_of_the_plan_and_the_blanks_still_open(self):
-        """Decided 2026-10-24 by Anisha; B7, B9 and B11 are open and must keep the freeze refused (the real look and clip names, B8, are in since 2026-11-08)."""
+        """Decided 2026-10-24 by Anisha; B7, B9 and B11 filled 2026-11-13 by Nusrat in her absence, pending her confirmation (AUDIT.md section 15)."""
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
         v3 = json.loads((ROOT / "configs/trials.json").read_text())
         self.assertEqual((plan["task"], plan["dev_seed"], plan["final_seed"], plan["runs_per_setting"], plan["success_radius_m"]),
@@ -105,10 +105,14 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertIn("RTX 3060", plan["machine"])
         self.assertIn("highest development accuracy", plan["threshold_rule"])
         self.assertIn("coverage >= 0.8", plan["threshold_rule"])
-        if not REC["frozen"]:
-            for k in ("test_assignment", "unity_files_and_guard", "acceptance_criteria"):
-                self.assertIsNone(plan[k], k)
-            self.assertEqual(len(fz.blanks(REPO)), 3)                                              # B7, B9, B11 (the real names were decided 2026-11-08)
+        # 2026-11-13: B7 (plan (b): sunbox_f2 + test clips in every setting, unseen_look a repeat of zoom_on), B9 and B11 filled
+        for k in ("test_assignment", "unity_files_and_guard", "acceptance_criteria"):
+            self.assertIsNotNone(plan[k], k)
+        self.assertEqual(plan["test_assignment"]["unseen_look"]["repeat_of"], "zoom_on")
+        for s, a in plan["test_assignment"].items():
+            self.assertEqual(a["looks"], ["sunbox_f2"], s)
+        self.assertEqual(len(plan["acceptance_criteria"]), 5)
+        self.assertEqual(fz.blanks(REPO), [])
 
     def test_the_goal_order_of_the_final_seed_is_that_of_the_v3_final(self):
         import hri_trials as ht
@@ -204,6 +208,10 @@ class FreezeMechanicsTests(unittest.TestCase):
 
     def test_freeze_is_refused_while_a_blank_is_left(self):
         repo = make_repo(Path(self.tmp.name) / "b", fill_plan=False)
+        plan = repo / fz.PLAN_REL                                    # the real plan has no blank since 2026-11-13: make one
+        d = json.loads(plan.read_text())
+        d["acceptance_criteria"] = None
+        plan.write_text(json.dumps(d))
         fz.refresh_list(repo)
         with self.assertRaisesRegex(SystemExit, "blanks left"):
             fz.freeze(repo)
@@ -231,6 +239,75 @@ class FreezeMechanicsTests(unittest.TestCase):
     def test_the_freeze_record_itself_is_not_hashed(self):
         fz.freeze(self.repo)
         self.assertNotIn(fz.FROZEN_REL, fz.read(self.repo)["sha256"])
+
+
+class UnityFilesFreezeTests(unittest.TestCase):
+    """2026-11-13 (Nusrat in Anisha's absence, AUDIT.md section 15): the freeze also records the Unity files of the B9 list, keyed by
+    their repository path, which is what the Unity final guard (FinalGuardV4) looks up."""
+
+    LIST = "unity/P/Assets/WarehouseRobot/Avatar/Config/final_v4.json"
+    FILES = ["unity/P/Assets/Scenes/WarehouseRobot_v4.unity", "unity/P/Assets/WarehouseRobot/Bridge/Config/bridge_unity_v4.json", LIST]
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = make_repo(Path(self.tmp.name))
+        plan = self.repo / fz.PLAN_REL
+        d = json.loads(plan.read_text())
+        d["unity_files_and_guard"] = {"freeze_list": self.LIST, "freeze_list_key": "freeze_files", "guard": "FinalGuardV4"}
+        plan.write_text(json.dumps(d))
+        for f in self.FILES[:-1]:
+            (self.repo / f).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / f).write_text(f"content of {f}\n")
+        (self.repo / self.LIST).parent.mkdir(parents=True, exist_ok=True)
+        (self.repo / self.LIST).write_text(json.dumps({"freeze_files": self.FILES}))
+        fz.refresh_list(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_the_list_comes_from_the_plan_and_the_unity_config(self):
+        self.assertEqual(fz.unity_files(self.repo), sorted(self.FILES))
+
+    def test_freeze_records_every_unity_file_by_path_with_the_lf_hash(self):
+        rec = fz.freeze(self.repo)
+        self.assertEqual(set(rec["unity_files"]), set(self.FILES))
+        for f in self.FILES:
+            self.assertEqual(rec["unity_files"][f], hashlib.sha256((self.repo / f).read_bytes().replace(b"\r\n", b"\n")).hexdigest())
+        # the form the Unity guard reads: "<path>": "<64 hex>" in frozen.json
+        text = (self.repo / fz.FROZEN_REL).read_text()
+        for f in self.FILES:
+            self.assertIn(f'"{f}": "{rec["unity_files"][f]}"', text)
+        self.assertEqual(fz.problems(self.repo), [])
+
+    def test_a_changed_or_removed_unity_file_breaks_the_freeze(self):
+        fz.freeze(self.repo)
+        scene = self.repo / self.FILES[0]
+        scene.write_text(scene.read_text() + "moved a light\n")
+        self.assertEqual(fz.problems(self.repo), [f"{self.FILES[0]} changed after freezing"])
+        with self.assertRaisesRegex(SystemExit, "freeze is broken"):
+            fz.require_frozen(self.repo, require_models=False)
+        scene.unlink()
+        self.assertIn(f"{self.FILES[0]} added or removed since freezing", fz.problems(self.repo))
+
+    def test_line_endings_of_unity_files_do_not_matter(self):
+        fz.freeze(self.repo)
+        f = self.repo / self.FILES[1]
+        f.write_bytes(f.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        self.assertEqual(fz.problems(self.repo), [])
+
+    def test_freeze_is_refused_while_a_listed_unity_file_is_missing(self):
+        (self.repo / self.FILES[0]).unlink()
+        with self.assertRaisesRegex(SystemExit, "Unity file"):
+            fz.freeze(self.repo)
+        self.assertFalse(fz.read(self.repo)["frozen"])
+
+    def test_the_real_plan_names_the_unity_b9_list_and_every_file_exists(self):
+        files = fz.unity_files(REPO)
+        unity = json.loads((REPO / json.loads((REPO / fz.PLAN_REL).read_text())["unity_files_and_guard"]["freeze_list"]).read_text())
+        self.assertEqual(files, sorted(unity["freeze_files"]))
+        self.assertIn("unity/Robotics-Warehouse/WarehouseProjectURP/Assets/Scenes/WarehouseRobot_v4.unity", files)
+        for f in files:
+            self.assertTrue((REPO / f).is_file(), f)
 
 
 class ScriptTests(unittest.TestCase):

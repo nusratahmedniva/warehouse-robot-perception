@@ -43,12 +43,25 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
-        public void Config_B7_DevelopmentLooksForThreeSettings_TheTestLookForUnseenLook_TestClipsEverywhere()
+        public void Config_B7_PlanB_TheTestLookAndTestClipsInEverySetting()
+        {
+            // 2026-11-13: B7 = plan (b), decided by Nusrat in Anisha's absence, pending her confirmation (upgrade_design.md section 13)
+            foreach (var s in Final().settings)
+            {
+                Assert.AreEqual("test", s.look_split, s.name);
+                Assert.AreEqual("test", s.clip_split, s.name);
+            }
+        }
+
+        [Test]
+        public void UnseenLook_IsARepeatOfZoomOn()
         {
             var f = Final();
-            foreach (var n in new[] { "zoom_on", "zoom_off", "bystanders" }) Assert.AreEqual("development", f.Setting(n).look_split, n);
-            Assert.AreEqual("test", f.Setting("unseen_look").look_split);
-            foreach (var s in f.settings) Assert.AreEqual("test", s.clip_split, s.name);
+            var a = Workers(f.Setting("zoom_on").workers_config);
+            var b = Workers(f.Setting("unseen_look").workers_config);
+            Assert.AreEqual(JsonUtility.ToJson(a), JsonUtility.ToJson(b), "the same config apart from the session_note (not parsed)");
+            Assert.AreEqual(f.Setting("zoom_on").look_split, f.Setting("unseen_look").look_split);
+            Assert.AreEqual(f.Setting("zoom_on").clip_split, f.Setting("unseen_look").clip_split);
         }
 
         [Test]
@@ -279,37 +292,22 @@ namespace WarehouseAvatar.Tests
         // ---------------------------------------------------------------- final plans (B7)
 
         [Test]
-        public void PlanFinal_DevelopmentLookSettings_AlternateTheDevelopmentLooks_WithTestClipsOnly()
+        public void PlanFinal_EverySetting_UsesOnlyTheTestLookAndTestClips_TheBystandersWearItToo()
         {
             var s = Splits();
-            foreach (var name in new[] { "zoom_on", "zoom_off", "bystanders" })
+            foreach (var setting in Final().settings)
             {
-                var setting = Final().Setting(name);
-                var looks = new List<string>();
-                for (int run = 1; run <= 4; run++)
+                for (int run = 1; run <= 3; run++)
                 {
                     var p = TrialRunWorkers.PlanFinal(run, setting, Workers(setting.workers_config), Template(), s, out string error);
-                    Assert.IsNotNull(p, name + ": " + error);
-                    foreach (var l in p.AllLooks()) Assert.AreEqual("development", s.Looks[l], $"{name} run {run} look {l}");
-                    foreach (var c in p.AllowedClips) Assert.AreEqual("test", s.Clips[c], $"{name} clip {c}");
-                    CollectionAssert.AreEquivalent(new[] { "point_mixamo_02" }, p.AllowedFor("POINT"), name);
-                    CollectionAssert.AreEquivalent(new[] { "proceed_ik_03" }, p.AllowedFor("PROCEED"), name);
-                    Assert.AreEqual(name == "bystanders" ? 2 : 0, p.BystanderLooks.Count, name);
-                    looks.Add(p.CommanderLook);
+                    Assert.IsNotNull(p, setting.name + ": " + error);
+                    foreach (var l in p.AllLooks()) Assert.AreEqual("sunbox_f2", l, $"{setting.name} run {run}");
+                    foreach (var c in p.AllowedClips) Assert.AreEqual("test", s.Clips[c], $"{setting.name} clip {c}");
+                    CollectionAssert.AreEquivalent(new[] { "point_mixamo_02" }, p.AllowedFor("POINT"), setting.name);
+                    CollectionAssert.AreEquivalent(new[] { "proceed_ik_03" }, p.AllowedFor("PROCEED"), setting.name);
+                    Assert.AreEqual(setting.name == "bystanders" ? 2 : 0, p.BystanderLooks.Count, setting.name);
                 }
-                CollectionAssert.AreEqual(new[] { "sunbox_f1", "sunbox_m1", "sunbox_f1", "sunbox_m1" }, looks, name);
             }
-        }
-
-        [Test]
-        public void PlanFinal_UnseenLook_UsesTheTestLookAndTestClips()
-        {
-            var s = Splits();
-            var setting = Final().Setting("unseen_look");
-            var p = TrialRunWorkers.PlanFinal(1, setting, Workers(setting.workers_config), Template(), s, out string error);
-            Assert.IsNotNull(p, error);
-            Assert.AreEqual("sunbox_f2", p.CommanderLook);
-            foreach (var c in p.AllowedClips) Assert.AreEqual("test", s.Clips[c], c);
         }
 
         [Test]
@@ -318,10 +316,10 @@ namespace WarehouseAvatar.Tests
             var s = Splits();
             var setting = Final().Setting("zoom_on");
             var w = Workers(setting.workers_config);
-            w.looks = new List<string> { "sunbox_f2" };
+            w.looks = new List<string> { "sunbox_m1" };
             Assert.IsNull(TrialRunWorkers.PlanFinal(1, setting, w, Template(), s, out string error));
-            StringAssert.Contains("not a development look", error);
-            var devClips = new FinalSettingV4 { name = "x", workers_config = setting.workers_config, look_split = "development", clip_split = "development" };
+            StringAssert.Contains("not a test look", error);
+            var devClips = new FinalSettingV4 { name = "x", workers_config = setting.workers_config, look_split = "test", clip_split = "development" };
             Assert.IsNull(TrialRunWorkers.PlanFinal(1, devClips, Workers(setting.workers_config), Template(), s, out error));
             StringAssert.Contains("not a final-evaluation split", error);
             var placeholder = DataSplitsV4.Parse(File.ReadAllText(Path.Combine(RepoRoot, "robot_vision/configs/v4/data_splits.json"))

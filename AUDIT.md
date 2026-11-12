@@ -1585,3 +1585,23 @@ repetition declared here first). No performance thresholds: results are reported
    trial 1 starts is reported, not counted).
 5. **Run protocol recorded**: the bridge `run_info.json` machine state (power mode, power source) and `resources.csv`, and the programs
    running and free memory before the session (written in the session report).
+
+### 2026-11-13, B7, B9 and B11 decided by Nusrat in Anisha's absence (PENDING HER CONFIRMATION; `upgrade_design.md` section 13)
+
+- **B7 = plan (b):** every final uses the test look sunbox_f2 with the test clips (point_mixamo_02, proceed_ik_03), the only plan the unchanged
+  `guard_run` accepts for all four settings. **unseen_look is a repeat of zoom_on** (the same configs, a second 20-run session: a repeatability
+  measure); research question 4 (an unseen look) is answered by comparing the finals with the development results. **In the bystanders
+  setting every person wears sunbox_f2**, so the commander can be told apart only by behaviour (the gesture after the question).
+- **B11 adopted:** the five validity criteria above, now `final_plan.json` `acceptance_criteria`. No performance thresholds.
+- **B9 in the freeze:** `final_plan.json` `unity_files_and_guard` names `Avatar/Config/final_v4.json` (`freeze_files`) and the Unity guard;
+  `freeze_v4.py` records their LF-normalised SHA-256 under `unity_files`.
+- **Changes in Anisha's files (allowed by Nusrat in this task):**
+  - `configs/v4/final_plan.json`: `test_assignment` (plan (b), per setting), `unity_files_and_guard`, `acceptance_criteria` filled, their
+    notes, `status` and the `unseen_look` note updated (no blank left; not frozen).
+  - `freeze_v4.py`: `unity_files()` (the B9 list read through the plan); the freeze records `unity_files` and refuses while a listed file is
+    missing; `problems()` (so `require_frozen`, the server's final mode and the final evaluation) finds a changed, added or removed Unity
+    file; the report lists them. `frozen.json` itself is not touched: the freeze is run by Nusrat, by hand.
+  - `tests/test_v4_frozen.py`: new `UnityFilesFreezeTests` (6 tests); the decided-values test now expects the three fields filled and no
+    blank; the blank-refusal test makes its own blank (the real plan has none).
+- Unity: `final_v4.json` `look_split` "test" for every setting; the four `sessions/final_*.json` notes; `FinalGuardV4Tests` (plan (b) in every
+  setting, unseen_look identical to zoom_on).

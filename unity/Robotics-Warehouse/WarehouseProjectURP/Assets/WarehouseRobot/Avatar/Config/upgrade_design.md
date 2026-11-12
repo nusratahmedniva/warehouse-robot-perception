@@ -431,3 +431,23 @@ Dated entries, each written before the changed design is tested in a Play sessio
      `bridge_unity_v4.json`, `robot_unity_v4.json`, `worker_v4.json`, the prefab `WorkerV4.prefab`, `trial_workers_v4.json`, `final_v4.json`,
      the four `sessions/final_*.json` and `trial_plan_v4.json`. Code is pinned by the commit recorded in `session.json`. The avatar look
      assets are third-party and not in git, so they cannot be frozen by hash; each final session records their appearance text as now.
+- **2026-11-13 (decisions by Nusrat in Anisha's absence, PENDING HER CONFIRMATION; recorded before any change they cause).**
+  1. *B7 = plan (b):* every final uses the test look sunbox_f2 with the test clips (direction scenario: point_mixamo_02, proceed_ik_03),
+     the only plan Anisha's unchanged `guard_run` accepts for all four settings (check of 2026-11-13, AUDIT.md section 15).
+     `final_v4.json` `look_split` becomes "test" for every setting; `final_plan.json` `test_assignment` is filled accordingly.
+     **unseen_look is a REPEAT of zoom_on** (the same Unity and Python configs, a second independent session of 20 runs): it measures
+     repeatability. The unseen-look question (RQ4) is answered by comparing the finals (sunbox_f2, never seen in development) with the
+     development results (sunbox_m1, sunbox_f1). **In the bystanders setting every person wears sunbox_f2**, so the commander can be told
+     apart from the bystanders only by behaviour (the gesture after the question), not by appearance.
+  2. *B11 adopted:* the five validity criteria of AUDIT.md section 15 (leak test passed in Unity and Python; every outcome recorded;
+     every truth and run file accepted; no watchdog stop after start-up; run protocol recorded) decide whether a final session is valid.
+     No performance thresholds. Written to `final_plan.json` `acceptance_criteria`.
+  3. *B9 in the freeze:* `final_plan.json` `unity_files_and_guard` names `final_v4.json` (its `freeze_files`) and the Unity guard;
+     `freeze_v4.py` records the LF-normalised SHA-256 of every file on that list under `"unity_files"` in `frozen.json` (keyed by the
+     repository path, which is what `FinalGuardV4` looks up), and its checks (`problems`, `require_frozen`, so also the server's final mode)
+     find a changed or missing Unity file. Tests in `tests/test_v4_frozen.py`. The freeze itself is run by Nusrat, by hand; the assistant
+     never runs `--freeze` and never writes `frozen.json`.
+  4. *Rehearsal before any final:* one 3-run DEVELOPMENT session in batch mode (`-batchmode`) with the zoom_on final workers config
+     (`sessions/final_zoom_on.json` via `-workersConfig`, development mode, so development looks and clips) and the server as in the
+     zoom_on final apart from `--final-setting` (`--control-config configs/v4/control_zoom_on.json`), followed by every B11 check, to show
+     batch mode, the run-protocol logging and the checks work end to end. Not a result.
