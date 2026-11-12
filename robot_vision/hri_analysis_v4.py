@@ -48,6 +48,7 @@ import gesture_data as gd
 import gt_path
 import hri_analysis as ha
 import hri_control as hc
+import hri_control_v4 as hv
 import hri_eval_dev_v4 as ev
 import hri_trials as ht
 
@@ -517,7 +518,7 @@ def analyse(sessions: list, cfg: dict | None = None, final: bool = False, repo: 
     gcfg, ecfg = gd.load_config(), ev.load_config()
     gt_cfg = gt_path.load_config()
     splits = ds.load()
-    road = hc.Roadmap(hc.load_json("configs/roadmap.json"))
+    road = hv.load_roadmap(hv.roadmap_path(hv.load_control()[1]))      # P7 (2026-11-12): the v4 map
     if final:
         fz.require_frozen(repo)
         splits = ds.load(repo / "robot_vision/configs/v4/data_splits.json")

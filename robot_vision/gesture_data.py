@@ -63,6 +63,7 @@ class TruthRow:
     phase: str
     is_commander: bool
     clip: str = ""
+    ankle_height_m: float | None = None      # optional (P1, 2026-11-12): the avatar's ankles above the floor; absent in older sessions
 
 
 def _parse_line(obj: dict, n: int, where: str, cfg: dict) -> TruthRow:
@@ -89,8 +90,12 @@ def _parse_line(obj: dict, n: int, where: str, cfg: dict) -> TruthRow:
     clip = obj.get("clip", "")
     if not isinstance(clip, str):
         raise bad(f"field 'clip' must be a string ({clip!r})")
+    ankle = obj.get("ankle_height_m")
+    if ankle is not None and not (_is_num(ankle) and 0.0 <= float(ankle) < 0.5):
+        raise bad(f"field 'ankle_height_m' must be a number in [0, 0.5) m ({ankle!r})")
     return TruthRow(n, float(obj["time_s"]), obj["worker_id"], obj["look"], float(obj["x"]), float(obj["z"]),
-                    obj["true_command"], float(obj["point_angle_deg"]), obj["arm"], obj["phase"], obj["is_commander"], clip)
+                    obj["true_command"], float(obj["point_angle_deg"]), obj["arm"], obj["phase"], obj["is_commander"], clip,
+                    float(ankle) if ankle is not None else None)
 
 
 def parse_truth(lines, cfg: dict | None = None, where: str = "truth.jsonl") -> list[TruthRow]:

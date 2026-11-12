@@ -1,0 +1,10 @@
+{
+  "label": "v4 perception settings that are not in the v3 configs (read by hri_perception_v4.py; the v3 file configs/hri_perception.json is unchanged).",
+  "declared": "2026-11-12 by Nusrat during Anisha's absence (P1; AUDIT.md section 15; Avatar/Config/upgrade_design.md section 3), before any development session that records the truth field ankle_height_m.",
+  "ankle_height_m": 0.0,
+  "status": "not measured yet: 0.0 is the v3 behaviour (ankles treated as floor points)",
+  "why": {
+    "ankle_height_m": "The 360 distance from the ankle keypoints (hri_perception.person_distance, source 'ankles') treats them as floor points, so every distance is too long by about d * h_ankle / (h_cam - h_ankle) (+0.105 m at 2.0 m for an ankle 0.08 m high and the camera at 1.60 m). The value is MEASURED, never fitted to distance errors: the median of the truth field ankle_height_m over all rows of the development looks (sunbox_m1, sunbox_f1) with phase idle (standing), from the first development session that has the field. The session folder is recorded in 'measured_from'."
+  },
+  "measured_from": ""
+}

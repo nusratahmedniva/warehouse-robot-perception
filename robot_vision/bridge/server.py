@@ -62,6 +62,10 @@ from bridge import protocol as P  # noqa: E402
 
 DEFAULT_CONFIG = "configs/bridge.json"
 V4_CONTROL, V4_COMMANDER, V4_READER = "configs/v4/control.json", "configs/v4/commander.json", "configs/v4/gesture_reader.json"
+V4_PERCEPTION = "configs/v4/perception.json"           # P1 (2026-11-12): the ankle height of the 360 distance
+# P11 (2026-11-12): the control file each final setting must run with (identical except zoom.enabled; a test pins that)
+FINAL_CONTROL = {"zoom_on": "configs/v4/control_zoom_on.json", "zoom_off": "configs/v4/control_zoom_off.json",
+                 "bystanders": "configs/v4/control_zoom_on.json", "unseen_look": "configs/v4/control_zoom_on.json"}
 FRAME_COUNTERS = ("frames_360_sent", "frames_360_dropped", "frames_pan_tilt_sent", "frames_pan_tilt_dropped")
 
 
@@ -510,9 +514,17 @@ def make_perception_worker(out: Path, perception_config: str | Path):
     return PerceptionWorker(hpm.HriPerception(cfg), out)
 
 
-def preflight_final(cfg: dict, mode: str, setting: str) -> None:
+def check_final_control(setting: str, control_config: str | Path) -> None:
+    """P11: a final setting runs only with its own control file (FINAL_CONTROL); SystemExit otherwise."""
+    want = FINAL_CONTROL.get(setting)
+    if want is None or dio.resolve(control_config).resolve() != dio.resolve(want).resolve():
+        raise SystemExit(f"setting {setting!r} must run with --control-config {want} (got {control_config})")
+
+
+def preflight_final(cfg: dict, mode: str, setting: str, control_config: str | Path = V4_CONTROL) -> None:
     """Before a v4 final run starts (SystemExit otherwise): protocol 3 in guide mode, the v4 configs frozen with every hash
-    matching, the setting known and not run before, and the zoom switch of control.json what the setting says."""
+    matching, the setting known and not run before, the control file the setting's own (P11) and its zoom switch what the
+    setting says."""
     import final_guard_v4 as fg
     import freeze_v4 as fz
     if cfg["protocol_version"] < 3 or mode != "guide":
@@ -520,10 +532,11 @@ def preflight_final(cfg: dict, mode: str, setting: str) -> None:
     fz.require_frozen()
     fg.check_name(setting)
     fg.ensure_not_done(dio.resolve(cfg["paths"]["output_root"]), setting, "run")
+    check_final_control(setting, control_config)
     want = fg.plan()["settings"][setting].get("zoom")
-    have = dio.read_json(V4_CONTROL)["zoom"]["enabled"]
+    have = dio.read_json(control_config)["zoom"]["enabled"]
     if want is not None and have != want:
-        raise SystemExit(f"setting {setting!r} needs zoom {'on' if want else 'off'} but {V4_CONTROL} has zoom.enabled = {have}")
+        raise SystemExit(f"setting {setting!r} needs zoom {'on' if want else 'off'} but {control_config} has zoom.enabled = {have}")
 
 
 def make_perception_worker_v4(out: Path, perception_config: str | Path, reader_config: str | Path,
@@ -536,7 +549,8 @@ def make_perception_worker_v4(out: Path, perception_config: str | Path, reader_c
     from bridge.perception_v4 import PerceptionWorkerV4
     cfg = hpm.load_config(dio.resolve(perception_config))
     reader, commander = gesture_motion.load_config(dio.resolve(reader_config)), commander_v4.load_config(dio.resolve(commander_config))
-    return PerceptionWorkerV4(hv4.HriPerceptionV4(cfg, reader, commander), out)
+    return PerceptionWorkerV4(hv4.HriPerceptionV4(cfg, reader, commander, v4_cfg=hv4.load_v4_perception(dio.resolve(V4_PERCEPTION))),
+                              out)
 
 
 def make_perception_processes_v4(out: Path, perception_config: str | Path, reader_config: str | Path,
@@ -567,11 +581,11 @@ def record_inference_devices(path: Path, info: dict, perception) -> dict | None:
 async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
               perception: str = "off", perception_config: str = "configs/hri_perception.json",
               task: str = "Task2", exit_on_disconnect: bool = False, resource_log: bool = False,
-              final_setting: str | None = None) -> Path:
+              final_setting: str | None = None, control_config: str = V4_CONTROL) -> Path:
     from bridge import diagnostics as diag
     from bridge import machine_state
     if final_setting:                              # a v4 FINAL: frozen configs, once per setting (final_guard_v4.py)
-        preflight_final(cfg, mode, final_setting)
+        preflight_final(cfg, mode, final_setting, control_config)
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
     if final_setting:
         import final_guard_v4 as fg
@@ -591,12 +605,22 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         road, route, road_files = tr.map_for_task(task, hc.load_json)
         v4_files = []
         if cfg["protocol_version"] >= 3:
-            v4_files = [V4_CONTROL, V4_COMMANDER, V4_READER]
+            import hri_control_v4 as hv
+            if task != "Task2":
+                raise SystemExit("the v4 study (protocol 3) runs Task2 only, on the v4 roadmap")
+            road_file = hv.roadmap_path(hc.load_json(dio.resolve(control_config)))      # P7: the v4 map named by the control file
+            road, road_files = hc.load_json(dio.resolve(road_file)), [road_file]
+            v4_files = [V4_COMMANDER, V4_READER, V4_PERCEPTION]
             if abs(gesture_motion_hz() - cfg["frame_pan_tilt_hz"]) > 1e-9:
                 raise ValueError(f"configs/v4/gesture_reader.json frame_hz {gesture_motion_hz()} differs from the bridge "
                                  f"frame_pan_tilt_hz {cfg['frame_pan_tilt_hz']}")
         for extra in ["configs/hri_control.json"] + road_files + v4_files:  # the exact configs of this run
             (out / "config_used" / Path(extra).name).write_bytes(dio.resolve(extra).read_bytes())
+        if cfg["protocol_version"] >= 3:          # P10: the control file used, always also as control.json (the evaluation reads it)
+            ctl = dio.resolve(control_config)
+            (out / "config_used" / "control.json").write_bytes(ctl.read_bytes())
+            if ctl.name != "control.json":
+                (out / "config_used" / ctl.name).write_bytes(ctl.read_bytes())
         dio.write_json(out / "config_used" / "map_used.json", road)
         print(f"[bridge] task {task}: map {route}", flush=True)
     info = {
@@ -608,6 +632,7 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         "route": route, "machine_state": machine_state.read(), "resource_log": resource_log}
     if cfg["protocol_version"] >= 3:
         info["perception_workers"] = (cfg.get("perception_workers") or {}).get("mode", "threads")
+        info["control_config"] = str(control_config)
     dio.write_json(out / "run_info.json", info)
     log = RunLog(out, cfg["logging"]["save_every_n_frames"])
     log.extra["clock_t0_unix_s"] = round(time.time() - (time.monotonic() - log.t0), 6)   # t_wall_s 0 in Unix time
@@ -637,7 +662,7 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
             import commander_v4
             import hri_control_v4 as hv
             from bridge.guide_v4 import GuideControllerV4
-            base, v4 = hv.load_control(V4_CONTROL)
+            base, v4 = hv.load_control(dio.resolve(control_config))
             controller = guide = GuideControllerV4(hv.ControllerV4(base, v4, commander_v4.load_config(V4_COMMANDER),
                                                                    hc.Roadmap(road)), worker, out, route=route,
                                                    hud_cfg=cfg.get("hud"))
@@ -721,6 +746,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--final-setting", default=None,
                     help="v4 FINAL run of this setting (zoom_on, zoom_off, bystanders, unseen_look): needs configs/v4/frozen.json "
                          "frozen with every hash matching; refused if the setting was already run (final_guard_v4.py)")
+    ap.add_argument("--control-config", default=V4_CONTROL,
+                    help="protocol 3 only: the v4 control file (default configs/v4/control.json). Session options are copies "
+                         "of it (e.g. configs/v4/control_zoom_off.json); a final setting must use its own file (P11)")
     ap.add_argument("--task", choices=["Task1", "Task2"], default=None,
                     help="guide mode (required there): the map (Task2 = roadmap.json; Task1 = roadmap.json plus the "
                          "checkpoints of configs/task1_route.json). The Unity trial runner refuses trials if it differs "
@@ -737,7 +765,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
                         args.perception_config, args.task or "Task2", args.exit_on_disconnect, args.resource_log,
-                        args.final_setting))
+                        args.final_setting, args.control_config))
     except KeyboardInterrupt:
         pass
 

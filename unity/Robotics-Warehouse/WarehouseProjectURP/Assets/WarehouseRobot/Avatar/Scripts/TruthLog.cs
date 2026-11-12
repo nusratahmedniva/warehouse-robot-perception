@@ -34,7 +34,7 @@ namespace WarehouseAvatar
     /// </summary>
     public static class TruthFormat
     {
-        public static readonly string[] Commands = { "POINT", "WAIT", "STOP", "NONE" };
+        public static readonly string[] Commands = { "POINT", "WAIT", "STOP", "PROCEED", "NONE" };   // PROCEED: 2026-11-12 (upgrade_design.md)
         public static readonly string[] Arms = { "left", "right", "none" };
         public static readonly string[] Phases = { "idle", "start_delay", "gesturing", "holding", "returning" };
         /// <summary>The keys of a line, in order (extra parameter keys follow when the worker performs a gesture).</summary>
@@ -50,7 +50,7 @@ namespace WarehouseAvatar
             if (string.IsNullOrEmpty(r.Look)) return "look is empty";
             if (!LookCheckConfig.IsNamePart(r.Look)) return $"look '{r.Look}' must use a-z, 0-9 and single inner '_' only";
             if (double.IsNaN(r.X) || double.IsInfinity(r.X) || double.IsNaN(r.Z) || double.IsInfinity(r.Z)) return "x or z is not a finite number";
-            if (Array.IndexOf(Commands, r.TrueCommand) < 0) return $"true_command '{r.TrueCommand}' is not one of POINT, WAIT, STOP, NONE";
+            if (Array.IndexOf(Commands, r.TrueCommand) < 0) return $"true_command '{r.TrueCommand}' is not one of {string.Join(", ", Commands)}";
             if (Array.IndexOf(Arms, r.Arm) < 0) return $"arm '{r.Arm}' is not one of left, right, none";
             if (Array.IndexOf(Phases, r.Phase) < 0) return $"phase '{r.Phase}' is not one of {string.Join(", ", Phases)}";
             if (double.IsNaN(r.PointAngleDeg) || double.IsInfinity(r.PointAngleDeg)) return "point_angle_deg is not a finite number";

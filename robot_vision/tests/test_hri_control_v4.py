@@ -307,7 +307,7 @@ class StopTests(unittest.TestCase):
         self.assertNotIn("stopped", cmd.state)
 
     def test_stop_while_navigating(self):
-        c = hv.make_controller_v4()
+        c = hv.make_controller_v4(roadmap_path_override="configs/roadmap.json")   # a map whose start drives (the v4 map asks first, P8)
         c.begin(0.0)
         self.assertEqual(c.state, "navigate")
         inp = hv.TickInputV4(0.1, 6.25, -10.0, 0.0, people=[], people_time_s=0.1, persons=[person(9, "STOP")], persons_time_s=0.1)

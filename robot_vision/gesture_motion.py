@@ -22,8 +22,16 @@ wrist along its ray is the root of |Zw * ray_wrist - ray_shoulder| = arm length 
 (arm pointing away from or toward the camera) unless the arm is nearly in the image plane (inplane_ratio_min), then one.
 The camera azimuth is turned into a world yaw with the camera yaw (robot yaw - pan_deg; pan > 0 = left) and the
 candidates are returned as world yaws; the controller chooses between them with the roadmap (the branch the robot arrived
-from is never an answer). The camera is assumed level (tilt_deg is not used). MediaPipe hand WORLD landmarks give an
+from is never an answer). Since 2026-11-12 (P6, hand zoom with tilt) the camera may be tilted up by Sample.tilt_deg: every
+3D direction is rotated from the tilted camera into a level camera frame (level_vector) before an azimuth or elevation
+is taken; image-plane features (angles from up, torso units) stay in the image. MediaPipe hand WORLD landmarks give an
 independent finger direction used as a cross-check (never changes the candidates).
+
+PROCEED (added 2026-11-12, P2; Avatar/Config/upgrade_design.md section 2): the forearm swings up and down 2 to 4 times
+(palm toward the body). Read per arm over the last proceed.window_s (longer than window_s): the wrist height in torso
+lengths swings at least cycles_min times by at least swing_min (hysteresis), and the vertical share of the wrist path is
+at least vertical_share_min. It needs no raised arm and no hold; STOP still overrides it, and it is checked before the
+held classes.
 
 Conventions: pixels x right, y down; camera frame x right, y down, z forward (away from the camera); Unity yaw 0 = +Z,
 + = clockwise from above (hri_control.py); angles in degrees; "up" angles are measured from straight up in the image,
@@ -49,7 +57,7 @@ L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW, L_WRIST, R_WRIST, L_HIP, R_HIP = 5, 6,
 ARMS = {"right": (R_SHOULDER, R_ELBOW, R_WRIST), "left": (L_SHOULDER, L_ELBOW, L_WRIST)}
 FINGERS = {"index": (5, 8), "middle": (9, 12), "ring": (13, 16), "pinky": (17, 20)}   # (MCP, tip) of MediaPipe's 21 landmarks
 WRIST_LM, INDEX_MCP, INDEX_TIP, MIDDLE_MCP, PINKY_TIP = 0, 5, 8, 9, 20
-COMMANDS = ("POINT", "WAIT", "STOP")
+COMMANDS = ("POINT", "WAIT", "STOP", "PROCEED")
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
@@ -71,6 +79,23 @@ def circular_mean(angles_deg) -> float:
 def angle_from_up(dx: float, dy: float) -> float:
     """Direction (dx, dy) in the image (y down) measured from straight up, + = toward the image right."""
     return math.degrees(math.atan2(dx, -dy))
+
+
+def level_vector(v, tilt_deg: float) -> np.ndarray:
+    """A direction (x right, y down, z forward) in a camera tilted UP by tilt_deg, expressed in the level camera frame
+    with the same pan: (x, y cos t - z sin t, y sin t + z cos t)."""
+    v = np.asarray(v, float)
+    if not tilt_deg:
+        return v
+    t = math.radians(tilt_deg)
+    c, s = math.cos(t), math.sin(t)
+    return np.array([v[0], v[1] * c - v[2] * s, v[1] * s + v[2] * c])
+
+
+def pixel_azimuth_deg(u: float, v: float, fx: float, fy: float, cx: float, cy: float, tilt_deg: float = 0.0) -> float:
+    """Camera azimuth (deg, + = right, 0 = the pan direction) of pixel (u, v), corrected for the tilt."""
+    d = level_vector(((u - cx) / fx, (v - cy) / fy, 1.0), tilt_deg)
+    return math.degrees(math.atan2(d[0], d[2]))
 
 
 def joint_angle(a, b, c) -> float:
@@ -99,6 +124,7 @@ class Sample:
     pan_deg: float = 0.0
     robot_yaw_deg: float = 0.0
     box: tuple | None = None
+    tilt_deg: float = 0.0                # pan-tilt camera tilt at render time, + = up (protocol 3 amendment, P6)
 
 
 def torso_frame(kp, conf, thr: float):
@@ -318,7 +344,7 @@ def arm_solutions(s: Sample, side: str, cfg: dict) -> dict | None:
     out: dict = {"two": False, "phi_deg": min(phis)}
     ok_any = False
     for name, z in chosen.items():
-        d = z * rw - rs
+        d = level_vector(z * rw - rs, s.tilt_deg)
         horiz = math.hypot(d[0], d[2])
         elev = math.degrees(math.atan2(-d[1], horiz))
         if horiz < 1e-9 or abs(elev) > p["point_elevation_max_deg"]:
@@ -349,7 +375,7 @@ class PointEstimate:
                 "n_frames": self.n_frames, "crosscheck": self.crosscheck}
 
 
-def hand_world_azimuth(hand, cfg: dict) -> tuple[float | None, str]:
+def hand_world_azimuth(hand, cfg: dict, tilt_deg: float = 0.0) -> tuple[float | None, str]:
     """Camera azimuth (deg, + right) of the finger direction from the MediaPipe WORLD landmarks: index MCP -> tip when
     the index is extended, else the hand axis wrist -> middle MCP. (azimuth | None, which axis / why not)."""
     w = getattr(hand, "world_xyz", None)
@@ -362,6 +388,8 @@ def hand_world_azimuth(hand, cfg: dict) -> tuple[float | None, str]:
     else:
         v, axis = w[MIDDLE_MCP] - w[WRIST_LM], "hand axis"
     z = v[2] if cfg["point"]["hand_world_z_away_positive"] else -v[2]
+    v = level_vector((v[0], v[1], z), tilt_deg)
+    z = v[2]
     horiz = math.hypot(v[0], z)
     if horiz < 1e-9 or abs(math.degrees(math.atan2(-v[1], horiz))) > cfg["point"]["point_elevation_max_deg"]:
         return None, f"{axis} direction vertical"
@@ -392,7 +420,7 @@ def point_estimate(samples: list[Sample], side: str, cfg: dict) -> PointEstimate
     cc = {"available": False, "prefers": None, "diff_deg": {}, "why": "no hand linked"}
     hand = last[0].hands.get(side)
     if hand is not None:
-        az_h, why = hand_world_azimuth(hand, cfg)
+        az_h, why = hand_world_azimuth(hand, cfg, last[0].tilt_deg)
         cc["why"] = why
         if az_h is not None:
             cc["available"] = True
@@ -410,7 +438,7 @@ def point_estimate(samples: list[Sample], side: str, cfg: dict) -> PointEstimate
 
 @dataclass
 class Reading:
-    command: str                          # POINT | WAIT | STOP | NONE | insufficient_history
+    command: str                          # POINT | WAIT | STOP | PROCEED | NONE | insufficient_history
     score: float
     why: str
     t: float
@@ -426,6 +454,7 @@ class Reading:
     point: PointEstimate | None = None
     hand_box: tuple | None = None         # px, of the hand linked to the active (else the raised) arm in the latest frame
     arm_box: tuple | None = None          # px, shoulder + elbow + wrist of that arm
+    fit_box: tuple | None = None          # px, nose, shoulders, hips + that arm's elbow and wrist: what the zoom must keep (P6)
     frame_wh: tuple | None = None
     fov_deg: float | None = None
     hand_label: str | None = None         # MediaPipe's label of the hand of the read arm in the latest frame (logged, not required)
@@ -436,7 +465,8 @@ class Reading:
         d = {"command": self.command, "score": _r(self.score), "why": self.why, "t": _r(self.t), "arm": self.arm,
              "frame_class": self.frame_class, "moving": self.moving, "raised": self.raised, "hold_s": _r(self.hold_s),
              "valid_frames": self.valid_frames, "n_frames": self.n_frames, "scores": {k: _r(v) for k, v in self.scores.items()},
-             "arms": self.arms, "hand_box": self.hand_box, "arm_box": self.arm_box, "fov_deg": _r(self.fov_deg),
+             "arms": self.arms, "hand_box": self.hand_box, "arm_box": self.arm_box, "fit_box": self.fit_box,
+             "fov_deg": _r(self.fov_deg),
              "hand_label": self.hand_label, "hand_label_score": _r(self.hand_label_score), "label_agrees": self.label_agrees}
         d["point"] = self.point.to_dict() if self.point is not None else None
         return d
@@ -448,6 +478,63 @@ def _r(x, n=3):
 
 def _share(flags: list[bool]) -> float:
     return sum(flags) / len(flags) if flags else 0.0
+
+
+def count_strokes(ys: list[float], swing_min: float) -> int:
+    """Up and down strokes of a height sequence, each at least swing_min from the previous turning point (hysteresis:
+    smaller reversals are ignored). Two strokes = one cycle."""
+    if len(ys) < 2:
+        return 0
+    lo = hi = ys[0]
+    trend, last_ext, cand, strokes = 0, ys[0], ys[0], 0
+    for y in ys[1:]:
+        if trend == 0:
+            lo, hi = min(lo, y), max(hi, y)
+            if y - lo >= swing_min - 1e-12:
+                trend, last_ext, cand = 1, lo, y
+            elif hi - y >= swing_min - 1e-12:
+                trend, last_ext, cand = -1, hi, y
+        elif trend == 1:
+            if y > cand:
+                cand = y
+            elif cand - y >= swing_min - 1e-12:
+                strokes += 1
+                trend, last_ext, cand = -1, cand, y
+        else:
+            if y < cand:
+                cand = y
+            elif y - cand >= swing_min - 1e-12:
+                strokes += 1
+                trend, last_ext, cand = 1, cand, y
+    return strokes + (1 if trend != 0 else 0)
+
+
+def proceed_features(samples: list[Sample], side: str, cfg: dict, t_now: float) -> dict:
+    """PROCEED cues of one arm over the last proceed.window_s: valid frames, strokes / cycles of the wrist height (torso
+    lengths above the shoulder midpoint), wrist path and its vertical share, and whether all cues pass."""
+    pc, w = cfg["proceed"], cfg["window"]
+    rows = []
+    for s in samples:
+        if s.t < t_now - pc["window_s"] - 1e-9:
+            continue
+        af = arm_frame(s, side, cfg)
+        if af.valid:
+            rows.append((s.t, np.array(af.wrist_rel, float)))
+    need = math.ceil(w["min_valid_fraction"] * max(1, round(pc["window_s"] * cfg["frame_hz"])) - 1e-9)
+    out = {"valid": len(rows), "enough": len(rows) >= need, "strokes": 0, "cycles": 0.0, "path": 0.0,
+           "vertical_share": 0.0, "ok": False}
+    if len(rows) < 2:
+        return out
+    pts = [p for _, p in rows]
+    steps = [pts[i + 1] - pts[i] for i in range(len(pts) - 1)]
+    path = float(sum(np.linalg.norm(d) for d in steps))
+    vert = float(sum(abs(d[1]) for d in steps))
+    strokes = count_strokes([-p[1] for p in pts], pc["swing_min"])         # image y is down: -y = up
+    out.update(strokes=strokes, cycles=strokes / 2.0, path=round(path, 4),
+               vertical_share=round(vert / path, 4) if path > 1e-9 else 0.0)
+    out["ok"] = bool(out["enough"] and out["cycles"] >= pc["cycles_min"] - 1e-9
+                     and out["vertical_share"] >= pc["vertical_share_min"] - 1e-9)
+    return out
 
 
 def _arm_window(samples: list[Sample], side: str, cfg: dict, t_now: float) -> dict:
@@ -491,9 +578,12 @@ def _arm_window(samples: list[Sample], side: str, cfg: dict, t_now: float) -> di
 
 
 def read_window(samples: list[Sample], cfg: dict, t_now: float | None = None) -> Reading:
-    """Classify the last window_s of one person's samples (already restricted to the window by PersonBuffer.window)."""
+    """Classify one person's samples. The held classes and STOP use the last window_s; PROCEED uses the last
+    proceed.window_s (the caller passes at least that much: PersonBuffer.window with read_span_s(cfg))."""
     w, d = cfg["window"], cfg["decision"]
     t_now = t_now if t_now is not None else (samples[-1].t if samples else 0.0)
+    long_samples = samples
+    samples = [s for s in samples if s.t >= t_now - w["window_s"] - 1e-9]
     n_exp = max(1, round(w["window_s"] * cfg["frame_hz"]))
     last = samples[-1] if samples else None
     r = Reading("NONE", 0.0, "", t_now, n_frames=len(samples))
@@ -531,6 +621,17 @@ def read_window(samples: list[Sample], cfg: dict, t_now: float | None = None) ->
         hs = samples[-1].hands.get(side)
         r.label_agrees = label_agrees(hs, "STOP", cfg) if hs is not None else None
         return r
+    if "proceed" in cfg:                               # PROCEED: a moving gesture, read before the held classes
+        pro = {side: proceed_features(long_samples, side, cfg, t_now) for side in ARMS}
+        for side, f in pro.items():
+            r.arms[side]["proceed"] = f
+        oks = [(f["vertical_share"], side) for side, f in pro.items() if f["ok"]]
+        if oks:
+            score, side = max(oks)
+            _fill_boxes(r, samples, side)
+            r.command, r.score, r.arm, r.why = "PROCEED", score, side, "forearm swings"
+            r.scores = {"PROCEED": score}
+            return r
     cands = []
     for side, a in arms.items():
         if not a["hold"] or not a["enough"]:
@@ -588,3 +689,12 @@ def _fill_boxes(r: Reading, samples: list[Sample], side: str) -> None:
     pts = np.array([last.kp[i] for i in (sh, el, wr)], float)
     r.arm_box = (round(float(pts[:, 0].min()), 1), round(float(pts[:, 1].min()), 1), round(float(pts[:, 0].max()), 1),
                  round(float(pts[:, 1].max()), 1))
+    idx = [NOSE, L_SHOULDER, R_SHOULDER, L_HIP, R_HIP, el, wr]
+    fit = np.array([last.kp[i] for i in idx if last.conf[i] >= 0.5] or [last.kp[i] for i in (sh, el, wr)], float)
+    r.fit_box = (round(float(fit[:, 0].min()), 1), round(float(fit[:, 1].min()), 1), round(float(fit[:, 0].max()), 1),
+                 round(float(fit[:, 1].max()), 1))
+
+
+def read_span_s(cfg: dict) -> float:
+    """How much history read_window needs: the longer of window_s and proceed.window_s."""
+    return max(cfg["window"]["window_s"], cfg.get("proceed", {}).get("window_s", 0.0))

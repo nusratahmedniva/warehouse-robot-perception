@@ -120,7 +120,7 @@ class ParseTests(unittest.TestCase):
 
     def test_config_lists_are_the_protocol_ones(self):
         self.assertEqual(CFG["truth_join_max_s"], 0.06)
-        self.assertEqual(CFG["commands"], ["POINT", "WAIT", "STOP", "NONE"])
+        self.assertEqual(CFG["commands"], ["POINT", "WAIT", "STOP", "PROCEED", "NONE"])     # PROCEED: 2026-11-12 (P2)
         self.assertEqual(CFG["phases"], ["idle", "start_delay", "gesturing", "holding", "returning"])
 
 

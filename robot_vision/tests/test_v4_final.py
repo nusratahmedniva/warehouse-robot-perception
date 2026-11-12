@@ -325,13 +325,14 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             cfg = {**self.cfg, "paths": {"output_root": d}}
             with self.assertRaisesRegex(SystemExit, "unknown final setting"):
                 S.preflight_final(cfg, "guide", "nonsense")
-            with self.assertRaisesRegex(SystemExit, "needs zoom off"):
-                S.preflight_final(cfg, "guide", "zoom_off")                          # control.json has zoom on
-            S.preflight_final(cfg, "guide", "zoom_on")
+            with self.assertRaisesRegex(SystemExit, "must run with --control-config"):
+                S.preflight_final(cfg, "guide", "zoom_off")                          # P11: control.json is not zoom_off's file
+            S.preflight_final(cfg, "guide", "zoom_off", "configs/v4/control_zoom_off.json")
+            S.preflight_final(cfg, "guide", "zoom_on", "configs/v4/control_zoom_on.json")
             (Path(d) / "bridge_guide_1").mkdir()
             fg.write_done(Path(d) / "bridge_guide_1", "zoom_on", "run")
             with self.assertRaisesRegex(SystemExit, "already run as a final"):
-                S.preflight_final(cfg, "guide", "zoom_on")
+                S.preflight_final(cfg, "guide", "zoom_on", "configs/v4/control_zoom_on.json")
 
     async def test_a_final_run_writes_its_setting_and_the_done_marker_only_after_a_trial(self):
         from test_v4_integration import FakeWorkerV4
@@ -347,7 +348,8 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory() as d:
                 cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}, "perception_workers": {"mode": "threads"}}   # these tests patch the thread factory
                 cfg_path = ROOT / "configs" / "v4" / "bridge.json"
-                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on")
+                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
+                                  control_config="configs/v4/control_zoom_on.json")
                 self.assertTrue((out / "FINAL_SETTING.json").exists())
                 self.assertEqual(json.loads((out / "FINAL_SETTING.json").read_text())["setting"], "zoom_on")
                 self.assertFalse((out / "FINAL_RUN_DONE.json").exists())             # no trial finished: no marker, no block
@@ -369,13 +371,16 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory() as d:
                 cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}, "perception_workers": {"mode": "threads"}}   # these tests patch the thread factory
                 cfg_path = ROOT / "configs" / "v4" / "bridge.json"
-                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on")
+                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
+                                  control_config="configs/v4/control_zoom_on.json")
                 marker = json.loads((out / "FINAL_RUN_DONE.json").read_text())
                 self.assertEqual((marker["setting"], marker["kind"], marker["trials_written"]), ("zoom_on", "run", 1))
                 time.sleep(1.1)                                                       # run folders are named by the second
                 with self.assertRaisesRegex(SystemExit, "already run as a final"):
-                    await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on")
-                other = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="bystanders")
+                    await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
+                                  control_config="configs/v4/control_zoom_on.json")
+                other = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="bystanders",
+                                      control_config="configs/v4/control_zoom_on.json")
                 self.assertTrue((other / "FINAL_SETTING.json").exists())
         finally:
             S.make_perception_worker_v4 = real

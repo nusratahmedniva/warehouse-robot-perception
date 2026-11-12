@@ -7,7 +7,9 @@ the body because it is the same pose), with the MediaPipe hand attached when ges
 candidates the commander is the one whose raised hand is MOVING (gesture_motion.Reading.moving); a person who is
 holding a recognised command (POINT / WAIT / STOP) counts too, so the commander does not drop out when the swing ends.
 A person whose gesture started BEFORE "Which direction?" was shown is not eligible (the caller passes `ineligible`);
-only a gesture that starts after the question counts.
+only a gesture that starts after the question counts. A facing person whose reading is PROCEED (the forearm swing, which
+starts at about hip height) is a candidate like a person holding a command although the arm is not raised (added
+2026-11-12, P2). Bearings are corrected for the pan-tilt camera's tilt (P6).
 Rules, in order:
   1. nobody facing with a raised hand -> no commander (reason says why each person was left out);
   2. the previously chosen person, if still a candidate, is kept (the dialog watches the same person);
@@ -52,9 +54,10 @@ def facing_check(s: gm.Sample, ccfg: dict, kp_conf_min: float) -> tuple[bool, st
 
 
 def box_bearing_deg(box, s: gm.Sample) -> float:
-    """Bearing of a box centre relative to the robot's forward axis (+ = right): camera azimuth minus the pan."""
-    u = 0.5 * (box[0] + box[2])
-    return math.degrees(math.atan((u - s.cx) / s.fx)) - s.pan_deg
+    """Bearing of a box centre relative to the robot's forward axis (+ = right): camera azimuth minus the pan (the
+    azimuth of a tilted camera's pixel depends on its row too: gesture_motion.pixel_azimuth_deg)."""
+    u, v = 0.5 * (box[0] + box[2]), 0.5 * (box[1] + box[3])
+    return gm.pixel_azimuth_deg(u, v, s.fx, s.fy, s.cx, s.cy, s.tilt_deg) - s.pan_deg
 
 
 def body_bearing_deg(s: gm.Sample, kp_conf_min: float) -> float:
@@ -62,7 +65,8 @@ def body_bearing_deg(s: gm.Sample, kp_conf_min: float) -> float:
     person's box and would pull its centre sideways), else the centre of the person box."""
     if min(s.conf[gm.L_SHOULDER], s.conf[gm.R_SHOULDER]) >= kp_conf_min:
         u = 0.5 * (float(s.kp[gm.L_SHOULDER][0]) + float(s.kp[gm.R_SHOULDER][0]))
-        return math.degrees(math.atan((u - s.cx) / s.fx)) - s.pan_deg
+        v = 0.5 * (float(s.kp[gm.L_SHOULDER][1]) + float(s.kp[gm.R_SHOULDER][1]))
+        return gm.pixel_azimuth_deg(u, v, s.fx, s.fy, s.cx, s.cy, s.tilt_deg) - s.pan_deg
     return box_bearing_deg(s.box, s)
 
 
@@ -109,7 +113,7 @@ def pick_commander(persons: list[PersonReading], ccfg: dict, previous: int | Non
         r = p.reading
         if not p.facing:
             out = p.facing_why
-        elif not r.raised:
+        elif not r.raised and r.command != "PROCEED":
             out = "no raised arm"
         elif p.track_id in ineligible:
             out = ineligible[p.track_id]

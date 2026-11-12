@@ -8,13 +8,17 @@
     "robot_vision/configs/v4/bridge.json",
     "robot_vision/configs/v4/commander.json",
     "robot_vision/configs/v4/control.json",
+    "robot_vision/configs/v4/control_zoom_off.json",
+    "robot_vision/configs/v4/control_zoom_on.json",
     "robot_vision/configs/v4/data_splits.json",
     "robot_vision/configs/v4/eval_dev.json",
     "robot_vision/configs/v4/final_plan.json",
     "robot_vision/configs/v4/gesture_data.json",
     "robot_vision/configs/v4/gesture_reader.json",
     "robot_vision/configs/v4/gt_eval.json",
-    "robot_vision/configs/v4/look_check.json"
+    "robot_vision/configs/v4/look_check.json",
+    "robot_vision/configs/v4/perception.json",
+    "robot_vision/configs/v4/roadmap.json"
   ],
   "sha256": {},
   "v3_dependencies": {},

@@ -530,7 +530,7 @@ namespace WarehouseAvatar
         {
             var phase = m_Scheduler.Phase;
             bool performing = WorkerPhases.Performing(phase);
-            string cmd = performing ? Current.command : TruthFormat.Commands[3];
+            string cmd = performing ? Current.command : WorkerV4Config.None;
             var row = new TruthRow
             {
                 TimeS = t, WorkerId = workerId, Look = lookId, X = transform.position.x, Z = transform.position.z,

@@ -1383,3 +1383,54 @@ one row. **RQ4 wording: an unseen appearance of the Sunbox body family.** This c
 
 **8. Records (Nusrat's side, for the paper).** The look check moved from the backlit stage to the real scene (declared before the rerun in `Avatar/Config/look_check_changes.md`); the top of look f1 was changed; hand rest-pose and finger fixes were made; the look checks saw all looks including the future
 test look and nothing was tuned on them; the Unity stall fix is in `RobotBridgeClient.cs` (protocol 3 only, the v3 path byte-identical, checked with a v3 smoke run); the pan-tilt camera height was measured at 1.200 m and level, so the zoom table of 14.15 stands (its height was inferred).
+
+## 15. Changes made during Anisha's absence (by Nusrat)
+
+Dated entries only, appended in order. Each names the task item (P1 to P12 of Nusrat's v4 completion task of 2026-11-12, the
+exception of `CLAUDE.local.md` section 2) and the files under `robot_vision/` or `docs/` it changed. Sections 1 to 14 are not edited.
+The design and every decision rule were declared before any code in `unity/.../Avatar/Config/upgrade_design.md` (commit `b55ccec`).
+
+### 2026-11-12, Stage A (Python, simulator only; no Unity run, no recording, no threshold set on data)
+
+- **P1 ankle height.** `hri_perception.person_distance` gains `ankle_height_m` (default 0.0 = the v3 behaviour byte for byte): for
+  source `ankles` the camera height used is `camera_height_m - ankle_height_m`. Only the v4 360 path passes it
+  (`hri_perception_v4.people_v4`, used by `HriPerceptionV4` and by the process lane `bridge/perception_mp_v4.PeoplePerception`), from
+  the new `configs/v4/perception.json` (`ankle_height_m` 0.0 until measured: the median of the new truth field over the development
+  looks while standing, never fitted to errors). `gesture_data.py` reads the optional truth field; `bridge/protocol.py` refuses it from
+  Unity like the other truth fields; `docs/protocol_v3.md` amendment 2.
+- **P2 PROCEED.** Reader rule in `gesture_motion.py` (`proceed_features`, `count_strokes`, `read_span_s`; block `proceed` in
+  `configs/v4/gesture_reader.json`, initial values 2.0 s, 2 cycles, 0.3 torso lengths, 0.7 vertical share); the person buffer keeps the
+  longer window (`hri_perception_v4.PersonsPipeline`). `commander_v4.py`: a facing person reading PROCEED is a candidate without a raised
+  arm. `hri_control_v4.py`: PROCEED = the node's FORWARD branch (else unclear), a PROCEED reading marks a gesture onset, HUD gesture
+  PROCEED. `configs/v4/data_splits.json`: `proceed_ik_01`, `proceed_ik_02` development, `proceed_ik_03` test. `configs/v4/gesture_data.json`
+  and `eval_dev.json`: PROCEED in the command lists. `docs/protocol_v3.md` amendment 1. Simulator: PROCEED episodes, `SceneSpec.proceed_forward`.
+- **P3 evaluation.** `hri_eval_dev_v4.py`: `junction_level` block (per ask: shown, read, branch chosen, true branch from goal B, dialog
+  outcome; per (look, node, shown) pair; standoff: the 360 estimate logged at each ask against the true robot-to-commander distance),
+  PROCEED in the command tables, the v4 map.
+- **P6 tilt.** `bridge/protocol.py` (command `tilt_deg`, validated), `bridge/guide.py` (sends `tilt_deg` with protocol 3),
+  `bridge/guide_v4.py`, `bridge/perception_v4.py` (frame tilt into the reader and the tick input), `gesture_motion.py` (`level_vector`,
+  `pixel_azimuth_deg`, tilt-corrected `arm_solutions` and hand cross-check, `fit_box`), `commander_v4.py` (tilt-corrected bearings),
+  `hri_control_v4.py` (`tilt_target`, the tilt part of `ZoomController`, fit box for the zoom when tilting), `configs/v4/control.json`
+  (`zoom.tilt_enabled`, `tilt_min_deg` 0, `tilt_max_deg` 35, `tilt_max_change_deg_per_s` 30). `docs/protocol_v3.md` amendment 3.
+  **Supersedes 14.15 decision (c)** (camera level, no tilt command): with a level camera the zoom cannot act at the 2 m asking distance.
+- **P7 map.** New `configs/v4/roadmap.json` (A, J1 to J4, E1 to E6, routes 40 to 65 m), named by `control.json` -> `roadmap`; used by the
+  server, the controller, the simulator export, `hri_eval_dev_v4.py` and `hri_analysis_v4.py`. The v3 `configs/roadmap.json` is unchanged.
+  The final timeout and goal order follow later (Stage C), by the rule declared in upgrade_design.md section 6.
+- **P8 start search.** `hri_control_v4.py`: the start node (kind `start`) asks like a junction (scan, approach, ask, read); the robot never
+  navigates without an accepted instruction (tested: a PROCEED that is never read ends in an abort at A without any navigate state).
+  Each ask logs the 360 distance estimate of the approached person (`asks_log`).
+- **P10** `bridge/server.py --control-config` (default `configs/v4/control.json`); the file used is copied to `config_used/control.json`.
+  **P11** `configs/v4/control_zoom_on.json`, `control_zoom_off.json` (identical to `control.json` except `zoom.enabled`, a test pins it);
+  `--final-setting` refuses any other control file than the setting's (`FINAL_CONTROL` in `bridge/server.py`).
+- **P12** `bridge/perception_v4.py`: `model_outputs.jsonl` per bridge run (threads mode): one line per processed camera frame with the
+  360 people (box, 17 keypoints with scores, bearing, distance and source) and the pan-tilt people and hands (21 landmarks, world
+  landmarks, label, score, box) with pan, tilt, field of view and intrinsics. The worker processes write none (threads is the decided mode).
+- **Freeze record.** `configs/v4/frozen.json` "files" refreshed with `freeze_v4.py --refresh-list` (approved by Nusrat; unfrozen, no
+  hashes) for the four new config files. Note for Anisha: `freeze_v4.V3_DEPENDENCIES` still hashes `configs/roadmap.json`, which v4 no
+  longer reads (harmless; the v4 map is frozen with `configs/v4/`).
+- **Existing tests updated** (approved by Nusrat; each keeps its intent): `tests/test_protocol_v3.py` (command `tilt_deg`, 15 truth
+  names), `tests/test_v4_final.py` (finals with their control file), `tests/test_data_splits_v4.py` (PROCEED clips),
+  `tests/test_gesture_data.py` (PROCEED in the list), `tests/test_perception_mp_v4.py` (the v4 people function),
+  `tests/test_hri_control_v4.py` (the STOP-while-navigating test uses the v3 map, whose start drives). New: `tests/test_v4_upgrades.py`.
+- `hri_sim_v4.export_session` now moves the junction records onto the session clock like the truth rows and the log (a simulator
+  inconsistency found by the new junction metrics; real sessions share Unity's clock).

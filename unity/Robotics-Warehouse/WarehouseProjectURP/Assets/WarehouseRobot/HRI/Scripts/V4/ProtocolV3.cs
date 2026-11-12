@@ -69,6 +69,7 @@ namespace WarehouseHRI.V4
         {
             "true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth",
             "true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm",
+            "ankle_height_m",      // 2026-11-12: the new optional truth.jsonl field (docs/protocol_v3.md amendment 2)
         };
 
         static readonly Regex KeyPattern = new Regex("\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:", RegexOptions.Compiled);

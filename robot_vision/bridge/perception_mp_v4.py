@@ -36,6 +36,7 @@ import traceback
 from pathlib import Path
 
 import hri_perception as hpm
+import hri_perception_v4 as hv4
 from bridge import protocol as P
 from bridge.perception import FIELDS, NO_TARGET
 from bridge.perception_v4 import PerceptionWorkerV4
@@ -162,14 +163,15 @@ class PeoplePerception:
     function (same models, arguments and thresholds); only the models this lane needs are loaded."""
 
     label = "vision v4 people (YOLO11s-pose tracked on the 360 camera)"
-    people = hpm.HriPerception.people
+    people = hv4.people_v4                  # HriPerception.people with the v4 ankle height (P1, 2026-11-12)
     decode_jpeg = staticmethod(hpm.HriPerception.decode_jpeg)
 
-    def __init__(self, cfg: dict, device: str | None = None):
+    def __init__(self, cfg: dict, device: str | None = None, v4_cfg: dict | None = None):
         from ultralytics import YOLO
 
         from check_environment import select_device
         self.cfg = cfg
+        self.ankle_height_m = float((v4_cfg if v4_cfg is not None else hv4.load_v4_perception())["ankle_height_m"])
         w = _check_weights(cfg)
         self.device = device or str(select_device(cfg.get("device", "auto")))
         self.pano_model = YOLO(str(w), task="pose")

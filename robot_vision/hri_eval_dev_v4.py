@@ -21,7 +21,12 @@ Reported, always with coverage (anything that cannot be evaluated says not_evalu
 - POINT angle error: of the better of the two depth readings, and of the reading the roadmap resolved; share of ambiguous;
 - correct branch: the branch the dialog accepted against the branch nearest the true pointed direction; answered / asked;
 - commander accuracy, with and without bystanders (correct, wrong, no commander);
-- time from the first "Which direction?" to the accepted gesture (and without the WAIT time).
+- time from the first "Which direction?" to the accepted gesture (and without the WAIT time);
+- (P3, added 2026-11-12 by Nusrat during Anisha's absence; AUDIT.md section 15) junction level: per ask the command shown,
+  the command read, the branch chosen, the true branch toward goal B and the outcome of the dialog (correct / wrong /
+  abort), and per (look, node, shown command) pair the dialogs and how many ended with the correct branch; the standoff:
+  the 360 distance estimate of the approached person at every ask against the true distance (robot pose of the ask,
+  the commander's truth position), with the measured standoff against the nominal approach distance.
 
 Usage (from robot_vision/):
   python hri_eval_dev_v4.py --session outputs/trials_X outputs/bridge_guide_Y [--session ... ...] [--config configs/v4/eval_dev.json]
@@ -47,8 +52,8 @@ import hri_control_v4 as hv
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_CONFIG = "configs/v4/eval_dev.json"
-GESTURES = ("POINT", "WAIT", "STOP")
-READS = ("POINT", "WAIT", "STOP", "NONE", "insufficient_history")
+GESTURES = ("POINT", "WAIT", "STOP", "PROCEED")
+READS = ("POINT", "WAIT", "STOP", "PROCEED", "NONE", "insufficient_history")
 NOT_EVALUATED = "not_evaluated"
 
 
@@ -333,6 +338,115 @@ def timing_block(runs: list) -> dict:
             "ask_to_accepted_s": _stats(dt), "ask_to_accepted_without_wait_s": _stats(net)}
 
 
+def run_goal(run: Run) -> str | None:
+    """Goal B of a run from Unity's truth_run###.json (evaluation only), None when it cannot be read."""
+    if run.unity_dir is None:
+        return None
+    p = Path(run.unity_dir) / f"truth_run{run.trial:03d}.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8")).get("b_name") or None
+    except (OSError, ValueError):
+        return None
+
+
+def _commander_rows(run: Run, t0: float, t1: float) -> list:
+    return [r for r in run.truth if r.is_commander and t0 - 1e-9 <= r.time_s <= t1 + 1e-9]
+
+
+def _shown(rows: list, phases) -> str:
+    """The command the commander showed in a time window: the last non-NONE command in the accuracy phases, a direction
+    command (POINT / PROCEED) preferred over WAIT (WAIT then a direction counts as the direction); NONE if none."""
+    shown = [r.true_command for r in rows if r.true_command != "NONE" and r.phase in phases]
+    direction = [c for c in shown if c in ("POINT", "PROCEED")]
+    return direction[-1] if direction else (shown[-1] if shown else "NONE")
+
+
+def _read_in(run: Run, t0: float, t1: float) -> str:
+    """The last non-NONE reading of the chosen commander in the v4 log between t0 and t1 (NONE if none)."""
+    last = "NONE"
+    for row in run.rows:
+        if not t0 - 1e-9 <= row["t"] <= t1 + 1e-9 or not row.get("commander"):
+            continue
+        cid = row["commander"].get("commander")
+        p = next((q for q in row["persons"] if q["id"] == cid), None)
+        if p is not None and p["reading"]["command"] in GESTURES:
+            last = p["reading"]["command"]
+    return last
+
+
+def _true_distance(run: Run, t: float, robot: dict) -> tuple[float | None, str | None]:
+    """(true distance robot root -> commander, the commander's look) at time t from truth.jsonl (nearest commander row
+    within the join tolerance x 10; else the worker nearest the robot at the nearest time)."""
+    rows = [r for r in run.truth if abs(r.time_s - t) <= 0.6]
+    if not rows:
+        return None, None
+    best_t = min(rows, key=lambda r: abs(r.time_s - t)).time_s
+    at = [r for r in rows if abs(r.time_s - best_t) < 1e-9]
+    cmdr = [r for r in at if r.is_commander]
+    w = cmdr[0] if cmdr else min(at, key=lambda r: math.hypot(r.x - robot["x"], r.z - robot["z"]))
+    return math.hypot(w.x - robot["x"], w.z - robot["z"]), w.look
+
+
+def junction_block(runs: list, ecfg: dict, road: hc.Roadmap, approach_m: float) -> dict:
+    """P3: per ask and per dialog (one node visit) against goal B; per (look, node, shown) pair; and the standoff."""
+    phases = ecfg["accuracy_phases"]
+    asks, dialogs, standoff = [], [], []
+    for run in runs:
+        goal = run_goal(run)
+        for rec in run.junctions:
+            node = rec["junction"]
+            t_start, t_end = rec.get("t_start", 0.0), rec.get("t_end", math.inf)
+            true_branch = road.command_toward(node, goal) if goal else None
+            chosen = rec.get("read") if rec.get("result") == "accepted" else None
+            outcome = "abort" if chosen is None else (NOT_EVALUATED if true_branch in (None, "NONE")
+                                                      else "correct" if chosen == true_branch else "wrong")
+            crow = _commander_rows(run, t_start, t_end)
+            look = crow[0].look if crow else None
+            shown = _shown(crow, phases)
+            dialogs.append({"run": run.name, "goal": goal, "node": node, "look": look, "shown": shown, "asks": rec.get("asks"),
+                            "chosen": chosen, "true_branch": true_branch, "outcome": outcome})
+            log = rec.get("asks_log", [])
+            for k, a in enumerate(log):
+                t0 = a["t"]
+                t1 = log[k + 1]["t"] if k + 1 < len(log) else t_end
+                last = k + 1 == len(log)
+                arow = _commander_rows(run, t0, t1)
+                read = chosen if last and chosen is not None else _read_in(run, t0, t1)
+                asks.append({"run": run.name, "node": node, "ask": a.get("ask"), "serial": a.get("serial"), "t": t0,
+                             "look": arow[0].look if arow else look, "shown": _shown(arow, phases), "read": read,
+                             "branch_chosen": chosen if last else None, "true_branch": true_branch,
+                             "dialog_outcome": outcome})
+                true_d, tlook = _true_distance(run, t0, a["robot"])
+                est = a.get("distance_est_m", -1.0)
+                if true_d is not None:
+                    standoff.append({"run": run.name, "node": node, "t": t0, "look": tlook, "true_m": round(true_d, 3),
+                                     "est_m": est if est is not None and est >= 0 else None,
+                                     "source": a.get("distance_source", ""),
+                                     "error_m": round(est - true_d, 3) if est is not None and est >= 0 else None})
+    pairs = defaultdict(lambda: {"dialogs": 0, "correct": 0, "wrong": 0, "abort": 0, "not_evaluated": 0})
+    for d in dialogs:
+        p = pairs[(d["look"] or "unknown", d["node"], d["shown"])]
+        p["dialogs"] += 1
+        p[d["outcome"] if d["outcome"] in ("correct", "wrong", "abort") else "not_evaluated"] += 1
+    pair_rows = [{"look": k[0], "node": k[1], "shown": k[2], **v, "correct_share": _ratio(v["correct"], v["dialogs"])}
+                 for k, v in sorted(pairs.items())]
+    errs = [abs(s["error_m"]) for s in standoff if s["error_m"] is not None]
+    per_look = defaultdict(list)
+    for s in standoff:
+        if s["error_m"] is not None:
+            per_look[s["look"] or "unknown"].append(abs(s["error_m"]))
+    trues = [s["true_m"] for s in standoff]
+    return {"dialogs": len(dialogs), "correct": sum(d["outcome"] == "correct" for d in dialogs),
+            "wrong": sum(d["outcome"] == "wrong" for d in dialogs), "abort": sum(d["outcome"] == "abort" for d in dialogs),
+            "pairs": pair_rows, "asks": asks, "dialog_detail": dialogs,
+            "standoff": {"asks": len(standoff), "with_estimate": len(errs), "coverage": _ratio(len(errs), len(standoff)),
+                         "abs_error_m": _stats(errs), "abs_error_m_per_look": {k: _stats(v) for k, v in sorted(per_look.items())},
+                         "signed_error_m": _stats([s["error_m"] for s in standoff if s["error_m"] is not None]),
+                         "true_distance_m": _stats(trues), "nominal_approach_m": approach_m, "detail": standoff,
+                         "note": "true = robot root (ask pose from telemetry) to the commander's truth position; estimate = the 360 "
+                                 "distance of the approached person the controller logged at the ask (asks_log)."}}
+
+
 def evaluate_block(runs: list, ecfg: dict, gcfg: dict, road: hc.Roadmap) -> dict:
     entries, rows, rows_by_run = [], [], {}
     for run in runs:
@@ -346,13 +460,14 @@ def evaluate_block(runs: list, ecfg: dict, gcfg: dict, road: hc.Roadmap) -> dict
             "per_distance": group(entries, lambda e: distance_bin(e, bins),
                                   [f"{lo:g}-{hi:g} m" for lo, hi in zip(bins, bins[1:])] + [f">= {bins[-1]:g} m"]),
             "angle": angle_block(entries, rows), "branch": branch_block(runs, rows_by_run, road),
-            "commander": commander_block(rows), "timing": timing_block(runs)}
+            "commander": commander_block(rows), "timing": timing_block(runs),
+            "junction_level": junction_block(runs, ecfg, road, hv.load_control()[0]["dialog"]["approach_distance_m"])}
 
 
 def evaluate(runs: list, ecfg: dict | None = None, gcfg: dict | None = None, road: hc.Roadmap | None = None) -> dict:
     ecfg = ecfg if ecfg is not None else load_config()
     gcfg = gcfg if gcfg is not None else gd.load_config()
-    road = road if road is not None else hc.Roadmap(hc.load_json("configs/roadmap.json"))
+    road = road if road is not None else hv.load_roadmap(hv.roadmap_path(hv.load_control()[1]))   # P7: the v4 map
     res = evaluate_block(runs, ecfg, gcfg, road)
     res["sessions"] = sorted({r.session for r in runs})
     gt_cfg = gt_path.load_config()
@@ -407,7 +522,17 @@ def markdown(res: dict) -> str:
                  f"none {v['no_commander']}; coverage {v['coverage']}, accuracy of decided {v['accuracy_of_decided']}.")
     t = res["timing"]
     L += ["", "## Time from the ask to the accepted gesture", "", f"Accepted {t['accepted']} of {t['junction_asks']} asks (coverage {t['coverage']}). "
-          f"Seconds: {t['ask_to_accepted_s']}; without WAIT time: {t['ask_to_accepted_without_wait_s']}.", "", "## Zoom on vs off", ""]
+          f"Seconds: {t['ask_to_accepted_s']}; without WAIT time: {t['ask_to_accepted_without_wait_s']}.", ""]
+    jl = res["junction_level"]
+    L += ["## Junction level (per dialog, against goal B)", "",
+          f"Dialogs {jl['dialogs']}: correct {jl['correct']}, wrong {jl['wrong']}, abort {jl['abort']}.", "",
+          "| look | node | shown | dialogs | correct | wrong | abort | correct share |", "|---|---|---|---|---|---|---|---|"]
+    L += [f"| {p['look']} | {p['node']} | {p['shown']} | {p['dialogs']} | {p['correct']} | {p['wrong']} | {p['abort']} | "
+          f"{p['correct_share']} |" for p in jl["pairs"]]
+    so = jl["standoff"]
+    L += ["", f"Standoff: {so['asks']} asks, {so['with_estimate']} with a 360 estimate (coverage {so['coverage']}); |error| m "
+          f"{so['abs_error_m']}; signed error m {so['signed_error_m']}; true distance m {so['true_distance_m']} (nominal "
+          f"{so['nominal_approach_m']} m).", "", "## Zoom on vs off", ""]
     for label, blk in res["per_zoom"].items():
         if blk == NOT_EVALUATED:
             L.append(f"- {label}: {NOT_EVALUATED} (no session)")

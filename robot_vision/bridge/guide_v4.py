@@ -1,7 +1,8 @@
 """Protocol 3 guide with the v4 controller (hri_control_v4.ControllerV4): bridge/guide.py's GuideController with the v4
 tick input (pan-tilt people readings, rendered field of view) and the v4 HUD fields. Writes v4_log.jsonl next to
 decisions.csv: one row per new pan-tilt frame read in the READ state (people, readings, commander choice with reasons,
-label, resolution, zoom), which hri_eval_dev_v4.py scores against truth.jsonl."""
+label, resolution, zoom), which hri_eval_dev_v4.py scores against truth.jsonl. Since 2026-11-12 (P6) every command also carries
+tilt_deg (the zoom rule's tilt, -1 = level) and the tick input the tilt of the last pan-tilt frame."""
 
 from __future__ import annotations
 
@@ -35,13 +36,14 @@ class GuideControllerV4(GuideController):
         for q in snap.get("people", []) if fp else []:
             d = q["distance_m"] if q.get("distance_m", -1) >= 0 else unknown
             x, z = hc.world_point(fp["x"], fp["z"], fp["yaw_deg"], q["bearing_deg"], d)
-            people.append({"x": x, "z": z, "distance_m": d, "bearing_deg": q["bearing_deg"], "track_id": q.get("track_id", -1)})
+            people.append({"x": x, "z": z, "distance_m": d, "bearing_deg": q["bearing_deg"], "track_id": q.get("track_id", -1),
+                           "distance_source": q.get("distance_source", "") if q.get("distance_m", -1) >= 0 else "unknown"})
         target = (h["nav_target_x"], h["nav_target_z"]) if h.get("nav_has_target") else None
         corners = [(c["x"], c["z"]) for c in h.get("nav_corners", [])] if h.get("nav_status") == "complete" else []
         return hv.TickInputV4(time_s=h["time_s"], x=pose["x"], z=pose["z"], yaw_deg=pose["yaw_deg"], v=h["v"], omega=h["omega"],
                               nav_corners=corners, nav_target=target, people=people, people_time_s=snap.get("people_time_s"),
                               persons=v4.get("persons", []), persons_time_s=v4.get("persons_time_s"),
-                              fov_deg=v4.get("fov_deg"), pan_deg=v4.get("pan_deg", 0.0))
+                              fov_deg=v4.get("fov_deg"), pan_deg=v4.get("pan_deg", 0.0), tilt_deg=v4.get("tilt_deg"))
 
     def _hud(self, cmd, inp, snap: dict) -> dict:
         """Phase 1 fields from the people of the 360 camera, then the v4 fields; the commander is marked in the people list."""

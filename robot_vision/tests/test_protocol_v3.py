@@ -39,7 +39,7 @@ def hud(**over) -> dict:
 def command(seq=0, **over) -> dict:
     h = {"type": "command", "seq": seq, "reply_to": 1, "v": 0.5, "omega": 0.0, "pan_deg": 0.0, "has_target": False,
          "target_x": 0.0, "target_z": 0.0, "state": "navigate", "screen_text": "", "vertical_fov_deg": -1.0,
-         "hud": hud()}
+         "tilt_deg": -1.0, "hud": hud()}
     h.update(over)
     return h
 
@@ -69,7 +69,7 @@ class CommandSchemaTests(unittest.TestCase):
         check(command(hud=hud(people=[], log=[])), P.TO_UNITY, 3)
 
     def test_every_new_field_is_required(self):
-        for key in ("vertical_fov_deg", "hud"):
+        for key in ("vertical_fov_deg", "tilt_deg", "hud"):
             c = command()
             del c[key]
             with self.assertRaisesRegex(P.MessageError, key):
@@ -139,7 +139,8 @@ class FramePanTiltTests(unittest.TestCase):
 
 class TruthKeyTests(unittest.TestCase):
     KEYS_2026_10_23 = ("true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth")
-    TRUTH_JSONL_FIELDS = ("true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm")   # added 2026-11-08
+    TRUTH_JSONL_FIELDS = ("true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm",
+                          "ankle_height_m")   # added 2026-11-08; ankle_height_m 2026-11-12 (P1)
     KEYS = KEYS_2026_10_23 + TRUTH_JSONL_FIELDS
 
     def test_each_truth_key_rejected_at_any_depth(self):
@@ -246,7 +247,7 @@ class VersionSeparationTests(unittest.TestCase):
 
     def test_v2_command_has_no_hud_requirement(self):
         c = command()
-        del c["hud"], c["vertical_fov_deg"]
+        del c["hud"], c["vertical_fov_deg"], c["tilt_deg"]
         check(c, P.TO_UNITY, 2)
         with self.assertRaises(P.MessageError):
             check(c, P.TO_UNITY, 3)

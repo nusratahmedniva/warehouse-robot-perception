@@ -31,8 +31,9 @@ namespace WarehouseAvatar.Tests
             Assert.IsFalse(s.Placeholder);
             CollectionAssert.AreEqual(new[] { "sunbox_f1", "sunbox_m1" }, s.Names(true, "development"));
             CollectionAssert.AreEqual(new[] { "sunbox_f2" }, s.Names(true, "test"));
-            CollectionAssert.AreEquivalent(new[] { "point_mixamo_01", "point_ik_01", "wait_ik_01", "wait_raise_01", "stop_ik_01", "stop_ik_03" }, s.Names(false, "development"));
-            CollectionAssert.AreEquivalent(new[] { "point_mixamo_02", "wait_ik_02", "stop_ik_02" }, s.Names(false, "test"));
+            CollectionAssert.AreEquivalent(new[] { "point_mixamo_01", "point_ik_01", "wait_ik_01", "wait_raise_01", "stop_ik_01", "stop_ik_03",
+                                                   "proceed_ik_01", "proceed_ik_02" }, s.Names(false, "development"));
+            CollectionAssert.AreEquivalent(new[] { "point_mixamo_02", "wait_ik_02", "stop_ik_02", "proceed_ik_03" }, s.Names(false, "test"));
             CollectionAssert.AreEqual(new[] { "test" }, s.FinalEvaluationSplits);
         }
 
