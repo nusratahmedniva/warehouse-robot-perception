@@ -1605,3 +1605,16 @@ repetition declared here first). No performance thresholds: results are reported
     blank; the blank-refusal test makes its own blank (the real plan has none).
 - Unity: `final_v4.json` `look_split` "test" for every setting; the four `sessions/final_*.json` notes; `FinalGuardV4Tests` (plan (b) in every
   setting, unseen_look identical to zoom_on).
+
+### 2026-11-13, batch-mode rehearsal (development, declared in `upgrade_design.md` section 13): BATCH MODE DOES NOT WORK for v4
+
+Commit 9e58419; `finals_v4/run_protocol_v4.ps1` note `outputs/run_protocol_rehearsal_zoom_on_20261113_042517.txt` (free memory 3,253 MB;
+Chrome, the Claude app, the NVIDIA overlay and warp-svc running; power plan "AMD Ryzen Balanced", power mode Best performance on mains);
+server as in the zoom_on final without `--final-setting` (`bridge_guide_20261113_042519`, complete); Unity `-batchmode` `TrialPlayV4
+-workersConfig .../final_zoom_on.json`. **Result:** Unity built the ground-truth grid, created `trials_development_Task2_20261113_042813/`
+(only `config_used/`) and then hung for 7 minutes before the leak test, at `yield return new WaitForEndOfFrame()` (`TrialRunnerV4.cs`
+line 481): in `-batchmode` the Editor never reaches the end of a frame, so the coroutine never resumes. Stopped by the assistant (Unity
+killed; the server exited on the disconnect; the trial-count override removed). No run started; both folders are kept and are not results.
+The D2 to D4 sessions ran in the Editor window, where this wait returns. The B11 checker (`finals_v4/check_session_v4.ps1`) and the
+protocol note were shown to work on the D4 session R1 (all five criteria PASS) and in this rehearsal (the note) respectively; the end-to-end
+rehearsal is still to be done once the mode of the finals is decided.
