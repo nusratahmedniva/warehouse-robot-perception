@@ -140,7 +140,7 @@ class FramePanTiltTests(unittest.TestCase):
 class TruthKeyTests(unittest.TestCase):
     KEYS_2026_10_23 = ("true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth")
     TRUTH_JSONL_FIELDS = ("true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm",
-                          "ankle_height_m")   # added 2026-11-08; ankle_height_m 2026-11-12 (P1)
+                          "ankle_height_m", "gesture_truthful")   # added 2026-11-08; ankle_height_m 2026-11-12 (P1); gesture_truthful 2026-11-13 (AUDIT.md 16)
     KEYS = KEYS_2026_10_23 + TRUTH_JSONL_FIELDS
 
     def test_each_truth_key_rejected_at_any_depth(self):

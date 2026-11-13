@@ -64,6 +64,7 @@ class TruthRow:
     is_commander: bool
     clip: str = ""
     ankle_height_m: float | None = None      # optional (P1, 2026-11-12): the avatar's ankles above the floor; absent in older sessions
+    gesture_truthful: bool | None = None     # optional (AUDIT.md 16, 2026-11-13): False on the rows of a gesture that shows a wrong direction (a lie); None = not recorded
 
 
 def _parse_line(obj: dict, n: int, where: str, cfg: dict) -> TruthRow:
@@ -93,9 +94,12 @@ def _parse_line(obj: dict, n: int, where: str, cfg: dict) -> TruthRow:
     ankle = obj.get("ankle_height_m")
     if ankle is not None and not (_is_num(ankle) and 0.0 <= float(ankle) < 0.5):
         raise bad(f"field 'ankle_height_m' must be a number in [0, 0.5) m ({ankle!r})")
+    truthful = obj.get("gesture_truthful")
+    if truthful is not None and not isinstance(truthful, bool):
+        raise bad(f"field 'gesture_truthful' must be true or false ({truthful!r})")
     return TruthRow(n, float(obj["time_s"]), obj["worker_id"], obj["look"], float(obj["x"]), float(obj["z"]),
                     obj["true_command"], float(obj["point_angle_deg"]), obj["arm"], obj["phase"], obj["is_commander"], clip,
-                    float(ankle) if ankle is not None else None)
+                    float(ankle) if ankle is not None else None, truthful)
 
 
 def parse_truth(lines, cfg: dict | None = None, where: str = "truth.jsonl") -> list[TruthRow]:

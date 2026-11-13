@@ -9,7 +9,7 @@ configs/v4/final_plan.json, while a model file is missing, or when the file is a
 
 Usage (from robot_vision/):
     python freeze_v4.py                 report: status, blanks, what would be hashed, current mismatches
-    python freeze_v4.py --refresh-list  rewrite "files" of an UNFROZEN frozen.json from configs/v4/*.json
+    python freeze_v4.py --refresh-list  rewrite "files" of an UNFROZEN frozen.json from configs/v4/*.json and FROZEN_EXTRA
     python freeze_v4.py --freeze        write the hashes and set "frozen": true (run by Nusrat BY HAND after the development evaluation,
                                         agreed with Anisha on 2026-11-13; CLAUDE.md, AUDIT.md section 15; never run by the AI)
 
@@ -46,9 +46,15 @@ def read(repo: Path = REPO) -> dict:
     return json.loads((repo / FROZEN_REL).read_text(encoding="utf-8"))
 
 
+# Files below configs/v4/ that are frozen although the glob below does not reach them (AUDIT.md section 16.10, 2026-11-13): the experiments
+# of the simulator study. experiments/export_csv.json is deliberately NOT here: it only chooses CSV columns, no result depends on it.
+FROZEN_EXTRA = (f"{V4_DIR}/experiments/scenarios_ab.json",)
+
+
 def config_files(repo: Path = REPO) -> list[str]:
-    """Repo-relative paths of every v4 config (configs/v4/*.json except frozen.json), sorted."""
-    return sorted(f"{V4_DIR}/{p.name}" for p in (repo / V4_DIR).glob("*.json") if p.name != "frozen.json")
+    """Repo-relative paths of every v4 config (configs/v4/*.json except frozen.json, plus FROZEN_EXTRA), sorted."""
+    found = {f"{V4_DIR}/{p.name}" for p in (repo / V4_DIR).glob("*.json") if p.name != "frozen.json"}
+    return sorted(found | {f for f in FROZEN_EXTRA if (repo / f).is_file()})
 
 
 def unity_files(repo: Path = REPO) -> list[str]:

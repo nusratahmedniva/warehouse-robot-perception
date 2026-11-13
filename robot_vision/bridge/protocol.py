@@ -27,9 +27,10 @@ FORBIDDEN_KEYS = frozenset({"goal", "goal_point", "goal_x", "goal_z", "end_point
 # appears legitimately in a message Unity sends. Not in the list: time_s, x, z (they are in telemetry and frame headers). is_commander and
 # point_angle_deg are HUD fields Python sends TO Unity; messages to Unity are not checked (validate() looks only at FROM_UNITY).
 # 2026-11-12 (P1, Nusrat during Anisha's absence): the new optional field ankle_height_m of that file joins them on the same rule.
+# 2026-11-13 (AUDIT.md section 16, experiments A and B): so does the optional gesture_truthful (is this worker's gesture a lie?).
 TRUTH_KEYS = frozenset({"true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth",
                         "true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm",
-                        "ankle_height_m"})
+                        "ankle_height_m", "gesture_truthful"})
 FORBIDDEN_KEYS_V3 = FORBIDDEN_KEYS | TRUTH_KEYS
 
 NUM, INT, STR, BOOL = "number", "int", "string", "bool"

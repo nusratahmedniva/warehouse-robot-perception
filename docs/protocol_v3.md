@@ -80,7 +80,7 @@ and, since 2026-11-08, every field name of a `truth.jsonl` row (below) that neve
 
 `true_command`, `is_commander`, `worker_id`, `point_angle_deg`, `look`, `clip`, `phase`, `arm`
 
-and, since 2026-11-12, `ankle_height_m` (15 names, compared case-insensitively, as in version 2). Not forbidden: `time_s`, `x`, `z`, which Unity sends in telemetry,
+and, since 2026-11-12, `ankle_height_m`, and, since 2026-11-13, `gesture_truthful` (16 names, compared case-insensitively, as in version 2). Not forbidden: `time_s`, `x`, `z`, which Unity sends in telemetry,
 frame headers and `nav_corners`. A message from Unity containing any of them, even nested inside a list or object, is
 answered with `error` (`fatal: false`) and ignored. Truth about the workers reaches Python only through the run files below,
 and only evaluation code reads them. **Only messages FROM Unity are checked.** Python-to-Unity messages are not (the HUD
@@ -330,8 +330,16 @@ listed in AUDIT.md section 15 for Anisha's review). Everything else in this docu
    frame**, like `vertical_fov_deg` and the intrinsics; Python rotates every pixel ray by the frame's tilt into a level frame
    before taking an azimuth or elevation. This supersedes AUDIT.md 14.15 decision (c) (camera level, no tilt command).
 
+## Amendment of 2026-11-13 (still version 3; experiments A and B, AUDIT.md section 16)
+
+4. **`truth.jsonl` field `gesture_truthful`.** Optional boolean in every row: `false` on every row of a gesture that shows a wrong direction (the worker
+   lies: the experiments of Set B), `true` otherwise (also while idle: nothing is shown). Absent in older sessions; `gesture_data.py` keeps it as
+   `TruthRow.gesture_truthful` (None when absent). Evaluation only: refused in any message from Unity (section 3 now lists 16 names). The direction a lie
+   shows is the existing `point_angle_deg` (POINT) or a PROCEED (FORWARD). Unity does not write the field yet; the simulator does.
+
 ## Changes
 
+- 2026-11-13 (still version 3): amendment 4 (`gesture_truthful`).
 - 2026-11-12 (still version 3): the three amendments above (PROCEED, `ankle_height_m`, `tilt_deg`).
 - 2026-10-24 (Phase 3, still version 3): the HUD fields left at -1/NONE in Phase 1 are filled by the v4 controller.
 - 2026-10-23 (Phase 2, still version 3): `truth.jsonl` and `trail.csv` times are Unity `Time.time`; `run_###/run.json`

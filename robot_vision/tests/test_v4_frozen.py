@@ -58,11 +58,21 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertIsInstance(REC["frozen"], bool)
 
     def test_every_v4_config_is_listed_and_nothing_else(self):
-        self.assertEqual(REC["files"], fz.config_files())
+        if REC["frozen"]:
+            self.assertEqual(REC["files"], fz.config_files())
+        else:       # unfrozen the list is documentation, rewritten by --refresh-list; it may lag behind but never name a file that is not frozen
+            self.assertTrue(set(REC["files"]) <= set(fz.config_files()))
         self.assertNotIn(fz.FROZEN_REL, REC["files"])
         for must in ("bridge.json", "control.json", "commander.json", "gesture_reader.json", "data_splits.json", "eval_dev.json",
                      "gesture_data.json", "gt_eval.json", "final_plan.json", "analysis.json"):
             self.assertIn(f"{fz.V4_DIR}/{must}", REC["files"], must)
+
+    def test_the_experiments_file_is_frozen_and_the_csv_columns_are_not(self):
+        files = fz.config_files()
+        self.assertIn(f"{fz.V4_DIR}/experiments/scenarios_ab.json", files)
+        self.assertNotIn(f"{fz.V4_DIR}/experiments/export_csv.json", files)
+        self.assertEqual([f for f in files if "/experiments/" in f], list(fz.FROZEN_EXTRA))
+
 
     def test_unfrozen_holds_no_hashes(self):
         if REC["frozen"]:
@@ -189,6 +199,15 @@ class FreezeMechanicsTests(unittest.TestCase):
         self.assertEqual(set(rec["models"]), {"pose_weights", "mediapipe_model"})
         self.assertEqual(fz.problems(self.repo, require_models=True), [])
         self.assertEqual(fz.require_frozen(self.repo)["git_commit"], "abc123")
+
+    def test_a_changed_experiments_file_is_found_but_the_csv_columns_may_change(self):
+        fz.freeze(self.repo)
+        csv_cfg = self.repo / fz.V4_DIR / "experiments" / "export_csv.json"
+        csv_cfg.write_text(csv_cfg.read_text() + " ")
+        self.assertEqual(fz.problems(self.repo), [])
+        f = self.repo / fz.V4_DIR / "experiments" / "scenarios_ab.json"
+        f.write_text(f.read_text() + " ")
+        self.assertEqual(fz.problems(self.repo), [f"{fz.V4_DIR}/experiments/scenarios_ab.json changed after freezing"])
 
     def test_a_changed_v4_config_is_found(self):
         fz.freeze(self.repo)
