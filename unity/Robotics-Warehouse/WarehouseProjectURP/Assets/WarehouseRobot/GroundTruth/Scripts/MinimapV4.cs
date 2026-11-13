@@ -7,8 +7,10 @@ using WarehouseRobot.Bridge;
 namespace WarehouseRobot.GroundTruth
 {
     /// <summary>
-    /// v4 HUD minimaps (2026-11-12, U5; Avatar/Config/upgrade_design.md section 8), drawn in the Game view with IMGUI and GL
-    /// after every camera has rendered, so they can never appear in a robot camera image (as the HUD).
+    /// v4 HUD minimaps (2026-11-12, U5; Avatar/Config/upgrade_design.md section 8), drawn in the Game view with IMGUI after every
+    /// camera has rendered, so they can never appear in a robot camera image (as the HUD). Since 2026-11-14 (experiments_ab.md
+    /// section 3) each panel is rasterised into its own texture and shown with GUI.DrawTexture: the earlier GL lines drawn inside
+    /// OnGUI did not use the pixel matrix under URP and appeared as small lines in the 3D view while the panels stayed empty.
     /// - F9 ROBOT minimap (on by default): only what the robot itself knows: the roadmap (its map), its own pose, the people
     ///   its 360 camera detects (from the hud people list: bearing and distance), its current target and the path it plans
     ///   (the NavMesh corners Unity computed for that target). No ground truth.
@@ -25,7 +27,9 @@ namespace WarehouseRobot.GroundTruth
         public GroundTruthLayer gt;
         public Transform goal;
 
-        static Material lineMat;
+        Texture2D robotTex, truthTex;
+        Color32[] buf;
+        int texSize;
         readonly List<RoadNode> nodes = new List<RoadNode>();
         readonly List<Vector3> trail = new List<Vector3>();
         float nextTrail;
@@ -85,16 +89,24 @@ namespace WarehouseRobot.GroundTruth
         {
             GUI.Box(r, GUIContent.none);
             GUI.Label(new Rect(r.x + 4f, r.y + 2f, r.width - 8f, 18f), label, title);
-            area = new Rect(r.x + 6f, r.y + 22f, r.width - 12f, r.height - 28f);
+            var full = new Rect(r.x + 6f, r.y + 22f, r.width - 12f, r.height - 28f);
+            float side = Mathf.Min(full.width, full.height);
+            var target = new Rect(full.x + 0.5f * (full.width - side), full.y + 0.5f * (full.height - side), side, side);
             if (Event.current.type != EventType.Repaint) return;
-            if (lineMat == null)
+            int texPx = Mathf.Max(16, Mathf.RoundToInt(side));
+            if (texSize != texPx || buf == null)
             {
-                lineMat = new Material(Shader.Find("Hidden/Internal-Colored")) { hideFlags = HideFlags.HideAndDontSave };
-                lineMat.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+                texSize = texPx;
+                buf = new Color32[texPx * texPx];
+                if (robotTex != null) Destroy(robotTex);
+                if (truthTex != null) Destroy(truthTex);
+                robotTex = truthTex = null;
             }
-            GL.PushMatrix();
-            lineMat.SetPass(0);
-            GL.LoadPixelMatrix();
+            ref Texture2D tex = ref truth ? ref truthTex : ref robotTex;
+            if (tex == null) tex = new Texture2D(texPx, texPx, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.HideAndDontSave };
+            area = new Rect(0f, 0f, texPx, texPx);                   // pixel space of the texture (y up)
+            var clear = new Color32(20, 22, 28, 220);
+            for (int i = 0; i < buf.Length; i++) buf[i] = clear;
             // the roadmap (the robot's map; also drawn under the ground truth for orientation)
             foreach (var n in nodes)
                 foreach (var b in n.branches)
@@ -136,39 +148,53 @@ namespace WarehouseRobot.GroundTruth
             // the robot: a dot and its heading
             Dot(rp, Color.cyan, 4.5f);
             Line(rp, rp + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * 2.5f, Color.cyan);
-            GL.PopMatrix();
+            tex.SetPixels32(buf);
+            tex.Apply(false);
+            GUI.DrawTexture(target, tex, ScaleMode.StretchToFill, true);
         }
 
+        /// <summary>World x, z to the panel texture's pixels (x right, y up), the map's extent fitted into the square.</summary>
         Vector2 Px(Vector3 w)
         {
             float u = Mathf.InverseLerp(min.x, max.x, w.x), v = Mathf.InverseLerp(min.y, max.y, w.z);
-            float s = Mathf.Min(area.width, area.height);
-            float ox = area.x + 0.5f * (area.width - s), oy = area.y + 0.5f * (area.height - s);
-            // GL pixel space: y up from the bottom of the screen; GUI space: y down from the top
-            return new Vector2(ox + u * s, Screen.height - (oy + (1f - v) * s));
+            return new Vector2(u * (area.width - 1f), v * (area.height - 1f));
+        }
+
+        void Plot(int x, int y, Color32 c)
+        {
+            if (x < 0 || y < 0 || x >= texSize || y >= texSize) return;
+            buf[y * texSize + x] = c;
         }
 
         void Line(Vector3 a, Vector3 b, Color c)
         {
-            GL.Begin(GL.LINES);
-            GL.Color(c);
             var pa = Px(a);
             var pb = Px(b);
-            GL.Vertex3(pa.x, pa.y, 0f);
-            GL.Vertex3(pb.x, pb.y, 0f);
-            GL.End();
+            Color32 c32 = c;
+            int steps = Mathf.Max(1, Mathf.CeilToInt(Mathf.Max(Mathf.Abs(pb.x - pa.x), Mathf.Abs(pb.y - pa.y))));
+            for (int i = 0; i <= steps; i++)
+            {
+                var p = Vector2.Lerp(pa, pb, (float)i / steps);
+                int x = Mathf.RoundToInt(p.x), y = Mathf.RoundToInt(p.y);
+                Plot(x, y, c32);
+                Plot(x + 1, y, c32);              // 2 px wide, readable at panel size
+                Plot(x, y + 1, c32);
+            }
         }
 
         void Dot(Vector3 w, Color c, float r)
         {
             var p = Px(w);
-            GL.Begin(GL.QUADS);
-            GL.Color(c);
-            GL.Vertex3(p.x - r, p.y - r, 0f);
-            GL.Vertex3(p.x + r, p.y - r, 0f);
-            GL.Vertex3(p.x + r, p.y + r, 0f);
-            GL.Vertex3(p.x - r, p.y + r, 0f);
-            GL.End();
+            Color32 c32 = c;
+            int x0 = Mathf.RoundToInt(p.x), y0 = Mathf.RoundToInt(p.y), rr = Mathf.Max(1, Mathf.RoundToInt(r));
+            for (int y = y0 - rr; y <= y0 + rr; y++)
+                for (int x = x0 - rr; x <= x0 + rr; x++) Plot(x, y, c32);
+        }
+
+        void OnDestroy()
+        {
+            if (robotTex != null) Destroy(robotTex);
+            if (truthTex != null) Destroy(truthTex);
         }
     }
 }

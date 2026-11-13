@@ -82,7 +82,7 @@ namespace WarehouseRobot.Scenario
     /// It also refuses a session unless the bridge speaks protocol 3, the robot uses the v4 config, the ground-truth layer
     /// exists and the grid has a path from A to every endpoint.
     /// </summary>
-    public class TrialRunnerV4 : MonoBehaviour
+    public partial class TrialRunnerV4 : MonoBehaviour
     {
         public string repoRootRelativeToProject = "../../..";
         public bool runOnStart = true;
@@ -222,6 +222,7 @@ namespace WarehouseRobot.Scenario
             catch (Exception e) { return Fail(out error, "cannot read " + TrialPlanAsset + " or " + ControlFile + ": " + e.Message); }
 #if UNITY_EDITOR
             finalSetting = UnityEditor.SessionState.GetString(FinalSettingKey, "");
+            experimentName = UnityEditor.SessionState.GetString(ExperimentKey, "");      // experiments A/B (TrialRunnerV4Experiment.cs)
 #endif
             if (Final && !SetupFinal(out error)) return false;
 
@@ -255,7 +256,8 @@ namespace WarehouseRobot.Scenario
             foreach (var e in Endpoints())
                 if (!GroundTruthLayer.Plan(gt.Grid, nodes[meta.start].Position, nodes[e].Position, out _, out _, out string planError))
                     return Fail(out error, $"ground-truth grid, {meta.start} to {e}: {planError}");
-            if (!CheckBystanderStands(out error)) return false;
+            if (Experiment) { if (!PlanExperimentRuns(out error)) return Fail(out error, $"experiment {experimentName}: {error}"); }
+            else if (!CheckBystanderStands(out error)) return false;
             trail = gt.GetComponent<TrailRecorder>();
             if (trail == null) trail = gt.gameObject.AddComponent<TrailRecorder>();
             truthLog = gameObject.AddComponent<TruthLogger>();
@@ -338,7 +340,8 @@ namespace WarehouseRobot.Scenario
             string mode = FinalRunGuard.Mode(cfg.mode);
             TrialTotal = Final ? fplan.RunsPerSetting : Mathf.Max(1, cfg.trial_count);
             plans.Clear();
-            for (int run = 1; run <= TrialTotal; run++)
+            if (Experiment && !SetupExperiment(mode, out error)) return false;
+            for (int run = 1; run <= TrialTotal && !Experiment; run++)
             {
                 string planError;
                 var plan = Final ? TrialRunWorkers.PlanFinal(run, fset, wcfg, workerTemplate, splits, out planError)
@@ -349,8 +352,10 @@ namespace WarehouseRobot.Scenario
 
             int otherAvatars = 0;
             foreach (var w in FindObjectsByType<WorkerV4>(FindObjectsSortMode.None)) if (w.isActiveAndEnabled) otherAvatars++;
-            if (otherAvatars + wcfg.ActiveAvatars > wcfg.max_active_avatars)
+            if (!Experiment && otherAvatars + wcfg.ActiveAvatars > wcfg.max_active_avatars)
                 return Fail(out error, $"{otherAvatars} WorkerV4 already active in the scene + {wcfg.ActiveAvatars} trial workers > max_active_avatars {wcfg.max_active_avatars}");
+            if (Experiment && otherAvatars > 0)
+                return Fail(out error, $"{otherAvatars} WorkerV4 already active in the scene: an experiment counts its own workers against max_active_avatars {ecfg.max_active_avatars}");
 
             hiddenV3.Clear();
             foreach (var g in FindObjectsByType<GestureWorker>(FindObjectsInactive.Include, FindObjectsSortMode.None))
@@ -447,8 +452,9 @@ namespace WarehouseRobot.Scenario
             var order = new List<string>();
             var gp = new GoalSequence(seed);
             for (int i = 0; i < TrialTotal; i++) order.Add(endpoints[gp.NextGoalIndex(endpoints.Count)]);
+            if (Experiment) { order = new List<string>(eGoals); endpoints = ExperimentPlanAB.Endpoints(eplan.Map); }
 
-            SessionFolder = NewFolder(Final ? $"trials_final_{cfg.task}_{finalSetting}" : $"trials_{mode}_{cfg.task}");
+            SessionFolder = NewFolder(Final ? $"trials_final_{cfg.task}_{finalSetting}" : Experiment ? $"trials_{mode}_{cfg.task}_{experimentName}" : $"trials_{mode}_{cfg.task}");
             string used = Path.Combine(SessionFolder, "config_used");
             Directory.CreateDirectory(used);
             GroundTruthFiles.WriteNew(Path.Combine(used, cfgName), cfgText);
@@ -461,6 +467,7 @@ namespace WarehouseRobot.Scenario
             GroundTruthFiles.WriteNew(Path.Combine(used, "worker_v4.json"), workerPrefab.config.text);
             GroundTruthFiles.WriteNew(Path.Combine(used, "trial_workers_v4.json"), workersText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "data_splits.json"), splitsText);
+            WriteExperimentConfigs(used);
             if (Final)
             {
                 GroundTruthFiles.WriteNew(Path.Combine(used, "final_v4.json"), finalCfgText);
@@ -477,7 +484,7 @@ namespace WarehouseRobot.Scenario
                 yield break;
             }
             var a = nodes[meta.start].Position;
-            gt.Show(a, nodes[order[0]].Position);
+            gt.Show(a, GoalPosition(order[0], 1));
             yield return new WaitForEndOfFrame();
             var leak = new LeakRecord { max_pixel_diff_allowed = leakMaxDiff, pose = PoseText() };
             bridge.FramesPaused = true;
@@ -485,31 +492,34 @@ namespace WarehouseRobot.Scenario
             finally { bridge.FramesPaused = false; }
 
             ReadGit(out var commit, out var branch);
-            var session = new SessionV4
-            {
-                protocol_version = bridge.ProtocolVersion, task = cfg.task, mode = mode, seed = seed, trials = TrialTotal,
-                endpoints = endpoints, goal_order = order, git_commit = commit, git_branch = branch,
-                unity_version = Application.unityVersion, scene = gameObject.scene.name,
-                trials_config = cfgName, trials_config_sha256 = Sha256(cfgText), roadmap_sha256 = Sha256(roadText),
-                robot_unity_config_sha256_lf = Sha256(robotUnityText.Replace("\r\n", "\n")),
-                shared_bridge_config = Relative(BridgeSharedPath()), zoom_config = Relative(robot.Config.ZoomConfigPath),
-                zoom_fov_min_deg = robot.PanTilt.FovMinDeg, zoom_fov_default_deg = robot.PanTilt.DefaultFovDeg, zoom_fov_max_deg = robot.PanTilt.FovMaxDeg,
-                python_map_required = ExpectedRoute,
-                worker_appearance = string.Join(" | ", allWorkers.ConvertAll(w => w.name + ": " + w.LookDescription)),
-                worker_config = WorkerConfigAsset, worker_config_sha256_lf = Sha256(workerPrefab.config.text.Replace("\r\n", "\n")),
-                trial_workers_config = workersSource, trial_workers_config_sha256_lf = Sha256(workersText.Replace("\r\n", "\n")),
-                roadmap = RoadmapFileV4, forward_command = wcfg.forward_command, scenario = wcfg.scenario, timeout_s = cfg.timeout_s,
-                data_splits = wcfg.data_splits, data_splits_sha256_lf = Sha256(splitsText.Replace("\r\n", "\n")), data_split = plans[0].Split,
-                commander_command = wcfg.commander_command, worker_layout = Layout,
-                bystanders = wcfg.bystanders.count, max_active_avatars = wcfg.max_active_avatars,
-                v3_workers_hidden = new List<string>(hiddenV3),
-                ground_truth_layer = robot.Config.Unity.v4.ground_truth.layer, final_setting = finalSetting,
-                grid_cell_size_m = gt.Grid.CellSize, grid_widening_m = gt.Grid.InflationM, grid_report = gt.GridReport,
-                leak_test = leak,
-            };
+            // the same fields in the same order as before (JsonUtility writes them in declaration order); an experiment session
+            // writes its subclass SessionV4AB with the experiment's fields after them (TrialRunnerV4Experiment.cs)
+            var session = NewSessionRecord();
+            session.protocol_version = bridge.ProtocolVersion; session.task = cfg.task; session.mode = mode; session.seed = seed; session.trials = TrialTotal;
+            session.endpoints = endpoints; session.goal_order = order; session.git_commit = commit; session.git_branch = branch;
+            session.unity_version = Application.unityVersion; session.scene = gameObject.scene.name;
+            session.trials_config = cfgName; session.trials_config_sha256 = Sha256(cfgText); session.roadmap_sha256 = Sha256(roadText);
+            session.robot_unity_config_sha256_lf = Sha256(robotUnityText.Replace("\r\n", "\n"));
+            session.shared_bridge_config = Relative(BridgeSharedPath()); session.zoom_config = Relative(robot.Config.ZoomConfigPath);
+            session.zoom_fov_min_deg = robot.PanTilt.FovMinDeg; session.zoom_fov_default_deg = robot.PanTilt.DefaultFovDeg; session.zoom_fov_max_deg = robot.PanTilt.FovMaxDeg;
+            session.python_map_required = ExpectedRoute;
+            session.worker_appearance = string.Join(" | ", allWorkers.ConvertAll(w => w.name + ": " + w.LookDescription));
+            session.worker_config = WorkerConfigAsset; session.worker_config_sha256_lf = Sha256(workerPrefab.config.text.Replace("\r\n", "\n"));
+            session.trial_workers_config = workersSource; session.trial_workers_config_sha256_lf = Sha256(workersText.Replace("\r\n", "\n"));
+            session.roadmap = Experiment && eplan.MapName != "roadmap" ? ecfg.scenarios_ab + " maps." + eplan.MapName : RoadmapFileV4;
+            session.forward_command = wcfg.forward_command; session.scenario = Experiment ? "experiment_" + experimentName : wcfg.scenario; session.timeout_s = cfg.timeout_s;
+            session.data_splits = wcfg.data_splits; session.data_splits_sha256_lf = Sha256(splitsText.Replace("\r\n", "\n"));
+            session.data_split = Experiment ? eSplit : plans[0].Split;
+            session.commander_command = wcfg.commander_command;
+            session.worker_layout = Experiment ? $"experiment {experimentName}: {eplan.LayoutKind} layout, workers at every asking node, anyone asked answers (experiments_ab.md section 3)" : Layout;
+            session.bystanders = Experiment ? 0 : wcfg.bystanders.count; session.max_active_avatars = Experiment ? ecfg.max_active_avatars : wcfg.max_active_avatars;
+            session.v3_workers_hidden = new List<string>(hiddenV3);
+            session.ground_truth_layer = robot.Config.Unity.v4.ground_truth.layer; session.final_setting = finalSetting;
+            session.grid_cell_size_m = gt.Grid.CellSize; session.grid_widening_m = gt.Grid.InflationM; session.grid_report = gt.GridReport;
+            session.leak_test = leak;
             foreach (var w in allWorkers)
                 session.workers.Add($"{w.name} worker_id {w.workerId} ({w.transform.position.x.ToString("0.00", Inv)}, {w.transform.position.z.ToString("0.00", Inv)})");
-            for (int i = 0; i < plans.Count; i++)
+            for (int i = 0; i < plans.Count && !Experiment; i++)
                 session.run_workers.Add($"run {i + 1}: commander {plans[i].CommanderLook}" +
                                         (plans[i].BystanderLooks.Count > 0 ? "; bystanders " + string.Join(", ", plans[i].BystanderLooks) : "") +
                                         $"; clips {string.Join(", ", plans[i].AllowedClips)} ({plans[i].Split})");
@@ -570,6 +580,7 @@ namespace WarehouseRobot.Scenario
         bool ResetForTrial(string goal, int run, out string error)
         {
             error = null;
+            if (Experiment) return ResetForExperimentTrial(run, out error);
             var start = nodes[meta.start];
             Vector3 a = start.Position;
             float yaw = start.transform.eulerAngles.y;
@@ -597,7 +608,7 @@ namespace WarehouseRobot.Scenario
             return true;
         }
 
-        WorkerV4 Spawn(string name, string look, int id, Vector3 position, Quaternion rotation, int run, out string error)
+        WorkerV4 Spawn(string name, string look, int id, Vector3 position, Quaternion rotation, int run, out string error, Action<WorkerV4> prepare = null)
         {
             error = null;
             var w = Instantiate(workerPrefab, position, rotation, workersRoot);
@@ -607,6 +618,7 @@ namespace WarehouseRobot.Scenario
             w.robot = robot.transform;
             w.robotEye = robot.PanTilt != null ? robot.PanTilt.transform : null;
             w.SetRun(sessionSeed, run);
+            prepare?.Invoke(w);
             allWorkers.Add(w);
             if (w.Initialize()) return w;
             error = $"{name} (look {look}): {w.Problem}";
@@ -617,6 +629,7 @@ namespace WarehouseRobot.Scenario
         {
             foreach (var w in allWorkers) if (w != null) Destroy(w.gameObject);
             allWorkers.Clear();
+            DestroyExperimentExtras();
             bystanders.Clear();
             commander = null;
             commanderAt = moveTo = null;
@@ -627,6 +640,7 @@ namespace WarehouseRobot.Scenario
 
         void Update()
         {
+            if (Experiment) { UpdateExperiment(); return; }
             if (!trialActive || commander == null || !commander.Ready) return;
             question.Update(bridge.ScreenText);
             if (moveTo != null && !commander.Busy)
@@ -758,10 +772,11 @@ namespace WarehouseRobot.Scenario
         {
             if (!ResetForTrial(goal, index, out string resetError)) { failed($"trial {index}: workers: {resetError}"); yield break; }
             yield return null;                                       // the workers' Start and first Update before the run starts
-            Vector3 a = nodes[meta.start].Position, gpos = nodes[goal].Position;
+            Vector3 a = nodes[meta.start].Position, gpos = GoalPosition(goal, index);
             var shown = new List<ShownRecord>();
             var placed = new HashSet<string>();
-            Place(nodes[meta.start], shown, placed);                // the commander answers the first ask at A (P8)
+            eAskRecords.Clear();
+            if (!Experiment) Place(nodes[meta.start], shown, placed);                // the commander answers the first ask at A (P8)
             int collisionBase = robot.Collisions != null ? robot.Collisions.Records.Count : 0;
             var body = robot.GetComponent<Collider>();
             if (body == null) body = robot.GetComponentInChildren<Collider>();
@@ -783,9 +798,10 @@ namespace WarehouseRobot.Scenario
             truthLog.Begin(Path.Combine(runDir, GroundTruthFiles.TruthFile), allWorkers, workerTemplate.truth_log.interval_s);
             question = new QuestionWatch(workerTemplate.question.prompt);
             servedAsk = 0;
-            visuals.Begin(gt, robot, bridge, goalNode, workerTemplate.question.prompt, () => commanderAt,
+            visuals.Begin(gt, robot, bridge, Experiment ? null : goalNode, workerTemplate.question.prompt, () => commanderAt,
                           () => commander != null && commander.CurrentSpec != null ? commander.Current.command : "-");
-            minimap.BeginRun(goalNode.transform);
+            if (Experiment) visuals.SetExperiment(ExperimentAskNode, ExperimentTrueCommand, ExperimentLie, ExperimentShown);
+            minimap.BeginRun(Experiment ? eGoalMarker : goalNode.transform);
             trialActive = true;
 
             Vector3 last = robot.transform.position, progressPos = last;
@@ -805,7 +821,7 @@ namespace WarehouseRobot.Scenario
                 speedSum += sp; turnSum += tr; speedMax = Mathf.Max(speedMax, sp); turnMax = Mathf.Max(turnMax, tr); samples++;
                 float hd = HumanDistance(body);
                 closest = Mathf.Min(closest, hd);
-                if (bridge.HasTarget)
+                if (!Experiment && bridge.HasTarget)
                     foreach (var kv in nodes)
                         if (kv.Value.IsJunction && !placed.Contains(kv.Key) &&
                             Vector2.Distance(bridge.Target, new Vector2(kv.Value.Position.x, kv.Value.Position.z)) < 0.5f)
@@ -838,6 +854,8 @@ namespace WarehouseRobot.Scenario
             trialActive = false;
             visuals.End();
             if (commander != null) { commander.SetQuestionVisible(false); commander.CancelPending(); }
+            if (Experiment)
+                foreach (var w in allWorkers) if (w != null && w.gameObject.activeSelf) { w.SetQuestionVisible(false); w.CancelPending(); }
             bridge.TrialRunning = false;
             robot.Drive.Stop();
             trail.End();
@@ -855,7 +873,7 @@ namespace WarehouseRobot.Scenario
                 t_start = t0, t_end = Time.time, total_s = Time.time - t0,
                 avg_speed_mps = samples > 0 ? speedSum / samples : 0f, max_speed_mps = speedMax,
                 avg_turn_dps = samples > 0 ? turnSum / samples : 0f, max_turn_dps = turnMax,
-                closest_human_m = float.IsInfinity(closest) ? -1f : closest, shown = shown,
+                closest_human_m = float.IsInfinity(closest) ? -1f : closest, shown = Experiment ? new List<ShownRecord>(eAskRecords) : shown,
                 truth_file = Path.GetFileName(truthPath),
             };
             if (robot.Collisions != null)
@@ -868,6 +886,7 @@ namespace WarehouseRobot.Scenario
                 }
 
             Score(rec, end, dist);
+            if (Experiment && eLimit.Length > 0) rec.detail += "; " + eLimit;
             bridge.ReachedEndPoint = rec.outcome == "SUCCESS";
             GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, $"truth_run{index:000}.json"), JsonUtility.ToJson(rec, true));
             done(rec);

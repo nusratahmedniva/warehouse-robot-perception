@@ -123,9 +123,12 @@ namespace WarehouseHRI.V4
 
         public NodeDef Node(string name) => Nodes.Find(n => n.Name == name);
 
-        public static RoadmapV4 Parse(string json)
+        public static RoadmapV4 Parse(string json) =>
+            FromObject(MiniJson.Parse(json) as Dictionary<string, object> ?? throw new FormatException("roadmap: not an object"));
+
+        /// <summary>A map object of the roadmap format (also the maps of configs/v4/experiments/scenarios_ab.json, 2026-11-14).</summary>
+        public static RoadmapV4 FromObject(Dictionary<string, object> root)
         {
-            var root = MiniJson.Parse(json) as Dictionary<string, object> ?? throw new FormatException("roadmap: not an object");
             var r = new RoadmapV4 { Start = (string)root["start"] };
             r.CornerOffsetM = (float)(double)((Dictionary<string, object>)root["worker_stand"])["corner_offset_m"];
             foreach (var kv in (Dictionary<string, object>)root["nodes"])
