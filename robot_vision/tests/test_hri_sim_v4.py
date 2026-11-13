@@ -250,7 +250,7 @@ class IsolationTests(unittest.TestCase):
     def test_v3_code_does_not_import_the_v4_simulator(self):
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)
-            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name == "hri_sim_v4.py":
+            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("hri_sim_v4.py", "run_experiments_ab_v4.py"):   # the v4 runner of experiments A and B (2026-11-13)
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

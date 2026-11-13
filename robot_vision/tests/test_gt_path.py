@@ -686,7 +686,8 @@ class SessionLeakCheckTests(unittest.TestCase):
 
 class IsolationTests(unittest.TestCase):
     def test_only_evaluation_code_imports_gt_path(self):
-        allowed = {"hri_analysis.py", "hri_analysis_v4.py", "hri_eval_dev_v4.py", "hri_eval_final_v4.py", "make_results_archive_v4.py"}
+        allowed = {"hri_analysis.py", "hri_analysis_v4.py", "hri_eval_dev_v4.py", "hri_eval_final_v4.py", "make_results_archive_v4.py",
+                   "export_csv_v4.py"}                                                        # experiments A and B CSV export (evaluation code, 2026-11-13)
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)

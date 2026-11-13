@@ -59,6 +59,19 @@
       "tilt_max_change_deg_per_s": "Same rate as the field of view, so the picture does not jump."
     }
   },
+  "lie_detection": {
+    "second_opinion": false,
+    "reject_impossible": false,
+    "backtrack": false,
+    "max_opinions": 3,
+    "why": {
+      "declared": "2026-11-13 (AUDIT.md section 16, experiments A and B, faculty plan). Three ways to find out that a worker pointed a wrong direction, each from evidence the robot has, none from goal B. All three are false = the behaviour of every earlier commit, unchanged. Not tuned: no number here was set on results.",
+      "second_opinion": "At a node with at least two people (360 camera, track ids) ask a second person after the first accepted answer; if they disagree ask a third and follow the majority; two people who disagree with nobody else present: ask the first person again, the majority of the three answers decides (the first counts twice); no strict majority among three = unclear (abort, fail safe). Answers rejected by reject_impossible are not votes. A person whose own asks are all rejected counts as no opinion and the next person is asked.",
+      "reject_impossible": "Reject a resolved answer that cannot be a way on, with a logged reason: arrival (straight back along the road the robot came from), no_branch (no branch of the node within dialog.branch_match_max_deg of the pointed direction, or PROCEED at a node without a FORWARD branch), dead_end (the branch leads to a node of kind dead_end in the map). A rejection held for dialog.gesture_hold_s ends the ask at once and asks again (it uses an ask). Off = the existing silent drop: the ask runs to its window.",
+      "backtrack": "When every answer at a junction was rejected and the asks are used up (the robot would abort), return to the last decision junction and take its other branch: the one untried branch directly, or, with two untried, ask again there with the failed branch excluded; at most once per junction, one level only. Needs reject_impossible (it is the rejections that are the evidence); the controller refuses the combination backtrack true / reject_impossible false.",
+      "max_opinions": "From the plan: ask a second, if they disagree a third, and follow the majority = at most three answers per junction visit (one more dialog is allowed for the tie rule's re-ask of the first person)."
+    }
+  },
   "hud": {
     "note": "commander_id in the HUD is the 360-camera track id of the commander (linked by bearing, configs/v4/commander.json link_bearing_tol_deg), -1 when it cannot be linked."
   }

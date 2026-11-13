@@ -1,0 +1,1842 @@
+{
+ "cases": {
+  "v3map_E1_abort_no_second_view": {
+   "abort_reason": "gesture unclear after 2 asks at J1",
+   "closest_person_m": 1.98,
+   "failure_reason": "aborted",
+   "final_distance_m": 9.21,
+   "frame_log_rows": 90,
+   "hud_rows": 764,
+   "junctions": [
+    {
+     "asks": 2,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      },
+      {
+       "ask": 2,
+       "distance_est_m": 1.975,
+       "distance_source": "",
+       "robot": {
+        "x": 7.605,
+        "yaw_deg": 39.97,
+        "z": 0.89
+       },
+       "serial": 2,
+       "t": 33.1,
+       "track_360": 1
+      }
+     ],
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "read": "NONE",
+     "result": "aborted",
+     "shown": "FORWARD",
+     "t_ask_first": 23.65,
+     "t_end": 38.15,
+     "t_start": 17.8
+    }
+   ],
+   "outcome": "FAILURE",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 10.3,
+    "ask": 1.05,
+    "execute": 0.0,
+    "gesture": 9.0,
+    "navigate": 17.4,
+    "scan": 0.4
+   },
+   "time_s": 38.2,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "28.65:approach",
+    "33.10:ask",
+    "33.65:read",
+    "38.15:aborted"
+   ],
+   "travelled_m": 11.72,
+   "truth_rows": 382
+  },
+  "v3map_E1_crosscheck": {
+   "abort_reason": "",
+   "closest_person_m": 1.58,
+   "failure_reason": "none",
+   "final_distance_m": 0.004,
+   "frame_log_rows": 16,
+   "hud_rows": 797,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": true,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "FORWARD",
+        "verdict": "ok",
+        "world_deg": 0.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 3.94,
+        "target": "LEFT",
+        "verdict": "ok",
+        "world_deg": -93.94
+       }
+      ],
+      "command": "FORWARD",
+      "gap_deg": 0.0,
+      "rel_deg": -47.49,
+      "used_crosscheck": true,
+      "views": 1,
+      "why": "two branches; the hand cross-check chose one"
+     },
+     "read": "FORWARD",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "FORWARD",
+     "t_accept": 25.7,
+     "t_ask_first": 23.65,
+     "t_end": 25.7,
+     "t_start": 17.8,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 5.85,
+    "ask": 0.5,
+    "execute": 1.1,
+    "gesture": 1.55,
+    "navigate": 30.4,
+    "scan": 0.4
+   },
+   "time_s": 39.85,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "25.70:execute",
+    "26.80:navigate",
+    "39.80:done"
+   ],
+   "travelled_m": 20.51,
+   "truth_rows": 398
+  },
+  "v3map_E2": {
+   "abort_reason": "",
+   "closest_person_m": 1.63,
+   "failure_reason": "none",
+   "final_distance_m": 0.003,
+   "frame_log_rows": 16,
+   "hud_rows": 853,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": 90.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 3.94,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 176.06
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 0.0,
+      "rel_deg": 42.51,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 25.7,
+     "t_ask_first": 23.65,
+     "t_end": 25.7,
+     "t_start": 17.8,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 5.85,
+    "ask": 0.5,
+    "execute": 0.95,
+    "gesture": 1.55,
+    "navigate": 33.35,
+    "scan": 0.4
+   },
+   "time_s": 42.65,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "25.70:execute",
+    "26.65:navigate",
+    "42.60:done"
+   ],
+   "travelled_m": 22.88,
+   "truth_rows": 426
+  },
+  "v3map_E2_bystanders": {
+   "abort_reason": "",
+   "closest_person_m": 1.3,
+   "failure_reason": "none",
+   "final_distance_m": 0.003,
+   "frame_log_rows": 16,
+   "hud_rows": 853,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": 90.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 3.94,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 176.06
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 0.0,
+      "rel_deg": 42.51,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 25.7,
+     "t_ask_first": 23.65,
+     "t_end": 25.7,
+     "t_start": 17.8,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 5.85,
+    "ask": 0.5,
+    "execute": 0.95,
+    "gesture": 1.55,
+    "navigate": 33.35,
+    "scan": 0.4
+   },
+   "time_s": 42.65,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "25.70:execute",
+    "26.65:navigate",
+    "42.60:done"
+   ],
+   "travelled_m": 22.88,
+   "truth_rows": 1278
+  },
+  "v3map_E2_reapproach": {
+   "abort_reason": "",
+   "closest_person_m": 0.99,
+   "failure_reason": "none",
+   "final_distance_m": 0.003,
+   "frame_log_rows": 32,
+   "hud_rows": 901,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.132,
+       "distance_source": "",
+       "robot": {
+        "x": 6.25,
+        "yaw_deg": 10.5,
+        "z": -0.26
+       },
+       "serial": 1,
+       "t": 18.6,
+       "track_360": 3
+      },
+      {
+       "ask": 1,
+       "distance_est_m": 2.103,
+       "distance_source": "",
+       "robot": {
+        "x": 7.321,
+        "yaw_deg": 47.27,
+        "z": 0.957
+       },
+       "serial": 2,
+       "t": 26.1,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 2.132,
+     "person_x": 6.8,
+     "person_z": 1.8,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": 90.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 4.42,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 175.58
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 0.0,
+      "rel_deg": 42.73,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproach": {
+      "from_360": 3,
+      "t": 20.6,
+      "to_360": 1
+     },
+     "reapproached": true,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 28.1,
+     "t_ask_first": 18.6,
+     "t_end": 28.1,
+     "t_start": 17.8,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 6.3,
+    "ask": 1.0,
+    "execute": 0.95,
+    "gesture": 3.0,
+    "navigate": 33.35,
+    "scan": 0.4
+   },
+   "time_s": 45.05,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "18.60:ask",
+    "19.10:read",
+    "20.60:reapproach",
+    "20.60:approach",
+    "26.10:ask",
+    "26.60:read",
+    "28.10:execute",
+    "29.05:navigate",
+    "45.00:done"
+   ],
+   "travelled_m": 22.85,
+   "truth_rows": 1350
+  },
+  "v3map_E2_stop": {
+   "abort_reason": "",
+   "closest_person_m": 1.63,
+   "failure_reason": "none",
+   "final_distance_m": 0.003,
+   "frame_log_rows": 18,
+   "hud_rows": 877,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": 90.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 3.94,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 176.06
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 0.0,
+      "rel_deg": 42.51,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 26.9,
+     "t_ask_first": 23.65,
+     "t_end": 26.9,
+     "t_start": 17.8,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 1.25,
+   "step_s": {
+    "approach": 5.85,
+    "ask": 0.5,
+    "execute": 0.95,
+    "gesture": 2.75,
+    "navigate": 33.35,
+    "scan": 0.4
+   },
+   "time_s": 43.85,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "26.90:execute",
+    "27.85:navigate",
+    "43.80:done"
+   ],
+   "travelled_m": 22.88,
+   "truth_rows": 438
+  },
+  "v3map_E2_wait_first": {
+   "abort_reason": "",
+   "closest_person_m": 1.63,
+   "failure_reason": "none",
+   "final_distance_m": 0.003,
+   "frame_log_rows": 63,
+   "hud_rows": 947,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": 90.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 3.94,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 176.06
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 0.0,
+      "rel_deg": 42.51,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 30.4,
+     "t_ask_first": 23.65,
+     "t_end": 30.4,
+     "t_start": 17.8,
+     "views": 1,
+     "waited_s": 4.7
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 5.85,
+    "ask": 0.5,
+    "execute": 0.95,
+    "gesture": 6.25,
+    "navigate": 33.35,
+    "scan": 0.4
+   },
+   "time_s": 47.35,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "25.70:wait",
+    "30.40:execute",
+    "31.35:navigate",
+    "47.30:done"
+   ],
+   "travelled_m": 22.88,
+   "truth_rows": 473
+  },
+  "v3map_E3_second_view": {
+   "abort_reason": "",
+   "closest_person_m": 1.54,
+   "failure_reason": "none",
+   "final_distance_m": 0.004,
+   "frame_log_rows": 49,
+   "hud_rows": 1687,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      },
+      {
+       "ask": 1,
+       "distance_est_m": 1.939,
+       "distance_source": "",
+       "robot": {
+        "x": 7.938,
+        "yaw_deg": 29.31,
+        "z": 0.739
+       },
+       "serial": 2,
+       "t": 31.7,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "LEFT",
+        "verdict": "ok",
+        "world_deg": -90.0
+       }
+      ],
+      "command": "LEFT",
+      "gap_deg": 0.0,
+      "rel_deg": -119.31,
+      "used_crosscheck": false,
+      "views": 2,
+      "why": "ok"
+     },
+     "read": "LEFT",
+     "reapproached": false,
+     "result": "accepted",
+     "second_view_t": 25.7,
+     "shown": "LEFT",
+     "t_accept": 33.85,
+     "t_ask_first": 23.65,
+     "t_end": 33.85,
+     "t_start": 17.8,
+     "views": 2,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.098,
+       "distance_source": "",
+       "robot": {
+        "x": -7.214,
+        "yaw_deg": -42.58,
+        "z": 1.07
+       },
+       "serial": 3,
+       "t": 65.05,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J2",
+     "person_distance_m": 3.714,
+     "person_x": -8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "FORWARD",
+        "verdict": "ok",
+        "world_deg": -90.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 85.9,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 175.9
+       }
+      ],
+      "command": "FORWARD",
+      "gap_deg": 0.0,
+      "rel_deg": -47.42,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "FORWARD",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "FORWARD",
+     "t_accept": 67.15,
+     "t_ask_first": 65.05,
+     "t_end": 67.15,
+     "t_start": 59.15,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 17.75,
+    "ask": 1.6,
+    "execute": 3.45,
+    "gesture": 4.7,
+    "navigate": 55.95,
+    "scan": 0.85
+   },
+   "time_s": 84.35,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "25.70:second_view",
+    "25.70:approach",
+    "31.70:ask",
+    "32.25:read",
+    "33.85:execute",
+    "36.25:navigate",
+    "58.70:scan",
+    "59.15:approach",
+    "65.05:ask",
+    "65.60:read",
+    "67.15:execute",
+    "68.20:navigate",
+    "84.30:done"
+   ],
+   "travelled_m": 39.32,
+   "truth_rows": 844
+  },
+  "v3map_E3_wrong_crosscheck": {
+   "abort_reason": "",
+   "closest_person_m": 1.58,
+   "failure_reason": "wrong_goal",
+   "final_distance_m": 26.925,
+   "frame_log_rows": 16,
+   "hud_rows": 797,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": true,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 3.94,
+        "target": "FORWARD",
+        "verdict": "ok",
+        "world_deg": -3.94
+       },
+       {
+        "family": "toward",
+        "gap_deg": 0.0,
+        "target": "LEFT",
+        "verdict": "ok",
+        "world_deg": -90.0
+       }
+      ],
+      "command": "FORWARD",
+      "gap_deg": 3.94,
+      "rel_deg": -51.43,
+      "used_crosscheck": true,
+      "views": 1,
+      "why": "two branches; the hand cross-check chose one"
+     },
+     "read": "FORWARD",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "LEFT",
+     "t_accept": 25.7,
+     "t_ask_first": 23.65,
+     "t_end": 25.7,
+     "t_start": 17.8,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "FAILURE",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 5.85,
+    "ask": 0.5,
+    "execute": 1.1,
+    "gesture": 1.55,
+    "navigate": 30.4,
+    "scan": 0.4
+   },
+   "time_s": 39.85,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "25.70:execute",
+    "26.80:navigate",
+    "39.80:done"
+   ],
+   "travelled_m": 20.51,
+   "truth_rows": 398
+  },
+  "v3map_E4_noise_seed3": {
+   "abort_reason": "",
+   "closest_person_m": 1.66,
+   "failure_reason": "none",
+   "final_distance_m": 0.004,
+   "frame_log_rows": 33,
+   "hud_rows": 1450,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": true,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 1.8,
+        "target": "FORWARD",
+        "verdict": "ok",
+        "world_deg": -1.8
+       },
+       {
+        "family": "toward",
+        "gap_deg": 2.13,
+        "target": "LEFT",
+        "verdict": "ok",
+        "world_deg": -92.13
+       }
+      ],
+      "command": "LEFT",
+      "gap_deg": 2.13,
+      "rel_deg": -139.63,
+      "used_crosscheck": true,
+      "views": 1,
+      "why": "two branches; the hand cross-check chose one"
+     },
+     "read": "LEFT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "LEFT",
+     "t_accept": 25.7,
+     "t_ask_first": 23.65,
+     "t_end": 25.7,
+     "t_start": 17.8,
+     "views": 1,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": -7.213,
+        "yaw_deg": -42.45,
+        "z": 1.071
+       },
+       "serial": 2,
+       "t": 56.5,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J2",
+     "person_distance_m": 3.712,
+     "person_x": -8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 3.48,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": -3.48
+       },
+       {
+        "family": "toward",
+        "gap_deg": 0.69,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 89.31
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 3.48,
+      "rel_deg": 38.97,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 58.65,
+     "t_ask_first": 56.5,
+     "t_end": 58.65,
+     "t_start": 50.6,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 11.75,
+    "ask": 1.05,
+    "execute": 3.75,
+    "gesture": 3.15,
+    "navigate": 51.9,
+    "scan": 0.85
+   },
+   "time_s": 72.5,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "25.70:execute",
+    "28.50:navigate",
+    "50.15:scan",
+    "50.60:approach",
+    "56.50:ask",
+    "57.05:read",
+    "58.65:execute",
+    "59.60:navigate",
+    "72.45:done"
+   ],
+   "travelled_m": 35.41,
+   "truth_rows": 725
+  },
+  "v3map_E4_second_view": {
+   "abort_reason": "",
+   "closest_person_m": 1.66,
+   "failure_reason": "none",
+   "final_distance_m": 0.004,
+   "frame_log_rows": 49,
+   "hud_rows": 1621,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.099,
+       "distance_source": "",
+       "robot": {
+        "x": 7.317,
+        "yaw_deg": 47.49,
+        "z": 0.966
+       },
+       "serial": 1,
+       "t": 23.65,
+       "track_360": 1
+      },
+      {
+       "ask": 1,
+       "distance_est_m": 1.939,
+       "distance_source": "",
+       "robot": {
+        "x": 7.938,
+        "yaw_deg": 29.31,
+        "z": 0.739
+       },
+       "serial": 2,
+       "t": 31.7,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.724,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "LEFT",
+        "verdict": "ok",
+        "world_deg": -90.0
+       }
+      ],
+      "command": "LEFT",
+      "gap_deg": 0.0,
+      "rel_deg": -119.31,
+      "used_crosscheck": false,
+      "views": 2,
+      "why": "ok"
+     },
+     "read": "LEFT",
+     "reapproached": false,
+     "result": "accepted",
+     "second_view_t": 25.7,
+     "shown": "LEFT",
+     "t_accept": 33.85,
+     "t_ask_first": 23.65,
+     "t_end": 33.85,
+     "t_start": 17.8,
+     "views": 2,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.098,
+       "distance_source": "",
+       "robot": {
+        "x": -7.214,
+        "yaw_deg": -42.58,
+        "z": 1.07
+       },
+       "serial": 3,
+       "t": 65.05,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J2",
+     "person_distance_m": 3.714,
+     "person_x": -8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": 0.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 4.1,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 85.9
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 0.0,
+      "rel_deg": 42.58,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 67.15,
+     "t_ask_first": 65.05,
+     "t_end": 67.15,
+     "t_start": 59.15,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.25,
+   "step_s": {
+    "approach": 17.75,
+    "ask": 1.6,
+    "execute": 3.4,
+    "gesture": 4.7,
+    "navigate": 52.7,
+    "scan": 0.85
+   },
+   "time_s": 81.05,
+   "trace": [
+    "0.00:navigate",
+    "17.40:scan",
+    "17.80:approach",
+    "23.65:ask",
+    "24.15:read",
+    "25.70:second_view",
+    "25.70:approach",
+    "31.70:ask",
+    "32.25:read",
+    "33.85:execute",
+    "36.25:navigate",
+    "58.70:scan",
+    "59.15:approach",
+    "65.05:ask",
+    "65.60:read",
+    "67.15:execute",
+    "68.15:navigate",
+    "81.00:done"
+   ],
+   "travelled_m": 36.71,
+   "truth_rows": 811
+  },
+  "v4map_E1_proceed": {
+   "abort_reason": "",
+   "closest_person_m": 1.49,
+   "failure_reason": "none",
+   "final_distance_m": 0.004,
+   "frame_log_rows": 65,
+   "hud_rows": 1513,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.097,
+       "distance_source": "",
+       "robot": {
+        "x": 7.239,
+        "yaw_deg": 50.78,
+        "z": -18.955
+       },
+       "serial": 1,
+       "t": 6.0,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "A",
+     "person_distance_m": 3.536,
+     "person_x": 8.75,
+     "person_z": -17.5,
+     "point": null,
+     "read": "FORWARD",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "FORWARD",
+     "t_accept": 9.6,
+     "t_ask_first": 6.0,
+     "t_end": 9.6,
+     "t_start": 0.45,
+     "views": 1,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.097,
+       "distance_source": "",
+       "robot": {
+        "x": 7.321,
+        "yaw_deg": 47.43,
+        "z": 0.965
+       },
+       "serial": 2,
+       "t": 45.4,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.713,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": null,
+     "read": "FORWARD",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "FORWARD",
+     "t_accept": 49.15,
+     "t_ask_first": 45.4,
+     "t_end": 49.15,
+     "t_start": 39.5,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.0,
+   "step_s": {
+    "approach": 11.45,
+    "ask": 1.1,
+    "execute": 2.1,
+    "gesture": 6.25,
+    "navigate": 53.8,
+    "scan": 0.9
+   },
+   "time_s": 75.65,
+   "trace": [
+    "0.00:scan",
+    "0.45:approach",
+    "6.00:ask",
+    "6.55:read",
+    "9.60:execute",
+    "10.70:navigate",
+    "39.05:scan",
+    "39.50:approach",
+    "45.40:ask",
+    "45.95:read",
+    "49.15:execute",
+    "50.15:navigate",
+    "75.60:done"
+   ],
+   "travelled_m": 40.96,
+   "truth_rows": 757
+  },
+  "v4map_E3_proceed_point": {
+   "abort_reason": "",
+   "closest_person_m": 2.1,
+   "failure_reason": "none",
+   "final_distance_m": 0.005,
+   "frame_log_rows": 65,
+   "hud_rows": 2130,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.097,
+       "distance_source": "",
+       "robot": {
+        "x": 7.239,
+        "yaw_deg": 50.78,
+        "z": -18.955
+       },
+       "serial": 1,
+       "t": 6.0,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "A",
+     "person_distance_m": 3.536,
+     "person_x": 8.75,
+     "person_z": -17.5,
+     "point": null,
+     "read": "FORWARD",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "FORWARD",
+     "t_accept": 9.6,
+     "t_ask_first": 6.0,
+     "t_end": 9.6,
+     "t_start": 0.45,
+     "views": 1,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.097,
+       "distance_source": "",
+       "robot": {
+        "x": 7.321,
+        "yaw_deg": 47.43,
+        "z": 0.965
+       },
+       "serial": 2,
+       "t": 45.4,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.713,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": 90.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 4.07,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 175.93
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 0.0,
+      "rel_deg": 42.57,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 47.55,
+     "t_ask_first": 45.4,
+     "t_end": 47.55,
+     "t_start": 39.5,
+     "views": 1,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.101,
+       "distance_source": "",
+       "robot": {
+        "x": 19.718,
+        "yaw_deg": 137.7,
+        "z": -1.062
+       },
+       "serial": 3,
+       "t": 73.65,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J3",
+     "person_distance_m": 3.739,
+     "person_x": 21.25,
+     "person_z": -2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 86.36,
+        "target": "LEFT",
+        "verdict": "dropped: 86 deg from LEFT, more than 30",
+        "world_deg": 86.36
+       },
+       {
+        "family": "toward",
+        "gap_deg": 0.0,
+        "target": "LEFT",
+        "verdict": "ok",
+        "world_deg": 0.0
+       }
+      ],
+      "command": "LEFT",
+      "gap_deg": 0.0,
+      "rel_deg": -137.7,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "LEFT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "LEFT",
+     "t_accept": 75.75,
+     "t_ask_first": 73.65,
+     "t_end": 75.75,
+     "t_start": 67.95,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.0,
+   "step_s": {
+    "approach": 17.15,
+    "ask": 1.65,
+    "execute": 4.8,
+    "gesture": 6.2,
+    "navigate": 75.3,
+    "scan": 1.35
+   },
+   "time_s": 106.5,
+   "trace": [
+    "0.00:scan",
+    "0.45:approach",
+    "6.00:ask",
+    "6.55:read",
+    "9.60:execute",
+    "10.70:navigate",
+    "39.05:scan",
+    "39.50:approach",
+    "45.40:ask",
+    "45.95:read",
+    "47.55:execute",
+    "48.50:navigate",
+    "67.50:scan",
+    "67.95:approach",
+    "73.65:ask",
+    "74.20:read",
+    "75.75:execute",
+    "78.50:navigate",
+    "106.45:done"
+   ],
+   "travelled_m": 55.86,
+   "truth_rows": 1066
+  },
+  "v4map_E5_point_seed2": {
+   "abort_reason": "",
+   "closest_person_m": 1.58,
+   "failure_reason": "none",
+   "final_distance_m": 0.003,
+   "frame_log_rows": 81,
+   "hud_rows": 2846,
+   "junctions": [
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.097,
+       "distance_source": "",
+       "robot": {
+        "x": 7.239,
+        "yaw_deg": 50.78,
+        "z": -18.955
+       },
+       "serial": 1,
+       "t": 6.0,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "A",
+     "person_distance_m": 3.536,
+     "person_x": 8.75,
+     "person_z": -17.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "FORWARD",
+        "verdict": "ok",
+        "world_deg": 0.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 87.82,
+        "target": "FORWARD",
+        "verdict": "dropped: 88 deg from FORWARD, more than 30",
+        "world_deg": -87.82
+       }
+      ],
+      "command": "FORWARD",
+      "gap_deg": 0.0,
+      "rel_deg": -50.78,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "FORWARD",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "FORWARD",
+     "t_accept": 8.05,
+     "t_ask_first": 6.0,
+     "t_end": 8.05,
+     "t_start": 0.45,
+     "views": 1,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.097,
+       "distance_source": "",
+       "robot": {
+        "x": 7.321,
+        "yaw_deg": 47.43,
+        "z": 0.965
+       },
+       "serial": 2,
+       "t": 43.85,
+       "track_360": 1
+      },
+      {
+       "ask": 1,
+       "distance_est_m": 1.939,
+       "distance_source": "",
+       "robot": {
+        "x": 7.941,
+        "yaw_deg": 29.26,
+        "z": 0.738
+       },
+       "serial": 3,
+       "t": 52.0,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J1",
+     "person_distance_m": 3.713,
+     "person_x": 8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "LEFT",
+        "verdict": "ok",
+        "world_deg": -90.0
+       }
+      ],
+      "command": "LEFT",
+      "gap_deg": 0.0,
+      "rel_deg": -119.26,
+      "used_crosscheck": false,
+      "views": 2,
+      "why": "ok"
+     },
+     "read": "LEFT",
+     "reapproached": false,
+     "result": "accepted",
+     "second_view_t": 46.0,
+     "shown": "LEFT",
+     "t_accept": 54.1,
+     "t_ask_first": 43.85,
+     "t_end": 54.1,
+     "t_start": 37.95,
+     "views": 2,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.098,
+       "distance_source": "",
+       "robot": {
+        "x": -7.215,
+        "yaw_deg": -42.57,
+        "z": 1.07
+       },
+       "serial": 4,
+       "t": 85.3,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J2",
+     "person_distance_m": 3.714,
+     "person_x": -8.75,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "FORWARD",
+        "verdict": "ok",
+        "world_deg": -90.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 85.91,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 175.91
+       }
+      ],
+      "command": "FORWARD",
+      "gap_deg": 0.0,
+      "rel_deg": -47.43,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "FORWARD",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "FORWARD",
+     "t_accept": 87.4,
+     "t_ask_first": 85.3,
+     "t_end": 87.4,
+     "t_start": 79.4,
+     "views": 1,
+     "waited_s": 0.0
+    },
+    {
+     "asks": 1,
+     "asks_log": [
+      {
+       "ask": 1,
+       "distance_est_m": 2.098,
+       "distance_source": "",
+       "robot": {
+        "x": -19.713,
+        "yaw_deg": -42.74,
+        "z": 1.072
+       },
+       "serial": 5,
+       "t": 114.0,
+       "track_360": 1
+      }
+     ],
+     "commander_360": 1,
+     "commander_pt": 1,
+     "junction": "J4",
+     "person_distance_m": 3.708,
+     "person_x": -21.25,
+     "person_z": 2.5,
+     "point": {
+      "ambiguous": false,
+      "candidates": [
+       {
+        "family": "away",
+        "gap_deg": 0.0,
+        "target": "RIGHT",
+        "verdict": "ok",
+        "world_deg": 0.0
+       },
+       {
+        "family": "toward",
+        "gap_deg": 4.23,
+        "target": "ARRIVAL",
+        "verdict": "dropped: nearest is the direction the robot came from",
+        "world_deg": 85.77
+       }
+      ],
+      "command": "RIGHT",
+      "gap_deg": 0.0,
+      "rel_deg": 42.74,
+      "used_crosscheck": false,
+      "views": 1,
+      "why": "ok"
+     },
+     "read": "RIGHT",
+     "reapproached": false,
+     "result": "accepted",
+     "shown": "RIGHT",
+     "t_accept": 116.05,
+     "t_ask_first": 114.0,
+     "t_end": 116.05,
+     "t_start": 108.0,
+     "views": 1,
+     "waited_s": 0.0
+    }
+   ],
+   "outcome": "SUCCESS",
+   "safety_stop_s": 0.0,
+   "step_s": {
+    "approach": 29.35,
+    "ask": 2.75,
+    "execute": 5.45,
+    "gesture": 7.7,
+    "navigate": 95.2,
+    "scan": 1.8
+   },
+   "time_s": 142.3,
+   "trace": [
+    "0.00:scan",
+    "0.45:approach",
+    "6.00:ask",
+    "6.55:read",
+    "8.05:execute",
+    "9.15:navigate",
+    "37.50:scan",
+    "37.95:approach",
+    "43.85:ask",
+    "44.40:read",
+    "46.00:second_view",
+    "46.00:approach",
+    "52.00:ask",
+    "52.55:read",
+    "54.10:execute",
+    "56.50:navigate",
+    "78.95:scan",
+    "79.40:approach",
+    "85.30:ask",
+    "85.85:read",
+    "87.40:execute",
+    "88.45:navigate",
+    "107.55:scan",
+    "108.00:approach",
+    "114.00:ask",
+    "114.55:read",
+    "116.05:execute",
+    "116.95:navigate",
+    "142.25:done"
+   ],
+   "travelled_m": 70.17,
+   "truth_rows": 1424
+  }
+ },
+ "commit": "808f028"
+}

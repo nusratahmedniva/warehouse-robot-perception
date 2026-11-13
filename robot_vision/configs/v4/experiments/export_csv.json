@@ -1,0 +1,212 @@
+{
+  "label": "Columns of runs.csv and dialogs.csv written by export_csv_v4.py (experiments A and B, AUDIT.md section 16). Evaluation only.",
+  "declared": "2026-11-13, before the exporter existed. The first columns of each table are the faculty plan's list in its order; the rest are extras. To match the faculty's own column list later, edit this file only: reorder, delete, or give a column another header ('header'); the 'field' names are the exporter's (export_csv_v4.RUN_FIELDS / DIALOG_FIELDS, with their definitions in export.json of every export). A field name that is not known is refused with the list of known fields.",
+  "empty": "",
+  "runs": [
+    {
+      "field": "experiment"
+    },
+    {
+      "field": "set"
+    },
+    {
+      "field": "seed"
+    },
+    {
+      "field": "looks"
+    },
+    {
+      "field": "route"
+    },
+    {
+      "field": "goal"
+    },
+    {
+      "field": "outcome"
+    },
+    {
+      "field": "failure_reason"
+    },
+    {
+      "field": "time_s"
+    },
+    {
+      "field": "trail_m"
+    },
+    {
+      "field": "optimal_m"
+    },
+    {
+      "field": "trail_over_optimal"
+    },
+    {
+      "field": "stops"
+    },
+    {
+      "field": "collisions"
+    },
+    {
+      "field": "lies_given"
+    },
+    {
+      "field": "lies_detected"
+    },
+    {
+      "field": "lies_corrected"
+    },
+    {
+      "field": "lies_fooled"
+    },
+    {
+      "field": "lie_probability"
+    },
+    {
+      "field": "second_opinion_on"
+    },
+    {
+      "field": "reject_impossible_on"
+    },
+    {
+      "field": "backtrack_on"
+    },
+    {
+      "field": "trail_source"
+    },
+    {
+      "field": "stop_s"
+    },
+    {
+      "field": "closest_person_m"
+    },
+    {
+      "field": "final_distance_m"
+    },
+    {
+      "field": "asks"
+    },
+    {
+      "field": "dialogs"
+    },
+    {
+      "field": "second_opinions"
+    },
+    {
+      "field": "rejections"
+    },
+    {
+      "field": "backtracks"
+    },
+    {
+      "field": "session"
+    },
+    {
+      "field": "run"
+    },
+    {
+      "field": "trial"
+    }
+  ],
+  "dialogs": [
+    {
+      "field": "experiment"
+    },
+    {
+      "field": "set"
+    },
+    {
+      "field": "seed"
+    },
+    {
+      "field": "junction"
+    },
+    {
+      "field": "worker"
+    },
+    {
+      "field": "look"
+    },
+    {
+      "field": "command_shown"
+    },
+    {
+      "field": "truthful"
+    },
+    {
+      "field": "command_read"
+    },
+    {
+      "field": "correct"
+    },
+    {
+      "field": "time_to_read_s"
+    },
+    {
+      "field": "distance_m"
+    },
+    {
+      "field": "decision"
+    },
+    {
+      "field": "direction_shown"
+    },
+    {
+      "field": "branch_shown"
+    },
+    {
+      "field": "branch_read"
+    },
+    {
+      "field": "true_branch"
+    },
+    {
+      "field": "correct_direction"
+    },
+    {
+      "field": "correct_branch"
+    },
+    {
+      "field": "decision_reason"
+    },
+    {
+      "field": "outvoted"
+    },
+    {
+      "field": "withdrawn"
+    },
+    {
+      "field": "final_branch"
+    },
+    {
+      "field": "distance_est_m"
+    },
+    {
+      "field": "visit"
+    },
+    {
+      "field": "dialog"
+    },
+    {
+      "field": "ask"
+    },
+    {
+      "field": "serial"
+    },
+    {
+      "field": "t_s"
+    },
+    {
+      "field": "session"
+    },
+    {
+      "field": "run"
+    },
+    {
+      "field": "trial"
+    }
+  ],
+  "why": {
+    "order": "Plan of 2026-11-13: runs.csv = experiment, set, seed, looks, route, goal, outcome, time, trail vs optimal, stops, collisions, lies given / detected / corrected / fooled; dialogs.csv = junction, worker, look, command shown, truthful, command read, correct, time to read, distance, decision. 'trail vs optimal' is three columns (trail_m, optimal_m, trail_over_optimal).",
+    "correct": "The plan's 'correct' can mean the reader was right (command_read == command_shown) or the decision was right; the exporter gives three columns, correct (the command read is the command shown), correct_direction (the branch read is the branch shown) and correct_branch (the branch read is the true branch toward B). Keep the ones the faculty means.",
+    "lies": "lies_given counts lying gestures in truth.jsonl; detected, corrected and fooled are defined in the docstring of export_csv_v4.py and in export.json."
+  }
+}

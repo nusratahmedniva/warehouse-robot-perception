@@ -34,12 +34,23 @@ Added 2026-11-12 (Nusrat during Anisha's absence; Avatar/Config/upgrade_design.m
   vertically, and narrows the view so the hand fills hand_share without losing the fit box; command tilt_deg (-1 = level).
 - P3/P8 record: every ask logs the 360 distance estimate of the approached person (record['asks_log']).
 
+Added 2026-11-13 (AUDIT.md section 16, experiments A and B; every switch in control.json -> lie_detection, default false = all of
+the above unchanged): three ways to find out that a worker pointed a wrong direction, from evidence only, never from goal B:
+- second_opinion: at a node with 2+ people ask a second person after the first answer; on disagreement a third and follow the
+  majority (two people who disagree and nobody else: ask the first again, the first counts twice; no majority = abort);
+- reject_impossible: an answer that is the arrival road, no branch of the node, or a dead end is rejected with a reason and the
+  question is asked again at once;
+- backtrack: when every answer at a junction was rejected, drive back to the last decision junction and take its other branch
+  (the one untried branch directly; with two untried ask again with the failed one excluded); once per junction, one level.
+Every decision is logged with its reason (summary()["v4"]["decisions"]), also with the switches off.
+
 Everything v3 does (drive, safety, scan, approach, execute, reposition) is inherited unchanged. Pure Python, no I/O.
 """
 
 from __future__ import annotations
 
 import math
+from collections import Counter
 from dataclasses import dataclass, field
 
 import commander_v4 as cm
@@ -47,6 +58,7 @@ import gesture_motion as gm
 import hri_control as hc
 
 DIRECTIONS = hc.DIRECTIONS
+LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3}
 V4_ROADMAP = "configs/v4/roadmap.json"
 START = "start"                          # roadmap kind of the start node in the v4 map (it asks, P8)
 
@@ -308,6 +320,9 @@ class ControllerV4(hc.Controller):
     def __init__(self, base_cfg: dict, v4_cfg: dict, commander_cfg: dict, roadmap: hc.Roadmap):
         self.v4, self.ccfg = v4_cfg, commander_cfg
         self.zoom = ZoomController(v4_cfg["zoom"])
+        self.ld = {**LIE_DEFAULTS, **{k: v for k, v in v4_cfg.get("lie_detection", {}).items() if k in LIE_DEFAULTS}}
+        if self.ld["backtrack"] and not self.ld["reject_impossible"]:
+            raise ValueError("lie_detection.backtrack needs lie_detection.reject_impossible (the rejections are its evidence)")
         super().__init__(base_cfg, roadmap)
 
     # -- bookkeeping --
@@ -334,6 +349,17 @@ class ControllerV4(hc.Controller):
         self._onset_frame: float | None = None
         self._ask_logged = 0
         self.proceed_note = ""
+        self.decisions: list[dict] = []                       # every decision with its reason (AUDIT.md section 16)
+        self.route: list[str] = []                            # the nodes the robot arrived at, in order (backtracks included)
+        self.safety_stops = 0                                 # how many times a safety stop began
+        self._was_stopped = False
+        self.last_choice: dict | None = None                  # the last branch taken at a decision junction (backtrack target)
+        self.tried: dict[str, set] = {}                       # node -> branch commands taken there
+        self.backtracked: set[str] = set()                    # junctions that used their one backtrack
+        self.backtrack_target: str | None = None
+        self.reject: tuple | None = None                      # (reason, detail) of the newest frame's answer, if it is impossible
+        self.rej_since: float | None = None
+        self.rej_key: str | None = None
         self._new_junction()
         if hasattr(self, "zoom"):
             self.zoom.reset()
@@ -346,8 +372,27 @@ class ControllerV4(hc.Controller):
         self.approached_360: int | None = None
         self.reapproached = False
         self.commander_since: float | None = None
+        self.votes: list[dict] = []                           # valid answers of this visit: {person_360, branch, serial}
+        self.asked_360: set[int] = set()                      # 360 track ids already asked at this visit
+        self.dialogs_started = 0                              # dialogs (people asked) at this visit
+        self.tie_used = False                                 # the tie rule's re-ask of the first person was used
+        self.rejections: list[str] = []                       # reasons of the answers rejected at this visit
+        self.excluded: set[str] = set()                       # branch commands that are not an answer here (backtrack)
+
+    def _log(self, t: float, event: str, reason: str, **detail) -> None:
+        """One decision with its reason (summary()['v4']['decisions']); serial = the ask it concerns."""
+        self.decisions.append({"t": round(t, 3), "node": self.node, "event": event, "reason": reason,
+                               "serial": self.ask_serial, **detail})
+
+    def _abort(self, reason, t):
+        self._log(t, "abort", reason)
+        super()._abort(reason, t)
 
     def _arrive(self, node, t):
+        self.route.append(node)
+        if self.backtrack_target == node:
+            self._arrive_backtrack(node, t)
+            return
         if self.road.kind(node) == START:                     # P8: the start node asks like a junction
             self.node = node
             self.dialog.reset()
@@ -365,6 +410,7 @@ class ControllerV4(hc.Controller):
             self.dialog.asks -= 1
         self.waiting, self.wait_since, self.last_persons_frame = False, None, None
         self.amb_frames, self.amb_since = [], None
+        self.rej_since = self.rej_key = None
         if self.record is not None:
             self.record.setdefault("t_ask_first", round(t, 3))
 
@@ -387,6 +433,7 @@ class ControllerV4(hc.Controller):
 
     def _interpret(self, inp: TickInputV4) -> str:
         """Commander + reading of the newest frame -> a dialog label: a branch command, 'WAIT' or 'NONE'."""
+        self.reject = None
         persons = self._fresh_persons(inp)
         t_ask = self.record.get("t_ask_first") if self.record else None
         early = {p.track_id: "gesture started before the question was shown" for p in persons
@@ -409,7 +456,8 @@ class ControllerV4(hc.Controller):
             self.amb_frames, self.amb_since = [], None
             br = proceed_branch(self.road, self.node)
             self.proceed_note = "" if br else f"PROCEED read but {self.node} has no FORWARD branch"
-            return br or "NONE"
+            self.reject = self._rejection(br, None, self.proceed_note)
+            return "NONE" if self.reject else (br or "NONE")
         if r.command == "POINT" and r.point is not None:
             dirs, arrival = branch_directions(self.road, self.node)
             dv = self.v4["dialog"]
@@ -425,9 +473,207 @@ class ControllerV4(hc.Controller):
             else:
                 self.amb_frames, self.amb_since = [], None
             self.resolution = res
-            return res.command or "NONE"
+            self.reject = self._rejection(res.command, res, res.why)
+            return "NONE" if self.reject else (res.command or "NONE")
         self.amb_frames, self.amb_since = [], None
         return "WAIT" if r.command == "WAIT" else "NONE"
+
+    # -- rule (b): impossible answers --
+    def _rejection(self, command: str | None, res: Resolution | None, why: str) -> tuple | None:
+        """(reason, detail) when this resolved answer is not a way on: 'already_tried' (excluded by a backtrack, always),
+        and with reject_impossible 'dead_end', 'arrival' or 'no_branch'. None = a usable answer, or an unclear one (the
+        ambiguity of the two depth readings is not a rejection: the second view handles it)."""
+        if command is not None:
+            if command in self.excluded:
+                return ("already_tried", f"{command} was taken here before and did not lead on")
+            if self.ld["reject_impossible"] and self.road.kind(self.road.next(self.node, command)) == "dead_end":
+                return ("dead_end", f"{command} leads to a dead end")
+            return None
+        if not self.ld["reject_impossible"]:
+            return None
+        if res is None:                                       # PROCEED where the node has no FORWARD branch
+            return ("no_branch", why)
+        if res.ambiguous or not res.candidates:
+            return None
+        arrival = any(c["target"] == "ARRIVAL" for c in res.candidates)
+        return ("arrival" if arrival else "no_branch", why)
+
+    def _reject_answer(self, inp: TickInputV4, t: float, rej: tuple) -> None:
+        reason, detail = rej
+        self.rejections.append(reason)
+        self.rej_since = self.rej_key = None
+        self.trace.append(f"{t:.2f}:reject:{reason}")
+        if self.record is not None:
+            self.record.setdefault("rejected", []).append(reason)
+        self._log(t, "answer_rejected", reason, detail=detail, asks=self.dialog.asks, person_360=self._voter(),
+                  resolution=self.resolution.to_dict() if self.resolution is not None else None)
+
+    # -- rule (a): second opinion --
+    def _voter(self) -> int | None:
+        return self.commander_360 if self.commander_360 is not None else self.approached_360
+
+    def _unasked(self, inp: TickInputV4) -> list:
+        """Fresh 360 people with a track id not asked yet at this visit, nearest first (without track ids nobody can be told
+        apart: no second opinion)."""
+        out = [q for q in self._fresh_people(inp) if q.get("track_id", -1) >= 0 and q["track_id"] not in self.asked_360]
+        return sorted(out, key=lambda q: q["distance_m"])
+
+    def _tally(self, inp: TickInputV4, exhausted: bool) -> tuple:
+        """What to do after a dialog ended (a vote was added, or the person gave no usable answer = exhausted):
+        ('go', branch, reason), ('ask', person dict, reason) or ('abort', None, reason)."""
+        votes, cap = self.votes, self.ld["max_opinions"]
+        n = len(votes)
+        counts = Counter(v["branch"] for v in votes)
+        top, top_n = counts.most_common(1)[0] if votes else (None, 0)
+        if n >= 2 and top_n * 2 > n:
+            return "go", top, f"{top_n} of {n} answers agree"
+        more = self._unasked(inp) if self.dialogs_started < cap + 1 else []
+        if n == 0:
+            return ("ask", more[0], "no usable answer yet: ask the next person") if more else ("abort", None, "no usable answer from anybody")
+        if n == 1:
+            if more:
+                return "ask", more[0], "second opinion"
+            return "go", top, "one usable answer, nobody else to ask" if exhausted or self.dialogs_started > 1 else "one person only"
+        if n >= cap:
+            return "abort", None, f"no majority among {n} answers"
+        if more:
+            return "ask", more[0], "the two answers differ: ask a third person"
+        if not self.tie_used:                                 # nobody else: the first person again, who then counts twice
+            first = next((q for q in self._fresh_people(inp) if q.get("track_id", -1) == votes[0]["person_360"]), None)
+            if first is not None:
+                self.tie_used = True
+                return "ask", first, "the two answers differ and nobody else is present: ask the first person again"
+        return "abort", None, "the answers differ and nobody can break the tie"
+
+    def _clear_approach_point(self, inp: TickInputV4, person: dict) -> tuple[tuple[float, float], float]:
+        """Where to stand to ask this person: approach_distance_m from them, on the robot's side if no other person is within
+        2 x corridor_half_width_m of that spot (a person there would hold the robot at the person-in-path stop for good), else
+        at the first of +30, -30, +60, -60 ... degrees around them that is clear. Returns (point, degrees turned from the
+        robot's side). Used for the people asked after the first only; the first approach is the unchanged v3 rule."""
+        px, pz, r = person["x"], person["z"], self.g["approach_distance_m"]
+        keep = 2.0 * self.s["corridor_half_width_m"]
+        others = [(q["x"], q["z"]) for q in self._fresh_people(inp) if q.get("track_id", -1) != person.get("track_id", -1)]
+        base = hc.yaw_to(px, pz, inp.x, inp.z)
+        steps = [0.0] + [sgn * 30.0 * k for k in range(1, 7) for sgn in (1.0, -1.0)]
+        for turn in steps:
+            a = math.radians(base + turn)
+            pt = (px + math.sin(a) * r, pz + math.cos(a) * r)
+            if all(math.hypot(pt[0] - ox, pt[1] - oz) >= keep for ox, oz in others):
+                return pt, turn
+        a = math.radians(base)
+        return (px + math.sin(a) * r, pz + math.cos(a) * r), 0.0
+
+    def _start_dialog(self, inp: TickInputV4, t: float, person: dict, why: str, result: str) -> None:
+        """Approach another person and ask: a dialog of its own (record with `opinion`), a fresh ask budget."""
+        if self.record is not None:
+            self._finish_record(result, t)
+        px, pz = person["x"], person["z"]
+        self.dialogs_started += 1
+        tid = person.get("track_id", -1)
+        self.asked_360.add(tid)
+        self.approached_360 = tid
+        self.person = (px, pz)
+        self.approach_point, turned = self._clear_approach_point(inp, person)
+        self.record = {"junction": self.node, "t_start": round(t, 3), "person_x": round(px, 3), "person_z": round(pz, 3),
+                       "person_distance_m": round(person["distance_m"], 3), "opinion": self.dialogs_started, "person_360": tid}
+        self.dialog.reset()
+        self.view1, self.two_view_used, self.reapproached = None, False, False
+        self.amb_frames, self.amb_since, self.commander_since = [], None, None
+        self.commander_pt = self.commander_360 = self.choice = None
+        self.waiting, self.wait_since, self.last_persons_frame = False, None, None
+        self.rej_since = self.rej_key = None
+        self.turning = False
+        self.trace.append(f"{t:.2f}:second_opinion")
+        self._log(t, "ask_next", why, person_360=tid, opinion=self.dialogs_started, approach_turned_deg=turned)
+        self._set("approach", t)
+
+    def _decide_go(self, t: float, branch: str, reason: str) -> None:
+        self.tried.setdefault(self.node, set()).add(branch)
+        self.last_choice = {"node": self.node, "branch": branch, "serial": self.ask_serial}
+        self._log(t, "go", reason, branch=branch, votes=[dict(v) for v in self.votes])
+        self.next_node = self.road.next(self.node, branch)
+        self._set("execute", t)
+
+    def _after_vote(self, inp: TickInputV4, t: float, cmd, branch: str) -> bool:
+        """An answer was accepted (the record is finished). True = the state was changed here (another person is asked, the
+        robot goes, or it aborts); False = the caller sends the robot on as before."""
+        self.votes.append({"person_360": self._voter(), "branch": branch, "serial": self.ask_serial})
+        if not self.ld["second_opinion"]:
+            self._decide_go(t, branch, "one answer accepted")
+            return True
+        act, what, why = self._tally(inp, exhausted=False)
+        if act == "go":
+            self._decide_go(t, what, why)
+        elif act == "ask":
+            self._start_dialog(inp, t, what, why, "accepted")
+        else:
+            self._abort(f"second opinion: {why} at {self.node}", t)
+        return True
+
+    def _exhausted(self, inp: TickInputV4, t: float, cmd) -> bool:
+        """A dialog ended without a usable answer (asks used up). True = handled here (another person, a vote, a backtrack);
+        False = the caller aborts as before."""
+        if not (self.ld["second_opinion"] or self.ld["backtrack"]):
+            return False
+        if self.ld["second_opinion"]:
+            act, what, why = self._tally(inp, exhausted=True)
+            if act == "ask":
+                self._start_dialog(inp, t, what, why, "no_answer")
+                return True
+            if act == "go":
+                if self.record is not None:
+                    self._finish_record("no_answer", t)
+                self._decide_go(t, what, why)
+                return True
+        if self.ld["backtrack"] and self.rejections and not self.votes and self._start_backtrack(inp, t):
+            return True
+        return False
+
+    # -- rule (c): backtrack --
+    def _untried(self, node: str) -> list[str]:
+        return [c for c in self.road.branches.get(node, {}) if c not in self.tried.get(node, set())]
+
+    def _start_backtrack(self, inp: TickInputV4, t: float) -> bool:
+        lc, here = self.last_choice, self.node
+        why_not = None
+        if lc is None or lc["node"] == here:
+            why_not = "no earlier decision junction"
+        elif self.road.nodes[here].get("arrive_from") != lc["node"]:
+            why_not = f"{here} does not follow {lc['node']}"
+        elif lc["node"] in self.backtracked:
+            why_not = f"{lc['node']} has used its one backtrack"
+        elif not self._untried(lc["node"]):
+            why_not = f"{lc['node']} has no other branch"
+        if why_not:
+            self._log(t, "backtrack_blocked", why_not, rejections=list(self.rejections))
+            return False
+        back = lc["node"]
+        if self.record is not None:
+            self._finish_record("backtrack", t)
+        self.backtracked.add(back)
+        self.backtrack_target, self.waiting = back, False
+        self.trace.append(f"{t:.2f}:backtrack")
+        self._log(t, "backtrack", f"every answer at {here} was impossible ({', '.join(self.rejections)}): return to {back}",
+                  to=back, failed_branch=lc["branch"], withdrawn_serial=lc["serial"], rejections=list(self.rejections))
+        self._navigate(back, t)
+        return True
+
+    def _arrive_backtrack(self, node: str, t: float) -> None:
+        self.backtrack_target = None
+        self.node = node
+        self.dialog.reset()
+        others = self._untried(node)
+        if len(others) == 1:
+            self._new_junction()
+            self._log(t, "take_other_branch", f"backtrack: {others[0]} is the one untried branch at {node}, no question",
+                      branch=others[0])
+            self._decide_go(t, others[0], "backtrack: the only untried branch")
+            return
+        self._set("scan", t)
+        self._new_junction()
+        self.excluded = set(self.tried.get(node, set()))
+        self._log(t, "ask_again_after_backtrack", f"{len(others)} branches untried at {node}: ask again, excluding "
+                  f"{sorted(self.excluded)}", excluded=sorted(self.excluded))
 
     def _track_onsets(self, inp: TickInputV4) -> None:
         """When did each person's arm go up (continuously)? Needed for 'the gesture started after the question'."""
@@ -479,6 +725,7 @@ class ControllerV4(hc.Controller):
         if self.record is not None:
             self.record["reapproach"] = {"from_360": self.approached_360, "to_360": self.commander_360, "t": round(inp.time_s, 3)}
         self.approached_360, self.reapproached, self.turning = self.commander_360, True, False
+        self.asked_360.add(self.commander_360)
         self.free_asks += 1
         self.trace.append(f"{inp.time_s:.2f}:reapproach")
         self._set("approach", inp.time_s)
@@ -514,6 +761,11 @@ class ControllerV4(hc.Controller):
             people = self._fresh_people(inp)
             if people:
                 self.approached_360 = min(people, key=lambda q: q["distance_m"]).get("track_id")
+                self.dialogs_started = 1
+                if self.approached_360 is not None:
+                    self.asked_360.add(self.approached_360)
+                if self.ld["second_opinion"] and self.record is not None:
+                    self.record.update(opinion=1, person_360=self.approached_360)
 
     def _read_tick(self, inp: TickInputV4, cmd):
         t, dv = inp.time_s, self.v4["dialog"]
@@ -536,7 +788,18 @@ class ControllerV4(hc.Controller):
             else:
                 self.wait_since = None
             label = self.label if self.label in DIRECTIONS else "NONE"
-            ev = self.dialog.update(label, inp.persons_time_s, self.dialog.ask_start if self.waiting else t)
+            held = False                                        # rule (b): an impossible answer held for gesture_hold_s
+            if self.reject is not None:
+                if self.rej_since is None or self.rej_key != self.reject[0]:
+                    self.rej_since, self.rej_key = inp.persons_time_s, self.reject[0]
+                held = inp.persons_time_s - self.rej_since >= self.g["gesture_hold_s"] - 1e-6
+            else:
+                self.rej_since = self.rej_key = None
+            if held:
+                self._reject_answer(inp, t, self.reject)
+                ev = self.dialog.unclear()
+            else:
+                ev = self.dialog.update(label, inp.persons_time_s, self.dialog.ask_start if self.waiting else t)
         elif not self.waiting and t - self.dialog.ask_start >= self.g["gesture_window_s"]:
             ev = self.dialog.unclear()
         if self.waiting and ev == "pending" and t - self.wait_start >= dv["wait_timeout_s"]:
@@ -555,8 +818,10 @@ class ControllerV4(hc.Controller):
                                    point=self.resolution.to_dict() if self.resolution else None,
                                    commander_pt=self.commander_pt, commander_360=self.commander_360)
                 self._finish_record("accepted", t)
-                self.next_node = nxt
-                self._set("execute", t)
+                self._log(t, "answer_accepted", f"{self.dialog.accepted} read for {self.g['gesture_hold_s']:g} s",
+                          branch=self.dialog.accepted, asks=self.dialog.asks, person_360=self._voter(),
+                          views=2 if self.view1 else 1)
+                self._after_vote(inp, t, cmd, self.dialog.accepted)
                 return
             ev = self.dialog.unclear()
         if ev == "ask_again":
@@ -564,6 +829,9 @@ class ControllerV4(hc.Controller):
             self._reposition(inp, t, cmd)
         elif ev == "abort":
             self.waiting = False
+            if self._exhausted(inp, t, cmd):
+                self.abort_note = ""
+                return
             note = getattr(self, "abort_note", "")
             self._abort(note or f"gesture unclear after {self.dialog.asks} asks at {self.node}", t)
             self.abort_note = ""
@@ -593,6 +861,10 @@ class ControllerV4(hc.Controller):
         stop = any(p.reading.command == "STOP" for p in persons)
         inp.gesture, inp.gesture_time_s = ("STOP" if stop else "NONE"), inp.persons_time_s
         base = super().step(inp)
+        stopped = bool(self.safety_reason)
+        if stopped and not self._was_stopped:
+            self.safety_stops += 1
+        self._was_stopped = stopped
         self._log_ask(inp)
         out = CommandV4(**{f: getattr(base, f) for f in ("v", "omega", "pan_deg", "has_target", "target_x", "target_z",
                                                           "state", "screen_text")})
@@ -630,7 +902,8 @@ class ControllerV4(hc.Controller):
     def summary(self) -> dict:
         s = super().summary()
         s["v4"] = {"zoom_enabled": self.zoom.z["enabled"], "commander_changes": list(self.commander_changes),
-                   "waited_s": round(self.waited_s, 3)}
+                   "waited_s": round(self.waited_s, 3), "decisions": list(self.decisions), "route": list(self.route),
+                   "safety_stops": self.safety_stops, "lie_detection": dict(self.ld)}
         return s
 
 

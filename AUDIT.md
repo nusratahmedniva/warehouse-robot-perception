@@ -1718,3 +1718,203 @@ Branch `anisha/v4-prefreeze-tidy`. Sections 1 to 14 are not edited; where they s
    not wrong. Recommendation: keep it (zero risk, the cost is that an edit to a v3 file fails a v4 test too); do not change the list before the freeze.
 3. **Who runs the freeze** (wording): the `freeze_v4.py` usage line and `configs/v4/README.md` line 5 now say the freeze is run by **Nusrat, by hand**, after the development evaluation (agreed with Anisha on 2026-11-13; CLAUDE.md; the entry above), and never by the AI. These were the two
    places the entry above listed as not changed. `configs/v4/frozen.json` is not touched (its `label` still says "until Anisha freezes it"; the freeze keeps the label). `freeze_v4.py --freeze` was not run.
+
+## 16. Experiments A and B: lying workers and lie detection (faculty plan of 2026-11-13; written BEFORE any code)
+
+Branch `anisha/v4-experiments-ab`. Sections 1 to 15 are not edited. Python only (`robot_vision/`, `docs/`): simulator and controller, v4 code only. Nothing
+under `unity/` or `external/` and no v3 file is touched; `freeze_v4.py --freeze` is not run; no frozen value is changed (`configs/v4/frozen.json` is
+still unfrozen). **Everything in this section is a SIMULATOR study** (reader-level synthetic perception, `hri_sim_v4.py`): its numbers are properties of
+the simulator's geometry and noise model, not measurements, and are labelled "simulator" wherever they appear.
+
+### 16.1 The plan (faculty, 2026-11-13)
+
+| set | experiment | what |
+|---|---|---|
+| A (all workers truthful) | A1 | straight corridor A to B, 2 avatars, one on each side |
+| | A2 | A to B to C with a right-angle turn |
+| | A3 | A to a random goal, people beside the optimal path |
+| | A4 | A to a random goal, people at random places |
+| B (each worker lies with probability 0.2, seeded per worker per run) | B1 to B4 | the same four as A1 to A4 |
+
+A lie = the worker points a wrong direction. The robot never knows goal B; it detects a lie only from evidence.
+
+Work items: (1) truth: a truthful / lie field per gesture in `truth.jsonl` (evaluation only, refused from Unity in `bridge/protocol.py`) and the simulator option
+`lie_probability`; (2) lie detection in `hri_control_v4.py`, three rules each behind a switch in `configs/v4/control.json`, default off (current
+behaviour unchanged): (a) second opinion, (b) reject impossible directions, (c) backtrack; every decision logged with its reason; (3) scenarios A1 to A4
+and B1 to B4 in `hri_sim_v4.py`; (4) CSV export `export_csv_v4.py` (evaluation code: `runs.csv`, `dialogs.csv`, columns in a config file); (5) 20 seeded
+simulator runs per scenario, Set B with detection on and off, and the table.
+
+### 16.2 Decisions by Anisha, 2026-11-13 (answers to the open questions, before any code)
+
+1. **Maps.** A1 and A2 on small new maps; A3 and A4 on the existing `configs/v4/roadmap.json` (goal drawn uniformly from E1 to E6 by the run seed). A1 = one
+   straight road A to B, no branch. A2 = an L-shaped road A to B to C, one 90-degree right turn at B, no other branch. The two small maps and all
+   scenario settings live in a new `configs/v4/experiments/scenarios_ab.json`; `roadmap.json` is untouched.
+2. **Lie model.** Per gesture: every gesture of every worker is an independent draw with probability `lie_probability` (a re-ask is a new gesture), from a
+   generator seeded per worker per run. A lie shows one of the OTHER three directions among LEFT / FORWARD / RIGHT / BACK relative to the arrival
+   direction, uniformly, never the true one; BACK is the arrival road. Where the node has no branch in the shown direction (a corridor, a wall) the lie is an
+   impossible direction, which is what rule (b) catches and why A1 and A2 can be lied about.
+3. **People.** A1 and A2: 2 people, one on each side of the road at the asking node. A3: 2 people at EVERY junction (also those off the optimal path), one on each
+   side of the arriving road, 2.0 m lateral, 3.0 m before the junction. A4: 2 people per junction, uniform in a 6 m x 6 m square centred on the junction, at
+   least 1.0 m from every road centre line and 1.0 m apart, seeded by run and junction.
+4. **Backtracking and ties.** Backtrack: return to the last junction; if exactly one branch there is untried (not the arrival road, not the failed one) take
+   it with no question; if two are untried, ask again there with the failed branch excluded; at most once per junction. Second-opinion tie: two people
+   disagree and nobody else is present -> ask the first person again; the majority of the three answers decides (the first person counts twice). Answers
+   rejected by rule (b) never count as votes.
+
+### 16.3 Design (declared before code)
+
+- **Truth field.** `truth.jsonl` rows get the optional boolean `gesture_truthful` (absent in older sessions): false on every row of a gesture that shows a wrong
+  direction, true otherwise (also while idle: nothing is shown). `gesture_data.py` parses it (`TruthRow.gesture_truthful`, None when absent) and
+  `bridge/protocol.py` refuses the name in messages from Unity like the other truth fields. The direction a lie shows is the existing `point_angle_deg`
+  (POINT) or a PROCEED (FORWARD); the evaluation maps it to a branch with the roadmap. Unity does not write the field yet (Nusrat's side, not touched).
+- **Rule (b), `lie_detection.reject_impossible`.** A resolved answer is rejected, with a logged reason, when it is: `arrival` (the direction nearest the road the
+  robot came from), `no_branch` (no branch of the node within `branch_match_max_deg`, or PROCEED where the node has no FORWARD branch), `dead_end` (the branch
+  leads to a node of kind `dead_end` in the map; none of the maps here has one, the rule is unit-tested on a toy map) or `already_tried` (the branch just
+  failed, backtrack). A rejection held for `gesture_hold_s` ends the ask at once and asks again (it uses an ask; two asks, then the existing abort, or
+  backtrack). Off: the existing silent drop (the ask runs to its 5 s window) is unchanged.
+- **Rule (a), `lie_detection.second_opinion`.** At a node (junction or start) where the 360 camera shows at least a second person: after an accepted answer the
+  robot approaches the nearest person not yet asked at this visit (360 track id), asks, and compares. Agree -> go. Disagree -> ask a third person if there is
+  one, majority of three; no third -> the tie rule above. No strict majority among all people and nobody left -> unclear (abort, fail safe). One person
+  only -> as before. Each person's dialog is a record of its own (`opinion` number, 360 id).
+- **Rule (c), `lie_detection.backtrack`.** When every answer at a junction is rejected (the ask budget is used up where the robot would abort) and the last
+  decision junction still has its one backtrack, the robot drives back to it and takes the other branch as in decision 4. A junction that offers no
+  other branch, or whose backtrack is used, aborts as before. Only the last decision junction is considered (one level).
+- **Logging.** `summary()["v4"]["decisions"]`: one entry per decision with `t`, `node`, `event`, `reason`, `serial` (the ask it concerns) and the details
+  (answer, votes, branches). Logged also with every switch off (an addition to the summary, not to the behaviour).
+- **Simulator.** `hri_sim_v4.py`: every person at a node is a worker who can be asked (the person the robot approaches is the commander of that ask);
+  `lie_probability` per scenario; `scenario_ab` builds A1 to A4 / B1 to B4 (maps, goal, placements) from the run seed. The generator of a worker is
+  `random.Random(f"{seed}|{node}|{worker id}")`, so it is the same in every process.
+- **CSV (`export_csv_v4.py`, `configs/v4/experiments/export_csv.json`).** `runs.csv`: one row per run; `dialogs.csv`: one row per ask (question shown). The columns and
+  headers are in the config (a list of field names with optional header text); a field name the exporter does not know is refused with the list of
+  known fields. Definitions: *lies given* = lying gestures of that run in `truth.jsonl`; *detected* = a lying ask whose decision is a rejection,
+  an outvote or a backtrack that withdrew it; *corrected* = detected and the junction ended with the true branch; *fooled* = a lying answer the robot
+  acted on (it drove the shown wrong branch). A lie that is neither (no reading, ignored) is given only.
+- **Equivalence with the switches off.** With the three switches false the controller's decisions, traces and timings are those of the commit this branch
+  started from (tested on fixed seeds against the stored result of the unmodified code path).
+
+### 16.4 Values the AI chose where neither the plan nor the answers settle (for Anisha to confirm or change)
+
+| item | chosen | why |
+|---|---|---|
+| runs per scenario | 20, seeds 1 to 20 (run k uses seed k) | the plan says 20 seeded runs; simulator only, nothing tuned on them |
+| gesture simulation | the neutral defaults of `GestureSimConfig` (coverage 1, accuracy 1, no angle noise) | introduces no value; the lie is then the only error source (the mirror ambiguity of the pointing arm and the second view stay as they are) |
+| trial timeout | 270 s (`final_plan.json` `timeout_s`) | the declared v4 value; a run that backtracks and times out is a FAILURE (timeout), reported |
+| A1 / A2 geometry | A1: A (6.25, -20) to B (6.25, 20), 40 m. A2: A (6.25, -20), B (6.25, 0), C (26.25, 0), 20 m + 20 m | simulation-only; same start as the v4 map; no data basis for the lengths |
+| people at the start node | 3.0 m before A along the start heading = behind A, 2.0 m lateral | decision 3 applied literally |
+| `BACK` | the direction of the arrival road (at A: opposite the start heading) | the existing `arrival_yaw` |
+| backtrack trigger | all answers at the junction rejected (abort would follow) | the plan's "cannot lead anywhere consistent"; a wall rejection (a lie at this junction) triggers it too, so a false backtrack is possible and is counted in the table |
+| second-opinion people | by 360 track id (perfect in the simulator) | real ByteTrack id switches could re-ask the same person: a limitation, not tested here |
+| Set A with detection on | also run (extra rows, labelled) | not in the plan; shows false alarms (detection must not hurt truthful runs) |
+
+
+### 16.5 Decisions of 2026-11-13, second round (Anisha, answers to two questions raised by the first runs; before the table below was made)
+
+Found by running the scenarios (not by tuning on them): with second opinion on, the simulator's straight-line routes made the robot bump into or stall at the
+OTHER avatar although every worker was truthful (A3 detection on: 5 of 20 collisions; A4 detection on: 7 of 20 timeouts, 188 s of one run in safety
+stops). Decided: (1) **the simulator routes around people** for these scenarios (opt-in `SceneSpec.avoid_people_m`, off for every older simulation; a
+detour waypoint wherever a route passes closer than 0.9 m = `safety.corridor_half_width_m` 0.6 m of `hri_control.json` + half the robot width of `robot.json`
+0.3 m, as Unity's NavMesh agent would; `hri_sim_v4.detour_corners`; no new tuned number). (2) **Timeout: 270 s with a labelled 600 s sensitivity run.** Also
+(my implementation choice, listed here for review): the approach point for the 2nd and 3rd person asked is moved around that person (30 degree steps) until
+it is at least 2 x `corridor_half_width_m` = 1.2 m from every other person (`_clear_approach_point`; a person that close would hold the robot at the
+person-in-path stop for good); the first approach is the unchanged v3 rule. Nothing else about the controller's first approach, reposition or drive changed.
+
+### 16.6 What was built (files; nothing under `unity/`, `external/` or v3 was edited)
+
+- `hri_control_v4.py`: rules (a), (b), (c), the decision log (`summary()["v4"]["decisions", "route", "safety_stops", "lie_detection"]`), records of further
+  dialogs (`opinion`, `person_360`). `configs/v4/control.json`, `control_zoom_on.json`, `control_zoom_off.json`: the `lie_detection` block, all false.
+- `hri_sim_v4.py`: lies (`lie_probability`, `lie_script` for tests), any person can be asked (`anyone_commands`), a worker who knows B points BACK when the node cannot
+  lead there (`point_back_when_lost`), layouts `beside` / `random` / `fixed`, `detour_corners`, `scenario_ab` / `run_scenario`, `export_session` extended (map, control
+  config, experiment metadata, decisions on the session clock). `configs/v4/experiments/scenarios_ab.json` (maps, scenarios, sets, seeds, timeout, detour).
+- `gesture_data.py` (`TruthRow.gesture_truthful`), `bridge/protocol.py` (the name refused from Unity), `docs/protocol_v3.md` (amendment 4).
+- `export_csv_v4.py`, `configs/v4/experiments/export_csv.json`, `run_experiments_ab_v4.py` (evaluation code; the subfolder `configs/v4/experiments/` is not
+  in the freeze list `configs/v4/*.json`, and the CSV columns are meant to stay editable; `frozen.json` was not touched).
+- Tests: `tests/test_lie_detection_v4.py` (54), `tests/test_export_csv_v4.py` (25), `tests/golden_sim_v4.py` + `golden_sim_v4_baseline.json` (14 whole trials recorded on
+  808f028: with every switch off the controller and simulator reproduce them field for field). **Existing tests changed (minimal, each keeps its intent):**
+  `test_protocol_v3.py` (the new truth name), `test_gesture_data.py`, `test_hri_eval_dev_v4.py`, `test_gt_path.py`, `test_hri_sim_v4.py` (the new evaluation modules
+  `export_csv_v4.py`, `run_experiments_ab_v4.py` added to their lists of files allowed to import evaluation code / the v4 simulator).
+
+### 16.7 Result: the table (SIMULATOR; 20 seeded runs per row, seeds 1 to 20, timeout 270 s)
+
+Folder `experiments_ab_v4_main_270s_20261113_231746` (git-ignored, under `outputs/`; `runs.csv`, `dialogs.csv`, `table.md`, `table.json`, the session folders). Neutral gesture reader (coverage 1,
+accuracy 1, no angle noise), perfect tracker, routes with a detour around people, maps and placements of 16.2. Detection **on** = a + b + c. Set A with
+detection on is an extra beyond the plan. Lies: given = lying gestures in `truth.jsonl`; detected = rejected, outvoted or withdrawn by a backtrack (of those given);
+corrected = detected and the visit ended with the true branch (of those detected); fooled = acted on and not the true branch (of those given); a lie that is
+neither was ignored or read as the right branch.
+
+| experiment | detection | SUCCESS (95 % Wilson) | failures | median time s | lies given | detected | corrected | fooled | collisions | safety stops | rejections / 2nd opinions / backtracks |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | off | 20/20 (0.84 to 1.00) | - | 68.0 | 0 | 0/0 | 0/0 | 0/0 | 0 | 0 | 0 / 0 / 0 |
+| A1 | on (a+b+c) | 20/20 (0.84 to 1.00) | - | 77.9 | 0 | 0/0 | 0/0 | 0/0 | 0 | 0 | 0 / 20 / 0 |
+| A2 | off | 20/20 (0.84 to 1.00) | - | 82.9 | 0 | 0/0 | 0/0 | 0/0 | 0 | 0 | 0 / 0 / 0 |
+| A2 | on (a+b+c) | 20/20 (0.84 to 1.00) | - | 101.0 | 0 | 0/0 | 0/0 | 0/0 | 0 | 0 | 0 / 40 / 0 |
+| A3 | off | 20/20 (0.84 to 1.00) | - | 121.8 | 0 | 0/0 | 0/0 | 0/0 | 0 | 0 | 0 / 0 / 0 |
+| A3 | on (a+b+c) | 20/20 (0.84 to 1.00) | - | 151.4 | 0 | 0/0 | 0/0 | 0/0 | 0 | 0 | 0 / 58 / 0 |
+| A4 | off | 20/20 (0.84 to 1.00) | - | 110.2 | 0 | 0/0 | 0/0 | 0/0 | 0 | 2 | 0 / 0 / 0 |
+| A4 | on (a+b+c) | 19/20 (0.76 to 0.99) | timeout 1 | 140.2 | 0 | 0/0 | 0/0 | 0/0 | 0 | 22 | 0 / 58 / 0 |
+| B1 | off | 20/20 (0.84 to 1.00) | - | 68.0 | 3 | 0/3 | 0/0 | 0/3 | 0 | 0 | 0 / 0 / 0 |
+| B1 | on (a+b+c) | 20/20 (0.84 to 1.00) | - | 77.9 | 5 | 3/5 | 3/3 | 0/5 | 0 | 0 | 3 / 20 / 0 |
+| B2 | off | 17/20 (0.64 to 0.95) | aborted 3 | 82.9 | 13 | 0/13 | 0/0 | 0/13 | 0 | 0 | 0 / 0 / 0 |
+| B2 | on (a+b+c) | 20/20 (0.84 to 1.00) | - | 108.7 | 21 | 16/21 | 16/16 | 0/21 | 0 | 0 | 16 / 40 / 0 |
+| B3 | off | 13/20 (0.43 to 0.82) | aborted 1, wrong_goal 6 | 119.9 | 16 | 0/16 | 0/0 | 7/16 | 0 | 0 | 0 / 0 / 0 |
+| B3 | on (a+b+c) | 18/20 (0.70 to 0.97) | aborted 1, wrong_goal 1 | 154.5 | 22 | 13/22 | 13/13 | 2/22 | 0 | 1 | 6 / 65 / 0 |
+| B4 | off | 16/20 (0.58 to 0.92) | aborted 3, wrong_goal 1 | 109.3 | 12 | 0/12 | 0/0 | 1/12 | 0 | 2 | 0 / 0 / 0 |
+| B4 | on (a+b+c) | 17/20 (0.64 to 0.95) | timeout 2, wrong_goal 1 | 151.7 | 28 | 18/28 | 18/18 | 2/28 | 0 | 21 | 10 / 66 / 0 |
+
+**The same with a 600 s timeout** (`experiments_ab_v4_sensitivity_600s_20261113_231809`, labelled "sensitivity, not a plan value"): every row is identical to the 270 s table (same successes,
+failures, times). The 3 timeouts (A4 on 1, B4 on 2) are permanent safety stalls (the person-in-path stop holds the robot for good), not slowness; of the two examined, one has the robot squeezed between two avatars about 1.5 m apart and one has it stopped about 1 m from an avatar while turning after the ask.
+
+**Rule by rule** (extra beyond the plan; `experiments_ab_v4_rules_270s_20261113_231833`; Set B, 270 s):
+
+| experiment | detection | SUCCESS (95 % Wilson) | failures | median time s | lies given | detected | corrected | fooled | collisions | safety stops | rejections / 2nd opinions / backtracks |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | off | 20/20 (0.84 to 1.00) | - | 68.0 | 3 | 0/3 | 0/0 | 0/3 | 0 | 0 | 0 / 0 / 0 |
+| B1 | on (a+b+c) | 20/20 (0.84 to 1.00) | - | 77.9 | 5 | 3/5 | 3/3 | 0/5 | 0 | 0 | 3 / 20 / 0 |
+| B1 | a only | 20/20 (0.84 to 1.00) | - | 77.9 | 5 | 0/5 | 0/0 | 0/5 | 0 | 0 | 0 / 20 / 0 |
+| B1 | b only | 20/20 (0.84 to 1.00) | - | 68.0 | 3 | 2/3 | 2/2 | 0/3 | 0 | 0 | 2 / 0 / 0 |
+| B1 | b+c | 20/20 (0.84 to 1.00) | - | 68.0 | 3 | 2/3 | 2/2 | 0/3 | 0 | 0 | 2 / 0 / 0 |
+| B1 | a+b | 20/20 (0.84 to 1.00) | - | 77.9 | 5 | 3/5 | 3/3 | 0/5 | 0 | 0 | 3 / 20 / 0 |
+| B2 | off | 17/20 (0.64 to 0.95) | aborted 3 | 82.9 | 13 | 0/13 | 0/0 | 0/13 | 0 | 0 | 0 / 0 / 0 |
+| B2 | on (a+b+c) | 20/20 (0.84 to 1.00) | - | 108.7 | 21 | 16/21 | 16/16 | 0/21 | 0 | 0 | 16 / 40 / 0 |
+| B2 | a only | 20/20 (0.84 to 1.00) | - | 111.6 | 21 | 0/21 | 0/0 | 0/21 | 0 | 0 | 0 / 40 / 0 |
+| B2 | b only | 17/20 (0.64 to 0.95) | aborted 3 | 82.9 | 13 | 12/13 | 6/12 | 0/13 | 0 | 0 | 12 / 0 / 0 |
+| B2 | b+c | 17/20 (0.64 to 0.95) | aborted 3 | 82.9 | 13 | 12/13 | 6/12 | 0/13 | 0 | 0 | 12 / 0 / 0 |
+| B2 | a+b | 20/20 (0.84 to 1.00) | - | 108.7 | 21 | 16/21 | 16/16 | 0/21 | 0 | 0 | 16 / 40 / 0 |
+| B3 | off | 13/20 (0.43 to 0.82) | aborted 1, wrong_goal 6 | 119.9 | 16 | 0/16 | 0/0 | 7/16 | 0 | 0 | 0 / 0 / 0 |
+| B3 | on (a+b+c) | 18/20 (0.70 to 0.97) | aborted 1, wrong_goal 1 | 154.5 | 22 | 13/22 | 13/13 | 2/22 | 0 | 1 | 6 / 65 / 0 |
+| B3 | a only | 18/20 (0.70 to 0.97) | aborted 1, wrong_goal 1 | 155.2 | 22 | 7/22 | 7/7 | 2/22 | 0 | 1 | 0 / 65 / 0 |
+| B3 | b only | 13/20 (0.43 to 0.82) | aborted 1, wrong_goal 6 | 119.9 | 16 | 4/16 | 3/4 | 7/16 | 0 | 0 | 4 / 0 / 0 |
+| B3 | b+c | 13/20 (0.43 to 0.82) | aborted 1, wrong_goal 6 | 119.9 | 16 | 4/16 | 3/4 | 7/16 | 0 | 0 | 4 / 0 / 0 |
+| B3 | a+b | 18/20 (0.70 to 0.97) | aborted 1, wrong_goal 1 | 154.5 | 22 | 13/22 | 13/13 | 2/22 | 0 | 1 | 6 / 65 / 0 |
+| B4 | off | 16/20 (0.58 to 0.92) | aborted 3, wrong_goal 1 | 109.3 | 12 | 0/12 | 0/0 | 1/12 | 0 | 2 | 0 / 0 / 0 |
+| B4 | on (a+b+c) | 17/20 (0.64 to 0.95) | timeout 2, wrong_goal 1 | 151.7 | 28 | 18/28 | 18/18 | 2/28 | 0 | 21 | 10 / 66 / 0 |
+| B4 | a only | 17/20 (0.64 to 0.95) | timeout 2, wrong_goal 1 | 153.0 | 28 | 8/28 | 8/8 | 2/28 | 0 | 21 | 0 / 66 / 0 |
+| B4 | b only | 16/20 (0.58 to 0.92) | aborted 3, wrong_goal 1 | 109.3 | 12 | 6/12 | 2/6 | 1/12 | 0 | 2 | 6 / 0 / 0 |
+| B4 | b+c | 16/20 (0.58 to 0.92) | aborted 2, wrong_goal 2 | 111.3 | 14 | 6/14 | 2/6 | 3/14 | 0 | 3 | 6 / 0 / 1 |
+| B4 | a+b | 17/20 (0.64 to 0.95) | timeout 2, wrong_goal 1 | 151.7 | 28 | 18/28 | 18/18 | 2/28 | 0 | 21 | 10 / 66 / 0 |
+
+### 16.8 What the table says, and what it does not
+
+1. Detection helps where a lie can lead to a wrong branch: B3 SUCCESS 13/20 -> 18/20, B2 17/20 -> 20/20, B4 16/20 -> 17/20, B1 20/20 both (a lie in a corridor
+   is only an impossible direction: the robot asks again either way). Detection costs time (median +10 to +42 s per run: one more dialog per node) and, in the random
+   layout, safety stops (A4 on 22 stops, 1 timeout, against 2 stops, 0 timeouts with detection off, although nobody lies).
+2. Rules: second opinion (a) does most of the work in B2 to B4; reject alone (b) finds only the impossible directions (B2: 12 of 13 lies, but 6 of 12 corrected);
+   a + b detects more than either alone (B3: 13 of 22 lies against 7 of 22 for a and 4 of 16 for b) because a rejected answer is no vote and the next person is asked. **Backtrack (c) hardly ever fires: 0 times in 80
+   detection-on runs, 1 time in the 80 b+c runs (B4, the run then ended wrong_goal).** The evidence it needs, a worker who points back along the arrival road, was read
+   as a valid branch in the cases examined: the reader's two depth readings are mirror images about the image plane, and from the 'beside' placements the mirror of BACK can land on a
+   branch (the existing rule drops only the candidate nearest the arrival road). Rule (c) is tested (`tests/test_lie_detection_v4.py`, `RuleC_Backtrack`, with people placed so that the evidence arrives),
+   but this simulation does not show a benefit from it.
+3. A lie is not always caught: fooled 2 of 22 in B3 on, 2 of 28 in B4 on (not analysed case by case).
+4. **Simulator limits, stated so that nobody reads more into the table:** the perception is the reader's output, not pixels; gesture noise is neutral (no wrong readings
+   beyond the mirror ambiguity), so real accuracy will be lower; the tracker is perfect (real ByteTrack id switches could make the robot ask the same person twice); the
+   obstacle detour is a model of Unity's NavMesh, not Unity; the people are not moving; lies are drawn per gesture (decision 2) so a re-ask is a new draw. None of it was
+   tuned on these results. The first runs found three simulator artefacts, fixed before the table was made (16.5): straight-line routes, an approach point on top of another
+   person, and (the remaining 3 stalls, 16.7) avatars standing closer to the robot's path than the safety corridor allows.
+5. With the detour there are 0 collisions in every row. Before it a person standing 1.0 to 1.2 m from the road (allowed by the decided placement rule) could be hit by a
+   departure that cut a corner (A4 detection off 1 of 20, A3 detection on 5 of 20). The placement rule is unchanged; a larger lateral distance or road distance would
+   make the problem disappear without the detour, if you prefer that to a model of the NavMesh.
+
+### 16.9 Reproduce (from `robot_vision/`)
+
+Windows PowerShell: `.\.venv\Scripts\python.exe run_experiments_ab_v4.py --runs 20 --timeout-s 270 --label main_270s`; macOS: `.venv/bin/python run_experiments_ab_v4.py --runs 20 --timeout-s 270 --label main_270s`.
+Sensitivity: `--timeout-s 600 --label sensitivity_600s`. Rules: `--experiments B1 B2 B3 B4 --settings off a b bc ab on --label rules_270s`. CSV of any session pair:
+`python export_csv_v4.py --session outputs/<run>/sessions/trials_B3_on outputs/<run>/sessions/bridge_B3_on`. Each call writes a new timestamped folder; nothing is overwritten.
