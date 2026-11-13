@@ -2,7 +2,7 @@
 
 v3 configs in `configs/` are frozen (`configs/hri_frozen.json`) and are not touched. Everything v4 declares lives here and is
 frozen separately by `freeze_v4.py` into `frozen.json`: while its `frozen` is false the thresholds are still being set on
-development data; after Anisha freezes it, `tests/test_v4_frozen.py` fails if any file below, any v3 file v4 reads, or a model
+development data; after Nusrat freezes it by hand (agreed with Anisha 2026-11-13; CLAUDE.md, AUDIT.md section 15), `tests/test_v4_frozen.py` fails if any file below, any v3 file v4 reads, or a model
 file changes.
 
 | file | for |

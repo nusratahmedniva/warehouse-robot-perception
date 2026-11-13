@@ -35,7 +35,7 @@ How each command should look (these are the poses of `docs/gesture_reader_v4.md`
 
 - **POINT**: arm outstretched. Make the two sequences of each arm different: one **sideways in the image plane** (the person's left arm
   toward the image right, the right arm toward the image left) and one at about 45 degrees toward the front. The sideways take lets the
-  tool measure the arm length in shoulder widths against the assumed 1.4.
+  tool measure the arm length in shoulder widths against the assumed 1.683 (calibrated 2026-11-13; it was 1.4 when this check was declared).
 - **WAIT**: one hand raised near the head, forearm vertical, index finger up, the other three fingers curled.
 - **STOP**: open palm toward the camera, four fingers extended and spread, arm bent or extended toward the robot.
 - **NONE** (optional): arms hanging.
@@ -134,7 +134,7 @@ Per group (look, command, distance, arm), over **all frames of the group; a fram
 | shoulder, elbow, wrist, hip keypoints | share of frames with each keypoint above `body_kp_conf_min` (0.5) |
 | arm valid | both shoulders, both hips, the elbow and the wrist of the recorded arm above it: what the reader needs to use the arm |
 | hand found / linked / 21 landmarks inside / world landmarks / hand box height | MediaPipe found a hand in the person crop; it is linked to the recorded arm by its wrist; all 21 landmarks are inside the image; its size in pixels |
-| arm-to-shoulder ratio | `|shoulder to wrist| / shoulder width` in the image (median, min, max, 95th percentile) against the assumed 1.4 (POINT geometry). Foreshortening only shortens it, so the 95th percentile of a group with a sideways take reaches the true ratio |
+| arm-to-shoulder ratio | `|shoulder to wrist| / shoulder width` in the image (median, min, max, 95th percentile) against the assumed 1.683 (POINT geometry; 1.4 when this check was declared, calibrated 2026-11-13). Foreshortening only shortens it, so the 95th percentile of a group with a sideways take reaches the true ratio |
 | cues per frame | raised arm, finger up (index extended, others curled, pointing up), open palm (four fingers extended and spread), MediaPipe category as the command needs it (**reported only**, since 2026-11-08 the reader does not require it); `own cue` = **all** cues of the recorded command pass in that frame (`gesture_motion.frame_flags`: finger geometry and arm pose, **not** the MediaPipe label) |
 | wrong class | the frame alone would read as another command (STOP > WAIT > POINT as in the reader) |
 | sequence read | the reader's answer at the last frame of each sequence (the live window and thresholds): as recorded, or another command (`NONE` and `insufficient_history` are lost coverage, not a wrong command) |
@@ -154,7 +154,7 @@ A group is graded by its worst check. `usable` / `weak` / otherwise `fails`; a c
 | frames read as another command | <= 0.10 | <= 0.25 | fails |
 | sequences read as recorded | >= 0.80 | >= 0.50 | fails |
 | sequences read as a different command | <= 0.10 | <= 0.25 | fails |
-| POINT arm ratio, 95th percentile | 0.98 to 1.75 (1.4 -30 % / +25 %) | outside | never fails |
+| POINT arm ratio, 95th percentile | 1.18 to 2.10 (1.683 -30 % / +25 %; 0.98 to 1.75 around 1.4 when declared) | outside | never fails |
 
 A **look** is judged on its **2 m** groups of POINT, WAIT and STOP (both arms when any recording of the look carries an arm label;
 a negative-control `NONE` group is graded too when present), in this order:
