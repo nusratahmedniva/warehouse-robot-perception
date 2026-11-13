@@ -1,0 +1,129 @@
+{
+  "note": "Experiments A and B and the avatar experiment (experiments_ab.md section 2, declared 2026-11-14 before the look check ran). Looks that worker_v4.json does not define; merged with it at Play (worker_v4.json, a B9 file, is not changed). Navigation looks (Sets A and B) are human-like; their names encode person, gender and costume (<person>_<m|f>_<costume>). proposed_split is Nusrat's PROPOSAL for Anisha's data_splits.json, never read as a split: Unity reads the split from data_splits.json only. Third-party and character assets are git-ignored (licences: never committed); asset paths are where the import puts them.",
+  "paths": {
+    "repo_root_relative_to_unity_project": "../../..",
+    "characters_source": "unity/downloads/characters_v4",
+    "import_folder": "Assets/ThirdParty/CharactersV4",
+    "output_root": "robot_vision/outputs"
+  },
+  "recolour": [
+    {
+      "look": "cartoon_boxo_01",
+      "colourless_saturation_max": 0.05,
+      "rules": [
+        { "keywords": ["body", "skin", "head"], "rgb": [0.10, 0.62, 0.62] },
+        { "keywords": ["vest"], "rgb": [1.00, 0.50, 0.08] },
+        { "keywords": ["hat", "helmet", "cap"], "rgb": [0.95, 0.95, 0.95] },
+        { "keywords": ["glove", "hand"], "rgb": [0.12, 0.12, 0.14] },
+        { "keywords": ["trouser", "pant", "leg"], "rgb": [0.10, 0.14, 0.35] },
+        { "keywords": ["boot", "shoe", "foot"], "rgb": [0.40, 0.24, 0.12] }
+      ],
+      "why": "Task 2026-11-14: if cartoon_boxo_01 imports without colours, recolour it from its material names: teal body, orange vest, white hat, dark gloves, navy trousers, brown boots. A material is recoloured only when it is colourless (no base texture, base colour saturation <= colourless_saturation_max); the first rule whose keyword is in the material's name (lower case) wins; a colourless material no rule matches is reported, not guessed. The new URP Lit materials are written next to the imported FBX (git-ignored)."
+    }
+  ],
+  "looks": [
+    {
+      "id": "sunbox_m_shirt_white", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",
+      "gender": "male", "person": "sunbox", "costume": "shirt_white", "navigation": true, "proposed_split": "development",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: male base (skin 1, hair 1), white shirt, black jeans, black suit shoes",
+      "licence": "Unity Asset Store Standard EULA (use in a published study allowed; the pack is never redistributed, git-ignored)",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": { "gender": "Male", "skin": 1, "hair_style": 1, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [ { "name": "Shirt", "variation": 1 }, { "name": "Pants", "variation": 0 }, { "name": "Suit Shoes", "variation": 0 },
+                      { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
+    },
+    {
+      "id": "sunbox_m_tshirt_black", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",
+      "gender": "male", "person": "sunbox", "costume": "tshirt_black", "navigation": true, "proposed_split": "development",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: male base (skin 1, hair 1), black T-shirt, grey tracksuit pants, white basketball shoes",
+      "licence": "Unity Asset Store Standard EULA (use in a published study allowed; the pack is never redistributed, git-ignored)",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": { "gender": "Male", "skin": 1, "hair_style": 1, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [ { "name": "TShirt", "variation": 0 }, { "name": "Tracksuit Pants", "variation": 1 }, { "name": "Basketball Shoes", "variation": 1 },
+                      { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
+    },
+    {
+      "id": "sunbox_m_shirt_plaid", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",
+      "gender": "male", "person": "sunbox", "costume": "shirt_plaid", "navigation": true, "proposed_split": "test",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: male base (skin 1, hair 1), red plaid shirt, blue cargo shorts, black basketball shoes",
+      "licence": "Unity Asset Store Standard EULA (use in a published study allowed; the pack is never redistributed, git-ignored)",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": { "gender": "Male", "skin": 1, "hair_style": 1, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [ { "name": "Shirt", "variation": 0 }, { "name": "Cargo Shorts", "variation": 1 }, { "name": "Basketball Shoes", "variation": 0 },
+                      { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
+    },
+    {
+      "id": "sunbox_f_shirt_white", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",
+      "gender": "female", "person": "sunbox", "costume": "shirt_white", "navigation": true, "proposed_split": "development",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base (skin 1, hair 5), white shirt, black long skirt, black flats",
+      "licence": "Unity Asset Store Standard EULA (use in a published study allowed; the pack is never redistributed, git-ignored)",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": { "gender": "Female", "skin": 1, "hair_style": 5, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [ { "name": "Shirt", "variation": 1 }, { "name": "Long Skirt", "variation": 0 }, { "name": "Flats", "variation": 0 },
+                      { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
+    },
+    {
+      "id": "sunbox_f_dress_red", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",
+      "gender": "female", "person": "sunbox", "costume": "dress_red", "navigation": true, "proposed_split": "development",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base (skin 1, hair 5), red sleeveless dress, white flats",
+      "licence": "Unity Asset Store Standard EULA (use in a published study allowed; the pack is never redistributed, git-ignored)",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": { "gender": "Female", "skin": 1, "hair_style": 5, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [ { "name": "Dress Sleeveless", "variation": 2 }, { "name": "No Bottom", "variation": 0 }, { "name": "Flats", "variation": 1 },
+                      { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
+    },
+    {
+      "id": "sunbox_f_shirt_plaid", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",
+      "gender": "female", "person": "sunbox", "costume": "shirt_plaid", "navigation": true, "proposed_split": "test",
+      "source": "Stylized Customizable Avatars (Free), Sunbox Games: female base (skin 1, hair 5), red plaid shirt, blue jeans, black flats",
+      "licence": "Unity Asset Store Standard EULA (use in a published study allowed; the pack is never redistributed, git-ignored)",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": { "gender": "Female", "skin": 1, "hair_style": 5, "hair_material": 0, "facial_hair_style": 0,
+        "clothing": [ { "name": "Shirt", "variation": 0 }, { "name": "Pants", "variation": 1 }, { "name": "Flats", "variation": 0 },
+                      { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
+    },
+    {
+      "id": "sunbox_m2", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",
+      "gender": "male", "person": "sunbox_m2", "costume": "tshirt_white_cap", "navigation": false, "proposed_split": "",
+      "source": "As look_check.json (Phase 2A candidate, excluded from worker_v4.json: face keypoints rarely found): male base, darker skin, T-shirt, tracksuit pants, cap",
+      "licence": "Unity Asset Store Standard EULA (use in a published study allowed; the pack is never redistributed, git-ignored)",
+      "asset": "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", "material_override": "",
+      "sunbox": { "gender": "Male", "skin": 2, "hair_style": 3, "hair_material": 1, "facial_hair_style": 1,
+        "clothing": [ { "name": "TShirt", "variation": 1 }, { "name": "Tracksuit Pants", "variation": 1 }, { "name": "Basketball Shoes", "variation": 0 },
+                      { "name": "Baseball cap", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
+    },
+    {
+      "id": "mixamo_worker", "family": "mixamo", "role": "candidate", "kind": "prefab", "kind_group": "realistic_human",
+      "gender": "male", "person": "mixamo_worker", "costume": "workwear", "navigation": false, "proposed_split": "",
+      "source": "Mixamo character used as the v3 worker (Assets/WarehouseRobot/Characters/worker.fbx, git-ignored), as look_check.json",
+      "licence": "Adobe Mixamo terms (royalty-free use in projects; the files are never redistributed, git-ignored)",
+      "asset": "Assets/WarehouseRobot/Characters/worker.fbx",
+      "material_override": "Assets/WarehouseRobot/Characters/worker_textures/Worker_URP.mat",
+      "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
+    },
+    {
+      "id": "anime_f_01", "family": "vroid", "role": "candidate", "kind": "prefab", "kind_group": "anime",
+      "gender": "female", "person": "anime", "costume": "default", "navigation": false, "proposed_split": "",
+      "source": "Nusrat's own VRoid character exported as FBX (unity/downloads/characters_v4/anime_f_01.fbx, git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters)",
+      "licence": "not verified: unity/downloads/characters_v4/SOURCES.txt is missing (Nusrat's own character per the task)",
+      "asset": "Assets/ThirdParty/CharactersV4/anime_f_01/anime_f_01.fbx", "material_override": "",
+      "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
+    },
+    {
+      "id": "cartoon_boxo_01", "family": "cartoon", "role": "candidate", "kind": "prefab", "kind_group": "cartoon_non_human",
+      "gender": "none", "person": "boxo", "costume": "default", "navigation": false, "proposed_split": "",
+      "source": "Nusrat's own procedurally generated character, thumb + 3 fingers (unity/downloads/characters_v4/cartoon_boxo_01.fbx, git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters)",
+      "licence": "not verified: unity/downloads/characters_v4/SOURCES.txt is missing (Nusrat's own character per the task)",
+      "asset": "Assets/ThirdParty/CharactersV4/cartoon_boxo_01/cartoon_boxo_01.fbx", "material_override": "",
+      "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
+    }
+  ],
+  "avatar_experiment": [
+    "mixamo_worker",
+    "sunbox_m1", "sunbox_f1", "sunbox_f2", "sunbox_m2",
+    "sunbox_m_shirt_white", "sunbox_m_tshirt_black", "sunbox_m_shirt_plaid",
+    "sunbox_f_shirt_white", "sunbox_f_dress_red", "sunbox_f_shirt_plaid",
+    "anime_f_01",
+    "cartoon_boxo_01"
+  ]
+}

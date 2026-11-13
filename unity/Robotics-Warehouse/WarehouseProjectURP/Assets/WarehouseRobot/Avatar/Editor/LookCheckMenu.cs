@@ -60,9 +60,40 @@ namespace WarehouseAvatar.EditorTools
             Report("Run Look Check", Run());
         }
 
+        [MenuItem("Tools/Warehouse v4/Experiments/Run Look Check (avatar experiment looks)")]
+        public static void RunExperimentMenu()
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            Report("Run Look Check (avatar experiment)", RunExperiment());
+        }
+
         public static void BatchBuildScene() => Batch(BuildScene);
         public static void BatchConvertSunbox() => Batch(ConvertSunboxMaterials);
         public static void BatchRun() => Batch(Run);
+        public static void BatchRunExperiment() => Batch(RunExperiment);
+
+        /// <summary>
+        /// Experiments A/B (2026-11-14, experiments_ab.md section 2): the same look check on every look of looks_ab.json
+        /// avatar_experiment, each defined in looks_ab.json, worker_v4.json or look_check.json (first found), into a new folder
+        /// look_check_ab_&lt;time&gt;/; looks_ab.json and worker_v4.json are copied to config_used/. look_check.json is not changed.
+        /// </summary>
+        public static string RunExperiment()
+        {
+            var ab = ExperimentLooksMenu.Load(out string abText);
+            var workerAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(WorkerTemplateMenu.ConfigPath) ?? throw new FileNotFoundException(WorkerTemplateMenu.ConfigPath);
+            var worker = WorkerV4Config.Parse(workerAsset.text);
+            var errors = ExperimentLooks.Validate(ab, worker.looks);
+            if (errors.Count > 0) throw new InvalidOperationException("looks_ab.json: " + string.Join("; ", errors));
+            return Run(cfg =>
+            {
+                var looks = new List<LookEntry>();
+                foreach (var id in ab.avatar_experiment)
+                    looks.Add(ab.looks.FirstOrDefault(l => l.id == id) ?? worker.Look(id) ?? cfg.looks.FirstOrDefault(l => l.id == id)
+                              ?? throw new ArgumentException($"look '{id}' is defined nowhere"));
+                cfg.looks = looks.ToArray();
+                cfg.paths.output_prefix = cfg.paths.output_prefix + "_ab";
+            }, new Dictionary<string, string> { { "looks_ab.json", abText }, { "worker_v4.json", workerAsset.text } });
+        }
 
         static void Batch(Func<string> action)
         {
@@ -187,10 +218,13 @@ namespace WarehouseAvatar.EditorTools
 
         // ---------------------------------------------------------------- run
 
-        public static string Run()
+        public static string Run() => Run(null, null);
+
+        static string Run(Action<LookCheckConfig> adjust, Dictionary<string, string> extraConfigs)
         {
             var cfgAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(ConfigPath) ?? throw new FileNotFoundException(ConfigPath);
             var cfg = LoadConfig(cfgAsset);
+            adjust?.Invoke(cfg);
             var pt = LoadPanTilt(cfg);
             if (!File.Exists(ProjectFile(ScenePath))) throw new FileNotFoundException(ScenePath + " missing: run Build LookCheck Scene first");
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
@@ -204,6 +238,7 @@ namespace WarehouseAvatar.EditorTools
             WriteNew(Path.Combine(outDir, "config_used", "look_check.json"), cfgAsset.text);
             var robotAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(cfg.paths.robot_unity_config);
             WriteNew(Path.Combine(outDir, "config_used", Path.GetFileName(cfg.paths.robot_unity_config)), robotAsset.text);
+            if (extraConfigs != null) foreach (var kv in extraConfigs) WriteNew(Path.Combine(outDir, "config_used", kv.Key), kv.Value);
 
             float fov = cfg.recording.vertical_fov_deg;
             var rest = new PoseSpec { Command = LookCheckConfig.None, ElevationDeg = -Mathf.Atan2(1f, cfg.hand.rest_outward) * Mathf.Rad2Deg };
