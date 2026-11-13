@@ -26,8 +26,10 @@ FORBIDDEN_KEYS = frozenset({"goal", "goal_point", "goal_x", "goal_z", "end_point
 # 2026-11-08: besides the six names of 2026-10-23, every field name of the per-run worker truth file (docs/protocol_v3.md) that never
 # appears legitimately in a message Unity sends. Not in the list: time_s, x, z (they are in telemetry and frame headers). is_commander and
 # point_angle_deg are HUD fields Python sends TO Unity; messages to Unity are not checked (validate() looks only at FROM_UNITY).
+# 2026-11-12 (P1, Nusrat during Anisha's absence): the new optional field ankle_height_m of that file joins them on the same rule.
 TRUTH_KEYS = frozenset({"true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth",
-                        "true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm"})
+                        "true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm",
+                        "ankle_height_m"})
 FORBIDDEN_KEYS_V3 = FORBIDDEN_KEYS | TRUTH_KEYS
 
 NUM, INT, STR, BOOL = "number", "int", "string", "bool"
@@ -58,7 +60,9 @@ SCHEMAS: dict[str, dict] = {
 }
 
 # Version 3: the command gains vertical_fov_deg (pan-tilt zoom) and the hud block (docs/protocol_v3.md).
-GESTURES_V3 = frozenset({"POINT", "WAIT", "STOP", "NONE"})
+# Amendments of 2026-11-12 (Nusrat during Anisha's absence, AUDIT.md section 15): hud.gesture may be PROCEED (P2); the command
+# gains tilt_deg (P6: + = up, -1 = the default, level; otherwise in [0, 90)).
+GESTURES_V3 = frozenset({"POINT", "WAIT", "STOP", "PROCEED", "NONE"})
 HUD_PERSON = {"id": INT, "bearing_deg": NUM, "distance_m": NUM, "is_commander": BOOL}
 HUD_LOG_ENTRY = {"dir": STR, "type": STR, "seq": INT, "text": STR}
 HUD = {"state": STR, "screen_text": STR, "commander_id": INT, "gesture": STR, "gesture_score": NUM,
@@ -66,7 +70,7 @@ HUD = {"state": STR, "screen_text": STR, "commander_id": INT, "gesture": STR, "g
        "log": [HUD_LOG_ENTRY]}
 SCHEMAS_V3: dict[str, dict] = {
     **SCHEMAS,
-    "command": {**SCHEMAS["command"], "vertical_fov_deg": NUM, "hud": HUD},
+    "command": {**SCHEMAS["command"], "vertical_fov_deg": NUM, "tilt_deg": NUM, "hud": HUD},
 }
 SCHEMAS_BY_VERSION = {2: SCHEMAS, 3: SCHEMAS_V3}
 FORBIDDEN_BY_VERSION = {2: FORBIDDEN_KEYS, 3: FORBIDDEN_KEYS_V3}
@@ -259,6 +263,9 @@ def _check_v3(t: str, h: dict, rel_tol: float) -> None:
         fov = h["vertical_fov_deg"]
         if fov != -1 and not 0.0 < fov < 180.0:
             raise MessageError(f"command: vertical_fov_deg {fov} must be -1 (keep) or in (0, 180)")
+        tilt = h["tilt_deg"]
+        if tilt != -1 and not 0.0 <= tilt < 90.0:
+            raise MessageError(f"command: tilt_deg {tilt} must be -1 (level, the default) or in [0, 90)")
         hud = h["hud"]
         if hud["gesture"] not in GESTURES_V3:
             raise MessageError(f"command: hud.gesture {hud['gesture']!r} not in {sorted(GESTURES_V3)}")

@@ -137,7 +137,7 @@ class SettingChecks(unittest.TestCase):
             r = self.runs(Path(d))
             self.assertTrue(any("needs bystanders" in x for x in fg.check_setting("bystanders", r, repo)))
             self.assertTrue(any("needs zoom off" in x for x in fg.check_setting("zoom_off", r, repo)))
-            self.assertEqual(fg.check_setting("unseen_look", r, repo), [])
+            self.assertEqual(fg.check_setting("zoom_on_repeat", r, repo), [])
 
     def test_blanks_in_the_plan_are_reported(self):
         with tempfile.TemporaryDirectory() as d:
@@ -325,13 +325,14 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             cfg = {**self.cfg, "paths": {"output_root": d}}
             with self.assertRaisesRegex(SystemExit, "unknown final setting"):
                 S.preflight_final(cfg, "guide", "nonsense")
-            with self.assertRaisesRegex(SystemExit, "needs zoom off"):
-                S.preflight_final(cfg, "guide", "zoom_off")                          # control.json has zoom on
-            S.preflight_final(cfg, "guide", "zoom_on")
+            with self.assertRaisesRegex(SystemExit, "must run with --control-config"):
+                S.preflight_final(cfg, "guide", "zoom_off")                          # P11: control.json is not zoom_off's file
+            S.preflight_final(cfg, "guide", "zoom_off", "configs/v4/control_zoom_off.json")
+            S.preflight_final(cfg, "guide", "zoom_on", "configs/v4/control_zoom_on.json")
             (Path(d) / "bridge_guide_1").mkdir()
             fg.write_done(Path(d) / "bridge_guide_1", "zoom_on", "run")
             with self.assertRaisesRegex(SystemExit, "already run as a final"):
-                S.preflight_final(cfg, "guide", "zoom_on")
+                S.preflight_final(cfg, "guide", "zoom_on", "configs/v4/control_zoom_on.json")
 
     async def test_a_final_run_writes_its_setting_and_the_done_marker_only_after_a_trial(self):
         from test_v4_integration import FakeWorkerV4
@@ -347,7 +348,8 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory() as d:
                 cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}, "perception_workers": {"mode": "threads"}}   # these tests patch the thread factory
                 cfg_path = ROOT / "configs" / "v4" / "bridge.json"
-                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on")
+                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
+                                  control_config="configs/v4/control_zoom_on.json")
                 self.assertTrue((out / "FINAL_SETTING.json").exists())
                 self.assertEqual(json.loads((out / "FINAL_SETTING.json").read_text())["setting"], "zoom_on")
                 self.assertFalse((out / "FINAL_RUN_DONE.json").exists())             # no trial finished: no marker, no block
@@ -369,16 +371,89 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory() as d:
                 cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}, "perception_workers": {"mode": "threads"}}   # these tests patch the thread factory
                 cfg_path = ROOT / "configs" / "v4" / "bridge.json"
-                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on")
+                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
+                                  control_config="configs/v4/control_zoom_on.json")
                 marker = json.loads((out / "FINAL_RUN_DONE.json").read_text())
                 self.assertEqual((marker["setting"], marker["kind"], marker["trials_written"]), ("zoom_on", "run", 1))
                 time.sleep(1.1)                                                       # run folders are named by the second
                 with self.assertRaisesRegex(SystemExit, "already run as a final"):
-                    await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on")
-                other = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="bystanders")
+                    await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
+                                  control_config="configs/v4/control_zoom_on.json")
+                other = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="bystanders",
+                                      control_config="configs/v4/control_zoom_on.json")
                 self.assertTrue((other / "FINAL_SETTING.json").exists())
         finally:
             S.make_perception_worker_v4 = real
+
+
+def write_messages(bridge: Path, telemetry: list, extra_lines: tuple = ()) -> None:
+    """A bridge messages.jsonl: one incoming telemetry line per (watchdog_count, trial_index, trial_running), in the server's
+    compact format, plus other lines that must be ignored."""
+    lines = [json.dumps({"t_wall_s": 0.1 * k, "dir": "in", "type": "telemetry", "seq": k,
+                         "header": {"type": "telemetry", "seq": k, "watchdog_count": c, "trial_index": t, "trial_running": run}},
+                        separators=(",", ":")) for k, (c, t, run) in enumerate(telemetry)]
+    (bridge / "messages.jsonl").write_text("\n".join(list(extra_lines) + lines) + "\n", encoding="utf-8")
+
+
+class WatchdogStopTests(unittest.TestCase):
+    """B11(a), 2026-11-13: watchdog stops are counted per run from the bridge log and reported as a result, never a refusal."""
+
+    TELEMETRY = [(1, -1, False),                        # a stop at start-up, before trial 1: outside the runs
+                 (1, 1, True), (2, 1, True), (2, 1, True),   # one stop during trial 1
+                 (3, 1, False),                         # one between the runs: outside
+                 (3, 2, True), (5, 2, True)]            # two during trial 2
+
+    def test_stops_are_given_to_the_run_that_was_running(self):
+        with tempfile.TemporaryDirectory() as d:
+            b = Path(d)
+            write_messages(b, self.TELEMETRY, extra_lines=(
+                json.dumps({"dir": "out", "type": "command", "header": {"watchdog_count": 99, "trial_index": 1, "trial_running": True}}),
+                json.dumps({"dir": "in", "type": "frame_360", "header": {"trial_index": 1}})))
+            c = ef.bridge_watchdog_counts(b)
+            self.assertEqual((c["per_trial"], c["trials_seen"], c["outside"], c["last_count"]), ({1: 1, 2: 2}, {1, 2}, 2, 5))
+            self.assertIsNone(ef.bridge_watchdog_counts(b / "missing"))
+
+    def test_per_run_block_reports_counts_and_not_evaluated_and_refuses_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            b = Path(d)
+            write_messages(b, self.TELEMETRY)
+            runs = [ev.Run("s", t, [], [], [], True, bridge_dir=b) for t in (1, 2, 3)]
+            w = ef.watchdog_block(runs)
+            self.assertEqual([p["watchdog_stops"] for p in w["per_run"]], [1, 2, ev.NOT_EVALUATED])   # run 3: no telemetry
+            s = w["summary"]
+            self.assertEqual((s["runs"], s["runs_counted"], s["stops_in_runs"], s["runs_with_a_stop"], s["stops_outside_runs"],
+                              s["reported_by_unity_total"]), (3, 2, 3, 2, 2, 5))
+            self.assertIn("never a reason for invalidity", w["note"])
+            md = ef.watchdog_markdown(w)
+            self.assertIn("| s/run_001 | None | 1 |", md)
+            self.assertIn("| s/run_003 | None | not_evaluated |", md)
+            none = ef.watchdog_block([ev.Run("s", 1, [], [], [], True, bridge_dir=b / "missing")])
+            self.assertEqual((none["per_run"][0]["watchdog_stops"], none["summary"]["runs_counted"]), (ev.NOT_EVALUATED, 0))
+
+    def test_a_final_with_watchdog_stops_is_evaluated_and_reports_them_per_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            repo, out = final_repo(root / "r"), root / "outputs"
+            out.mkdir()
+            u, b = session(root, "wd")
+            write_messages(b, [(0, 1, True), (1, 1, True), (1, 2, True), (1, 2, False)])
+            folder, res = ef.evaluate_final("zoom_on", [(u, b)], repo, out)
+            rp.set_active_roots({})
+            w = res["watchdog_stops"]
+            self.assertEqual([(p["trial"], p["watchdog_stops"]) for p in w["per_run"]], [(1, 1), (2, 0)])
+            self.assertTrue(all(p["outcome"] for p in w["per_run"]), "each run's outcome is reported next to its stops")
+            self.assertEqual(json.loads((folder / "eval.json").read_text())["watchdog_stops"]["summary"]["stops_in_runs"], 1)
+            self.assertIn("## Watchdog stops (a result, B11(a)", (folder / "eval.md").read_text(encoding="utf-8"))
+            self.assertTrue((folder / "FINAL_DONE.json").exists())                      # evaluated, not refused
+
+    def test_without_a_bridge_log_the_stops_are_not_evaluated(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            repo, out = final_repo(root / "r"), root / "outputs"
+            out.mkdir()
+            _, res = ef.evaluate_final("zoom_on", [session(root, "nolog")], repo, out)
+            rp.set_active_roots({})
+            self.assertEqual({p["watchdog_stops"] for p in res["watchdog_stops"]["per_run"]}, {ev.NOT_EVALUATED})
 
 
 if __name__ == "__main__":

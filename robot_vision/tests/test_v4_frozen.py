@@ -92,26 +92,62 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertEqual(fz.blanks(REPO), want)
 
     def test_decided_values_of_the_plan_and_the_blanks_still_open(self):
-        """Decided 2026-10-24 by Anisha; B7, B9 and B11 are open and must keep the freeze refused (the real look and clip names, B8, are in since 2026-11-08)."""
+        """Decided 2026-10-24 by Anisha; B7, B9 and B11 filled 2026-11-13 by Nusrat in her absence; B7 and B11 confirmed by Anisha on
+        2026-11-13, B11 updated the same day (AUDIT.md section 15)."""
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
         v3 = json.loads((ROOT / "configs/trials.json").read_text())
         self.assertEqual((plan["task"], plan["dev_seed"], plan["final_seed"], plan["runs_per_setting"], plan["success_radius_m"]),
                          ("Task2", 1, 2, 20, 0.3))
-        self.assertEqual((plan["timeout_s"], plan["success_radius_m"], plan["dev_seed"], plan["final_seed"]),
-                         (v3["timeout_s"], v3["success_radius_m"], v3["dev_seed"], v3["final_seed"]))     # the v3 values, read from the v3 config
+        self.assertEqual((plan["success_radius_m"], plan["dev_seed"], plan["final_seed"]),
+                         (v3["success_radius_m"], v3["dev_seed"], v3["final_seed"]))     # the v3 values, read from the v3 config
+        # 2026-11-12 (P7): the timeout follows the declared rule for the longer v4 route (upgrade_design.md section 6), not v3's 240 s
+        self.assertEqual(plan["timeout_s"], max(240, 10 * -(-(1.5 * 65.0 / 0.3944 + 20) // 10)))
+        self.assertGreaterEqual(plan["timeout_s"], v3["timeout_s"])
         self.assertIn("RTX 3060", plan["machine"])
         self.assertIn("highest development accuracy", plan["threshold_rule"])
         self.assertIn("coverage >= 0.8", plan["threshold_rule"])
-        if not REC["frozen"]:
-            for k in ("test_assignment", "unity_files_and_guard", "acceptance_criteria"):
-                self.assertIsNone(plan[k], k)
-            self.assertEqual(len(fz.blanks(REPO)), 3)                                              # B7, B9, B11 (the real names were decided 2026-11-08)
+        # 2026-11-13: B7 (plan (b): sunbox_f2 + test clips in every setting, zoom_on_repeat a repeat of zoom_on), B9 and B11 filled
+        for k in ("test_assignment", "unity_files_and_guard", "acceptance_criteria"):
+            self.assertIsNotNone(plan[k], k)
+        self.assertEqual(plan["test_assignment"]["zoom_on_repeat"]["repeat_of"], "zoom_on")
+        for s, a in plan["test_assignment"].items():
+            self.assertEqual(a["looks"], ["sunbox_f2"], s)
+        self.assertEqual(len(plan["acceptance_criteria"]), 7)
+        self.assertEqual(fz.blanks(REPO), [])
+
+    def test_b11_is_validity_only_and_a_watchdog_stop_is_a_result(self):
+        """B11 update of 2026-11-13 (AUDIT.md section 15): no watchdog criterion; frozen hashes, split guard and all runs added;
+        a setting that fails is reported as invalid and never rerun. check_session_v4.ps1 checks exactly these criteria."""
+        plan = json.loads((REPO / fz.PLAN_REL).read_text())
+        crit = plan["acceptance_criteria"]
+        self.assertFalse([c for c in crit if "watchdog" in c.lower()], "a watchdog stop is a result, never an invalidity reason")
+        labels = ("leak test passed", "frozen hashes match", "split guard passed", "all runs present", "every outcome recorded",
+                  "every truth and run file accepted", "run protocol recorded")
+        self.assertEqual(len(crit), len(labels))
+        for c, label in zip(crit, labels):
+            self.assertTrue(c.startswith(label), label)
+        note = plan["acceptance_criteria_note"]
+        for want in ("watchdog stop is a RESULT", "never a reason for invalidity", "reported as invalid", "never rerun"):
+            self.assertIn(want, note)
+        script = (REPO / "finals_v4" / "check_session_v4.ps1").read_text(encoding="utf-8")
+        import re
+        numbers = [int(n) for n in re.findall(r"^\s*Report (\d+) ", script, re.M)]
+        self.assertEqual(numbers, list(range(1, len(crit) + 1)), "one Report line per criterion, in the plan's order")
+        for n, label in enumerate(labels, 1):
+            self.assertRegex(script, rf"(?m)^\s*Report {n} .*\"{re.escape(label)}", f"criterion {n} is '{label}' in the script")
+        self.assertNotRegex(script, r"(?m)^\s*Report \d+ .*watchdog")
+        self.assertIn("never rerun", script)
 
     def test_the_goal_order_of_the_final_seed_is_that_of_the_v3_final(self):
         import hri_trials as ht
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
         self.assertEqual(ht.goal_order(plan["final_seed"], ["E1", "E2", "E3", "E4"], 10),
-                         ["E1", "E2", "E4", "E2", "E1", "E3", "E4", "E1", "E4", "E1"])               # AUDIT.md section 2
+                         ["E1", "E2", "E4", "E2", "E1", "E3", "E4", "E1", "E4", "E1"])               # AUDIT.md section 2 (v3 map)
+        # 2026-11-12 (P7): the v4 map has six endpoints; the final goal order on it (a declared difference for RQ1)
+        road = json.loads((ROOT / plan["roadmap"]).read_text(encoding="utf-8"))
+        ends = sorted(k for k, v in road["nodes"].items() if v["kind"] == "endpoint")
+        self.assertEqual(ht.goal_order(plan["final_seed"], ends, plan["runs_per_setting"]),
+                         ["E5", "E1", "E5", "E2", "E5", "E3", "E5", "E3", "E4", "E3", "E5", "E3", "E5", "E6", "E2", "E5", "E3", "E1", "E4", "E2"])
 
     def test_v4_re_ask_shift_is_a_declared_difference_and_v3_is_unchanged(self):
         import hri_control as hc
@@ -124,7 +160,7 @@ class RecordedFreezeTests(unittest.TestCase):
 
     def test_settings_of_the_plan_are_the_four_final_settings(self):
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
-        self.assertEqual(set(plan["settings"]), {"zoom_on", "zoom_off", "bystanders", "unseen_look"})
+        self.assertEqual(set(plan["settings"]), {"zoom_on", "zoom_off", "bystanders", "zoom_on_repeat"})   # unseen_look renamed 2026-11-13
 
     def test_models_are_located_from_the_frozen_v3_configs(self):
         st = fz.model_status(REPO)
@@ -196,6 +232,10 @@ class FreezeMechanicsTests(unittest.TestCase):
 
     def test_freeze_is_refused_while_a_blank_is_left(self):
         repo = make_repo(Path(self.tmp.name) / "b", fill_plan=False)
+        plan = repo / fz.PLAN_REL                                    # the real plan has no blank since 2026-11-13: make one
+        d = json.loads(plan.read_text())
+        d["acceptance_criteria"] = None
+        plan.write_text(json.dumps(d))
         fz.refresh_list(repo)
         with self.assertRaisesRegex(SystemExit, "blanks left"):
             fz.freeze(repo)
@@ -223,6 +263,75 @@ class FreezeMechanicsTests(unittest.TestCase):
     def test_the_freeze_record_itself_is_not_hashed(self):
         fz.freeze(self.repo)
         self.assertNotIn(fz.FROZEN_REL, fz.read(self.repo)["sha256"])
+
+
+class UnityFilesFreezeTests(unittest.TestCase):
+    """2026-11-13 (Nusrat in Anisha's absence, AUDIT.md section 15): the freeze also records the Unity files of the B9 list, keyed by
+    their repository path, which is what the Unity final guard (FinalGuardV4) looks up."""
+
+    LIST = "unity/P/Assets/WarehouseRobot/Avatar/Config/final_v4.json"
+    FILES = ["unity/P/Assets/Scenes/WarehouseRobot_v4.unity", "unity/P/Assets/WarehouseRobot/Bridge/Config/bridge_unity_v4.json", LIST]
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = make_repo(Path(self.tmp.name))
+        plan = self.repo / fz.PLAN_REL
+        d = json.loads(plan.read_text())
+        d["unity_files_and_guard"] = {"freeze_list": self.LIST, "freeze_list_key": "freeze_files", "guard": "FinalGuardV4"}
+        plan.write_text(json.dumps(d))
+        for f in self.FILES[:-1]:
+            (self.repo / f).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / f).write_text(f"content of {f}\n")
+        (self.repo / self.LIST).parent.mkdir(parents=True, exist_ok=True)
+        (self.repo / self.LIST).write_text(json.dumps({"freeze_files": self.FILES}))
+        fz.refresh_list(self.repo)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_the_list_comes_from_the_plan_and_the_unity_config(self):
+        self.assertEqual(fz.unity_files(self.repo), sorted(self.FILES))
+
+    def test_freeze_records_every_unity_file_by_path_with_the_lf_hash(self):
+        rec = fz.freeze(self.repo)
+        self.assertEqual(set(rec["unity_files"]), set(self.FILES))
+        for f in self.FILES:
+            self.assertEqual(rec["unity_files"][f], hashlib.sha256((self.repo / f).read_bytes().replace(b"\r\n", b"\n")).hexdigest())
+        # the form the Unity guard reads: "<path>": "<64 hex>" in frozen.json
+        text = (self.repo / fz.FROZEN_REL).read_text()
+        for f in self.FILES:
+            self.assertIn(f'"{f}": "{rec["unity_files"][f]}"', text)
+        self.assertEqual(fz.problems(self.repo), [])
+
+    def test_a_changed_or_removed_unity_file_breaks_the_freeze(self):
+        fz.freeze(self.repo)
+        scene = self.repo / self.FILES[0]
+        scene.write_text(scene.read_text() + "moved a light\n")
+        self.assertEqual(fz.problems(self.repo), [f"{self.FILES[0]} changed after freezing"])
+        with self.assertRaisesRegex(SystemExit, "freeze is broken"):
+            fz.require_frozen(self.repo, require_models=False)
+        scene.unlink()
+        self.assertIn(f"{self.FILES[0]} added or removed since freezing", fz.problems(self.repo))
+
+    def test_line_endings_of_unity_files_do_not_matter(self):
+        fz.freeze(self.repo)
+        f = self.repo / self.FILES[1]
+        f.write_bytes(f.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        self.assertEqual(fz.problems(self.repo), [])
+
+    def test_freeze_is_refused_while_a_listed_unity_file_is_missing(self):
+        (self.repo / self.FILES[0]).unlink()
+        with self.assertRaisesRegex(SystemExit, "Unity file"):
+            fz.freeze(self.repo)
+        self.assertFalse(fz.read(self.repo)["frozen"])
+
+    def test_the_real_plan_names_the_unity_b9_list_and_every_file_exists(self):
+        files = fz.unity_files(REPO)
+        unity = json.loads((REPO / json.loads((REPO / fz.PLAN_REL).read_text())["unity_files_and_guard"]["freeze_list"]).read_text())
+        self.assertEqual(files, sorted(unity["freeze_files"]))
+        self.assertIn("unity/Robotics-Warehouse/WarehouseProjectURP/Assets/Scenes/WarehouseRobot_v4.unity", files)
+        for f in files:
+            self.assertTrue((REPO / f).is_file(), f)
 
 
 class ScriptTests(unittest.TestCase):

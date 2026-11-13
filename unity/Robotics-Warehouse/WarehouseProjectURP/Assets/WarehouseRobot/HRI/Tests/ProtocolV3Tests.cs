@@ -44,10 +44,11 @@ namespace WarehouseHRI.Tests
         [Test]
         public void MissingCommandKey_NeedsFovAndHud()
         {
-            Assert.IsNull(ProtocolV3.MissingCommandKey("{\"vertical_fov_deg\": -1, \"hud\": {}}"));
-            Assert.AreEqual("hud", ProtocolV3.MissingCommandKey("{\"vertical_fov_deg\": -1}"));
-            Assert.AreEqual("vertical_fov_deg", ProtocolV3.MissingCommandKey("{\"hud\": {}}"));
-            Assert.AreEqual("hud", ProtocolV3.MissingCommandKey("{\"vertical_fov_deg\": -1, \"state\": \"hud\"}"));
+            Assert.IsNull(ProtocolV3.MissingCommandKey("{\"vertical_fov_deg\": -1, \"tilt_deg\": -1, \"hud\": {}}"));
+            Assert.AreEqual("hud", ProtocolV3.MissingCommandKey("{\"vertical_fov_deg\": -1, \"tilt_deg\": -1}"));
+            Assert.AreEqual("vertical_fov_deg", ProtocolV3.MissingCommandKey("{\"tilt_deg\": -1, \"hud\": {}}"));
+            Assert.AreEqual("tilt_deg", ProtocolV3.MissingCommandKey("{\"vertical_fov_deg\": -1, \"hud\": {}}"));     // 2026-11-12 (P6)
+            Assert.AreEqual("hud", ProtocolV3.MissingCommandKey("{\"vertical_fov_deg\": -1, \"tilt_deg\": 0, \"state\": \"hud\"}"));
         }
 
         [Test]

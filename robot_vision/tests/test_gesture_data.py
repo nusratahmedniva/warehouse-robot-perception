@@ -120,7 +120,7 @@ class ParseTests(unittest.TestCase):
 
     def test_config_lists_are_the_protocol_ones(self):
         self.assertEqual(CFG["truth_join_max_s"], 0.06)
-        self.assertEqual(CFG["commands"], ["POINT", "WAIT", "STOP", "NONE"])
+        self.assertEqual(CFG["commands"], ["POINT", "WAIT", "STOP", "PROCEED", "NONE"])     # PROCEED: 2026-11-12 (P2)
         self.assertEqual(CFG["phases"], ["idle", "start_delay", "gesturing", "holding", "returning"])
 
 
@@ -244,7 +244,8 @@ class ClipTests(unittest.TestCase):
 
 class IsolationTests(unittest.TestCase):
     def test_only_evaluation_code_imports_gesture_data(self):
-        allowed = {"hri_eval_dev_v4.py", "hri_analysis_v4.py", "hri_eval_final_v4.py"}                 # the v4 development evaluation (evaluation code)
+        allowed = {"hri_eval_dev_v4.py", "hri_analysis_v4.py", "hri_eval_final_v4.py",                 # the v4 development evaluation (evaluation code)
+                   "calibrate_v4.py"}                                                                    # P4 calibration (evaluation code, 2026-11-12)
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)

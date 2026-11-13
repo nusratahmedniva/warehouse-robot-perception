@@ -32,7 +32,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(s["clips"], {
             "point_mixamo_01": "development", "point_ik_01": "development", "point_mixamo_02": "test",
             "wait_ik_01": "development", "wait_raise_01": "development", "wait_ik_02": "test",
-            "stop_ik_01": "development", "stop_ik_03": "development", "stop_ik_02": "test"})
+            "stop_ik_01": "development", "stop_ik_03": "development", "stop_ik_02": "test",
+            "proceed_ik_01": "development", "proceed_ik_02": "development", "proceed_ik_03": "test"})   # PROCEED: 2026-11-12 (P2)
         self.assertFalse(any(n.startswith("placeholder_") for n in list(s["looks"]) + list(s["clips"])))
         self.assertIn("2026-11-08", s["recorded"]["looks_and_clips"])
 
@@ -43,7 +44,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_every_gesture_has_a_development_and_a_test_clip(self):
         s = ds.load()
-        for g in ("point", "wait", "stop"):
+        for g in ("point", "wait", "stop", "proceed"):
             splits = {v for k, v in s["clips"].items() if k.startswith(g + "_")}
             self.assertEqual(splits, {"development", "test"}, g)
 

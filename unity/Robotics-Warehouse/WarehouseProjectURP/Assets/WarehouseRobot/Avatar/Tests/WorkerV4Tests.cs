@@ -276,6 +276,67 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
+        public void Pointing_ConfigHasTheDeclaredOptionA_AndIsChecked()
+        {
+            var cfg = LoadConfig();
+            Assert.AreEqual(110f, cfg.pointing.arm_target_body_azimuth_deg, "Avatar/Config/pointing_design.md section 2");
+            Assert.AreEqual(15f, cfg.pointing.stand_angle_max_deg);
+            Assert.AreEqual(30f, cfg.pointing.torso_turn_max_deg);
+            Assert.AreEqual(120f, cfg.limits.point_max_body_azimuth_deg, "the clamp stays as it was");
+
+            cfg.pointing.arm_target_body_azimuth_deg = 130f;
+            cfg.pointing.stand_angle_max_deg = -1f;
+            cfg.pointing.torso_turn_max_deg = 90f;
+            var e = string.Join("\n", cfg.Validate());
+            StringAssert.Contains("pointing.arm_target_body_azimuth_deg", e);
+            StringAssert.Contains("pointing.stand_angle_max_deg", e);
+            StringAssert.Contains("pointing.torso_turn_max_deg", e);
+
+            // a file without the block is refused (a missing block would read as zeros)
+            string text = File.ReadAllText(Path.Combine(ProjectDir, ConfigAsset));
+            var block = new Regex("\"pointing\"\\s*:\\s*\\{[^}]*\\},");
+            Assert.AreEqual(1, block.Matches(text).Count);
+            e = string.Join("\n", WorkerV4Config.Parse(block.Replace(text, "")).Validate());
+            StringAssert.Contains("pointing", e);
+        }
+
+        [Test]
+        public void PointingSplit_WithoutStanceOrTorso_IsThePhase3AClamp()
+        {
+            var off = new WorkerPointing { arm_target_body_azimuth_deg = 110f };
+            foreach (float a in new[] { 0f, 48.7f, -90f, 119.9f, 138.7f, -131.3f, 175f })
+            {
+                var s = PointingSplit.For(a, off, 120f);
+                Assert.AreEqual(0f, s.Stand);
+                Assert.AreEqual(0f, s.Torso);
+                Assert.AreEqual(Mathf.Clamp(a, -120f, 120f), s.Shown, 1e-4f, $"alpha {a}");
+                Assert.AreEqual(s.Shown, s.Arm, 1e-4f);
+            }
+            Assert.AreEqual(120f, PointingSplit.For(150f, null, 120f).Shown, 1e-4f, "no pointing block: the clamp only");
+        }
+
+        [Test]
+        public void PointingSplit_OptionA_MatchesTheDeclaredTable()
+        {
+            var a = LoadConfig().pointing;
+            void Check(float alpha, float stand, float torso, float arm, float shown)
+            {
+                var s = PointingSplit.For(alpha, a, 120f);
+                Assert.AreEqual(stand, s.Stand, 1e-3f, $"stand at {alpha}");
+                Assert.AreEqual(torso, s.Torso, 1e-3f, $"torso at {alpha}");
+                Assert.AreEqual(arm, s.Arm, 1e-3f, $"arm at {alpha}");
+                Assert.AreEqual(shown, s.Shown, 1e-3f, $"shown at {alpha}");
+            }
+            Check(48.7f, 0f, 0f, 48.7f, 48.7f);                // J1 LEFT: no turn
+            Check(110f, 0f, 0f, 110f, 110f);
+            Check(120f, 10f, 0f, 110f, 120f);                  // the stance alone
+            Check(133.1f, 15f, 8.1f, 110f, 133.1f);            // J1 FORWARD, nearest ask
+            Check(162.1f, 15f, 30f, 117.1f, 162.1f);           // J1 FORWARD, farthest ask: no shown error any more
+            Check(-136.9f, -15f, -11.9f, -110f, -136.9f);      // J1 RIGHT: the left side
+            Check(175f, 15f, 30f, 120f, 165f);                 // beyond stance + torso + clamp: the clamp still applies
+        }
+
+        [Test]
         public void Variation_PointUsesTheArmOnThePointedSide()
         {
             var cfg = LoadConfig();

@@ -1,4 +1,4 @@
-"""Run-once guards for the v4 final settings (zoom_on, zoom_off, bystanders, unseen_look; configs/v4/final_plan.json), the Python
+"""Run-once guards for the v4 final settings (zoom_on, zoom_off, bystanders, zoom_on_repeat; configs/v4/final_plan.json), the Python
 side of v3's FINAL_DONE.json. A final cannot be repeated silently.
 
 Two markers, both written with mode 'x' (never overwritten), found by scanning every folder under the output root:

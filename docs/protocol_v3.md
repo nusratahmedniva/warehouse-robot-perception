@@ -80,7 +80,7 @@ and, since 2026-11-08, every field name of a `truth.jsonl` row (below) that neve
 
 `true_command`, `is_commander`, `worker_id`, `point_angle_deg`, `look`, `clip`, `phase`, `arm`
 
-(14 names, compared case-insensitively, as in version 2). Not forbidden: `time_s`, `x`, `z`, which Unity sends in telemetry,
+and, since 2026-11-12, `ankle_height_m` (15 names, compared case-insensitively, as in version 2). Not forbidden: `time_s`, `x`, `z`, which Unity sends in telemetry,
 frame headers and `nav_corners`. A message from Unity containing any of them, even nested inside a list or object, is
 answered with `error` (`fatal: false`) and ignored. Truth about the workers reaches Python only through the run files below,
 and only evaluation code reads them. **Only messages FROM Unity are checked.** Python-to-Unity messages are not (the HUD
@@ -308,8 +308,31 @@ The `session.json` key is the named setting `unity_leak_result_key` in `configs/
   same-side arm unless the target is within 25 degrees of straight ahead; a hold lasts 3.0 to 4.5 s; truth rows are written every 0.05 s (the join tolerance of 0.06 s covers it).
   The development evaluation counts frame-level accuracy only in the phases `gesturing` and `holding`.
 
+## Amendments of 2026-11-12 (still version 3)
+
+Made by Nusrat during Anisha's absence (task items P1, P2, P6; design `Avatar/Config/upgrade_design.md`, declared before any code;
+listed in AUDIT.md section 15 for Anisha's review). Everything else in this document is unchanged.
+
+1. **PROCEED (P2).** A fourth command: the forearm swings forward and up 2 to 4 times (palm toward the body); it means "take the
+   branch straight ahead of the robot's arrival direction" (the node's `FORWARD` branch; at the start node A, whose arrival
+   direction is its start heading `start_yaw_deg` in `configs/v4/roadmap.json`, the branch to J1). `hud.gesture` may be
+   `PROCEED`; `truth.jsonl` `true_command` may be `PROCEED` (with `point_angle_deg` -1 and `arm` the swinging arm);
+   `hud.gesture_accepted` stays a branch command (`FORWARD`). Clip names in `configs/v4/data_splits.json`: `proceed_ik_01`,
+   `proceed_ik_02` (development), `proceed_ik_03` (test).
+2. **`truth.jsonl` field `ankle_height_m` (P1).** Optional number, metres: the mean height of the avatar's two ankle bones above the
+   floor under the worker, in every row. `gesture_data.py` accepts it in [0, 0.5) and keeps it; rows without it (older sessions) are
+   still valid. Like the other truth fields it is refused in any message from Unity (section 3 now lists 15 names).
+3. **Tilt (P6).** `command` gains a required **`tilt_deg`** (number): the pan-tilt camera's tilt, **+ = up**, **-1 = the default
+   (level, 0 deg)**, as `vertical_fov_deg` -1 is the default field of view (Unity keeps nothing from earlier commands). Otherwise
+   it lies in [0, 90) and Unity clamps it to its own range (`robot_unity_v4.json` `pan_tilt_camera.tilt_min_deg`..`tilt_max_deg`,
+   0..35, equal to `configs/v4/control.json` `zoom.tilt_min_deg`..`tilt_max_deg`). Python sends -1 whenever the zoom rule is off
+   or no commander is being read. `frame_pan_tilt`'s existing `pan_deg` and `tilt_deg` become the values **at render time of that
+   frame**, like `vertical_fov_deg` and the intrinsics; Python rotates every pixel ray by the frame's tilt into a level frame
+   before taking an azimuth or elevation. This supersedes AUDIT.md 14.15 decision (c) (camera level, no tilt command).
+
 ## Changes
 
+- 2026-11-12 (still version 3): the three amendments above (PROCEED, `ankle_height_m`, `tilt_deg`).
 - 2026-10-24 (Phase 3, still version 3): the HUD fields left at -1/NONE in Phase 1 are filled by the v4 controller.
 - 2026-10-23 (Phase 2, still version 3): `truth.jsonl` and `trail.csv` times are Unity `Time.time`; `run_###/run.json`
   and the optional `clip` field of `truth.jsonl` are added. These are file formats, not bridge messages.

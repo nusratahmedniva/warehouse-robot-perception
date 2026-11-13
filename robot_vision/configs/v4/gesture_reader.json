@@ -1,4 +1,5 @@
 {
+  "calibrated": "2026-11-13: set on development data (sunbox_m1, sunbox_f1) by calibrate_v4.py, B12 rule (AUDIT.md 14.11 item 3); changed: point.arm_length_in_shoulder_widths 1.683; evidence outputs/calibrate_v4_20261113_005017",
   "label": "v4 moving-gesture reader (gesture_motion.py): POINT / WAIT / STOP / NONE from a time window of body keypoints and hand landmarks. docs/gesture_reader_v4.md.",
   "declared": "2026-10-24, before any v4 recording exists. Every value below is INITIAL, TO BE SET ON DEVELOPMENT DATA (development looks and clips only, data_splits_v4.py); none is tuned. Values with a v3 origin say so. Frozen later in configs/v4/frozen.json.",
   "status": "initial",
@@ -40,7 +41,7 @@
     "segment_disagreement_max_deg": 45,
     "arm_length_min": 0.8,
     "point_arm_extension_min_deg": 140,
-    "arm_length_in_shoulder_widths": 1.4,
+    "arm_length_in_shoulder_widths": 1.683,
     "point_elevation_max_deg": 60,
     "hand_crosscheck_tol_deg": 45,
     "hand_world_z_away_positive": true,
@@ -78,7 +79,7 @@
       "wait_arm_extension_max_deg": "Elbow angle at most 130 deg: a bent arm. Together with point_arm_extension_min_deg (140) the two arm classes are separated by a 10 deg gap in which neither WAIT nor POINT is read.",
       "push_scale_ratio_min": "Growth of the hand box over the window (last over first) that marks the push of STOP: 20 per cent, about 8 cm of push at 2 m for a hand at arm's length.",
       "stop_wait_geometry_only": "DECIDED 2026-11-08 (AUDIT.md 14.16), before any development recording: STOP is read from the open-palm finger geometry (four fingers extended, spread >= palm_spread_min_deg) and WAIT from the index-up geometry (index extended and up, the other fingers curled) plus the arm pose. MediaPipe's gesture label and its score are read, logged per frame and reported (Reading.hand_label, hand_label_score, label_agrees; look_check_v4.py) but are NOT required. Reason: in the look check MediaPipe said Open_Palm in only 5 per cent of STOP frames although the geometry passed in 66 to 97 per cent, and Pointing_Up in 13 per cent of the WAIT frames of look f2; the classifier was trained on real hands, and a false STOP is safe. A v4 difference from v3, whose STOP was the Open_Palm label (declared for RQ1 in configs/v4/analysis.json).",
-    "stop_requires_push": "false: an open palm held toward the robot also stops it. Missing a STOP is worse than a false stop, and the v3 STOP was an open palm alone. docs/gesture_reader_v4.md proposed all cues for WAIT and STOP; this is the one deviation, to be confirmed."
+      "stop_requires_push": "false: an open palm held toward the robot also stops it. Missing a STOP is worse than a false stop, and the v3 STOP was an open palm alone. docs/gesture_reader_v4.md proposed all cues for WAIT and STOP; this is the one deviation, to be confirmed."
     }
   },
   "decision": {
@@ -87,6 +88,19 @@
     "why": {
       "class_share_min": "Share of the evaluated frames (the hold stretch, or the STOP window) in which a class's cues all pass. 0.7 allows 3 in 10 frames to fail from keypoint noise.",
       "class_margin_min": "The best class share must beat the next by 0.2; closer than that is ambiguous and reads NONE."
+    }
+  },
+  "proceed": {
+    "window_s": 2.0,
+    "cycles_min": 2.0,
+    "swing_min": 0.3,
+    "vertical_share_min": 0.7,
+    "declared": "2026-11-12 (Nusrat, during Anisha's absence, P2; Avatar/Config/upgrade_design.md section 2), before any PROCEED recording exists. INITIAL values, to be set on development data by the B12 sweep (D3).",
+    "why": {
+      "window_s": "PROCEED = 2 to 4 forearm swings within about 2.0 s (the gesture's definition), so the window that must hold at least two cycles is 2.0 s, longer than the 1.0 s window of the held classes.",
+      "cycles_min": "At least 2 up-and-down cycles (4 strokes): one swing can be any arm movement; a repeated swing is the 'go on' wave.",
+      "swing_min": "Each stroke of the wrist height at least 0.3 torso lengths (about 15 cm at a 0.5 m torso): 6 to 15 times the keypoint jitter (0.02 to 0.05 torso lengths) and under the forearm's reach (0.26 m = 0.5 torso lengths).",
+      "vertical_share_min": "The wrist path is at least 70 per cent vertical (sum of |dy| over the path): a forward-up swing seen from the front is mostly vertical in the image; a sideways wave or a pointing swing is not."
     }
   }
 }

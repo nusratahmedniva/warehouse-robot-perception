@@ -34,6 +34,10 @@ namespace WarehouseRobot.GroundTruth
         GroundTruthConfig gt;
         Transform visuals;
         GameObject runVisuals;
+        /// <summary>The run's A, B and optimal path objects (U4 toggles them; null before the first run is drawn).</summary>
+        public GameObject RunVisuals => runVisuals;
+        /// <summary>The optimal path drawn last (cell centres on the floor), for the ground-truth minimap (U5).</summary>
+        public List<Vector3> LastPathPoints { get; private set; } = new List<Vector3>();
         Material startMat, goalMat, pathMat, pointMat, blockedMat;
 
         public int Layer { get; private set; } = -1;
@@ -237,6 +241,7 @@ namespace WarehouseRobot.GroundTruth
 
             var pts = new List<Vector3>();
             foreach (var p in path.points) pts.Add(new Vector3((float)p.x, y + 0.01f, (float)p.z));
+            LastPathPoints = new List<Vector3>(pts);
             MeshObject("Optimal path points", QuadsMesh(pts, gt.path_point_size_m), pointMat).transform.SetParent(runVisuals.transform, false);
         }
 

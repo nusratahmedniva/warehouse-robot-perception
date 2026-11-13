@@ -433,7 +433,9 @@ class StructureTests(unittest.TestCase):
     def test_real_perception_classes_borrow_the_v3_v4_functions_unchanged(self):
         import hri_perception as hpm
         import hri_perception_v4 as hv4
-        self.assertIs(mpv.PeoplePerception.people, hpm.HriPerception.people)
+        self.assertIs(mpv.PeoplePerception.people, hv4.HriPerceptionV4.people)     # 2026-11-12 (P1): the v4 people() with the ankle height
+        self.assertIs(hv4.HriPerceptionV4.people, hv4.people_v4)
+        self.assertIsNot(hv4.people_v4, hpm.HriPerception.people)
         src = Path(mpv.__file__).read_text(encoding="utf-8")
         self.assertIn("hv4.HriPerceptionV4.persons(self", src)
         self.assertNotIn("def persons", src)

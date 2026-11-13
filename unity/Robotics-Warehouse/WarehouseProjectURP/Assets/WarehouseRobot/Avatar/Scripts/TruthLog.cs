@@ -21,6 +21,8 @@ namespace WarehouseAvatar
         public string Phase;            // idle, start_delay, gesturing, holding, returning
         public bool IsCommander;
         public string Clip;             // "" when true_command is NONE
+        public bool HasAnkle;           // 2026-11-12 (P1): ankle_height_m is written only when true
+        public double AnkleHeightM;     // mean height of the two ankle (foot) bones above the worker's floor
         // Extra fields (allowed by docs/protocol_v3.md, ignored by Python): the random parameters of the gesture.
         public bool HasParams;
         public double Speed, Size, StartDelayS, HoldS;
@@ -34,7 +36,7 @@ namespace WarehouseAvatar
     /// </summary>
     public static class TruthFormat
     {
-        public static readonly string[] Commands = { "POINT", "WAIT", "STOP", "NONE" };
+        public static readonly string[] Commands = { "POINT", "WAIT", "STOP", "PROCEED", "NONE" };   // PROCEED: 2026-11-12 (upgrade_design.md)
         public static readonly string[] Arms = { "left", "right", "none" };
         public static readonly string[] Phases = { "idle", "start_delay", "gesturing", "holding", "returning" };
         /// <summary>The keys of a line, in order (extra parameter keys follow when the worker performs a gesture).</summary>
@@ -50,7 +52,7 @@ namespace WarehouseAvatar
             if (string.IsNullOrEmpty(r.Look)) return "look is empty";
             if (!LookCheckConfig.IsNamePart(r.Look)) return $"look '{r.Look}' must use a-z, 0-9 and single inner '_' only";
             if (double.IsNaN(r.X) || double.IsInfinity(r.X) || double.IsNaN(r.Z) || double.IsInfinity(r.Z)) return "x or z is not a finite number";
-            if (Array.IndexOf(Commands, r.TrueCommand) < 0) return $"true_command '{r.TrueCommand}' is not one of POINT, WAIT, STOP, NONE";
+            if (Array.IndexOf(Commands, r.TrueCommand) < 0) return $"true_command '{r.TrueCommand}' is not one of {string.Join(", ", Commands)}";
             if (Array.IndexOf(Arms, r.Arm) < 0) return $"arm '{r.Arm}' is not one of left, right, none";
             if (Array.IndexOf(Phases, r.Phase) < 0) return $"phase '{r.Phase}' is not one of {string.Join(", ", Phases)}";
             if (double.IsNaN(r.PointAngleDeg) || double.IsInfinity(r.PointAngleDeg)) return "point_angle_deg is not a finite number";
@@ -61,6 +63,7 @@ namespace WarehouseAvatar
             if ((r.TrueCommand != "NONE") != performing) return "a command is performed exactly in the phases gesturing, holding and returning";
             if ((r.TrueCommand == "NONE") != string.IsNullOrEmpty(r.Clip)) return "clip is required exactly while a command is performed (and empty otherwise)";
             if (!string.IsNullOrEmpty(r.Clip) && !LookCheckConfig.IsNamePart(r.Clip)) return $"clip '{r.Clip}' must use a-z, 0-9 and single inner '_' only";
+            if (r.HasAnkle && !(r.AnkleHeightM >= 0.0 && r.AnkleHeightM < 0.5)) return $"ankle_height_m {r.AnkleHeightM} must be in [0, 0.5)";
             return null;
         }
 
@@ -79,6 +82,7 @@ namespace WarehouseAvatar
             sb.Append(", \"phase\": \"").Append(r.Phase).Append('"');
             sb.Append(", \"is_commander\": ").Append(r.IsCommander ? "true" : "false");
             sb.Append(", \"clip\": \"").Append(r.Clip ?? "").Append('"');
+            if (r.HasAnkle) sb.Append(", \"ankle_height_m\": ").Append(r.AnkleHeightM.ToString("0.0000", Inv));
             if (r.HasParams)
             {
                 sb.Append(", \"speed\": ").Append(r.Speed.ToString("0.000", Inv));

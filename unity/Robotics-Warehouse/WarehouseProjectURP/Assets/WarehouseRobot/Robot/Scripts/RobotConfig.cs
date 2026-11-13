@@ -29,6 +29,9 @@ namespace WarehouseRobot
         public float fov_default_deg;
         public float fov_min_deg;
         public float fov_max_deg;
+        // 2026-11-12 (P6, upgrade_design.md section 5): Python's tilt range; Unity's own range (pan_tilt_camera) must equal it
+        public float tilt_min_deg;
+        public float tilt_max_deg;
     }
 
     [Serializable]
@@ -108,6 +111,9 @@ namespace WarehouseRobot
         public float far_m;
         public float pan_min_deg;
         public float pan_max_deg;
+        // v4 only (2026-11-12, P6): the range SetTiltDeg clamps to (+ = up). Absent in robot_unity.json (v3): 0 and 0, no tilt.
+        public float tilt_min_deg;
+        public float tilt_max_deg;
     }
 
     [Serializable]
@@ -298,6 +304,11 @@ namespace WarehouseRobot
             if (!(z.fov_max_deg < 180f)) e.Add("v4 zoom fov_max_deg must be < 180");
             if (!(z.fov_min_deg <= z.fov_default_deg && z.fov_default_deg <= z.fov_max_deg))
                 e.Add("v4 zoom: fov_min_deg <= fov_default_deg <= fov_max_deg required");
+            var pt = Unity.pan_tilt_camera;
+            if (!(pt.tilt_min_deg <= pt.tilt_deg && pt.tilt_deg <= pt.tilt_max_deg && pt.tilt_max_deg < 90f && pt.tilt_min_deg >= 0f))
+                e.Add("v4 pan_tilt_camera: 0 <= tilt_min_deg <= tilt_deg (level, 0) <= tilt_max_deg < 90 required");
+            if (pt.tilt_min_deg != z.tilt_min_deg || pt.tilt_max_deg != z.tilt_max_deg)
+                e.Add($"v4 pan_tilt_camera tilt range {pt.tilt_min_deg}..{pt.tilt_max_deg} must equal Python's zoom.tilt_min_deg..tilt_max_deg {z.tilt_min_deg}..{z.tilt_max_deg} (configs/v4/control.json)");
             if (Mathf.Abs(z.fov_default_deg - Unity.pan_tilt_camera.vertical_fov_deg) > 1e-4f)
                 e.Add($"v4 zoom fov_default_deg {z.fov_default_deg} differs from pan_tilt_camera.vertical_fov_deg {Unity.pan_tilt_camera.vertical_fov_deg}");
             var g = Unity.v4.ground_truth;

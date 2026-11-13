@@ -23,6 +23,17 @@ changes is how READ works and what the command carries (vertical_fov_deg, HUD fi
   image height (never narrower than the arm fits with arm_fit_margin), widens in steps when the hand is lost, clamped to
   [fov_min_deg, fov_max_deg]; a config switch turns it off (vertical_fov_deg = -1).
 
+Added 2026-11-12 (Nusrat during Anisha's absence; Avatar/Config/upgrade_design.md; AUDIT.md section 15):
+- P7 map: the v4 roadmap is configs/v4/roadmap.json (named by control.json -> roadmap); the v3 configs/roadmap.json is unchanged.
+- P8 start search: the start node has kind 'start' and asks like a junction: the robot starts in SCAN at A, approaches the
+  person, asks, and drives only after an accepted instruction. Its arrival direction is its start heading
+  (roadmap start_yaw_deg), so PROCEED there means the FORWARD branch.
+- P2 PROCEED (reader command): the branch straight ahead of the arrival direction, i.e. the node's FORWARD branch (dialog
+  label FORWARD, through the same hold); no FORWARD branch here = unclear. A PROCEED reading also marks a gesture onset.
+- P6 tilt: the zoom rule also tilts the pan-tilt camera up so the fit box (nose, shoulders, hips, the active arm) is centred
+  vertically, and narrows the view so the hand fills hand_share without losing the fit box; command tilt_deg (-1 = level).
+- P3/P8 record: every ask logs the 360 distance estimate of the approached person (record['asks_log']).
+
 Everything v3 does (drive, safety, scan, approach, execute, reposition) is inherited unchanged. Pure Python, no I/O.
 """
 
@@ -36,6 +47,55 @@ import gesture_motion as gm
 import hri_control as hc
 
 DIRECTIONS = hc.DIRECTIONS
+V4_ROADMAP = "configs/v4/roadmap.json"
+START = "start"                          # roadmap kind of the start node in the v4 map (it asks, P8)
+
+
+def arrival_yaw(road: hc.Roadmap, node: str) -> float | None:
+    """World yaw of the direction the robot arrived from, seen from the node (junction -> arrive_from); at the start node
+    the opposite of the start heading (roadmap start_yaw_deg); None if neither is known."""
+    n = road.nodes[node]
+    if n.get("arrive_from"):
+        return hc.yaw_to(*road.pos(node), *road.pos(n["arrive_from"]))
+    if "start_yaw_deg" in n:
+        return hc.wrap(n["start_yaw_deg"] + 180.0)
+    return None
+
+
+def heading_in(road: hc.Roadmap, node: str) -> float | None:
+    """World yaw of the arrival direction itself (the robot's heading when it reaches the node)."""
+    a = arrival_yaw(road, node)
+    return None if a is None else hc.wrap(a + 180.0)
+
+
+def stand(road: hc.Roadmap, node: str) -> tuple[float, float, float]:
+    """Worker stand (x, z, facing yaw) of a node: corner_offset_m ahead and to the right of the arrival direction (the
+    roadmap rule; at the start node the start heading). SCENARIO side only (simulator, tests)."""
+    if road.nodes[node].get("arrive_from"):
+        return road.stand(node)
+    a = math.radians(heading_in(road, node))
+    off = road.cfg["worker_stand"]["corner_offset_m"]
+    fx, fz = math.sin(a), math.cos(a)
+    nx, nz = road.pos(node)
+    return nx + (fx + fz) * off, nz + (fz - fx) * off, hc.wrap(math.degrees(a) + 180.0)
+
+
+def check_labels_v4(road: hc.Roadmap) -> list[str]:
+    """Roadmap.check_labels plus the start node's branches against its start heading."""
+    bad = road.check_labels()
+    for j, br in road.branches.items():
+        n = road.nodes[j]
+        if n.get("arrive_from") or "start_yaw_deg" not in n:
+            continue
+        for cmd, nxt in br.items():
+            if hc.turn_command(hc.yaw_to(*road.pos(j), *road.pos(nxt)) - n["start_yaw_deg"]) != cmd:
+                bad.append(f"{j} {cmd} -> {nxt}")
+    return bad
+
+
+def proceed_branch(road: hc.Roadmap, node: str) -> str | None:
+    """The branch command PROCEED stands for at this node: FORWARD if the node has one, else None (unclear)."""
+    return "FORWARD" if road.next(node, "FORWARD") is not None else None
 
 
 # ---------------------------------------------------------------- resolving a pointed direction with the roadmap
@@ -61,8 +121,7 @@ def branch_directions(road: hc.Roadmap, junction: str) -> tuple[dict, float | No
     """({command: world yaw of the branch}, world yaw of the arrival direction junction -> arrive_from)."""
     jx, jz = road.pos(junction)
     dirs = {cmd: hc.yaw_to(jx, jz, *road.pos(nxt)) for cmd, nxt in road.branches.get(junction, {}).items()}
-    prev = road.nodes[junction].get("arrive_from")
-    return dirs, (hc.yaw_to(jx, jz, *road.pos(prev)) if prev else None)
+    return dirs, arrival_yaw(road, junction)
 
 
 def resolve_point(point, branch_yaws: dict, arrival_yaw: float | None, robot_yaw: float, max_gap_deg: float,
@@ -145,6 +204,15 @@ def zoom_target(hand_box, arm_box, frame_wh, cur_fov_deg: float, z: dict) -> flo
     return min(z["fov_max_deg"], max(z["fov_min_deg"], max(fov_hand, fov_fit)))
 
 
+def tilt_target(box, frame_wh, cur_fov_deg: float, cur_tilt_deg: float) -> float:
+    """Tilt (deg, + = up) that puts the vertical centre of box at the image centre: the current tilt plus the elevation of
+    the box centre row in the current view (pinhole, fy from the field of view)."""
+    w, h = frame_wh
+    fy = (h / 2.0) / math.tan(math.radians(cur_fov_deg) / 2.0)
+    vc = 0.5 * (box[1] + box[3])
+    return cur_tilt_deg + math.degrees(math.atan((h / 2.0 - vc) / fy))
+
+
 def hand_centred(hand_box, frame_wh, margin: float) -> bool:
     w, h = frame_wh
     cx, cy = (hand_box[0] + hand_box[2]) / 2.0 / w, (hand_box[1] + hand_box[3]) / 2.0 / h
@@ -152,7 +220,8 @@ def hand_centred(hand_box, frame_wh, margin: float) -> bool:
 
 
 class ZoomController:
-    """The zoom rule. update() returns the vertical_fov_deg to command (-1 = keep the default)."""
+    """The zoom rule. update() returns the vertical_fov_deg to command (-1 = keep the default); the tilt to command is
+    self.tilt_cmd afterwards (-1 = level, the default). The tilt part (P6) acts only when zoom.tilt_enabled is true."""
 
     def __init__(self, z: dict):
         self.z = z
@@ -160,11 +229,22 @@ class ZoomController:
 
     def reset(self) -> None:
         self.fov: float | None = None          # commanded, None = default
+        self.tilt: float | None = None         # commanded, None = level
+        self.tilt_cmd = -1.0
         self.last_hand_t: float | None = None
         self.last_widen_t: float | None = None
         self.last_t: float | None = None
 
-    def update(self, t: float, reading: gm.Reading | None, cur_fov_deg: float | None, active: bool) -> float:
+    def _update_tilt(self, reading, cur_fov: float, cur_tilt_deg: float | None, dt: float) -> None:
+        z = self.z
+        box = reading.fit_box if getattr(reading, "fit_box", None) is not None else reading.arm_box
+        cur = cur_tilt_deg if cur_tilt_deg is not None else (self.tilt if self.tilt is not None else 0.0)
+        target = min(z["tilt_max_deg"], max(z["tilt_min_deg"], tilt_target(box, reading.frame_wh, cur_fov, cur)))
+        step = z["tilt_max_change_deg_per_s"] * dt
+        self.tilt = cur + max(-step, min(step, target - cur)) if dt > 0 else cur
+
+    def update(self, t: float, reading: gm.Reading | None, cur_fov_deg: float | None, active: bool,
+               cur_tilt_deg: float | None = None) -> float:
         z = self.z
         if not z["enabled"] or not active:
             self.reset()
@@ -172,11 +252,18 @@ class ZoomController:
         dt = 0.0 if self.last_t is None else max(0.0, t - self.last_t)
         self.last_t = t
         cur = cur_fov_deg if cur_fov_deg is not None else (self.fov if self.fov is not None else z["fov_default_deg"])
+        tilting = bool(z.get("tilt_enabled", False))
+        if tilting and reading is not None and reading.frame_wh is not None and (
+                getattr(reading, "fit_box", None) is not None or reading.arm_box is not None):
+            self._update_tilt(reading, cur, cur_tilt_deg, dt)
+        self.tilt_cmd = float(min(z["tilt_max_deg"], max(z["tilt_min_deg"], self.tilt))) if tilting and self.tilt is not None else -1.0
+        fit = getattr(reading, "fit_box", None) if reading is not None else None
         seen = (reading is not None and reading.hand_box is not None and reading.arm_box is not None
                 and reading.frame_wh is not None and hand_centred(reading.hand_box, reading.frame_wh, z["arm_fit_margin"]))
         if seen:
             self.last_hand_t = t
-            target = zoom_target(reading.hand_box, reading.arm_box, reading.frame_wh, cur, z)
+            target = zoom_target(reading.hand_box, fit if tilting and fit is not None else reading.arm_box,
+                                 reading.frame_wh, cur, z)
             step = z["max_change_deg_per_s"] * dt
             self.fov = cur + max(-step, min(step, target - cur)) if dt > 0 else cur
         elif self.last_hand_t is not None:
@@ -199,11 +286,13 @@ class TickInputV4(hc.TickInput):
     persons_time_s: float | None = None                   # capture time of that pan-tilt frame
     fov_deg: float | None = None                          # vertical field of view rendered in that frame
     pan_deg: float = 0.0                                  # pan of that frame (+ = left)
+    tilt_deg: float | None = None                         # tilt of that frame (+ = up; P6)
 
 
 @dataclass
 class CommandV4(hc.Command):
     vertical_fov_deg: float = -1.0
+    tilt_deg: float = -1.0                                # P6: -1 = level (the default)
     hud: dict = field(default_factory=dict)               # commander / gesture fields for the HUD (guide_v4 adds the rest)
 
 
@@ -243,6 +332,8 @@ class ControllerV4(hc.Controller):
         self.free_asks = 0                                    # asks that do not use up an ask (second view, re-approach)
         self.raised_since: dict[int, float] = {}              # pan-tilt person -> frame time since which the arm is raised
         self._onset_frame: float | None = None
+        self._ask_logged = 0
+        self.proceed_note = ""
         self._new_junction()
         if hasattr(self, "zoom"):
             self.zoom.reset()
@@ -257,7 +348,12 @@ class ControllerV4(hc.Controller):
         self.commander_since: float | None = None
 
     def _arrive(self, node, t):
-        super()._arrive(node, t)
+        if self.road.kind(node) == START:                     # P8: the start node asks like a junction
+            self.node = node
+            self.dialog.reset()
+            self._set("scan", t)
+        else:
+            super()._arrive(node, t)
         if self.state == "scan":
             self._new_junction()
 
@@ -294,7 +390,7 @@ class ControllerV4(hc.Controller):
         persons = self._fresh_persons(inp)
         t_ask = self.record.get("t_ask_first") if self.record else None
         early = {p.track_id: "gesture started before the question was shown" for p in persons
-                 if p.reading.raised and t_ask is not None and self.raised_since.get(p.track_id, math.inf) < t_ask - 1e-9}
+                 if (p.reading.raised or p.reading.command == "PROCEED") and t_ask is not None and self.raised_since.get(p.track_id, math.inf) < t_ask - 1e-9}
         choice = cm.pick_commander(persons, self.ccfg, self.commander_pt, early)
         if choice.commander != self.commander_pt:
             self.commander_changes.append({"t": round(inp.time_s, 3), "from": self.commander_pt, "to": choice.commander,
@@ -309,6 +405,11 @@ class ControllerV4(hc.Controller):
         self.commander_360 = self._link_360(p, inp)
         self._aim_at(p, inp)
         r = p.reading
+        if r.command == "PROCEED":                             # P2: the branch straight ahead of the arrival direction
+            self.amb_frames, self.amb_since = [], None
+            br = proceed_branch(self.road, self.node)
+            self.proceed_note = "" if br else f"PROCEED read but {self.node} has no FORWARD branch"
+            return br or "NONE"
         if r.command == "POINT" and r.point is not None:
             dirs, arrival = branch_directions(self.road, self.node)
             dv = self.v4["dialog"]
@@ -335,7 +436,7 @@ class ControllerV4(hc.Controller):
         self._onset_frame = inp.persons_time_s
         seen = {p.track_id for p in inp.persons}
         for p in inp.persons:
-            if p.reading.raised:
+            if p.reading.raised or p.reading.command == "PROCEED":      # PROCEED swings start below the raised line
                 self.raised_since.setdefault(p.track_id, inp.persons_time_s)
             else:
                 self.raised_since.pop(p.track_id, None)
@@ -389,11 +490,11 @@ class ControllerV4(hc.Controller):
         row = {"t": round(inp.persons_time_s, 4), "ctrl_t": round(inp.time_s, 4), "junction": self.node,
                "mode": "wait" if self.waiting else "read", "asks": self.dialog.asks,
                "robot": {"x": round(inp.x, 3), "z": round(inp.z, 3), "yaw_deg": round(inp.yaw_deg, 2)},
-               "pan_deg": round(inp.pan_deg, 2), "fov_deg": inp.fov_deg,
+               "pan_deg": round(inp.pan_deg, 2), "fov_deg": inp.fov_deg, "tilt_deg": inp.tilt_deg,
                "persons": [{"id": p.track_id, "bearing_deg": round(p.bearing_deg, 2), "facing": p.facing,
                             "distance_m": p.distance_m, "reading": p.reading.to_dict()} for p in self._fresh_persons(inp)],
                "commander": self.choice.to_dict() if self.choice is not None else None,
-               "commander_360": self.commander_360, "label": self.label,
+               "commander_360": self.commander_360, "label": self.label, "proceed_note": self.proceed_note,
                "resolution": self.resolution.to_dict() if self.resolution is not None else None}
         self.frame_log.append(row)
         return row
@@ -467,6 +568,23 @@ class ControllerV4(hc.Controller):
             self._abort(note or f"gesture unclear after {self.dialog.asks} asks at {self.node}", t)
             self.abort_note = ""
 
+    def _log_ask(self, inp: TickInputV4) -> None:
+        """P3/P8: at every new ask, the 360 distance estimate of the approached person (its 360 track, else the nearest
+        fresh person to where the robot believes the person is) with the robot pose; record['asks_log']."""
+        if self.ask_serial == self._ask_logged or self.record is None:
+            return
+        self._ask_logged = self.ask_serial
+        people = self._fresh_people(inp)
+        q = next((p for p in people if self.approached_360 is not None and p.get("track_id") == self.approached_360), None)
+        if q is None and people and self.person is not None:
+            q = min(people, key=lambda p: math.hypot(p["x"] - self.person[0], p["z"] - self.person[1]))
+        self.record.setdefault("asks_log", []).append({
+            "t": round(inp.time_s, 3), "ask": self.dialog.asks, "serial": self.ask_serial,
+            "robot": {"x": round(inp.x, 3), "z": round(inp.z, 3), "yaw_deg": round(inp.yaw_deg, 2)},
+            "track_360": q.get("track_id", -1) if q is not None else -1,
+            "distance_est_m": round(q["distance_m"], 3) if q is not None else -1.0,
+            "distance_source": q.get("distance_source", "") if q is not None else "none"})
+
     # -- the tick --
     def step(self, inp: TickInputV4) -> CommandV4:
         # STOP of anybody in view stops the robot (the v3 rule reads TickInput.gesture)
@@ -475,6 +593,7 @@ class ControllerV4(hc.Controller):
         stop = any(p.reading.command == "STOP" for p in persons)
         inp.gesture, inp.gesture_time_s = ("STOP" if stop else "NONE"), inp.persons_time_s
         base = super().step(inp)
+        self._log_ask(inp)
         out = CommandV4(**{f: getattr(base, f) for f in ("v", "omega", "pan_deg", "has_target", "target_x", "target_z",
                                                           "state", "screen_text")})
         if self.state == "read" and self.person is not None:
@@ -486,8 +605,9 @@ class ControllerV4(hc.Controller):
         if self.commander_pt is not None:
             reading = next((p.reading for p in persons if p.track_id == self.commander_pt), None)
         active = self.state in ("ask", "read") and not self.finished
-        self.fov_cmd = self.zoom.update(inp.time_s, reading, inp.fov_deg, active)
+        self.fov_cmd = self.zoom.update(inp.time_s, reading, inp.fov_deg, active, inp.tilt_deg)
         out.vertical_fov_deg = self.fov_cmd
+        out.tilt_deg = self.zoom.tilt_cmd
         if self._row is not None:
             self._row["fov_cmd"], self._row["state"] = self.fov_cmd, out.state
             self._row = None
@@ -499,7 +619,7 @@ class ControllerV4(hc.Controller):
         cmdr = next((p for p in persons if p.track_id == self.commander_pt), None)
         r = cmdr.reading if cmdr is not None else None
         any_stop = any(p.reading.command == "STOP" for p in persons)
-        gesture = "STOP" if any_stop else (r.command if r is not None and r.command in ("POINT", "WAIT") else "NONE")
+        gesture = "STOP" if any_stop else (r.command if r is not None and r.command in ("POINT", "WAIT", "PROCEED") else "NONE")
         raw = "STOP" if any_stop else (r.frame_class if r is not None else "NONE")
         accepted = "WAIT" if self.waiting else (self.dialog.accepted if self.dialog.accepted != "NONE" else "NONE")
         angle = self.resolution.rel_deg if self.resolution is not None and self.resolution.rel_deg is not None else -1.0
@@ -514,7 +634,17 @@ class ControllerV4(hc.Controller):
         return s
 
 
+def roadmap_path(v4_cfg: dict) -> str:
+    """The map the v4 controller uses: control.json -> roadmap (P7), else the v4 roadmap."""
+    return v4_cfg.get("roadmap", V4_ROADMAP)
+
+
+def load_roadmap(path: str = V4_ROADMAP) -> hc.Roadmap:
+    return hc.Roadmap(hc.load_json(path))
+
+
 def make_controller_v4(control_path="configs/v4/control.json", commander_path="configs/v4/commander.json",
-                       roadmap_path="configs/roadmap.json") -> ControllerV4:
+                       roadmap_path_override: str | None = None) -> ControllerV4:
     base, v4 = load_control(control_path)
-    return ControllerV4(base, v4, cm.load_config(commander_path), hc.Roadmap(hc.load_json(roadmap_path)))
+    road = roadmap_path_override or roadmap_path(v4)
+    return ControllerV4(base, v4, cm.load_config(commander_path), hc.Roadmap(hc.load_json(road)))

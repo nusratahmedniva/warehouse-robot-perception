@@ -3,6 +3,8 @@
   "declared": "2026-10-24, before any v4 recording exists. Values marked initial are TO BE SET ON DEVELOPMENT DATA; none is tuned. Drive, safety and the other dialog timings come from the frozen v3 file below (read only, unchanged).",
   "status": "initial",
   "base": "configs/hri_control.json",
+  "roadmap": "configs/v4/roadmap.json",
+  "roadmap_note": "P7 (2026-11-12, Nusrat during Anisha's absence; AUDIT.md section 15): the v4 map, with the start node A asking first (P8). The v3 map configs/roadmap.json is unchanged and no longer read by v4.",
   "dialog": {
     "gesture_hold_s": 0.5,
     "branch_match_max_deg": 30,
@@ -37,6 +39,10 @@
     "hand_lost_s": 0.5,
     "widen_step_deg": 10.0,
     "max_change_deg_per_s": 30.0,
+    "tilt_enabled": true,
+    "tilt_min_deg": 0.0,
+    "tilt_max_deg": 35.0,
+    "tilt_max_change_deg_per_s": 30.0,
     "why": {
       "enabled": "Switch for the zoom on / off comparison runs (research question 3). Off: vertical_fov_deg is -1 (keep the default) on every command.",
       "fov_default_deg": "Unity default (CLAUDE.md verified facts: vertical FOV 60 deg).",
@@ -46,7 +52,11 @@
       "arm_fit_margin": "INITIAL. The shoulder, elbow and wrist keypoints must stay inside the image with this margin on every side (POINT is read from them), so the zoom never narrows past the arm. Also the margin inside which the hand must stay centred, else it counts as lost.",
       "hand_lost_s": "INITIAL. Without a hand box for this long the view widens: 5 frames at 10 Hz.",
       "widen_step_deg": "INITIAL. When the hand has been lost for hand_lost_s the view widens by this much, and again by this much every hand_lost_s while it stays lost, up to fov_max_deg (10 deg every 0.5 s = 20 deg/s, inside max_change_deg_per_s).",
-      "max_change_deg_per_s": "INITIAL. Largest change of the commanded field of view per second, so the picture does not jump."
+      "max_change_deg_per_s": "INITIAL. Largest change of the commanded field of view per second, so the picture does not jump.",
+      "tilt_enabled": "P6, declared 2026-11-12 (Avatar/Config/upgrade_design.md section 5; supersedes AUDIT.md 14.15 decision (c), disclosed in section 15): while a commander is read the pan-tilt camera tilts up so the fit box (nose, shoulders, hips and the active arm's elbow and wrist) is centred vertically; the field of view then narrows until the hand fills hand_share, never narrower than the fit box with arm_fit_margin. With enabled false both the field of view and the tilt stay at their defaults (-1).",
+      "tilt_min_deg": "Level (0). Up only: no hand is below the level camera at the asking distance, so -1 (the default, level) is never a real request.",
+      "tilt_max_deg": "The 23 deg of a raised hand at 2 m (AUDIT.md 14.15) plus margin. Unity clamps to the same range (robot_unity_v4.json pan_tilt_camera.tilt_min_deg / tilt_max_deg; an Edit Mode test checks they are equal).",
+      "tilt_max_change_deg_per_s": "Same rate as the field of view, so the picture does not jump."
     }
   },
   "hud": {

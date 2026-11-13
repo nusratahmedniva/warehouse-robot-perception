@@ -34,6 +34,8 @@ namespace WarehouseRobot.Bridge
     {
         [SerializeField] TextAsset bridgeConfig;
         [SerializeField] RobotRig robot;
+        /// <summary>The robot this client drives (the HUD reads the pan-tilt camera's zoom and tilt from it).</summary>
+        public RobotRig Robot => robot;
         [SerializeField] bool showPanel = true;
 
         /// <summary>
@@ -83,6 +85,8 @@ namespace WarehouseRobot.Bridge
         float navStartSnapM = -1f, navTargetSnapM = -1f;
         string lastDiagnosedStatus;
         readonly List<NavCorner> navCorners = new List<NavCorner>();
+        /// <summary>The NavMesh corners Unity computed for Python's current target (what the robot plans to drive; U5 minimap).</summary>
+        public IReadOnlyList<NavCorner> NavCorners => navCorners;
         NavMeshPath navPath;
         int agentTypeId;
         bool agentResolved, agentFailed;
@@ -359,6 +363,13 @@ namespace WarehouseRobot.Bridge
                 LogErrorOnce("Command ignored: " + fovError);
                 return;
             }
+            float tiltDeg = 0f;
+            if (V3 && !ProtocolV3.TryResolveTilt(cmd.tilt_deg, robot.PanTilt.DefaultTiltDeg, robot.PanTilt.TiltMinDeg,
+                    robot.PanTilt.TiltMaxDeg, out tiltDeg, out string tiltError))
+            {
+                LogErrorOnce("Command ignored: " + tiltError);
+                return;
+            }
             lastCommand = cmd;
             lastCommandSeq = cmd.seq;
             commandSeen = true;
@@ -394,6 +405,7 @@ namespace WarehouseRobot.Bridge
                 robot.Drive.SetCommand(cmd.v, cmd.omega);
                 robot.PanTilt.SetPanDeg(cmd.pan_deg);
                 if (V3) robot.PanTilt.SetFovDeg(fovDeg);   // rendered from the next frame on; its header reports it
+                if (V3) robot.PanTilt.SetTiltDeg(tiltDeg); // the same for the tilt (P6)
             }
             hasTarget = cmd.has_target;
             target = new Vector2(cmd.target_x, cmd.target_z);
@@ -682,7 +694,7 @@ namespace WarehouseRobot.Bridge
                 cy = 0.5f * img.height,
                 vertical_fov_deg = cam.fieldOfView,
                 pan_deg = pan.PanDeg,
-                tilt_deg = robot.Config.Unity.pan_tilt_camera.tilt_deg,
+                tilt_deg = pan.TiltDeg,      // the tilt this frame was rendered with (P6; 0 = level in v3)
                 camera_height_m = cam.transform.position.y - robot.transform.position.y,
                 pose = CurrentPose(),
             };

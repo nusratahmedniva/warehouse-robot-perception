@@ -21,6 +21,12 @@ Phase 3: SimulatorV4 runs whole v4 trials end to end (hri_control_v4.ControllerV
 and bystanders at each junction, synthetic POINT / WAIT / STOP readings in the reader's output format, zoom on or off),
 logging the frame log and truth rows a real run would produce. The perception it simulates is at the level of the
 reader's OUTPUT (gesture_motion.Reading per person), not pixels; the reader itself is tested on synthetic keypoints.
+
+Added 2026-11-12 (P2, P8; Avatar/Config/upgrade_design.md): PROCEED episodes (the forearm swing; read once
+proceed.window_s of it has been seen); with SceneSpec.proceed_forward the commander shows PROCEED when goal B's branch is
+the node's FORWARD branch (the v4 design), else POINT as before (the default keeps the older simulations unchanged); on a
+map whose start node has kind 'start' (configs/v4/roadmap.json) the robot starts at A facing start_yaw_deg and a commander
+stands at A's stand from the start.
 """
 
 from __future__ import annotations
@@ -35,7 +41,7 @@ import hri_control as hc
 import hri_control_v4 as hv
 from hri_sim import SimConfig, _ramp
 
-COMMANDS = ("POINT", "WAIT", "STOP")
+COMMANDS = ("POINT", "WAIT", "STOP", "PROCEED")
 DEFAULT_CONFUSION = {"POINT": ["WAIT"], "WAIT": ["STOP"], "STOP": ["WAIT"]}
 GESTURING_PHASES = ("gesturing", "holding")
 
@@ -160,7 +166,7 @@ def junction_scene(road: hc.Roadmap, junction: str, commander: Person, bystander
     The offsets are the caller's choice: none is built in."""
     if len(bystander_offsets_m) != len(bystander_looks):
         raise ValueError("one look per bystander offset")
-    sx, sz, _ = road.stand(junction)
+    sx, sz, _ = hv.stand(road, junction)
     commander.x, commander.z, commander.role = sx, sz, "commander"
     others = [Person(commander.id + 1 + i, sx + dx, sz + dz, look)
               for i, ((dx, dz), look) in enumerate(zip(bystander_offsets_m, bystander_looks))]
@@ -173,7 +179,7 @@ class VisionSim:
     def __init__(self, scene: Scene, cfg: SimConfig, gcfg: GestureSimConfig, seed: int = 1):
         self.scene, self.cfg, self.g = scene, cfg, gcfg
         self.rng = random.Random(seed)
-        for cmd, wrong in gcfg.confusion.items():
+        for cmd, wrong in gcfg.confusion.items():         # (PROCEED has no default confusion: a wrong PROCEED reads NONE)
             if cmd in wrong or any(w not in COMMANDS for w in wrong) or not wrong:
                 raise ValueError(f"confusion[{cmd}] must list other commands from {COMMANDS}")
 
@@ -260,7 +266,8 @@ class SceneSpec:
     bystander_facing: list = field(default_factory=list)         # per bystander; missing = facing
     commander_look: str = "sunbox_m1"
     clips: dict = field(default_factory=lambda: {"POINT": "point_mixamo_01", "WAIT": "wait_ik_01",
-                                                  "STOP": "stop_ik_01"})     # animation clip names (development clip names of the v4 split config)
+                                                  "STOP": "stop_ik_01", "PROCEED": "proceed_ik_01"})     # animation clip names (development clip names of the v4 split config)
+    proceed_forward: bool = False                                # v4 design (P2): PROCEED when B's branch is FORWARD
     arm: str = "right"
     wait_first_s: float = 0.0                                    # the commander shows WAIT this long, then the POINT
     distractors: list = field(default_factory=list)              # (bystander index, command, seconds after the ask, world angle | None)
@@ -284,7 +291,8 @@ class ReaderLevelVision(VisionSim):
         if self.rng.random() >= self.g.coverage.get(shown, 1.0):
             return "NONE"
         if self.rng.random() >= self.g.accuracy.get(shown, 1.0):
-            return self.rng.choice(self.g.confusion[shown])
+            wrong = self.g.confusion.get(shown)
+            return self.rng.choice(wrong) if wrong else "NONE"
         return shown
 
     def _point(self, true_world, cam_yaw: float, robot_yaw: float, shown: str, command: str) -> gm.PointEstimate:
@@ -317,17 +325,18 @@ class ReaderLevelVision(VisionSim):
                 continue
             s = p.state(t)
             shown = s["command"]
-            raised = shown != "NONE"
+            raised = shown not in ("NONE", "PROCEED")          # the PROCEED swing starts below the raised line
             moving = raised and s["phase"] == "gesturing"
             ready = (shown in ("POINT", "WAIT") and s["phase"] == "holding" and s["hold_age_s"] >= self.rc["window"]["hold_min_s"]) or \
-                    (shown == "STOP" and s["since_gesture_s"] is not None and s["since_gesture_s"] >= self.rc["window"]["stop_window_s"])
+                    (shown == "STOP" and s["since_gesture_s"] is not None and s["since_gesture_s"] >= self.rc["window"]["stop_window_s"]) or \
+                    (shown == "PROCEED" and s["phase"] == "holding" and s["hold_age_s"] >= self.rc["proceed"]["window_s"])
             command = self._degrade(shown) if ready else "NONE"
             r = gm.Reading(command, 0.9 if command != "NONE" else 0.0, "simulated", t, arm=s["arm"] if raised else None,
                            frame_class=shown, moving=moving, raised=raised, hold_s=s["hold_age_s"], valid_frames=10, n_frames=10)
             r.arms = {s["arm"] if raised else "right": {"raised": raised, "path": s["amplitude"] if moving else 0.0, "moving": moving}}
             if command == "POINT":
                 r.point = self._point(s["world_angle_deg"], cam, yaw, shown, command)
-            if raised:
+            if shown != "NONE":
                 u = self.FRAME_W / 2.0 + fx * math.tan(math.radians(off))
                 scale = fx / max(dist, 0.1)
                 hw, hh, aw, ah = (self.HAND_W_M * scale, self.HAND_H_M * scale, self.ARM_W_M * scale, self.ARM_H_M * scale)
@@ -369,6 +378,7 @@ class SimulatorV4:
         if correct == "NONE":                                   # B is not reachable from here (a wrong branch was taken)
             return
         w = hc.yaw_to(jx, jz, *road.pos(road.next(junction, correct)))
+        proceed = sp.proceed_forward and correct == "FORWARD"
         cm_ = scene.commander
         eps = []
         t0 = t
@@ -377,8 +387,12 @@ class SimulatorV4:
                         clip=sp.clips["WAIT"])
             eps.append(e)
             t0 = e.end() + 0.2
-        eps.append(Episode("POINT", t0, sp.start_delay_s, sp.gesturing_s, sp.hold_s, sp.returning_s, arm=sp.arm,
-                           clip=sp.clips["POINT"], world_angle_deg=w))
+        if proceed:
+            eps.append(Episode("PROCEED", t0, sp.start_delay_s, sp.gesturing_s, sp.hold_s, sp.returning_s, arm=sp.arm,
+                               clip=sp.clips["PROCEED"]))
+        else:
+            eps.append(Episode("POINT", t0, sp.start_delay_s, sp.gesturing_s, sp.hold_s, sp.returning_s, arm=sp.arm,
+                               clip=sp.clips["POINT"], world_angle_deg=w))
         cm_.episode, cm_.extra_episodes = eps[0], eps[1:]
         for bi, command, dt, angle in sp.distractors:
             q = scene.people[1 + bi]
@@ -395,8 +409,10 @@ class SimulatorV4:
         cfg, road, c = self.cfg, self.road, self.c
         rng_seed = self.seed
         x, z = road.pos(road.start)
-        first = road.only_next(road.start)
-        yaw = hc.yaw_to(x, z, *road.pos(first))
+        if "start_yaw_deg" in road.nodes[road.start]:
+            yaw = float(road.nodes[road.start]["start_yaw_deg"])
+        else:
+            yaw = hc.yaw_to(x, z, *road.pos(road.only_next(road.start)))
         v = w = 0.0
         t = travelled = 0.0
         scenes: dict[str, Scene] = {}
@@ -412,6 +428,10 @@ class SimulatorV4:
         fov_now = 60.0
         truth, frames, hud_log = [], [], []
         next_truth = 0.0
+        if road.kind(road.start) == hv.START:                 # P8: a commander waits at A from the start
+            scenes[road.start] = scene = self._scene_at(road.start)
+            shown_at[road.start] = road.command_toward(road.start, goal)
+            vision = ReaderLevelVision(scene, cfg, self.g, self.reader_cfg, rng_seed * 1000)
         c.begin(t)
         closest, collided = math.inf, False
         while t < cfg.timeout_s:
@@ -437,7 +457,7 @@ class SimulatorV4:
             inp = hv.TickInputV4(time_s=t, x=x, z=z, yaw_deg=yaw, v=v, omega=w,
                                  nav_corners=[(x, z), target] if target else [], nav_target=target, people=latest_people,
                                  people_time_s=latest_people_t, persons=latest_persons, persons_time_s=latest_persons_t,
-                                 fov_deg=latest_fov, pan_deg=latest_pan)
+                                 fov_deg=latest_fov, pan_deg=latest_pan, tilt_deg=max(0.0, cmd.tilt_deg))
             cmd = c.step(inp)
             fov_now = cmd.vertical_fov_deg if cmd.vertical_fov_deg > 0 else 60.0
             hud_log.append({"t": round(t, 3), "state": cmd.state, "fov_cmd": cmd.vertical_fov_deg, **cmd.hud})
@@ -494,6 +514,19 @@ class SimulatorV4:
                 "frame_log": list(c.frame_log), "hud_log": hud_log, "truth_rows": truth, "frames": frames, **summ}
 
 
+def _shift_record(rec: dict, off: float) -> dict:
+    """A junction record with its times moved by off seconds (the session clock of export_session; added 2026-11-12)."""
+    out = dict(rec)
+    for k in ("t_start", "t_end", "t_ask_first", "t_accept", "second_view_t"):
+        if isinstance(out.get(k), (int, float)):
+            out[k] = round(out[k] + off, 3)
+    if isinstance(out.get("reapproach"), dict):
+        out["reapproach"] = {**out["reapproach"], "t": round(out["reapproach"]["t"] + off, 3)}
+    if "asks_log" in out:
+        out["asks_log"] = [{**a, "t": round(a["t"] + off, 3)} for a in out["asks_log"]]
+    return out
+
+
 def export_session(results: list[dict], out_root, zoom_enabled: bool, seed: int = 1, name: str = "sim",
                    trial_gap_s: float = 1000.0, mode: str = "development", task: str = "Task2") -> tuple:
     """Write simulated trials as the two run folders a real session leaves, so hri_eval_dev_v4.py and hri_analysis_v4.py can
@@ -512,8 +545,9 @@ def export_session(results: list[dict], out_root, zoom_enabled: bool, seed: int 
     v4["zoom"]["enabled"] = zoom_enabled
     (b / "config_used" / "control.json").write_text(json.dumps(v4, indent=2) + "\n", encoding="utf-8")
     (u / "session.json").write_text(json.dumps({"task": task, "mode": mode, "seed": seed,
-                                                "endpoints": ["E1", "E2", "E3", "E4"]}), encoding="utf-8")
-    road = hc.Roadmap(hc.load_json("configs/roadmap.json"))
+                                                "endpoints": hv.load_roadmap(hv.roadmap_path(v4)).endpoints()}),
+                                    encoding="utf-8")
+    road = hv.load_roadmap(hv.roadmap_path(v4))                    # P7 (2026-11-12): the v4 map
     perc_rows, dec_rows = [], []
     with (b / "v4_log.jsonl").open("w", encoding="utf-8") as log:
         for i, r in enumerate(results, 1):
@@ -535,6 +569,7 @@ def export_session(results: list[dict], out_root, zoom_enabled: bool, seed: int 
             for row in r["frame_log"]:
                 log.write(json.dumps({"trial": i, **row, "t": round(row["t"] + off, 4), "ctrl_t": round(row["ctrl_t"] + off, 4)}) + "\n")
             summary = {k: r[k] for k in ("state", "abort_reason", "junctions", "step_s", "trace")}
+            summary["junctions"] = [_shift_record(j, off) for j in r["junctions"]]     # on the session clock, like truth and the log
             (b / f"python_trial_{i:03d}.json").write_text(json.dumps({**summary, "trial": i}), encoding="utf-8")
             for k in range(5):
                 dec_rows.append({"trial": i, "time_s": round(off + k * 0.1, 3), "rtt_ms": 0.8 + 0.1 * k, "watchdog_count": 0})

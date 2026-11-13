@@ -16,7 +16,7 @@ file changes.
 | `control.json` | The v4 dialog (`hri_control_v4.py`): hold, branch gap, WAIT (20 s decided), second look and re-approach, cross-check tie-break switch, zoom rule and its on/off switch. Drive, safety and the other dialog timings are read from the frozen v3 `configs/hri_control.json` (read only). |
 | `eval_dev.json` | How `hri_eval_dev_v4.py` and `hri_eval_final_v4.py` match readings to workers and bin distances. Evaluation only. |
 | `analysis.json` | The intervals (Wilson, bootstrap over runs), the archived v3 results used for research question 1 and the declared differences between v3 and v4 (`hri_analysis_v4.py`). Reporting only. |
-| `final_plan.json` | The final settings (zoom_on, zoom_off, bystanders, unseen_look) and the numbers still BLANK (task, seeds, runs per setting, timeout, success radius) that Anisha fills before freezing; `freeze_v4.py` refuses to freeze while one is blank. |
+| `final_plan.json` | The final settings (zoom_on, zoom_off, bystanders, zoom_on_repeat) and the numbers still BLANK (task, seeds, runs per setting, timeout, success radius) that Anisha fills before freezing; `freeze_v4.py` refuses to freeze while one is blank. |
 | `frozen.json` | The freeze record written by `freeze_v4.py`. |
 
 `configs/v4/archive/` (the results archive config and the manifest of session folders) is not part of the freeze: it lists run

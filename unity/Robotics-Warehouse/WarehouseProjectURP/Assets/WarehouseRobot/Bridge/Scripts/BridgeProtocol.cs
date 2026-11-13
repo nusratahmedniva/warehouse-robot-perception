@@ -315,6 +315,8 @@ namespace WarehouseRobot.Bridge
         // block (display only). Both are required in version 3 (checked on the header text); version 2 commands have
         // neither and read the defaults, which change nothing.
         public float vertical_fov_deg = WarehouseHRI.V4.ProtocolV3.KeepDefaultFov;
+        // 2026-11-12 (P6, docs/protocol_v3.md amendment 3): pan-tilt tilt, + = up, -1 = the default (level). Required in version 3.
+        public float tilt_deg = WarehouseHRI.V4.ProtocolV3.DefaultTilt;
         public WarehouseHRI.V4.HudMsg hud = new WarehouseHRI.V4.HudMsg();
     }
 

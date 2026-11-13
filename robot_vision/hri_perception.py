@@ -159,14 +159,17 @@ def ground_distance(v: float, height: int, camera_height_m: float, top_deg: floa
 
 
 def person_distance(box, kp, kconf, pano_height: int, p: dict, top_deg: float = 90.0,
-                    bottom_deg: float = -90.0, camera_height_m: float | None = None) -> tuple[float | None, str]:
+                    bottom_deg: float = -90.0, camera_height_m: float | None = None,
+                    ankle_height_m: float = 0.0) -> tuple[float | None, str]:
     """(distance m, source) for one panorama person: 'ankles', 'box_bottom' or 'unknown' (see config).
-    camera_height_m: from the frame header (protocol v2); the config value is only the fallback."""
+    camera_height_m: from the frame header (protocol v2); the config value is only the fallback.
+    ankle_height_m (v4 only, P1, 2026-11-12): the ankle keypoints are this high above the floor, so for source 'ankles' the
+    camera is that much less above them; 0.0 (the default, every v3 call) is the v3 behaviour byte for byte."""
     h_cam = camera_height_m if camera_height_m is not None else p["camera_height_m"]
     if kp is not None and kconf is not None:
         ys = [kp[i][1] for i in (L_ANKLE, R_ANKLE) if kconf[i] >= p["ankle_confidence"]]
         if ys:
-            d = ground_distance(float(np.mean(ys)), pano_height, h_cam, top_deg, bottom_deg)
+            d = ground_distance(float(np.mean(ys)), pano_height, h_cam - ankle_height_m, top_deg, bottom_deg)
             if d is not None:
                 return d, "ankles"
     bottom = box[3]

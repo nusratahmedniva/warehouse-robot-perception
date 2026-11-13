@@ -17,6 +17,18 @@ import v4_synth as vs  # noqa: E402
 
 CFG = gm.load_config()
 RNG = np.random.default_rng(7)
+_SYNTH_ARM = (vs.UPPER, vs.FORE)
+
+
+def setUpModule():
+    # 2026-11-13 (Nusrat during Anisha's absence, AUDIT.md section 15): the synthetic arms of this module are as long as the
+    # configured (calibrated) point.arm_length_in_shoulder_widths, upper arm and forearm in v4_synth's proportion; restored after.
+    total = CFG["point"]["arm_length_in_shoulder_widths"] * vs.SW
+    vs.UPPER, vs.FORE = (total * a / sum(_SYNTH_ARM) for a in _SYNTH_ARM)
+
+
+def tearDownModule():
+    vs.UPPER, vs.FORE = _SYNTH_ARM
 
 
 def sample_for(left=vs.DOWN, right=vs.DOWN, hands=None, **kw):
@@ -495,7 +507,9 @@ class ArmRatioDeclarationTests(unittest.TestCase):
     """Decided 2026-11-08: the arm ratio is set in the development evaluation on development looks only; the value is not changed now."""
 
     def test_the_value_is_unchanged_and_the_rule_for_setting_it_is_declared(self):
-        self.assertEqual(CFG["point"]["arm_length_in_shoulder_widths"], 1.4)
+        # 2026-11-13: the configured value is the calibrated one (calibrate_v4.py, D3), recorded in the config's "calibrated" line
+        self.assertEqual(CFG["point"]["arm_length_in_shoulder_widths"], 1.683)
+        self.assertIn("point.arm_length_in_shoulder_widths 1.683", CFG["calibrated"])
         why = CFG["point"]["why"]["arm_length_in_shoulder_widths"]
         for word in ("DECLARED 2026-11-08", "median YOLO keypoint ratio", "sunbox_m1", "sunbox_f1", "never on the test look", "sunbox_f2", "1.87 to 2.00"):
             self.assertIn(word, why)

@@ -1,0 +1,32 @@
+{
+  "label": "v4 roadmap (the robot's map; it knows the roads, never goal B). Read by the v4 controller (hri_control_v4.py, through control.json -> roadmap) and by the Unity v4 scene builder, so both use the same nodes. The v3 map configs/roadmap.json is unchanged.",
+  "declared": "2026-11-12 by Nusrat during Anisha's absence (P7, P8; Avatar/Config/upgrade_design.md section 6; AUDIT.md section 15), before any run on it. Positions in the open aisles of the generated warehouse (rack centres at x = -12.5, 0, 12.5 and z = -15, -5, 5, 15; walls near +-26 m).",
+  "frame": "Unity floor coordinates x, z in m (y up). Branch commands are relative to the arrival direction (previous node -> junction; at the start node its start heading start_yaw_deg), from the robot's point of view.",
+  "start": "A",
+  "nodes": {
+    "A":  {"x": 6.25,   "z": -20.0, "kind": "start", "start_yaw_deg": 0.0},
+    "J1": {"x": 6.25,   "z": 0.0,   "kind": "junction", "arrive_from": "A"},
+    "J2": {"x": -6.25,  "z": 0.0,   "kind": "junction", "arrive_from": "J1"},
+    "J3": {"x": 18.75,  "z": 0.0,   "kind": "junction", "arrive_from": "J1"},
+    "J4": {"x": -18.75, "z": 0.0,   "kind": "junction", "arrive_from": "J2"},
+    "E1": {"x": 6.25,   "z": 20.0,  "kind": "endpoint"},
+    "E2": {"x": -6.25,  "z": 20.0,  "kind": "endpoint"},
+    "E3": {"x": 18.75,  "z": 20.0,  "kind": "endpoint"},
+    "E4": {"x": 18.75,  "z": -20.0, "kind": "endpoint"},
+    "E5": {"x": -18.75, "z": 20.0,  "kind": "endpoint"},
+    "E6": {"x": -18.75, "z": -20.0, "kind": "endpoint"}
+  },
+  "branches": {
+    "A":  {"FORWARD": "J1"},
+    "J1": {"FORWARD": "E1", "RIGHT": "J3", "LEFT": "J2"},
+    "J2": {"FORWARD": "J4", "RIGHT": "E2"},
+    "J3": {"LEFT": "E3", "RIGHT": "E4"},
+    "J4": {"RIGHT": "E5", "LEFT": "E6"}
+  },
+  "worker_stand": {
+    "corner_offset_m": 2.5,
+    "rule": "The worker stands corner_offset_m ahead and corner_offset_m to the right of the node (arrival direction; at the start node the start heading), facing the arriving robot. Unity scenario side only; the robot finds the worker by vision."
+  },
+  "route_lengths_m": {"E1": 40.0, "E2": 52.5, "E3": 52.5, "E4": 52.5, "E5": 65.0, "E6": 65.0},
+  "route_lengths_note": "Along the roads from A; reported only (the trail is scored against the grid's optimal corridor, gt_path.py). The longest, 65.0 m, is L_max of the timeout rule (upgrade_design.md section 6)."
+}

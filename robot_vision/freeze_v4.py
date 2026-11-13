@@ -1,8 +1,9 @@
 """Freezing the v4 study (same pattern as configs/hri_frozen.json + tests/test_hri_frozen.py, for configs/v4/).
 
 configs/v4/frozen.json lists every v4 config file ("files") and, once frozen, their LF-normalised SHA-256, the v3 files v4
-reads (hri_control, hri_perception, gesture_hri, roadmap, robot), and the SHA-256 of the pose weights and the MediaPipe
-model. While "frozen" is false it holds only the file list: the thresholds are still being set on development data.
+reads (hri_control, hri_perception, gesture_hri, roadmap, robot), the Unity files of the B9 list ("unity_files", added
+2026-11-13: final_plan.json unity_files_and_guard -> Avatar/Config/final_v4.json freeze_files), and the SHA-256 of the pose
+weights and the MediaPipe model. While "frozen" is false it holds only the file list: the thresholds are still being set on development data.
 Nothing here freezes by itself: the freeze is a deliberate command, and it is refused while a blank is left in
 configs/v4/final_plan.json, while a model file is missing, or when the file is already frozen (never overwritten).
 
@@ -49,9 +50,24 @@ def config_files(repo: Path = REPO) -> list[str]:
     return sorted(f"{V4_DIR}/{p.name}" for p in (repo / V4_DIR).glob("*.json") if p.name != "frozen.json")
 
 
+def unity_files(repo: Path = REPO) -> list[str]:
+    """Repository paths of the Unity files to freeze (B9; added 2026-11-13 by Nusrat in Anisha's absence, AUDIT.md section 15):
+    final_plan.json unity_files_and_guard names the Unity list (freeze_list, i.e. Avatar/Config/final_v4.json) and its key
+    (freeze_list_key, "freeze_files"). Empty while that plan field is not filled in this form. The Unity final guard (FinalGuardV4)
+    looks every one of them up by this path in frozen.json."""
+    spec = json.loads((repo / PLAN_REL).read_text(encoding="utf-8")).get("unity_files_and_guard")
+    if not isinstance(spec, dict) or not spec.get("freeze_list"):
+        return []
+    lst = repo / spec["freeze_list"]
+    if not lst.is_file():
+        raise SystemExit(f"final_plan.json unity_files_and_guard.freeze_list {spec['freeze_list']} not found")
+    return sorted(json.loads(lst.read_text(encoding="utf-8"))[spec.get("freeze_list_key", "freeze_files")])
+
+
 def snapshot(repo: Path = REPO) -> dict:
     return {"sha256": {f: sha256_lf(repo / f) for f in config_files(repo)},
-            "v3_dependencies": {f: sha256_lf(repo / f) for f in V3_DEPENDENCIES}}
+            "v3_dependencies": {f: sha256_lf(repo / f) for f in V3_DEPENDENCIES},
+            "unity_files": {f: sha256_lf(repo / f) for f in unity_files(repo) if (repo / f).is_file()}}
 
 
 def _models(repo: Path) -> dict:
@@ -90,10 +106,11 @@ def problems(repo: Path = REPO, require_models: bool = False) -> list[str]:
     if not rec["frozen"]:
         return out
     now = snapshot(repo)
-    for group in ("sha256", "v3_dependencies"):
-        for f in sorted(set(rec[group]) | set(now[group])):
-            if rec[group].get(f) != now[group].get(f):
-                out.append(f"{f} changed after freezing" if f in rec[group] and f in now[group] else f"{f} added or removed since freezing")
+    for group in ("sha256", "v3_dependencies", "unity_files"):
+        was = rec.get(group, {})
+        for f in sorted(set(was) | set(now[group])):
+            if was.get(f) != now[group].get(f):
+                out.append(f"{f} changed after freezing" if f in was and f in now[group] else f"{f} added or removed since freezing")
     for name, st in model_status(repo).items():
         want = rec["models"].get(name, {}).get("sha256")
         if not st["present"]:
@@ -113,7 +130,7 @@ def require_frozen(repo: Path = REPO, require_models: bool = True) -> dict:
     """The frozen record, or SystemExit: a final run or final evaluation needs frozen = true and every hash matching."""
     if not is_frozen(repo):
         raise SystemExit("configs/v4/frozen.json is not frozen (\"frozen\": false): final runs and final evaluations are refused "
-                         "until Anisha freezes the v4 configs after the development evaluation (python freeze_v4.py --freeze).")
+                         "until the freeze is run by hand after the development evaluation (python freeze_v4.py --freeze).")
     p = problems(repo, require_models)
     if p:
         raise SystemExit("the v4 freeze is broken: " + "; ".join(p))
@@ -143,6 +160,9 @@ def freeze(repo: Path = REPO, now: datetime | None = None, git_commit: str | Non
     bad = [n for n, m in models.items() if m["sha256"] != m["expected_sha256"]]
     if bad:
         raise SystemExit(f"not frozen: {bad} do not match the SHA-256 in the frozen v3 configs")
+    absent = [f for f in unity_files(repo) if not (repo / f).is_file()]
+    if absent:
+        raise SystemExit(f"not frozen: Unity file(s) of the B9 list not found: {absent}")
     rec.update(frozen=True, frozen_at=(now or datetime.now()).isoformat(timespec="seconds"), git_commit=git_commit,
                files=config_files(repo), **snapshot(repo),
                models={n: {"path": m["path"], "sha256": m["sha256"]} for n, m in models.items()})
@@ -163,12 +183,12 @@ def main(argv=None) -> None:
         import decision_io as dio
         rec = freeze(git_commit=dio.git_info()["commit"])
         print(f"frozen at {rec['frozen_at']} (commit {rec['git_commit']}): {len(rec['sha256'])} v4 configs, "
-              f"{len(rec['v3_dependencies'])} v3 files, {len(rec['models'])} model files")
+              f"{len(rec['v3_dependencies'])} v3 files, {len(rec['unity_files'])} Unity files, {len(rec['models'])} model files")
         return
     rec = read()
     print(f"frozen: {rec['frozen']}")
     print("blanks in final_plan.json: " + (", ".join(blanks()) or "none"))
-    print("would be hashed:\n  " + "\n  ".join(config_files() + V3_DEPENDENCIES))
+    print("would be hashed:\n  " + "\n  ".join(config_files() + V3_DEPENDENCIES + unity_files()))
     for n, m in model_status().items():
         print(f"model {n}: {'present' if m['present'] else 'MISSING'} {m['path']}")
     p = problems()

@@ -1383,3 +1383,320 @@ one row. **RQ4 wording: an unseen appearance of the Sunbox body family.** This c
 
 **8. Records (Nusrat's side, for the paper).** The look check moved from the backlit stage to the real scene (declared before the rerun in `Avatar/Config/look_check_changes.md`); the top of look f1 was changed; hand rest-pose and finger fixes were made; the look checks saw all looks including the future
 test look and nothing was tuned on them; the Unity stall fix is in `RobotBridgeClient.cs` (protocol 3 only, the v3 path byte-identical, checked with a v3 smoke run); the pan-tilt camera height was measured at 1.200 m and level, so the zoom table of 14.15 stands (its height was inferred).
+
+## 15. Changes made during Anisha's absence (by Nusrat)
+
+Dated entries only, appended in order. Each names the task item (P1 to P12 of Nusrat's v4 completion task of 2026-11-12, the
+exception of `CLAUDE.local.md` section 2) and the files under `robot_vision/` or `docs/` it changed. Sections 1 to 14 are not edited.
+The design and every decision rule were declared before any code in `unity/.../Avatar/Config/upgrade_design.md` (commit `b55ccec`).
+
+### 2026-11-12, Stage A (Python, simulator only; no Unity run, no recording, no threshold set on data)
+
+- **P1 ankle height.** `hri_perception.person_distance` gains `ankle_height_m` (default 0.0 = the v3 behaviour byte for byte): for
+  source `ankles` the camera height used is `camera_height_m - ankle_height_m`. Only the v4 360 path passes it
+  (`hri_perception_v4.people_v4`, used by `HriPerceptionV4` and by the process lane `bridge/perception_mp_v4.PeoplePerception`), from
+  the new `configs/v4/perception.json` (`ankle_height_m` 0.0 until measured: the median of the new truth field over the development
+  looks while standing, never fitted to errors). `gesture_data.py` reads the optional truth field; `bridge/protocol.py` refuses it from
+  Unity like the other truth fields; `docs/protocol_v3.md` amendment 2.
+- **P2 PROCEED.** Reader rule in `gesture_motion.py` (`proceed_features`, `count_strokes`, `read_span_s`; block `proceed` in
+  `configs/v4/gesture_reader.json`, initial values 2.0 s, 2 cycles, 0.3 torso lengths, 0.7 vertical share); the person buffer keeps the
+  longer window (`hri_perception_v4.PersonsPipeline`). `commander_v4.py`: a facing person reading PROCEED is a candidate without a raised
+  arm. `hri_control_v4.py`: PROCEED = the node's FORWARD branch (else unclear), a PROCEED reading marks a gesture onset, HUD gesture
+  PROCEED. `configs/v4/data_splits.json`: `proceed_ik_01`, `proceed_ik_02` development, `proceed_ik_03` test. `configs/v4/gesture_data.json`
+  and `eval_dev.json`: PROCEED in the command lists. `docs/protocol_v3.md` amendment 1. Simulator: PROCEED episodes, `SceneSpec.proceed_forward`.
+- **P3 evaluation.** `hri_eval_dev_v4.py`: `junction_level` block (per ask: shown, read, branch chosen, true branch from goal B, dialog
+  outcome; per (look, node, shown) pair; standoff: the 360 estimate logged at each ask against the true robot-to-commander distance),
+  PROCEED in the command tables, the v4 map.
+- **P6 tilt.** `bridge/protocol.py` (command `tilt_deg`, validated), `bridge/guide.py` (sends `tilt_deg` with protocol 3),
+  `bridge/guide_v4.py`, `bridge/perception_v4.py` (frame tilt into the reader and the tick input), `gesture_motion.py` (`level_vector`,
+  `pixel_azimuth_deg`, tilt-corrected `arm_solutions` and hand cross-check, `fit_box`), `commander_v4.py` (tilt-corrected bearings),
+  `hri_control_v4.py` (`tilt_target`, the tilt part of `ZoomController`, fit box for the zoom when tilting), `configs/v4/control.json`
+  (`zoom.tilt_enabled`, `tilt_min_deg` 0, `tilt_max_deg` 35, `tilt_max_change_deg_per_s` 30). `docs/protocol_v3.md` amendment 3.
+  **Supersedes 14.15 decision (c)** (camera level, no tilt command): with a level camera the zoom cannot act at the 2 m asking distance.
+- **P7 map.** New `configs/v4/roadmap.json` (A, J1 to J4, E1 to E6, routes 40 to 65 m), named by `control.json` -> `roadmap`; used by the
+  server, the controller, the simulator export, `hri_eval_dev_v4.py` and `hri_analysis_v4.py`. The v3 `configs/roadmap.json` is unchanged.
+  The final timeout and goal order follow later (Stage C), by the rule declared in upgrade_design.md section 6.
+- **P8 start search.** `hri_control_v4.py`: the start node (kind `start`) asks like a junction (scan, approach, ask, read); the robot never
+  navigates without an accepted instruction (tested: a PROCEED that is never read ends in an abort at A without any navigate state).
+  Each ask logs the 360 distance estimate of the approached person (`asks_log`).
+- **P10** `bridge/server.py --control-config` (default `configs/v4/control.json`); the file used is copied to `config_used/control.json`.
+  **P11** `configs/v4/control_zoom_on.json`, `control_zoom_off.json` (identical to `control.json` except `zoom.enabled`, a test pins it);
+  `--final-setting` refuses any other control file than the setting's (`FINAL_CONTROL` in `bridge/server.py`).
+- **P12** `bridge/perception_v4.py`: `model_outputs.jsonl` per bridge run (threads mode): one line per processed camera frame with the
+  360 people (box, 17 keypoints with scores, bearing, distance and source) and the pan-tilt people and hands (21 landmarks, world
+  landmarks, label, score, box) with pan, tilt, field of view and intrinsics. The worker processes write none (threads is the decided mode).
+- **Freeze record.** `configs/v4/frozen.json` "files" refreshed with `freeze_v4.py --refresh-list` (approved by Nusrat; unfrozen, no
+  hashes) for the four new config files. Note for Anisha: `freeze_v4.V3_DEPENDENCIES` still hashes `configs/roadmap.json`, which v4 no
+  longer reads (harmless; the v4 map is frozen with `configs/v4/`).
+- **Existing tests updated** (approved by Nusrat; each keeps its intent): `tests/test_protocol_v3.py` (command `tilt_deg`, 15 truth
+  names), `tests/test_v4_final.py` (finals with their control file), `tests/test_data_splits_v4.py` (PROCEED clips),
+  `tests/test_gesture_data.py` (PROCEED in the list), `tests/test_perception_mp_v4.py` (the v4 people function),
+  `tests/test_hri_control_v4.py` (the STOP-while-navigating test uses the v3 map, whose start drives). New: `tests/test_v4_upgrades.py`.
+- `hri_sim_v4.export_session` now moves the junction records onto the session clock like the truth rows and the log (a simulator
+  inconsistency found by the new junction metrics; real sessions share Unity's clock).
+
+### 2026-11-12, Stage U (Unity upgrades; Python files touched: two)
+
+- **P1 value measured.** `configs/v4/perception.json` `ankle_height_m` = **0.0927 m**: the median of the new truth field over the 3,195 idle rows of
+  the development looks in the U6 session `trials_development_Task2_20261112_160917` (sunbox_f1 0.0908, sunbox_m1 0.0953; range 0.0875 to 0.1046).
+  Measured, not fitted: before it the same session showed the predicted bias (360 estimate minus true distance at the 9 asks: median +0.094 m, all
+  positive; true standoff median 1.81 m against the nominal 2.0 m).
+- **P4 tool.** `calibrate_v4.py` (new, evaluation code; B12 exactly, grids of upgrade_design.md section 10, development looks sunbox_m1 and sunbox_f1
+  only, replays the reader on `model_outputs.jsonl`) and `tests/test_calibrate_v4.py`; `tests/test_gesture_data.py` and `tests/test_hri_eval_dev_v4.py`
+  list it as evaluation code in their import-isolation checks. Not run on data yet (Stage D3).
+- U6 (3-trial development session, seed 1; bridge `bridge_guide_20261112_160553`): 2 of 3 SUCCESS; dialogs 7: 6 correct, 0 wrong, 1 abort (J1 POINT
+  LEFT, sunbox_f1); PROCEED accepted at 4 of 4 dialogs (A x3, J1 x1); leak test passed (Unity and Python); 0 watchdog stops.
+
+### 2026-11-12, Stage C (development check, 20 runs; the rules of upgrade_design.md section 11, declared before it)
+
+Session `trials_development_Task2_20261112_163710` + `bridge_guide_20261112_163011` (seed 1, sunbox_f1 / sunbox_m1 alternating, development
+clips, zoom on, threads, no bystanders, commander PROCEED / POINT; ankle height 0.0927 m). Leak test passed (Unity and Python, max diff 0).
+**19 of 20 SUCCESS** (run 12 aborted: PROCEED at A unclear after 2 asks).
+
+- **Rule 1 (junction level): MET.** 62 dialogs: 61 correct, **0 wrong**, 1 abort; every (look, node, shown) pair at least 0.8 (sunbox_m1 A PROCEED
+  9 of 10; all others 100 per cent: f1 A PROCEED 10/10, J1 POINT 8/8, J1 PROCEED 2/2, J2 POINT 2/2, J2 PROCEED 2/2, J3 POINT 4/4, J4 POINT 2/2;
+  m1 J1 POINT 9/9, J2 POINT 1/1, J2 PROCEED 4/4, J3 POINT 4/4, J4 POINT 4/4).
+- **Rule 2 (distance): MET.** Median |360 estimate - true distance| at the 94 asks **0.011 m** (signed median -0.005 m; true standoff median 2.031 m).
+- **Timeout (P7, the declared rule):** v_run 0.3944 m/s (median over the 19 successful runs) -> `configs/v4/final_plan.json` `timeout_s` **270**
+  (was 240), with the numbers in `timeout_s_source`; `final_seed_note` and a new `roadmap` key state the v4 map and its final goal order.
+  `tests/test_v4_frozen.py`: the timeout follows the rule, and the v4 final goal order is pinned (approved minimal test updates).
+- Reported, not rule items: frame-level accuracy POINT 1.0 (coverage 0.375 of 1097 frames), PROCEED 1.0 (0.334 of 353); 1 false read in
+  401 frames with nothing shown; commander accuracy 1.0 (coverage 0.60); ask to accepted median 13.4 s. **Timing finding:** loop lag max 193 ms
+  and round trip max 196.8 ms exceed the declared limits (100 and 150 ms, 14.14) in this Play session, 0 watchdog stops; free memory minimum 1073 MB.
+  The 14.16 condition (threads must pass a Play session within the limits before the freeze) is therefore not yet met.
+
+### 2026-11-12/13, Stage D2 and D3 (development recordings and the calibration; the plan `Avatar/Config/recording_plan_d1.md`, declared before)
+
+Every session: seed 1, sunbox_f1 / sunbox_m1 alternating, development clips, threads, leak test passed (Unity and Python, max diff 0), every
+`truth.jsonl` accepted by `gesture_data.py`.
+
+| id | condition | Unity + bridge folders | runs | result |
+|---|---|---|---|---|
+| R1 | zoom on (the Stage C session) | `..._163710` + `bridge_guide_20261112_163011` | 20 | 19 SUCCESS (above) |
+| R2 | zoom off (`control_zoom_off.json`) | `..._173220` + `..._173119` | 10 | 9 SUCCESS; run 5 **wrong branch** at J1 (a POINT left, `point_mixamo_01`, read as PROCEED, score 0.834, during the arm's rise) |
+| R3 (first) | 3 bystanders | `..._175544` + `..._175450` | 10 | 0 SUCCESS: all aborted at J1, the robot asked a bystander (Unity stand fault, below). Kept, reported, not used |
+| R3 | 2 bystanders (fixed stands) | `..._214837` + `..._214449` | 10 | 9 SUCCESS; the robot chose the commander in 34 of 34 dialogs; run 5 aborted at J1 (POINT left, sunbox_f1) |
+| R4 | WAIT then the direction | `..._180743` + `..._180650` | 6 | 1 SUCCESS; sunbox_f1's WAIT unread at A in runs 1, 3, 5; two aborts at J1 (a WAIT unread; a POINT not matched to a branch, then the 20 s WAIT timeout) |
+| R5 | STOP while driving | `..._181558` + `..._181504` | 6 | 5 SUCCESS; STOP stopped the robot in 6 of 6 (2.5 to 8.9 s) and it resumed; run 1 aborted at J1 (POINT not matched to a branch) |
+
+- **Bystander stand fault (Unity, declared fix before the second R3: `upgrade_design.md` section 13, commit 285878d).** The robot approaches the
+  nearest person when it scans, stopped up to 0.3 m before the node; the "J1 behind-right" stand was as far from J1 as the commander's stand, so
+  the robot approached that bystander. New rule: every bystander at least 1.0 m farther than the commander's stand along the last 3.0 m of every
+  approach (`hri_control.json` `junction_slow_radius_m`); J1 behind-right removed, the two ahead-left stands moved out; 2 bystanders.
+- **D3 (`calibrate_v4.py --write`, B12 exactly, on R1, R2, R3 (second), R4, R5; evidence `outputs/calibrate_v4_20261113_005017`).** No swept
+  value reaches coverage 0.8 (frame-level coverage 0.24 to 0.49 across every grid), so all 24 swept thresholds keep their committed values
+  (`upgrade_design.md` section 13, calibration details item 1). One value changed: **`gesture_reader.json` `point.arm_length_in_shoulder_widths`
+  1.4 -> 1.683** (measured, median YOLO ratio over 880 held in-plane POINT frames, p25 1.435, p75 1.785; AUDIT.md 14.16 item 3), written by the
+  tool with its `calibrated` record. The first R3 session was run through the tool without `--write` (`outputs/calibrate_v4_20261112_222639`):
+  coverage 0.255 everywhere, branch match 0 frames, nothing changed.
+- **Per look (frame level, the tool's scoring, after D3).** Branch match on held POINT frames (accuracy / coverage): sunbox_f1 1.0 / 0.48,
+  sunbox_m1 1.0 / 0.52 (before D3: 1.0 / 0.19 and 1.0 / 0.23). Commander rule: f1 0.996 / 0.49 alone, 0.991 / 0.52 with bystanders; m1 1.0 /
+  0.50 alone, 1.0 / 0.45 with bystanders. WAIT: **sunbox_f1 0.0 / 0.07**, sunbox_m1 0.78 / 0.41 (not changed by D3: f1's WAIT stays weak; not
+  replaced, as decided). POINT f1 0.94 / 0.29, m1 0.88 / 0.36; STOP f1 0.89 / 0.25, m1 1.0 / 0.29.
+- **Tests and config updated to the measured arm ratio (approved by Nusrat 2026-11-13; no other change).**
+  `tests/test_gesture_motion.py`: `ArmRatioDeclarationTests` checks the configured, calibrated value (1.683, and the config's `calibrated`
+  record) instead of 1.4; the module's synthetic arms (`v4_synth` upper arm and forearm, same proportion) are built from the configured ratio
+  in `setUpModule` and restored in `tearDownModule`, so the 11 geometry and window tests that assumed 1.4 pass and the other modules that use
+  `v4_synth` are unchanged. `configs/v4/look_check.json` `checks.arm_ratio_p95.assumed` 1.4 -> 1.683 (so `tests/test_look_check_v4.py` line 240
+  matches); its `why` text still names 1.4 and the range 0.98 to 1.75 (left as it is: only the number was approved; for Anisha to reword).
+- **Tool bug for Anisha (not fixed; `calibrate_v4.py` is not changed): the calibration replay does not reproduce the live reader.** On R1, `calibrate_v4.replay` (the reader re-run on
+  `model_outputs.jsonl`) reads STOP on 419 of 894 PROCEED frames and 47 POINT frames; the live readings logged in `v4_log.jsonl` at the same
+  times read STOP on none. The reader accuracies in the D3 report (e.g. PROCEED 0.34) therefore do not describe the live reader. The D3 outcome
+  does not depend on it: the live readings answer 34 per cent of the gesturing and holding frames of R1, so B12's coverage 0.8 is not reached
+  with them either, and the arm ratio is measured from the YOLO keypoints, not from the replay. Not fixed here (`calibrate_v4.py` is not an
+  allowed change of this task). Also for Anisha: with frame-level coverage, which counts every frame of the arm's movement, B12's coverage 0.8
+  is out of reach for every threshold, so B12 cannot move any threshold on these data.
+
+### 2026-11-13, Stage D4 (3 runs per condition with the calibrated configs of commit fa226f8)
+
+Rule declared before the runs (`upgrade_design.md` section 13, commit 582212a, replacing the D4 rule of section 11): stop only on a wrong-branch
+decision; aborts are recorded and reported per look and condition. Seed 1 (goals E2, E3, E1), runs 1 and 3 sunbox_f1, run 2 sunbox_m1; leak
+test passed (Unity and Python) and every `truth.jsonl` accepted in all five sessions. Run protocol: free memory 3.4 to 4.9 GB, Best performance;
+Chrome, the Claude app, the NVIDIA overlay and warp-svc running (reported, not closed).
+
+| id | Unity + bridge folders | SUCCESS | dialogs sunbox_f1 (correct / wrong / abort) | dialogs sunbox_m1 | aborts |
+|---|---|---|---|---|---|
+| R1 zoom on | `trials_development_Task2_20261113_014205` + `bridge_guide_20261113_014023` | 3 / 3 | 5 / 0 / 0 | 3 / 0 / 0 | none |
+| R2 zoom off | `..._20261113_014921` + `..._014803` | 3 / 3 | 5 / 0 / 0 | 3 / 0 / 0 | none |
+| R3 bystanders | `..._20261113_015635` + `..._015518` | 3 / 3 | 5 / 0 / 0 | 3 / 0 / 0 | none |
+| R4 WAIT then direction | `..._20261113_020350` + `..._020230` | 0 / 3 | 0 / 0 / 2 | 1 / 0 / 1 | f1 at A twice (its WAIT unread: "cues not met"), m1 at J1 (a WAIT read briefly, then unclear) |
+| R5 STOP while driving | `..._20261113_020709` + `..._020614` | 2 / 3 | 5 / 0 / 0 | 0 / 0 / 1 | m1 at A (PROCEED unclear after 2 asks); STOP stopped the robot in 3 of 3 (3.0, 5.9, 11.3 s) |
+
+**Rule: MET, 0 wrong-branch decisions** (34 dialogs: 30 correct, 4 aborts; 11 of 15 runs SUCCESS). Per look: sunbox_f1 20 correct, 2 aborts
+(both its unreadable WAIT); sunbox_m1 10 correct, 2 aborts. sunbox_f1's WAIT is a known per-look finding (D3: frame accuracy 0.0 at coverage
+0.07), not fixed.
+
+### 2026-11-13, B7 test assignment (decided by Nusrat, PENDING ANISHA'S CONFIRMATION; recorded before the Stage F tests)
+
+- **zoom_on, zoom_off, bystanders:** the development looks (sunbox_m1 and sunbox_f1, alternating by run) with the **test** clips.
+- **unseen_look:** sunbox_f2 with the **test** clips.
+- **Conflict for Anisha to resolve when she confirms:** `data_splits_v4.guard_run` refuses a run that mixes development and test data (looks
+  and clips together), and `hri_eval_final_v4.py` applies it with `final_evaluation=True`; `final_plan.json` `settings_note` also says every
+  final session lies wholly in the test split. As decided, the zoom_on, zoom_off and bystanders finals mix development looks with test clips,
+  so the current Python final evaluation would refuse them (unseen_look passes). Her guard needs a per-setting rule (looks from the setting's
+  split, clips from the test split), or B7 changes. Until she fills `final_plan.json` `test_assignment`, the Unity final guard (Stage F)
+  refuses every final run.
+
+### 2026-11-13, Stage F (final setup, Unity side; no final run, no freeze; declared in `upgrade_design.md` section 13 before it was built)
+
+- **B9, the Unity files to freeze** (Nusrat; `Avatar/Config/final_v4.json` `freeze_files`, repository paths): `unity/Robotics-Warehouse/
+  WarehouseProjectURP/Assets/` + `Scenes/WarehouseRobot_v4.unity`, `WarehouseRobot/Bridge/Config/bridge_unity_v4.json`,
+  `WarehouseRobot/Robot/Config/robot_unity_v4.json`, `WarehouseRobot/Avatar/Config/worker_v4.json`, `WarehouseRobot/Avatar/Prefabs/
+  WorkerV4.prefab`, `WarehouseRobot/Avatar/Config/trial_workers_v4.json`, `WarehouseRobot/Avatar/Config/final_v4.json`,
+  `WarehouseRobot/Avatar/Config/sessions/final_zoom_on.json`, `final_zoom_off.json`, `final_bystanders.json`, `final_unseen_look.json`,
+  `WarehouseRobot/Scenario/Config/trial_plan_v4.json`. For Anisha: add them to `frozen.json` (any hash table, keyed by these paths,
+  LF-normalised SHA-256 as `freeze_v4.sha256_lf`); the Unity guard looks each one up by its path. The avatar look assets are third-party and
+  not in git, so they are not hashed (each session records their appearance text).
+- **The Unity final-run guard** (`FinalGuardV4`, called by `TrialRunnerV4` when `TrialPlayV4 -finalSetting NAME` is given): refuses an unknown
+  setting, any null among `task`, `final_seed`, `runs_per_setting`, `timeout_s`, `success_radius_m`, `test_assignment`,
+  `unity_files_and_guard`, `acceptance_criteria`, an unfrozen `frozen.json`, a B9 file missing, unrecorded or changed, the development
+  override `trials.local.json`, `-workersConfig` with `-finalSetting`, and a setting already run (Unity's `UNITY_FINAL_DONE.json` with
+  `final_setting`, or Python's `FINAL_RUN_DONE.json` with `setting`, in any folder under `outputs/`). A final uses `final_plan.json`'s seed,
+  runs, timeout and success radius, writes `trials_final_Task2_<setting>_<time>/` with `session.json` `mode` "final" and `final_setting`,
+  copies `final_v4.json`, `final_plan.json` and `frozen.json` into `config_used/`, and writes `UNITY_FINAL_DONE.json` after its last run.
+  The Unity marker is deliberately not named `FINAL_DONE.json`: `final_guard_v4.markers` scans every folder for that name and would take a
+  Unity file for the setting's evaluation.
+- **Checked:** Unity Edit Mode 194/194 (19 new `FinalGuardV4Tests`); in a Play session `TrialPlayV4 -finalSetting zoom_on` was refused with
+  every open reason (blanks B7, B9, B11; not frozen; each B9 file unrecorded) and wrote no folder. Python files unchanged in this stage.
+
+### 2026-11-13, B7 check against the unchanged Python guard (read-only; `data_splits_v4.guard_run` with `final_evaluation=True`)
+
+Each setting's runs 1 and 2 (the look rotation; bystanders with two bystanders), direction scenario (POINT and PROCEED clips):
+- **Plan (a)** zoom_on, zoom_off, bystanders = development looks (sunbox_f1 / sunbox_m1 alternating) + development clips; unseen_look =
+  sunbox_f2 + test clips: **refused for zoom_on, zoom_off and bystanders** ("--final-evaluation given, but the run uses development data":
+  a final evaluation accepts only the test split); **accepted for unseen_look** (split test).
+- **Plan (b)** all four settings = sunbox_f2 + test clips (point_mixamo_02, proceed_ik_03): **accepted for all four** (split test); in the
+  bystanders setting all three workers wear sunbox_f2.
+- The B7 recorded above (development looks + test clips) is refused for the same three settings ("run mixes development and test data").
+  Unity's Stage F `PlanFinal` also refuses plan (a): a final's clip split must be a final-evaluation split. Only plan (b) runs through both
+  guards unchanged; with it `final_v4.json` needs `look_split` "test" for every setting (a declared Unity change once B7 is decided).
+
+### 2026-11-13, B11 acceptance criteria: DRAFT, proposed by Nusrat, PENDING ANISHA
+
+Validity criteria per final session (a session that fails one is reported as invalid with the reason; it is never re-run without a
+repetition declared here first). No performance thresholds: results are reported whatever they are, with coverage and intervals.
+1. **Leak test passed**, Unity and Python: `session.json` `leak_test.passed` is true and `gt_path.py session <unity folder>` passes.
+2. **Every outcome recorded**: `results_unity.csv` has one row per run (`runs_per_setting`), `run_###/` and `python_trial_###.json` exist
+   for every run with the same numbers, `summary_unity.json` and `UNITY_FINAL_DONE.json` are written, and the bridge folder holds
+   `FINAL_RUN_DONE.json` and `summary.json`.
+3. **Every truth file accepted**: `gesture_data.py` accepts every `run_###/truth.jsonl`, and `gt_path.py run` every run folder (run.json,
+   grid.json, optimal_path.json, trail.csv).
+4. **No watchdog stop after start-up**: the bridge `summary.json` reports `watchdog.stops_reported_by_unity` 0 for the runs (a stop before
+   trial 1 starts is reported, not counted).
+5. **Run protocol recorded**: the bridge `run_info.json` machine state (power mode, power source) and `resources.csv`, and the programs
+   running and free memory before the session (written in the session report).
+
+### 2026-11-13, B7, B9 and B11 decided by Nusrat in Anisha's absence (PENDING HER CONFIRMATION; `upgrade_design.md` section 13)
+
+- **B7 = plan (b):** every final uses the test look sunbox_f2 with the test clips (point_mixamo_02, proceed_ik_03), the only plan the unchanged
+  `guard_run` accepts for all four settings. **unseen_look is a repeat of zoom_on** (the same configs, a second 20-run session: a repeatability
+  measure); research question 4 (an unseen look) is answered by comparing the finals with the development results. **In the bystanders
+  setting every person wears sunbox_f2**, so the commander can be told apart only by behaviour (the gesture after the question).
+- **B11 adopted:** the five validity criteria above, now `final_plan.json` `acceptance_criteria`. No performance thresholds.
+- **B9 in the freeze:** `final_plan.json` `unity_files_and_guard` names `Avatar/Config/final_v4.json` (`freeze_files`) and the Unity guard;
+  `freeze_v4.py` records their LF-normalised SHA-256 under `unity_files`.
+- **Changes in Anisha's files (allowed by Nusrat in this task):**
+  - `configs/v4/final_plan.json`: `test_assignment` (plan (b), per setting), `unity_files_and_guard`, `acceptance_criteria` filled, their
+    notes, `status` and the `unseen_look` note updated (no blank left; not frozen).
+  - `freeze_v4.py`: `unity_files()` (the B9 list read through the plan); the freeze records `unity_files` and refuses while a listed file is
+    missing; `problems()` (so `require_frozen`, the server's final mode and the final evaluation) finds a changed, added or removed Unity
+    file; the report lists them. `frozen.json` itself is not touched: the freeze is run by Nusrat, by hand.
+  - `tests/test_v4_frozen.py`: new `UnityFilesFreezeTests` (6 tests); the decided-values test now expects the three fields filled and no
+    blank; the blank-refusal test makes its own blank (the real plan has none).
+- Unity: `final_v4.json` `look_split` "test" for every setting; the four `sessions/final_*.json` notes; `FinalGuardV4Tests` (plan (b) in every
+  setting, unseen_look identical to zoom_on).
+
+### 2026-11-13, batch-mode rehearsal (development, declared in `upgrade_design.md` section 13): BATCH MODE DOES NOT WORK for v4
+
+Commit 9e58419; `finals_v4/run_protocol_v4.ps1` note `outputs/run_protocol_rehearsal_zoom_on_20261113_042517.txt` (free memory 3,253 MB;
+Chrome, the Claude app, the NVIDIA overlay and warp-svc running; power plan "AMD Ryzen Balanced", power mode Best performance on mains);
+server as in the zoom_on final without `--final-setting` (`bridge_guide_20261113_042519`, complete); Unity `-batchmode` `TrialPlayV4
+-workersConfig .../final_zoom_on.json`. **Result:** Unity built the ground-truth grid, created `trials_development_Task2_20261113_042813/`
+(only `config_used/`) and then hung for 7 minutes before the leak test, at `yield return new WaitForEndOfFrame()` (`TrialRunnerV4.cs`
+line 481): in `-batchmode` the Editor never reaches the end of a frame, so the coroutine never resumes. Stopped by the assistant (Unity
+killed; the server exited on the disconnect; the trial-count override removed). No run started; both folders are kept and are not results.
+The D2 to D4 sessions ran in the Editor window, where this wait returns. The B11 checker (`finals_v4/check_session_v4.ps1`) and the
+protocol note were shown to work on the D4 session R1 (all five criteria PASS) and in this rehearsal (the note) respectively; the end-to-end
+rehearsal is still to be done once the mode of the finals is decided.
+
+### 2026-11-13, pre-freeze completion (agreements with Anisha, rename, B11 update, disclosures; no freeze, no final)
+
+**Agreed with Anisha today (2026-11-13), recorded here before the freeze:**
+- **B7 confirmed:** every final uses the test look sunbox_f2 with the test clips (plan (b) above), in every setting.
+- **B11 confirmed as validity only** (no performance thresholds), with the update below.
+- **The freeze is run by Nusrat, by hand** (`python freeze_v4.py --freeze`); the AI never runs it and never writes `frozen.json` (CLAUDE.md
+  updated accordingly). B9 (the Unity freeze list) stays as decided by Nusrat above.
+
+**Rename (2026-11-13): the final setting `unseen_look` is now `zoom_on_repeat`.** Since B7 = plan (b) the fourth setting is a repeat of
+zoom_on, and its name now says so. Changed everywhere it is used: `final_plan.json` (`settings`, `test_assignment`), `final_v4.json`, the
+session config (`sessions/final_unseen_look.json` renamed `final_zoom_on_repeat.json`, same GUID), `bridge/server.py` `FINAL_CONTROL`,
+the docstrings of `final_guard_v4.py` and `hri_eval_final_v4.py` (both read the names from the plan), the Python and Unity tests and the
+procedure. The entries above keep the old name.
+
+**B11 update (2026-11-13, before the freeze; `final_plan.json` `acceptance_criteria`, `finals_v4/check_session_v4.ps1`, tests):**
+- (a) **A watchdog stop is a RESULT**: it is counted as a stop of its run (or as that run's failure when the run fails) and is never a reason
+  for invalidity. The earlier criterion 4 ("no watchdog stop after start-up") is removed; the checker prints the count as a result.
+- (b) **Added:** frozen hashes match (`freeze_v4.require_frozen` passes after the session), split guard passed (`data_splits_v4.guard_run` on
+  every run's looks and clips, final evaluation: test split only), all runs present (runs 1 to 20, each with a `results_unity.csv` row, a
+  `run_###` folder and a `python_trial_###.json`).
+- (c) **A setting that fails a criterion is reported as invalid, with the reason, and is never rerun** (the earlier wording allowed a
+  declared repetition; it no longer does).
+- The seven criteria: leak test passed; frozen hashes match; split guard passed; all runs present; every outcome recorded; every truth and
+  run file accepted; run protocol recorded. Checked on the D4 session R1 (`trials_development_Task2_20261113_014205` +
+  `bridge_guide_20261113_014023`): as a development session all PASS (frozen hashes N/A, not required in development); with `-Final` it is
+  refused on five criteria (not frozen, development data, 3 of 20 runs, no final markers, no protocol note given), as it must be.
+
+**Decision (Nusrat, 2026-11-13): the finals run in the Unity Editor window,** without `-batchmode`, as the development sessions D2 to D4 did.
+
+**Disclosures (before the freeze):**
+1. **Calibration replay mismatch.** `calibrate_v4.replay` (the reader re-run on `model_outputs.jsonl`) reads STOP on 419 of 894 PROCEED frames
+   of R1 (and on 47 POINT frames), where the live reader logged in `v4_log.jsonl` reads STOP on none (the D2/D3 entry above). Every reader
+   accuracy in the D3 report, including the per-look frame-level numbers quoted above, comes from that replay and may not describe the live
+   reader; they are development diagnostics, not results. **Code search (`git grep`, 2026-11-13):** `calibrate_v4` is imported only by
+   `tests/test_calibrate_v4.py`; it is not imported or run by `hri_eval_final_v4.py`, `hri_eval_dev_v4.py`, `hri_analysis_v4.py`,
+   `final_guard_v4.py`, `freeze_v4.py`, `bridge/server.py` or `paper_v4/figures_v4.py`, and no code reads its `calibrate_v4_*` output folders.
+   Its only trace in a config is the `calibrated` record of `gesture_reader.json` (the arm ratio, measured from the YOLO keypoints, not from
+   the replay). Its accuracies are not reported as results; the final evaluation computes everything from the live logs with
+   `hri_eval_dev_v4`'s code.
+2. **B12's coverage 0.8 was unreachable.** With frame-level coverage (every frame of the arm's movement counts) no swept value reached 0.8
+   (0.24 to 0.49), so B12 could not move any threshold: **all thresholds kept their committed values except the measured arm ratio**
+   (`point.arm_length_in_shoulder_widths` 1.4 -> 1.683, the median of 880 held in-plane POINT frames).
+3. **Batch mode hangs.** In `-batchmode` the run hangs before the leak test at `yield return new WaitForEndOfFrame()` (`TrialRunnerV4.cs` line
+   481; the batch rehearsal above). Not fixed; batch mode is not used.
+4. **Finals in the Editor window**, like D2 to D4 (the decision above): the same timing conditions as the development data.
+5. **RQ4 is answered as development versus finals.** No final uses a development look, so the unseen look (sunbox_f2) is compared with the
+   development sessions (sunbox_m1, sunbox_f1), not within the finals. The development numbers are **optimistic**: the design, the
+   calibrated arm ratio and every development check were made on those looks and clips, and the development sessions were watched and fixed
+   while they ran (the R3 stand fix). A difference between development and the finals therefore mixes the look with the clips, the seed
+   (1 vs 2), the session and this optimism; it is reported as such.
+
+**Unity and scripts (Nusrat's files):** `sessions/rehearsal_zoom_on.json` (identical to `final_zoom_on.json` except the development looks
+sunbox_m1 and sunbox_f1 and, through development mode, the development clips; two Edit Mode tests prove it and that it can never load sunbox_f2
+or a test clip); `finals_v4/run_session_v4.ps1` (one session end to end, `-Setting`, `-Rehearsal`, `-DryRun`; a final is never retried);
+`finals_v4/check_session_v4.ps1` (the seven criteria); `final_procedure_v4.md` (merge, rehearsal on main, freeze on a fresh branch with a pull
+request, finals on main in the order zoom_on, zoom_off, bystanders, zoom_on_repeat); the "pending her confirmation" notes of `final_v4.json`
+and the final session configs now say B7 is confirmed.
+
+**Changes in Anisha's files (allowed by Nusrat in this task, items Q1 to Q4):**
+- `configs/v4/final_plan.json`: `settings` and `test_assignment` key `unseen_look` -> `zoom_on_repeat` and their notes (Q1);
+  `acceptance_criteria` (seven criteria) and `acceptance_criteria_note` (Q2); `status` and `test_assignment_note` say B7 and B11 are confirmed.
+- `bridge/server.py`: `FINAL_CONTROL` key and the `--final-setting` help text (Q1).
+- `final_guard_v4.py`, `hri_eval_final_v4.py`: the setting names in the module docstrings (Q1; no code change, the names come from the plan).
+- `configs/v4/README.md`, `configs/v4/archive/results_manifest.json`: the setting names in their text (Q1).
+- `tests/test_v4_final.py`: `check_setting("zoom_on_repeat", ...)` (Q1).
+- `tests/test_v4_frozen.py`: the plan's settings and `repeat_of` under the new name (Q1); seven criteria and the docstring (Q2); new
+  `test_b11_is_validity_only_and_a_watchdog_stop_is_a_result` (no watchdog criterion, the seven criteria in order, the never-rerun rule, and
+  `check_session_v4.ps1` reporting exactly these criteria) (Q2).
+- `AUDIT.md`: this entry (Q1 to Q3). `CLAUDE.md`: the freeze is run by Nusrat by hand (Q4).
+- `hri_eval_final_v4.py` (follow-up the same day, allowed by Nusrat): Unity's watchdog stops are counted **per run** from each bridge
+  run's `messages.jsonl` (every telemetry header carries Unity's cumulative `watchdog_count`, `trial_index` and `trial_running`; an
+  increase is given to the run running in that message, else counted outside the runs; a run without telemetry is `not_evaluated`).
+  `eval.json` gets `watchdog_stops` (per run with the run's outcome, and a summary) and `eval.md` a table, as a RESULT per B11(a): it
+  refuses and invalidates nothing. Checked on the 23 v4 bridge folders under `outputs/`: in-run plus outside counts equal Unity's total
+  (`summary.json` `stops_reported_by_unity`) in every one (two sessions with one stop each). `hri_eval_dev_v4.py` is unchanged: it does
+  not share this code (the final evaluation adds the block after the shared `evaluate`). Tests: `tests/test_v4_final.py`
+  `WatchdogStopTests` (4 tests).
+- `freeze_v4.py` (follow-up, messages only, no logic): `require_frozen`'s refusal now says "until the freeze is run by hand" instead of
+  "until Anisha freezes". Not changed (outside the allowed change): the usage line of its docstring ("Anisha, after the development
+  evaluation"), `configs/v4/README.md` line 5, and the `label` of `configs/v4/frozen.json`, which the AI never edits (it says "until
+  Anisha freezes it"; the freeze keeps the label).

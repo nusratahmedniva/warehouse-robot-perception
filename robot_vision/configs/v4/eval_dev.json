@@ -4,7 +4,7 @@
   "status": "initial",
   "match_bearing_deg": 10.0,
   "distance_bins_m": [0.0, 1.5, 2.5, 4.0, 6.0],
-  "commands": ["POINT", "WAIT", "STOP", "NONE"],
+  "commands": ["POINT", "WAIT", "STOP", "PROCEED", "NONE"],
   "accuracy_phases": ["gesturing", "holding"],
   "why": {
     "accuracy_phases": "DECIDED 2026-11-08 (AUDIT.md 14.16), before any development recording: frame-level accuracy per command counts only the truth phases gesturing and holding (the worker is performing the command). idle and start_delay rows have the truth NONE (they feed only the false-read rate); returning rows keep the command while the arm goes down and are counted in neither the accuracy nor the coverage. Truth rows come every 0.05 s, a hold lasts 3.0 to 4.5 s.",

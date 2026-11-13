@@ -9,6 +9,8 @@ namespace WarehouseHRI
         Waypoint, // pass-through (e.g. start point A): exactly one branch, no worker, no question
         Junction, // a worker stands at workerStand; the robot asks which branch to take
         Endpoint, // end of a road: a possible goal B
+        Start,    // v4 (2026-11-12, P8): the start point A that asks like a junction (a worker stands at workerStand); its
+                  // arrival direction is the robot's start heading (the node's own rotation)
     }
 
     [Serializable]
@@ -30,6 +32,8 @@ namespace WarehouseHRI
 
         public bool IsEndpoint => kind == RoadNodeKind.Endpoint;
         public bool IsJunction => kind == RoadNodeKind.Junction;
+        /// <summary>The robot asks here (a junction, or the v4 start node): a worker stands at workerStand.</summary>
+        public bool IsAskNode => kind == RoadNodeKind.Junction || kind == RoadNodeKind.Start;
         public Vector3 Position => transform.position;
 
         /// <summary>The node reached by <paramref name="command"/>, or null when this node has no such branch.</summary>

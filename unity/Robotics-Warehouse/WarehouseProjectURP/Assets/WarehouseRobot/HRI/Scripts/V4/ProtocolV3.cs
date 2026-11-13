@@ -58,6 +58,9 @@ namespace WarehouseHRI.V4
         /// <summary>vertical_fov_deg = -1 in a command: keep the configured default (no zoom).</summary>
         public const float KeepDefaultFov = -1f;
 
+        /// <summary>tilt_deg = -1 in a command: the configured default tilt (level). Amendment of 2026-11-12 (P6).</summary>
+        public const float DefaultTilt = -1f;
+
         /// <summary>Goal keys forbidden since version 2 (docs/protocol.md, "Goal B never reaches Python").</summary>
         public static readonly string[] GoalKeys =
             { "goal", "goal_point", "goal_x", "goal_z", "end_point", "end_point_x", "end_point_z", "point_b", "b" };
@@ -69,6 +72,7 @@ namespace WarehouseHRI.V4
         {
             "true_gesture", "true_commander", "commander_truth", "gesture_truth", "worker_label", "truth",
             "true_command", "is_commander", "worker_id", "point_angle_deg", "look", "clip", "phase", "arm",
+            "ankle_height_m",      // 2026-11-12: the new optional truth.jsonl field (docs/protocol_v3.md amendment 2)
         };
 
         static readonly Regex KeyPattern = new Regex("\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:", RegexOptions.Compiled);
@@ -97,7 +101,7 @@ namespace WarehouseHRI.V4
         /// </summary>
         public static string MissingCommandKey(string headerJson)
         {
-            foreach (var key in new[] { "vertical_fov_deg", "hud" })
+            foreach (var key in new[] { "vertical_fov_deg", "tilt_deg", "hud" })
                 if (!Regex.IsMatch(headerJson ?? "", "\"" + key + "\"\\s*:")) return key;
             return null;
         }
@@ -121,6 +125,21 @@ namespace WarehouseHRI.V4
                 error = $"vertical_fov_deg {requested} must be -1 (keep the default) or in (0, 180)";
                 return false;
             }
+            applied = Mathf.Clamp(requested, minDeg, maxDeg);
+            return true;
+        }
+
+        /// <summary>
+        /// The tilt to apply for a commanded tilt_deg (docs/protocol_v3.md amendment 3): -1 = defaultDeg (level); a value in
+        /// [0, 90) is clamped to [minDeg, maxDeg]. Anything else is an invalid command (false, with the reason).
+        /// </summary>
+        public static bool TryResolveTilt(float requested, float defaultDeg, float minDeg, float maxDeg, out float applied, out string error)
+        {
+            applied = defaultDeg;
+            error = null;
+            if (float.IsNaN(requested) || float.IsInfinity(requested)) { error = "tilt_deg is not a finite number"; return false; }
+            if (requested == DefaultTilt) return true;
+            if (!(requested >= 0f && requested < 90f)) { error = $"tilt_deg {requested} must be -1 (level, the default) or in [0, 90)"; return false; }
             applied = Mathf.Clamp(requested, minDeg, maxDeg);
             return true;
         }

@@ -309,7 +309,7 @@ class IsolationTests(unittest.TestCase):
             rel = p.relative_to(ROOT)
             # the evaluation modules themselves (final evaluation and analysis are evaluation code too)
             if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in (
-                    "hri_eval_dev_v4.py", "hri_eval_final_v4.py", "hri_analysis_v4.py"):
+                    "hri_eval_dev_v4.py", "hri_eval_final_v4.py", "hri_analysis_v4.py", "calibrate_v4.py"):   # calibrate_v4: P4, 2026-11-12
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

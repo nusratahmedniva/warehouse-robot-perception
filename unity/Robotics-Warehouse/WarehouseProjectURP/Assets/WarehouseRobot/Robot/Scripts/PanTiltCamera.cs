@@ -30,6 +30,12 @@ namespace WarehouseRobot
         public float FovMaxDeg => zoom != null ? zoom.fov_max_deg : DefaultFovDeg;
         /// <summary>Vertical field of view the camera renders with now.</summary>
         public float FovDeg => cam != null ? cam.fieldOfView : 0f;
+        /// <summary>Current tilt in degrees, &gt; 0 = up (v4, P6); the configured default (0, level) in v3.</summary>
+        public float TiltDeg { get; private set; }
+        public float DefaultTiltDeg => cfg != null ? cfg.tilt_deg : 0f;
+        /// <summary>Tilt range (v4: robot_unity_v4.json pan_tilt_camera.tilt_min_deg / tilt_max_deg); without it both equal the default.</summary>
+        public float TiltMinDeg => cfg != null && zoom != null ? cfg.tilt_min_deg : DefaultTiltDeg;
+        public float TiltMaxDeg => cfg != null && zoom != null ? cfg.tilt_max_deg : DefaultTiltDeg;
 
         public void Bind(Camera camera) => cam = camera;
 
@@ -54,6 +60,18 @@ namespace WarehouseRobot
             return cam.fieldOfView;
         }
 
+        /// <summary>
+        /// Tilt (v4, P6): degrees, &gt; 0 = up, clamped to [TiltMinDeg, TiltMaxDeg]. The camera turns about its own x axis on
+        /// the pan mount; takes effect from the next render, whose frame_pan_tilt header reports it. Returns the value applied.
+        /// </summary>
+        public float SetTiltDeg(float deg)
+        {
+            if (cfg == null || cam == null) return TiltDeg;
+            TiltDeg = Mathf.Clamp(deg, TiltMinDeg, TiltMaxDeg);
+            cam.transform.localRotation = Quaternion.Euler(-TiltDeg, 0f, 0f);     // Unity: + x rotation pitches down
+            return TiltDeg;
+        }
+
         void Awake()
         {
             var rig = GetComponentInParent<RobotRig>();
@@ -72,16 +90,21 @@ namespace WarehouseRobot
             cam.targetTexture = Image;
             cam.enabled = true; // saved disabled in the prefab so it never draws to the screen before this point
             SetPanDeg(0f);
+            TiltDeg = cfg.tilt_deg;
         }
 
         void Start()
         {
             if (cfg == null) return;
             var robot = GetComponentInParent<RobotRig>().transform;
-            // The widest view the camera can take (the zoom range never exceeds it in v3: no zoom).
-            var problems = SelfVisibilityViolations(robot, cam.transform.position, Mathf.Max(cfg.vertical_fov_deg, FovMaxDeg), cfg.near_m);
+            // The widest view the camera can take (the zoom range never exceeds it in v3: no zoom), at every tilt it can take.
+            float vfov = Mathf.Max(cfg.vertical_fov_deg, FovMaxDeg);
+            var problems = TiltMaxDeg > TiltMinDeg || TiltMinDeg != 0f
+                ? WarehouseHRI.V4.PanTiltGeometry.SelfVisibilityViolations(robot, transform.position, vfov, (float)cfg.width_px / cfg.height_px, cfg.near_m,
+                                                 cfg.pan_min_deg, cfg.pan_max_deg, TiltMinDeg, TiltMaxDeg)
+                : SelfVisibilityViolations(robot, cam.transform.position, vfov, cfg.near_m);
             if (problems.Count == 0)
-                Debug.Log("[PanTiltCamera] Self-visibility check passed: no robot part can appear in the image at any pan angle.", this);
+                Debug.Log($"[PanTiltCamera] Self-visibility check passed: no robot part can appear in the image at any pan angle and tilt {TiltMinDeg:0}..{TiltMaxDeg:0} deg.", this);
             else
                 Debug.LogError("[PanTiltCamera] Robot parts can appear in the pan-tilt image: " + string.Join(", ", problems), this);
         }
