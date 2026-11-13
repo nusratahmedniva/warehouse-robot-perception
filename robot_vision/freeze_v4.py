@@ -130,7 +130,7 @@ def require_frozen(repo: Path = REPO, require_models: bool = True) -> dict:
     """The frozen record, or SystemExit: a final run or final evaluation needs frozen = true and every hash matching."""
     if not is_frozen(repo):
         raise SystemExit("configs/v4/frozen.json is not frozen (\"frozen\": false): final runs and final evaluations are refused "
-                         "until Anisha freezes the v4 configs after the development evaluation (python freeze_v4.py --freeze).")
+                         "until the freeze is run by hand after the development evaluation (python freeze_v4.py --freeze).")
     p = problems(repo, require_models)
     if p:
         raise SystemExit("the v4 freeze is broken: " + "; ".join(p))

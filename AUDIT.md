@@ -1688,4 +1688,15 @@ and the final session configs now say B7 is confirmed.
   `test_b11_is_validity_only_and_a_watchdog_stop_is_a_result` (no watchdog criterion, the seven criteria in order, the never-rerun rule, and
   `check_session_v4.ps1` reporting exactly these criteria) (Q2).
 - `AUDIT.md`: this entry (Q1 to Q3). `CLAUDE.md`: the freeze is run by Nusrat by hand (Q4).
-- Not changed: `freeze_v4.py` and its messages still say "until Anisha freezes" (text only; the procedure and CLAUDE.md say who runs it).
+- `hri_eval_final_v4.py` (follow-up the same day, allowed by Nusrat): Unity's watchdog stops are counted **per run** from each bridge
+  run's `messages.jsonl` (every telemetry header carries Unity's cumulative `watchdog_count`, `trial_index` and `trial_running`; an
+  increase is given to the run running in that message, else counted outside the runs; a run without telemetry is `not_evaluated`).
+  `eval.json` gets `watchdog_stops` (per run with the run's outcome, and a summary) and `eval.md` a table, as a RESULT per B11(a): it
+  refuses and invalidates nothing. Checked on the 23 v4 bridge folders under `outputs/`: in-run plus outside counts equal Unity's total
+  (`summary.json` `stops_reported_by_unity`) in every one (two sessions with one stop each). `hri_eval_dev_v4.py` is unchanged: it does
+  not share this code (the final evaluation adds the block after the shared `evaluate`). Tests: `tests/test_v4_final.py`
+  `WatchdogStopTests` (4 tests).
+- `freeze_v4.py` (follow-up, messages only, no logic): `require_frozen`'s refusal now says "until the freeze is run by hand" instead of
+  "until Anisha freezes". Not changed (outside the allowed change): the usage line of its docstring ("Anisha, after the development
+  evaluation"), `configs/v4/README.md` line 5, and the `label` of `configs/v4/frozen.json`, which the AI never edits (it says "until
+  Anisha freezes it"; the freeze keeps the label).
