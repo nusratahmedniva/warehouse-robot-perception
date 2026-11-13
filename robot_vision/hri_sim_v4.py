@@ -810,7 +810,9 @@ def two_view_study(goals=("E1", "E2", "E3"), sigmas=(0.0,), shifts=(0.4,), seeds
 
 AB_CONFIG = "configs/v4/experiments/scenarios_ab.json"
 DETECTION_OFF = {"second_opinion": False, "reject_impossible": False, "backtrack": False}
-DETECTION_ON = {"second_opinion": True, "reject_impossible": True, "backtrack": True}
+# "on" of the experiments = second opinion + reject impossible; backtrack stays off (review of 2026-11-13, AUDIT.md 16.10: it was never useful
+# in 80 runs). The switch itself is kept in the controller.
+DETECTION_ON = {"second_opinion": True, "reject_impossible": True, "backtrack": False}
 
 
 def load_scenarios(path: str = AB_CONFIG) -> dict:
@@ -848,7 +850,7 @@ def parse_experiment(name: str) -> tuple[str, str]:
 
 def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict | None = None,
                 control_path: str = "configs/v4/control.json", commander_path: str = "configs/v4/commander.json",
-                gcfg: GestureSimConfig | None = None, sim_cfg: SimConfig | None = None) -> dict:
+                gcfg: GestureSimConfig | None = None, sim_cfg: SimConfig | None = None, hook=None) -> dict:
     """Experiment A1 to A4 / B1 to B4 for one run seed: the controller (lie-detection switches from `detection`, else the
     control config's own), the simulator, the goal and the map. Returns {"sim", "goal", "road", "v4", "spec", "experiment",
     "set", "seed", "lie_probability", "optimal_m"}; sim.run(goal) runs it. The goal and the placements come from the seed only."""
@@ -869,6 +871,8 @@ def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict 
     if goal == "random_endpoint":
         goal = random.Random(f"{seed}|goal").choice(sorted(road.endpoints()))
     ctrl = hv.ControllerV4(base, v4, cm.load_config(commander_path), road)
+    if hook is not None:                                              # analysis only: change the controller object of this run (counterfactuals)
+        hook(ctrl)
     avoid = scen.get("avoid_people", {})
     clearance = (ctrl.s["corridor_half_width_m"] + hc.load_json("configs/robot.json")["robot_width_m"] / 2.0) if avoid.get("enabled") else None
     spec = SceneSpec(proceed_forward=True, anyone_commands=True, point_back_when_lost=True, record_truthful=True,

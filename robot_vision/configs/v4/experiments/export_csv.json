@@ -58,6 +58,9 @@
       "field": "lies_fooled"
     },
     {
+      "field": "setting"
+    },
+    {
       "field": "lie_probability"
     },
     {
@@ -175,6 +178,9 @@
     },
     {
       "field": "final_branch"
+    },
+    {
+      "field": "arrival_candidate"
     },
     {
       "field": "distance_est_m"

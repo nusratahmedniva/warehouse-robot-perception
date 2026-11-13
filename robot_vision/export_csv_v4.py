@@ -66,6 +66,7 @@ RUN_FIELDS = {
     "second_opinions": "dialogs started with a further person (ask_next)", "rejections": "answers rejected as impossible",
     "backtracks": "backtracks started", "lies_given": "see Definitions", "lies_detected": "see Definitions",
     "lies_corrected": "see Definitions", "lies_fooled": "see Definitions",
+    "setting": "lie-detection setting label of the session (session.json 'lie_detection': off, on, a, b, bc, abc, mirror), empty when not recorded",
     "second_opinion_on": "the switch of the control config used", "reject_impossible_on": "the switch", "backtrack_on": "the switch",
 }
 DIALOG_FIELDS = {
@@ -84,6 +85,8 @@ DIALOG_FIELDS = {
     "distance_est_m": "the robot's 360-camera estimate at the ask", "decision": "accepted / rejected:<reason> / unclear",
     "decision_reason": "the controller's logged reasons for this ask", "outvoted": "the answer was outvoted by the others (second opinion)",
     "withdrawn": "the answer was withdrawn by a backtrack", "final_branch": "the branch the robot took at this visit",
+    "arrival_candidate": "true when one of the two depth readings (the pointed direction and its mirror image) of the frames that gave branch_read, or of the "
+                         "ask's frames when nothing was accepted, was the arrival road; empty when no frame carried a resolution",
 }
 
 
@@ -231,6 +234,7 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap) -> tuple[dict, list[di
             accepted = rec.get("result") == "accepted" and last
             decision = f"rejected:{rejected['reason']}" if rejected else ("accepted" if accepted else "unclear")
             read_cmd = ev._read_in(run, t0, t1)
+            window = [r for r in run.rows if t0 - 1e-9 <= r["t"] <= t1 + 1e-9 and r.get("resolution")]
             if accepted:
                 branch_read = rec.get("read")
             else:
@@ -238,6 +242,9 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap) -> tuple[dict, list[di
                 branch_read = labels[-1] if labels else "NONE"
             if rejected:
                 branch_read = "NONE"
+            used = [r for r in window if r.get("label") == branch_read] if branch_read in hc.DIRECTIONS else window
+            arrival_candidate = (any(c["target"] == "ARRIVAL" for r in used for c in r["resolution"]["candidates"])
+                                 if any(r["resolution"]["candidates"] for r in used) else None)
             t_read = rec.get("t_accept") if accepted else (rejected["t"] if rejected else None)
             true_d, look = ev._true_distance(run, t0, a["robot"])
             est = a.get("distance_est_m", -1.0)
@@ -256,7 +263,7 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap) -> tuple[dict, list[di
                 "decision_reason": "; ".join(f"{e['event']}: {e['reason']}" for e in evs if e["event"] != "answer_accepted") or
                                    ("accepted" if accepted else ""),
                 "outvoted": a["serial"] in outvoted, "withdrawn": a["serial"] in withdrawn,
-                "final_branch": final_branch(node, t0), "_true": true_branch,
+                "final_branch": final_branch(node, t0), "arrival_candidate": arrival_candidate, "_true": true_branch,
             })
     # lies per ask
     detected = corrected = fooled = 0
@@ -282,7 +289,7 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap) -> tuple[dict, list[di
         trail_m, optimal_m, source = truth_run.get("travelled_m"), truth_run["optimal_m"], "road_route"
     run_row = {
         "experiment": session.get("experiment", truth_run.get("experiment")), "set": session.get("set", truth_run.get("set")),
-        "lie_probability": session.get("lie_probability"), "session": run.session, "run": run.name, "trial": run.trial,
+        "lie_probability": session.get("lie_probability"), "setting": session.get("lie_detection"), "session": run.session, "run": run.name, "trial": run.trial,
         "seed": truth_run.get("seed"), "looks": "+".join(sorted(run.looks)), "route": ">".join(route), "goal": goal,
         "outcome": truth_run.get("outcome"), "failure_reason": truth_run.get("failure_reason"), "time_s": truth_run.get("total_s"),
         "trail_m": trail_m, "optimal_m": optimal_m,

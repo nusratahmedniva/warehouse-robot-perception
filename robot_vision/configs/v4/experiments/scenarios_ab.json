@@ -9,52 +9,121 @@
     "why": "Decided 2026-11-13 (Anisha, AUDIT.md 16.5): the simulator's routes are straight lines, so with a second person to ask the robot bumped or stalled at the other avatar even with truthful workers (A3 detection on: 5 of 20 collisions). When enabled the simulator adds a detour waypoint around any person a route passes closer than clearance = the safety corridor half-width of hri_control.json (0.6 m) + half the robot width of robot.json (0.3 m) = 0.9 m, as Unity's NavMesh agent would. No new tuned number; the 1.25 factor of the waypoint offset is geometry (both legs clear the person), not a setting."
   },
   "sets": {
-    "A": {"lie_probability": 0.0, "note": "all workers truthful"},
-    "B": {"lie_probability": 0.2, "note": "each gesture of each worker is a lie with this probability, drawn per worker per run (AUDIT.md 16.2 decision 2)"}
+    "A": {
+      "lie_probability": 0.0,
+      "note": "all workers truthful"
+    },
+    "B": {
+      "lie_probability": 0.2,
+      "note": "each gesture of each worker is a lie with this probability, drawn per worker per run (AUDIT.md 16.2 decision 2)"
+    }
   },
   "maps": {
     "corridor": {
       "label": "A1: one straight road A to B, no branch. CHOSEN: 40 m north (the length of the route A to E1 of the v4 map).",
       "start": "A",
       "nodes": {
-        "A": {"x": 6.25, "z": -20.0, "kind": "start", "start_yaw_deg": 0.0},
-        "B": {"x": 6.25, "z": 20.0, "kind": "endpoint"}
+        "A": {
+          "x": 6.25,
+          "z": -20.0,
+          "kind": "start",
+          "start_yaw_deg": 0.0
+        },
+        "B": {
+          "x": 6.25,
+          "z": 20.0,
+          "kind": "endpoint"
+        }
       },
-      "branches": {"A": {"FORWARD": "B"}},
-      "worker_stand": {"corner_offset_m": 2.5}
+      "branches": {
+        "A": {
+          "FORWARD": "B"
+        }
+      },
+      "worker_stand": {
+        "corner_offset_m": 2.5
+      }
     },
     "turn": {
       "label": "A2: A to B to C, one 90-degree right turn at B, no other branch. CHOSEN: 20 m north, then 20 m east.",
       "start": "A",
       "nodes": {
-        "A": {"x": 6.25, "z": -20.0, "kind": "start", "start_yaw_deg": 0.0},
-        "B": {"x": 6.25, "z": 0.0, "kind": "junction", "arrive_from": "A"},
-        "C": {"x": 26.25, "z": 0.0, "kind": "endpoint"}
+        "A": {
+          "x": 6.25,
+          "z": -20.0,
+          "kind": "start",
+          "start_yaw_deg": 0.0
+        },
+        "B": {
+          "x": 6.25,
+          "z": 0.0,
+          "kind": "junction",
+          "arrive_from": "A"
+        },
+        "C": {
+          "x": 26.25,
+          "z": 0.0,
+          "kind": "endpoint"
+        }
       },
-      "branches": {"A": {"FORWARD": "B"}, "B": {"RIGHT": "C"}},
-      "worker_stand": {"corner_offset_m": 2.5}
+      "branches": {
+        "A": {
+          "FORWARD": "B"
+        },
+        "B": {
+          "RIGHT": "C"
+        }
+      },
+      "worker_stand": {
+        "corner_offset_m": 2.5
+      }
     }
   },
   "scenarios": {
     "1": {
       "title": "straight corridor A to B, 2 avatars, one on each side",
-      "map": "corridor", "goal": "B",
-      "layout": {"kind": "beside", "people": 2, "lateral_m": 2.0, "before_m": 3.0}
+      "map": "corridor",
+      "goal": "B",
+      "layout": {
+        "kind": "beside",
+        "people": 2,
+        "lateral_m": 2.0,
+        "before_m": 3.0
+      }
     },
     "2": {
       "title": "A to B to C with a right-angle turn at B, 2 avatars at each asking node (A and B), one on each side",
-      "map": "turn", "goal": "C",
-      "layout": {"kind": "beside", "people": 2, "lateral_m": 2.0, "before_m": 3.0}
+      "map": "turn",
+      "goal": "C",
+      "layout": {
+        "kind": "beside",
+        "people": 2,
+        "lateral_m": 2.0,
+        "before_m": 3.0
+      }
     },
     "3": {
       "title": "A to a random goal on the v4 map, people beside the road at every asking node (A and J1 to J4)",
-      "map": "roadmap", "goal": "random_endpoint",
-      "layout": {"kind": "beside", "people": 2, "lateral_m": 2.0, "before_m": 3.0}
+      "map": "roadmap",
+      "goal": "random_endpoint",
+      "layout": {
+        "kind": "beside",
+        "people": 2,
+        "lateral_m": 2.0,
+        "before_m": 3.0
+      }
     },
     "4": {
       "title": "A to a random goal on the v4 map, people at random places around every asking node",
-      "map": "roadmap", "goal": "random_endpoint",
-      "layout": {"kind": "random", "people": 2, "half_size_m": 3.0, "min_road_m": 1.0, "min_sep_m": 1.0}
+      "map": "roadmap",
+      "goal": "random_endpoint",
+      "layout": {
+        "kind": "random",
+        "people": 2,
+        "half_size_m": 3.0,
+        "min_road_m": 1.0,
+        "min_sep_m": 1.0
+      }
     }
   },
   "why": {
@@ -64,5 +133,18 @@
     "trial_timeout_s": "CHOSEN: the v4 value of final_plan.json (270 s). A run that backtracks and runs out of time is a FAILURE (timeout) and is reported as such.",
     "first_seed": "CHOSEN: run k of a scenario uses seed first_seed + k - 1 (1 to 20). Simulator seeds only; no final run is involved.",
     "gesture simulation": "The neutral defaults of hri_sim_v4.GestureSimConfig (coverage 1, accuracy 1, no angle noise) and SimConfig (no 360 noise): the lie is the only error source; the mirror ambiguity of the pointing arm and the second view stay as they are."
+  },
+  "detection": {
+    "off": {
+      "second_opinion": false,
+      "reject_impossible": false,
+      "backtrack": false
+    },
+    "on": {
+      "second_opinion": true,
+      "reject_impossible": true,
+      "backtrack": false
+    },
+    "why": "Review of 2026-11-13 (Anisha, AUDIT.md 16.10): 'on' of the experiments is second opinion + reject impossible. Backtrack (rule c) is kept as a switch in control.json but is OFF in the experiments: in 80 detection-on runs it was never used and in the 80 reject + backtrack runs it fired once and that run ended in the wrong goal. hri_sim_v4.DETECTION_OFF / DETECTION_ON equal these two blocks (a test pins it)."
   }
 }

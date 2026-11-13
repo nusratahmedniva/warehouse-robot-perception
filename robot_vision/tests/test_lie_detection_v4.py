@@ -446,6 +446,18 @@ class RuleC_Backtrack(unittest.TestCase):
         self.assertEqual(bt["withdrawn_serial"], lied["serial"])
 
 
+class DetectionSettings(unittest.TestCase):
+    def test_the_experiments_detection_blocks_are_the_declared_ones_and_backtrack_is_off(self):
+        d = sv.load_scenarios()["detection"]
+        self.assertEqual({k: d["off"][k] for k in OFF}, OFF)
+        self.assertEqual({k: d["on"][k] for k in ON}, ON)
+        self.assertEqual(ON, {"second_opinion": True, "reject_impossible": True, "backtrack": False})
+
+    def test_backtrack_is_still_a_working_switch(self):
+        r = run("A3", "E3", [None, "LEFT"], BACKTRACK, NORTH)
+        self.assertEqual(len(events(r, "backtrack")), 1)
+
+
 class Scenarios(unittest.TestCase):
     def test_the_two_small_maps_are_consistent(self):
         scen = sv.load_scenarios()

@@ -9,13 +9,14 @@ exports runs.csv and dialogs.csv (export_csv_v4.py, columns from configs/v4/expe
 table.json). Set A with detection on is an extra beyond the plan (it shows what detection costs when nobody lies).
 
 Usage (from robot_vision/):
-  python run_experiments_ab_v4.py [--runs 20] [--timeout-s 270] [--experiments A1 B3 ...] [--settings off on a b bc ab] [--label x]
+  python run_experiments_ab_v4.py [--runs 20] [--timeout-s 270] [--experiments A1 B3 ...] [--settings off on a b bc abc mirror mirror2] [--label x]
 Writes a new folder <output_root>/experiments_ab_v4_<time>[_label]/ (never overwrites) with sessions/, runs.csv, dialogs.csv, table.md,
 table.json, config_used/ and run.json (git commit, runs, timeout)."""
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import statistics as st
 from collections import Counter, defaultdict
@@ -24,26 +25,73 @@ from pathlib import Path
 import export_csv_v4 as ex
 import gesture_data as gd
 import hri_analysis as ha
+import hri_control_v4 as hv
 import hri_eval_dev_v4 as ev
 import hri_sim as hs
 import hri_sim_v4 as sv
 
 EXPERIMENTS = ("A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4")
 # the lie-detection settings: off / on are the plan's; the others show one rule or a pair alone (an extra beyond the plan)
+# off / on are the plan's ("on" = a + b since the review of 2026-11-13: backtrack stays off); the others show one rule or a pair alone, or
+# the counterfactual 'mirror' (extras; AUDIT.md 16.10)
 SETTINGS = {
     "off": sv.DETECTION_OFF,
     "on": sv.DETECTION_ON,
     "a": {"second_opinion": True, "reject_impossible": False, "backtrack": False},
     "b": {"second_opinion": False, "reject_impossible": True, "backtrack": False},
     "bc": {"second_opinion": False, "reject_impossible": True, "backtrack": True},
-    "ab": {"second_opinion": True, "reject_impossible": True, "backtrack": False},
+    "abc": {"second_opinion": True, "reject_impossible": True, "backtrack": True},
+    "mirror": sv.DETECTION_ON,
+    "mirror2": sv.DETECTION_ON,
 }
 ORDER = list(SETTINGS)
-NAMES = {"off": "off", "on": "on (a+b+c)", "a": "a: second opinion only", "b": "b: reject only", "bc": "b+c: reject + backtrack",
-         "ab": "a+b: second opinion + reject"}
+NAMES = {"off": "off", "on": "on (a+b)", "a": "a: second opinion only", "b": "b: reject only", "bc": "b+c: reject + backtrack",
+         "abc": "a+b+c (with backtrack)", "mirror": "a+b + COUNTERFACTUAL 1: reject when either reading is the arrival road",
+         "mirror2": "a+b + COUNTERFACTUAL 2: such a reading is ambiguous -> second view from 0.8 m aside"}
+
+
+def mirror_counterfactual(ctrl) -> None:
+    """ANALYSIS ONLY, not in the controller (review of 2026-11-13: not applied before Anisha confirms): the proposed fix, rule (b) also rejects
+    an answer when either of the two depth readings (the pointed direction or its mirror image) is the arrival road, although the other one
+    resolved to a branch."""
+    original = ctrl._rejection
+
+    def patched(command, res, why):
+        r = original(command, res, why)
+        if r is None and res is not None and command is not None and any(c["target"] == "ARRIVAL" for c in res.candidates):
+            return ("arrival_mirror", "one of the two depth readings is the arrival road")
+        return r
+    ctrl._rejection = patched
+
+
+HOOKS = {"mirror": mirror_counterfactual}
+
+
+@contextlib.contextmanager
+def mirror_second_view_counterfactual():
+    """ANALYSIS ONLY (counterfactual 2): while active, a pointed direction that resolved to a branch although the other of its two depth
+    readings is the arrival road is treated like the two-branch ambiguity: unclear, so the existing second view (move 0.8 m aside, keep only
+    the reading both views agree on, not counted as an ask) decides. hri_control_v4.resolve_point is restored afterwards."""
+    original = hv.resolve_point
+
+    def patched(point, branch_yaws, arrival_yaw, robot_yaw, max_gap_deg, use_crosscheck=False):
+        res = original(point, branch_yaws, arrival_yaw, robot_yaw, max_gap_deg, use_crosscheck)
+        if res.command is not None and not res.ambiguous and any(c["target"] == "ARRIVAL" for c in res.candidates):
+            return hv.Resolution(None, "ambiguous: one reading is the arrival road", res.candidates, ambiguous=True)
+        return res
+    hv.resolve_point = patched
+    try:
+        yield
+    finally:
+        hv.resolve_point = original
+
+
+CONTEXTS = {"mirror2": mirror_second_view_counterfactual}
 
 
 def detection_label(row: dict) -> str:
+    if row.get("setting"):
+        return row["setting"]
     flags = {"second_opinion": bool(row.get("second_opinion_on")), "reject_impossible": bool(row.get("reject_impossible_on")),
              "backtrack": bool(row.get("backtrack_on"))}
     return next((k for k, v in SETTINGS.items() if v == flags), "partial")
@@ -59,7 +107,8 @@ def run_all(out_root: Path, runs: int, timeout_s: float, experiments=EXPERIMENTS
     for name in experiments:
         for label in settings:
             det = SETTINGS[label]
-            results = [sv.run_scenario(name, first + k, det, scen=scen, sim_cfg=cfg) for k in range(runs)]
+            with CONTEXTS.get(label, contextlib.nullcontext)():
+                results = [sv.run_scenario(name, first + k, det, scen=scen, sim_cfg=cfg, hook=HOOKS.get(label)) for k in range(runs)]
             pairs.append(sv.export_session(results, out_root, True, seed=first, name=f"{name}_{label}",
                                            road_cfg=results[0]["road_cfg"], v4_override=results[0]["v4_config"],
                                            session_extra={"experiment": name, "set": name[0],
@@ -116,8 +165,42 @@ def markdown(rows: list[dict], meta: dict) -> str:
     lines += ["", "Lies: given = lying gestures in truth.jsonl; detected = rejected, outvoted or withdrawn by a backtrack (of those given); "
               "corrected = detected and the visit ended with the true branch (of those detected); fooled = acted on and not the true branch "
               "(of those given). A lie that is neither detected nor fooled was ignored or read as the right branch. "
-              "Detection 'on' = second opinion (a) + reject impossible (b) + backtrack (c). Set A with detection on, and the rule-by-rule "
-              "settings, are extras beyond the plan."]
+              "Detection 'on' = second opinion (a) + reject impossible (b); backtrack (c) is off (AUDIT.md 16.10). Set A with detection on, and the "
+              "rule-by-rule and counterfactual settings, are extras beyond the plan."]
+    return "\n".join(lines) + "\n"
+
+
+def arrival_mirror_report(run_rows: list[dict], dialog_rows: list[dict]) -> dict:
+    """How often a worker pointing back along the arrival road (BACK) is read as a branch because the mirror reading lands on one, per
+    experiment and setting; and how often an accepted answer had the arrival road as one of its two readings (the cost of rejecting those)."""
+    setting_of = {r["session"]: detection_label(r) for r in run_rows}
+    groups: dict = defaultdict(list)
+    for d in dialog_rows:
+        groups[(d["experiment"], setting_of.get(d["session"], "?"))].append(d)
+    out = []
+    for (exp, setting), rows in sorted(groups.items(), key=lambda kv: (kv[0][0], ORDER.index(kv[0][1]) if kv[0][1] in ORDER else 99)):
+        back = [d for d in rows if d["direction_shown"] == "BACK"]
+        acc = [d for d in back if d["decision"] == "accepted" and d["branch_read"] in ("LEFT", "FORWARD", "RIGHT")]
+        rej = [d for d in back if d["decision"].startswith("rejected")]
+        accepted = [d for d in rows if d["decision"] == "accepted"]
+        flagged = [d for d in accepted if d["arrival_candidate"]]
+        good = [d for d in flagged if d["truthful"] and d["correct_branch"]]
+        out.append({"experiment": exp, "setting": setting, "asks": len(rows), "back_shown": len(back),
+                    "back_truthful": sum(bool(d["truthful"]) for d in back),
+                    "back_read_as_a_branch": len(acc), "back_rejected": len(rej), "back_unclear": len(back) - len(acc) - len(rej),
+                    "accepted_asks": len(accepted), "accepted_with_arrival_reading": len(flagged),
+                    "of_which_truthful_and_correct": len(good), "of_which_wrong_or_lie": len(flagged) - len(good)})
+    return {"rows": out}
+
+
+def mirror_markdown(rep: dict) -> str:
+    lines = ["# A worker pointing back along the arrival road (SIMULATOR; AUDIT.md 16.10)", "",
+             "| experiment | setting | asks | BACK shown | (truthful) | read as a branch | rejected | unclear | accepted asks | accepted with an arrival-road reading "
+             "| (truthful and correct) | (wrong or lie) |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in rep["rows"]:
+        lines.append(f"| {r['experiment']} | {NAMES.get(r['setting'], r['setting'])} | {r['asks']} | {r['back_shown']} | {r['back_truthful']} | "
+                     f"{r['back_read_as_a_branch']} | {r['back_rejected']} | {r['back_unclear']} | {r['accepted_asks']} | "
+                     f"{r['accepted_with_arrival_reading']} | {r['of_which_truthful_and_correct']} | {r['of_which_wrong_or_lie']} |")
     return "\n".join(lines) + "\n"
 
 
@@ -151,9 +234,13 @@ def main(argv=None) -> None:
     meta = {"runs": a.runs, "timeout_s": a.timeout_s, "first_seed": int(scen["first_seed"]), "experiments": a.experiments,
             "settings": a.settings, "source": "simulator"}
     dio.write_json(out / "table.json", {"meta": meta, "rows": table})
+    mirror = arrival_mirror_report(run_rows, dialog_rows)
+    dio.write_json(out / "arrival_mirror.json", mirror)
+    (out / "arrival_mirror.md").write_text(mirror_markdown(mirror), encoding="utf-8")
     (out / "table.md").write_text(markdown(table, meta), encoding="utf-8")
     dio.write_json(out / "run.json", {"git": dio.git_info(), **meta})
     print(markdown(table, meta))
+    print(mirror_markdown(mirror))
     print(f"Folder: {out}")
 
 

@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
+import commander_v4 as cm  # noqa: E402
 import export_csv_v4 as ex  # noqa: E402
+import hri_control_v4 as hv  # noqa: E402
 import gesture_data as gd  # noqa: E402
 import hri_eval_dev_v4 as ev  # noqa: E402
 import hri_sim_v4 as sv  # noqa: E402
@@ -112,7 +114,7 @@ class Tables(unittest.TestCase):
         for res, r in zip(self.results, self.rr):
             self.assertEqual((r["experiment"], r["set"], r["seed"], r["goal"], r["outcome"]), ("B3", "B", res["seed"], res["goal"], res["outcome"]))
             self.assertEqual(r["route"], ">".join(res["v4"]["route"]))
-            self.assertEqual((r["second_opinion_on"], r["reject_impossible_on"], r["backtrack_on"]), (True, True, True))
+            self.assertEqual((r["second_opinion_on"], r["reject_impossible_on"], r["backtrack_on"]), (True, True, False))   # 'on' = a + b, backtrack off
             self.assertAlmostEqual(r["optimal_m"], res["optimal_m"])
             self.assertEqual(r["trail_source"], "road_route")
             self.assertEqual(r["looks"], "sunbox_f1+sunbox_m1")
@@ -210,6 +212,57 @@ class DecisionsAreVisible(unittest.TestCase):
         (rr, dr), _ = tables([sv.run_scenario("A3", s, sv.DETECTION_ON) for s in (1, 2)])
         self.assertEqual([(r["lies_given"], r["lies_detected"], r["lies_fooled"]) for r in rr], [(0, 0, 0)] * 2)
         self.assertTrue(all(d["truthful"] is True for d in dr))
+
+
+class ArrivalMirror(unittest.TestCase):
+    def test_the_setting_label_and_the_arrival_reading_are_exported(self):
+        res = [sv.run_scenario("B3", s, sv.DETECTION_ON) for s in range(1, 6)]
+        tmp = Path(tempfile.mkdtemp())
+        u, b = session(res, tmp, "B3_on", {"lie_detection": "on"})
+        runs = ev.load_sessions([(u, b)], gd.load_config())
+        rr, dr = ex.build_tables(runs)
+        self.assertEqual({r["setting"] for r in rr}, {"on"})
+        self.assertEqual(ab.detection_label(rr[0]), "on")
+        self.assertTrue(any(d["arrival_candidate"] for d in dr))                       # the mirror reading is the arrival road in some asks
+        self.assertTrue(all(d["arrival_candidate"] in (True, False, None) for d in dr))
+        rows = ab.arrival_mirror_report(rr, dr)["rows"]
+        self.assertEqual(rows[0]["experiment"], "B3")
+        self.assertEqual(rows[0]["back_shown"], rows[0]["back_read_as_a_branch"] + rows[0]["back_rejected"] + rows[0]["back_unclear"])
+        self.assertEqual(rows[0]["accepted_with_arrival_reading"], rows[0]["of_which_truthful_and_correct"] + rows[0]["of_which_wrong_or_lie"])
+        self.assertIn("COUNTERFACTUAL", ab.NAMES["mirror"])
+
+    def test_the_counterfactual_is_only_in_the_analysis_and_changes_nothing_without_its_hook(self):
+        import hri_control_v4 as hv
+        self.assertNotIn("arrival_mirror", Path(hv.__file__).read_text(encoding="utf-8"))          # not applied in the controller
+        a = sv.run_scenario("B3", 3, sv.DETECTION_ON)
+        b = sv.run_scenario("B3", 3, sv.DETECTION_ON, hook=None)
+        self.assertEqual((a["trace"], a["time_s"]), (b["trace"], b["time_s"]))
+        c = sv.run_scenario("B3", 3, sv.DETECTION_ON, hook=ab.HOOKS["mirror"])
+        self.assertEqual(c["lie_detection"], a["lie_detection"])                                   # same switches, only the patched answer test
+
+    def test_counterfactual_2_is_restored_after_use(self):
+        before = hv.resolve_point
+        with ab.CONTEXTS["mirror2"]():
+            self.assertIsNot(hv.resolve_point, before)
+            a = sv.run_scenario("B3", 3, sv.DETECTION_ON)
+        self.assertIs(hv.resolve_point, before)
+        b = sv.run_scenario("B3", 3, sv.DETECTION_ON)
+        c = sv.run_scenario("B3", 3, sv.DETECTION_ON)
+        self.assertEqual((b["trace"], b["time_s"]), (c["trace"], c["time_s"]))
+        self.assertIn(a["outcome"], ("SUCCESS", "FAILURE"))
+
+    def test_the_patched_test_rejects_a_branch_whose_other_reading_is_the_arrival_road(self):
+        base, v4 = hv.load_control()
+        v4["lie_detection"] = {**v4["lie_detection"], **sv.DETECTION_ON}
+        c = hv.ControllerV4(base, v4, cm.load_config(), hv.load_roadmap())
+        c.node = "J2"
+        res = hv.Resolution("RIGHT", "ok", [{"family": "away", "target": "RIGHT", "gap_deg": 5, "verdict": "ok"},
+                                            {"family": "toward", "target": "ARRIVAL", "gap_deg": 9, "verdict": "dropped"}])
+        self.assertIsNone(c._rejection("RIGHT", res, "ok"))
+        ab.mirror_counterfactual(c)
+        self.assertEqual(c._rejection("RIGHT", res, "ok")[0], "arrival_mirror")
+        res2 = hv.Resolution("RIGHT", "ok", [{"family": "away", "target": "RIGHT", "gap_deg": 5, "verdict": "ok"}])
+        self.assertIsNone(c._rejection("RIGHT", res2, "ok"))
 
 
 class OlderSessions(unittest.TestCase):
