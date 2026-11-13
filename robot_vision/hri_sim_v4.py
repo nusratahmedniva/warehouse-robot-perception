@@ -295,6 +295,7 @@ class SceneSpec:
     layout: dict | None = None                                   # {"kind": "beside" | "random" | "fixed", ...}: who stands where (scenario_ab)
     worker_looks: list = field(default_factory=lambda: ["sunbox_m1", "sunbox_f1"])   # looks of the people of a layout, in turn
     avoid_people_m: float | None = None                          # route around people with this clearance (detour_corners); None = straight lines
+    placement_rule: dict | None = None                           # {"min_worker_separation_m", "min_turning_point_m"} enforced for beside / random layouts (16.11)
     lie_script: list | None = None                               # tests / demonstrations: gesture k (in the order staged) shows this direction (LEFT /
                                                                  # FORWARD / RIGHT / BACK) as a lie, None = truthful; replaces the random draw
 
@@ -328,21 +329,45 @@ def place_beside(road: hc.Roadmap, node: str, n: int, lateral_m: float, before_m
     return out
 
 
+def turning_points(road: hc.Roadmap) -> list[tuple[float, float]]:
+    """The places where the path turns or branches: the start node and every junction (endpoints are not turning points)."""
+    return [road.pos(k) for k, v in road.nodes.items() if v["kind"] in ("start", "junction")]
+
+
+def check_placement(road: hc.Roadmap, node: str, pts: list[tuple[float, float]], min_sep_m: float, min_turning_m: float) -> None:
+    """The placement rule of AUDIT.md 16.11 (decided 2026-11-13): any two workers at least min_sep_m apart, and every worker at least
+    min_turning_m from every turning point of the path, so that asking one worker cannot leave the robot (2.0 m from them) inside the
+    person-in-path stop zone of another. Raises ValueError naming the first violation."""
+    eps = 1e-9
+    for i, (x, z) in enumerate(pts):
+        for j in range(i + 1, len(pts)):
+            d = math.hypot(x - pts[j][0], z - pts[j][1])
+            if d < min_sep_m - eps:
+                raise ValueError(f"placement at {node}: workers {i + 1} and {j + 1} are {d:.2f} m apart, rule {min_sep_m:g} m")
+        for tx, tz in turning_points(road):
+            d = math.hypot(x - tx, z - tz)
+            if d < min_turning_m - eps:
+                raise ValueError(f"placement at {node}: worker {i + 1} is {d:.2f} m from a turning point, rule {min_turning_m:g} m")
+
+
 def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_road_m: float, min_sep_m: float,
-                 seed: int | str) -> list[tuple[float, float]]:
+                 seed: int | str, min_turning_m: float = 0.0) -> list[tuple[float, float]]:
     """n people uniform in a square of side 2 * half_size_m centred on the node, at least min_road_m from every road centre
-    line and min_sep_m apart (rejection sampling, seeded by run and node)."""
+    line, min_sep_m apart and min_turning_m from every turning point (rejection sampling, seeded by run and node)."""
     rng = random.Random(f"{seed}|place|{node}")
     nx, nz = road.pos(node)
     segs = _road_segments(road)
+    turns = turning_points(road)
     out: list[tuple[float, float]] = []
     for _ in range(10000):
         if len(out) == n:
             return out
         x, z = nx + rng.uniform(-half_size_m, half_size_m), nz + rng.uniform(-half_size_m, half_size_m)
-        if all(_seg_dist(x, z, sg) >= min_road_m for sg in segs) and all(math.hypot(x - a, z - b) >= min_sep_m for a, b in out):
+        if (all(_seg_dist(x, z, sg) >= min_road_m for sg in segs) and all(math.hypot(x - a, z - b) >= min_sep_m for a, b in out)
+                and all(math.hypot(x - a, z - b) >= min_turning_m for a, b in turns)):
             out.append((x, z))
-    raise ValueError(f"cannot place {n} people at {node} (half_size {half_size_m}, road {min_road_m}, separation {min_sep_m})")
+    raise ValueError(f"cannot place {n} people at {node} (half_size {half_size_m}, road {min_road_m}, separation {min_sep_m}, "
+                     f"turning points {min_turning_m})")
 
 
 def detour_corners(x: float, z: float, target: tuple[float, float], people: list[tuple[float, float]], clearance_m: float,
@@ -475,15 +500,19 @@ class SimulatorV4:
         sp = self.spec
         if sp.layout is not None:
             lay = sp.layout
+            rule = sp.placement_rule or {}
             if lay["kind"] == "beside":
                 pts = place_beside(self.road, junction, lay["people"], lay["lateral_m"], lay["before_m"])
             elif lay["kind"] == "random":
-                pts = place_random(self.road, junction, lay["people"], lay["half_size_m"], lay["min_road_m"], lay["min_sep_m"],
-                                   self.seed)
+                pts = place_random(self.road, junction, lay["people"], lay["half_size_m"], lay["min_road_m"],
+                                   rule.get("min_worker_separation_m", lay.get("min_sep_m", 0.0)), self.seed,
+                                   rule.get("min_turning_point_m", 0.0))
             elif lay["kind"] == "fixed":                       # tests / demonstrations: explicit (x, z) per node
                 pts = [tuple(q) for q in lay["points"][junction]]
             else:
                 raise ValueError(f"unknown layout kind {lay['kind']!r}")
+            if rule and lay["kind"] in ("beside", "random"):
+                check_placement(self.road, junction, pts, rule["min_worker_separation_m"], rule["min_turning_point_m"])
             people = [Person(i + 1, x, z, sp.worker_looks[i % len(sp.worker_looks)], "commander" if i == 0 else "bystander")
                       for i, (x, z) in enumerate(pts)]
             return Scene(people, sp.record_truthful)
@@ -876,7 +905,9 @@ def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict 
     avoid = scen.get("avoid_people", {})
     clearance = (ctrl.s["corridor_half_width_m"] + hc.load_json("configs/robot.json")["robot_width_m"] / 2.0) if avoid.get("enabled") else None
     spec = SceneSpec(proceed_forward=True, anyone_commands=True, point_back_when_lost=True, record_truthful=True,
-                     lie_probability=float(p["lie_probability"]), layout=dict(sc["layout"]), avoid_people_m=clearance)
+                     lie_probability=float(p["lie_probability"]), layout=dict(sc["layout"]), avoid_people_m=clearance,
+                     placement_rule={k: float(scen["placement_rule"][k]) for k in ("min_worker_separation_m", "min_turning_point_m")}
+                     if "placement_rule" in scen else None)
     cfg = sim_cfg or SimConfig(timeout_s=float(scen["trial_timeout_s"]))
     sim = SimulatorV4(ctrl, cfg, gcfg or GestureSimConfig(), spec, seed)
     return {"sim": sim, "goal": goal, "road": road, "v4": v4, "spec": spec, "experiment": name, "set": which, "seed": seed,

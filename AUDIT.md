@@ -2007,7 +2007,7 @@ a+b rows are identical), in the 80 reject + backtrack runs once, and that run en
    (B1 20, B2 20, B3 18, B4 17 of 20), fooled lies B3 2/22 -> 0/34, B4 2/28 -> 2/32 (unchanged), at +0 to +20 s median time. BACK read as a branch 6 -> 2 (2 remain, not analysed). **This is my
    recommendation.** The third idea, to ask a second person in that case, was not measured; with a+b already on, a second person is asked at every node anyway, so it adds
    little there and would matter only with second opinion off.
-Nothing is applied before you confirm.
+Nothing is applied before you confirm. **Update: Fix 2 was confirmed and applied on 2026-11-13, see 16.11.**
 
 **16.10.3 The 3 timeouts (report only).** Three of the 160 detection-on runs (A1 to A4, B1 to B4) ended by timeout: A4 on seed 18, B4 on seed 18 (the same random layout at J4, same seed) and B4 on seed 2 (J2).
 Cause, from the controller state at the end of each (`outputs/` session folders and a replay of the seeds):
@@ -2023,3 +2023,67 @@ Cause, from the controller state at the end of each (`outputs/` session folders 
   not the simulator's straight-line route. Not tested in Unity. If you want it removed: the stop could allow turning away or backing off, or the placement keep avatars 2 m or more apart; neither is done.
 
 **16.10.4 Every value I chose** is listed one per line with its reason in 16.4 (the first round) and 16.5 (the second round).
+
+### 16.11 Decisions of 2026-11-13, third round (Anisha, after the review of 16.10)
+
+1. **Freeze handling accepted** (16.10.1).
+2. **Fix 2 is applied** in `hri_control_v4.py`, under the `reject_impossible` switch: when a pointed direction resolves to a branch but the OTHER of its two mirror-image depth readings is the
+   arrival road, the answer is ambiguous (`resolve_point(..., arrival_mirror_ambiguous)`, also inside `resolve_two_views`; `_interpret` passes `lie_detection.reject_impossible`), and the
+   existing second view decides (move 0.8 m aside, keep the direction both views agree on, not counted as an ask). Every second view is now logged as a decision with its reason (`second_view`).
+   With the switch off nothing changes (the golden record of 14 trials on 808f028 is still identical). **Backtrack stays off** for the experiments. Before the counterfactual code was removed
+   (it lives in commit 735eea2) the controller was checked against it: the 12 result columns of B1 to B4 are identical. Tests: `RuleB_ArrivalMirror`, `PlacementRule` in `tests/test_lie_detection_v4.py`.
+   *The 2 BACK readings that still got through (B1 to B4, detection on, 80 runs; both found in `experiments_ab_v4_main_270s_v3_20261113_234228`, B2 run 19 at B and B4 run 19 at J3).* They are not a BACK answer taken as a wrong
+   branch. In both, the FIRST view was an honest gesture (RIGHT, LEFT) whose mirror reading was the arrival road, so the fix did send the robot to a second view
+   (first-view readings: -150.5 deg = arrival and 90 deg = RIGHT; -56.3 deg = arrival and 0 deg = LEFT). The simulator stages a new gesture whenever the question is shown, the second view included
+   (decision 2: every gesture is an independent draw), and in both runs the worker's second gesture was a lie, BACK. The second view's check compares the readings of two different gestures: the
+   mirror image of the BACK lie (86.4 and -1.5 deg) fell within 3.6 and 1.5 deg of the true direction of the first gesture (tolerance 10 deg), so the views "agreed" on the true branch
+   (RIGHT, LEFT) and the robot took it. The answer was right by coincidence of a mirror reading, not because the back-pointing was understood. Counts: BACK asks in B1 to B4 with detection on
+   26, read as a branch 2, rejected 14, unclear 10 (before the fix: 20, 6, 12, 2 in the earlier run); accepted asks with an arrival-road reading
+   0 of 342 (before: 84 of 357). Reported only; nothing further changed.
+3. **Placement rule** (timeouts of 16.10.3): `scenarios_ab.json` `placement_rule`: any two workers at least **3.0 m** apart and every worker at least **3.0 m** from every turning point of the path (the start
+   node and every junction). Reason: the robot asks from 2.0 m, so another worker is then at least 3.0 - 2.0 = 1.0 m away, outside the 0.85 m person-in-path stop zone of a robot at standstill. The v3 person-in-path
+   stop is unchanged. Enforced in the simulator (`check_placement` for the `beside` and `random` layouts, `place_random` samples under it; it replaces the 1.0 m separation of 16.2 decision 3 for A4; the `beside`
+   placement (4.0 m apart, 3.6 m from the node) already obeyed it; `fixed` layouts of tests are exempt). **For Nusrat: Unity must use the same rule when it places the workers of these experiments (at least 3.0 m
+   between any two workers and at least 3.0 m from every junction and from the start node).** A stall that still happens is a failure result, not hidden.
+4. **Item 18 accepted** (a truthful worker at a wrong junction points BACK): recorded as an accepted modelling assumption of the study.
+
+**The 20-seed table again** (SIMULATOR; seeds 1 to 20, timeout 270 s, detection off / on = a + b, backtrack off; new = `experiments_ab_v4_main_270s_v3_20261113_234228`, previous = `experiments_ab_v4_main_270s_v2_20261113_233042`, the table of 16.7). What changed between them:
+Fix 2 (rule b) and the placement rule (A4 only: the separation of 1.0 m became 3.0 m plus the turning-point rule; A1 to A3 placements are unchanged). The counterfactual run of 16.10 (Fix 2 with the old placement) had the same
+successes as the previous table in B1 to B4 (20, 20, 18, 17 of 20), so the differences in SUCCESS below come from the placement rule; the longer times come from the extra second views of Fix 2.
+
+| experiment | detection | previous: SUCCESS | failures | median s | coll. | stops | **new: SUCCESS** | failures | median s | coll. | stops |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | off | 20/20 (0.84-1.00) | - | 68.0 | 0 | 0 | **20/20 (0.84-1.00)** | - | 68.0 | 0 | 0 |
+| A1 | on (a+b) | 20/20 (0.84-1.00) | - | 77.9 | 0 | 0 | **20/20 (0.84-1.00)** | - | 77.9 | 0 | 0 |
+| A2 | off | 20/20 (0.84-1.00) | - | 82.9 | 0 | 0 | **20/20 (0.84-1.00)** | - | 82.9 | 0 | 0 |
+| A2 | on (a+b) | 20/20 (0.84-1.00) | - | 101.0 | 0 | 0 | **20/20 (0.84-1.00)** | - | 110.4 | 0 | 0 |
+| A3 | off | 20/20 (0.84-1.00) | - | 121.8 | 0 | 0 | **20/20 (0.84-1.00)** | - | 121.8 | 0 | 0 |
+| A3 | on (a+b) | 20/20 (0.84-1.00) | - | 151.4 | 0 | 0 | **20/20 (0.84-1.00)** | - | 160.7 | 0 | 0 |
+| A4 | off | 20/20 (0.84-1.00) | - | 110.2 | 0 | 2 | **20/20 (0.84-1.00)** | - | 113.4 | 0 | 0 |
+| A4 | on (a+b) | 19/20 (0.76-0.99) | timeout 1 | 140.2 | 0 | 22 | **20/20 (0.84-1.00)** | - | 159.2 | 0 | 1 |
+| B1 | off | 20/20 (0.84-1.00) | - | 68.0 | 0 | 0 | **20/20 (0.84-1.00)** | - | 68.0 | 0 | 0 |
+| B1 | on (a+b) | 20/20 (0.84-1.00) | - | 77.9 | 0 | 0 | **20/20 (0.84-1.00)** | - | 77.9 | 0 | 0 |
+| B2 | off | 17/20 (0.64-0.95) | aborted 3 | 82.9 | 0 | 0 | **17/20 (0.64-0.95)** | aborted 3 | 82.9 | 0 | 0 |
+| B2 | on (a+b) | 20/20 (0.84-1.00) | - | 108.7 | 0 | 0 | **20/20 (0.84-1.00)** | - | 119.5 | 0 | 0 |
+| B3 | off | 13/20 (0.43-0.82) | aborted 1, wrong_goal 6 | 119.9 | 0 | 0 | **13/20 (0.43-0.82)** | aborted 1, wrong_goal 6 | 119.9 | 0 | 0 |
+| B3 | on (a+b) | 18/20 (0.70-0.97) | aborted 1, wrong_goal 1 | 154.5 | 0 | 1 | **18/20 (0.70-0.97)** | aborted 2 | 174.6 | 0 | 1 |
+| B4 | off | 16/20 (0.58-0.92) | aborted 3, wrong_goal 1 | 109.3 | 0 | 2 | **18/20 (0.70-0.97)** | aborted 1, wrong_goal 1 | 118.5 | 0 | 0 |
+| B4 | on (a+b) | 17/20 (0.64-0.95) | timeout 2, wrong_goal 1 | 151.7 | 0 | 21 | **18/20 (0.70-0.97)** | aborted 2 | 177.4 | 0 | 2 |
+
+Lies (Set B):
+
+| experiment | detection | previous: lies given | detected | corrected | fooled | new: lies given | detected | corrected | fooled |
+|---|---|---|---|---|---|---|---|---|---|
+| B1 | off | 3 | 0 | 0/0 | 0 | 3 | 0 | 0/0 | 0 |
+| B1 | on (a+b) | 5 | 3 | 3/3 | 0 | 6 | 4 | 4/4 | 0 |
+| B2 | off | 13 | 0 | 0/0 | 0 | 13 | 0 | 0/0 | 0 |
+| B2 | on (a+b) | 21 | 16 | 16/16 | 0 | 28 | 20 | 20/20 | 0 |
+| B3 | off | 16 | 0 | 0/0 | 7 | 16 | 0 | 0/0 | 7 |
+| B3 | on (a+b) | 22 | 13 | 13/13 | 2 | 34 | 15 | 15/15 | 0 |
+| B4 | off | 12 | 0 | 0/0 | 1 | 12 | 0 | 0/0 | 1 |
+| B4 | on (a+b) | 28 | 18 | 18/18 | 2 | 31 | 19 | 19/19 | 0 |
+
+Read: **0 collisions and 0 timeouts in all 16 rows** (the previous table had 3 timeouts: A4 on 1, B4 on 2). Detection off and on, A: 80/80 and 80/80 (previous 80/80 and 79/80). Set B: off 68/80, on 76/80
+(previous 66/80 and 75/80). Detection on costs time (A1 +10 s, A2 +27 s, A3 +39 s, A4 +46 s, B2 +37 s, B3 +55 s, B4 +59 s median over off); Fix 2 adds to it (B2 108.7 -> 119.5 s, B3 154.5 -> 174.6 s, B4 151.7 -> 177.4 s). Remaining safety stops
+(A4 on 1, B3 on 1, B4 on 2) did not end in a timeout. The failures left in Set B with detection on are aborts (B3 2, B4 2): the fail-safe outcome (unclear after two asks); no wrong goal remains with detection on, no lie was acted on (fooled 0 in
+every B row), against fooled 7/16 (B3) and 1/12 (B4) with detection off. Same simulator limits as 16.8 item 4.

@@ -229,41 +229,6 @@ class ArrivalMirror(unittest.TestCase):
         self.assertEqual(rows[0]["experiment"], "B3")
         self.assertEqual(rows[0]["back_shown"], rows[0]["back_read_as_a_branch"] + rows[0]["back_rejected"] + rows[0]["back_unclear"])
         self.assertEqual(rows[0]["accepted_with_arrival_reading"], rows[0]["of_which_truthful_and_correct"] + rows[0]["of_which_wrong_or_lie"])
-        self.assertIn("COUNTERFACTUAL", ab.NAMES["mirror"])
-
-    def test_the_counterfactual_is_only_in_the_analysis_and_changes_nothing_without_its_hook(self):
-        import hri_control_v4 as hv
-        self.assertNotIn("arrival_mirror", Path(hv.__file__).read_text(encoding="utf-8"))          # not applied in the controller
-        a = sv.run_scenario("B3", 3, sv.DETECTION_ON)
-        b = sv.run_scenario("B3", 3, sv.DETECTION_ON, hook=None)
-        self.assertEqual((a["trace"], a["time_s"]), (b["trace"], b["time_s"]))
-        c = sv.run_scenario("B3", 3, sv.DETECTION_ON, hook=ab.HOOKS["mirror"])
-        self.assertEqual(c["lie_detection"], a["lie_detection"])                                   # same switches, only the patched answer test
-
-    def test_counterfactual_2_is_restored_after_use(self):
-        before = hv.resolve_point
-        with ab.CONTEXTS["mirror2"]():
-            self.assertIsNot(hv.resolve_point, before)
-            a = sv.run_scenario("B3", 3, sv.DETECTION_ON)
-        self.assertIs(hv.resolve_point, before)
-        b = sv.run_scenario("B3", 3, sv.DETECTION_ON)
-        c = sv.run_scenario("B3", 3, sv.DETECTION_ON)
-        self.assertEqual((b["trace"], b["time_s"]), (c["trace"], c["time_s"]))
-        self.assertIn(a["outcome"], ("SUCCESS", "FAILURE"))
-
-    def test_the_patched_test_rejects_a_branch_whose_other_reading_is_the_arrival_road(self):
-        base, v4 = hv.load_control()
-        v4["lie_detection"] = {**v4["lie_detection"], **sv.DETECTION_ON}
-        c = hv.ControllerV4(base, v4, cm.load_config(), hv.load_roadmap())
-        c.node = "J2"
-        res = hv.Resolution("RIGHT", "ok", [{"family": "away", "target": "RIGHT", "gap_deg": 5, "verdict": "ok"},
-                                            {"family": "toward", "target": "ARRIVAL", "gap_deg": 9, "verdict": "dropped"}])
-        self.assertIsNone(c._rejection("RIGHT", res, "ok"))
-        ab.mirror_counterfactual(c)
-        self.assertEqual(c._rejection("RIGHT", res, "ok")[0], "arrival_mirror")
-        res2 = hv.Resolution("RIGHT", "ok", [{"family": "away", "target": "RIGHT", "gap_deg": 5, "verdict": "ok"}])
-        self.assertIsNone(c._rejection("RIGHT", res2, "ok"))
-
 
 class OlderSessions(unittest.TestCase):
     def test_a_session_without_the_truthful_field_leaves_the_lie_columns_empty(self):

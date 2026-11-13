@@ -234,6 +234,58 @@ class Placement(unittest.TestCase):
             sv.place_random(self.road, "J1", 5, 1.0, 1.0, 1.0, 1)
 
 
+class PlacementRule(unittest.TestCase):
+    """AUDIT.md 16.11: any two workers at least 3.0 m apart and every worker at least 3.0 m from every turning point of the path."""
+
+    def test_the_rule_is_in_the_frozen_scenarios_config(self):
+        r = sv.load_scenarios()["placement_rule"]
+        self.assertEqual((r["min_worker_separation_m"], r["min_turning_point_m"]), (3.0, 3.0))
+        self.assertIn("UNITY MUST USE THE SAME RULE", r["why"])
+        self.assertNotIn("min_sep_m", sv.load_scenarios()["scenarios"]["4"]["layout"])
+
+    def test_every_scene_of_every_scenario_seed_and_node_obeys_it(self):
+        for name in ("A1", "A2", "A3", "A4"):
+            for seed in range(1, 21):
+                sc = sv.scenario_ab(name, seed)
+                for node, v in sc["road"].nodes.items():
+                    if v["kind"] not in ("start", "junction"):
+                        continue
+                    scene = sc["sim"]._scene_at(node)
+                    pts = [(p.x, p.z) for p in scene.people]
+                    sv.check_placement(sc["road"], node, pts, 3.0, 3.0)           # raises if not
+                    for i, a in enumerate(pts):
+                        for b in pts[i + 1:]:
+                            self.assertGreaterEqual(math.dist(a, b), 3.0 - 1e-9)
+
+    def test_a_violation_is_refused_with_its_reason(self):
+        road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
+        with self.assertRaisesRegex(ValueError, "2 are|workers 1 and 2 are 2.00 m apart"):
+            sv.check_placement(road, "J1", [(8.0, -3.0), (10.0, -3.0)], 3.0, 3.0)
+        with self.assertRaisesRegex(ValueError, "worker 1 is 2.00 m from a turning point"):
+            sv.check_placement(road, "J1", [(8.25, 0.0)], 3.0, 3.0)
+        sv.check_placement(road, "J1", sv.place_beside(road, "J1", 2, 2.0, 3.0), 3.0, 3.0)
+
+    def test_the_simulator_refuses_a_layout_that_breaks_the_rule_but_not_a_fixed_test_layout(self):
+        sc = sv.scenario_ab("A3", 1)
+        sc["spec"].layout = {"kind": "beside", "people": 2, "lateral_m": 0.5, "before_m": 3.0}      # 1.0 m apart
+        with self.assertRaisesRegex(ValueError, "apart"):
+            sc["sim"].run("E1")
+        r = run("A3", "E1", None, OFF, NORTH)                      # fixed layouts (tests) are exempt
+        self.assertEqual(r["outcome"], "SUCCESS")
+
+    def test_random_placement_with_the_rule_is_seeded_and_keeps_its_older_rules_too(self):
+        road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
+        segs = sv._road_segments(road)
+        for node in ("A", "J1", "J2", "J3", "J4"):
+            for seed in range(1, 30):
+                pts = sv.place_random(road, node, 2, 3.0, 1.0, 3.0, seed, 3.0)
+                self.assertEqual(pts, sv.place_random(road, node, 2, 3.0, 1.0, 3.0, seed, 3.0))
+                self.assertGreaterEqual(math.dist(*pts), 3.0)
+                for x, z in pts:
+                    self.assertTrue(all(sv._seg_dist(x, z, sg) >= 1.0 for sg in segs))
+                    self.assertTrue(all(math.hypot(x - tx, z - tz) >= 3.0 for tx, tz in sv.turning_points(road)))
+
+
 class Detour(unittest.TestCase):
     def test_straight_when_nobody_is_near(self):
         self.assertEqual(sv.detour_corners(0, 0, (0, 10), [(5.0, 5.0)], 0.9), [(0, 0), (0, 10)])
@@ -312,6 +364,50 @@ class RuleB_RejectImpossible(unittest.TestCase):
         self.assertIsNone(c._rejection("RIGHT", None, ""))
         c.excluded = set()
         self.assertIsNone(c._rejection("LEFT", None, ""))                    # no exclusion, switch off: nothing is rejected
+
+
+class RuleB_ArrivalMirror(unittest.TestCase):
+    """AUDIT.md 16.11 (decided 2026-11-13): under reject_impossible a reading whose OTHER depth reading is the arrival road is ambiguous
+    (the second view decides), because the two readings are mirror images and a worker pointing back along the arrival road can be read
+    as the branch his mirror image lands on."""
+
+    def test_resolve_point_unit(self):
+        from types import SimpleNamespace
+        # at J2 (arrival from the east): RIGHT = north (0), FORWARD = west (-90), arrival = east (90)
+        dirs, arrival = hv.branch_directions(hv.load_roadmap(), "J2")
+        point = SimpleNamespace(world_deg={"away": 0.0, "toward": 90.0}, crosscheck={})
+        plain = hv.resolve_point(point, dirs, arrival, 0.0, 30.0)
+        self.assertEqual((plain.command, plain.ambiguous), ("RIGHT", False))                 # the old behaviour: the mirror is simply dropped
+        fixed = hv.resolve_point(point, dirs, arrival, 0.0, 30.0, False, True)
+        self.assertEqual((fixed.command, fixed.ambiguous), (None, True))
+        self.assertIn("arrival road", fixed.why)
+        self.assertEqual({c["target"] for c in fixed.candidates}, {"RIGHT", "ARRIVAL"})
+        # a reading with no arrival-road candidate is not touched
+        clean = SimpleNamespace(world_deg={"away": 0.0, "toward": None}, crosscheck={})
+        self.assertEqual(hv.resolve_point(clean, dirs, arrival, 0.0, 30.0, False, True).command, "RIGHT")
+        # a reading that is the arrival road itself stays what it was (dropped, no candidate left): not ambiguous
+        back = SimpleNamespace(world_deg={"away": 90.0, "toward": 90.0}, crosscheck={})
+        self.assertEqual((hv.resolve_point(back, dirs, arrival, 0.0, 30.0, False, True).command, ), (None,))
+
+    def test_the_switch_off_changes_nothing_and_the_switch_on_catches_a_lie_whose_mirror_is_the_arrival_road(self):
+        off = run("A3", "E3", [None, "LEFT"], OFF)                       # J1 lie LEFT, read as LEFT: the robot follows it to J2, then E2
+        self.assertEqual((off["failure_reason"], off["v4"]["route"]), ("wrong_goal", ["A", "J1", "J2", "E2"]))
+        on = run("A3", "E3", [None, "LEFT"], REJECT)
+        self.assertEqual(on["v4"]["route"], ["A", "J1"])                 # not followed
+        self.assertEqual((on["outcome"], on["failure_reason"]), ("FAILURE", "aborted"))     # fail safe: unclear after two asks
+        sv_events = events(on, "second_view")
+        self.assertEqual(len(sv_events), 1)
+        self.assertEqual(sv_events[0]["reason"], "ambiguous: one of the two readings is the arrival road")
+
+    def test_an_honest_gesture_still_gets_through_via_the_second_view(self):
+        for seed in (1, 2, 3):
+            r = sv.run_scenario("A3", seed, REJECT)
+            self.assertEqual((r["outcome"], r["failure_reason"]), ("SUCCESS", "none"), seed)
+
+    def test_the_second_view_is_logged_with_its_reason_also_for_two_branches(self):
+        r = run("A3", "E3", None, OFF, seed=1)
+        for d in events(r, "second_view"):
+            self.assertTrue(d["reason"].startswith("ambiguous"))
 
 
 class RuleA_SecondOpinion(unittest.TestCase):

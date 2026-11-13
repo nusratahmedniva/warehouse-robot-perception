@@ -137,11 +137,14 @@ def branch_directions(road: hc.Roadmap, junction: str) -> tuple[dict, float | No
 
 
 def resolve_point(point, branch_yaws: dict, arrival_yaw: float | None, robot_yaw: float, max_gap_deg: float,
-                  use_crosscheck: bool = False) -> Resolution:
+                  use_crosscheck: bool = False, arrival_mirror_ambiguous: bool = False) -> Resolution:
     """Resolve the pointed direction candidates (point.world_deg: {'away': yaw | None, 'toward': yaw | None}) to a branch.
     Each candidate goes to the nearest of the valid branches and the arrival direction. Arrival = dropped; beyond
     max_gap_deg from its branch = dropped; one distinct branch left = the answer; none = unclear; two = ambiguous
-    (unclear), unless use_crosscheck and the MediaPipe hand cross-check prefers one of them."""
+    (unclear), unless use_crosscheck and the MediaPipe hand cross-check prefers one of them.
+    arrival_mirror_ambiguous (AUDIT.md 16.11, decided 2026-11-13; set by the reject_impossible switch): one distinct branch left, but the
+    OTHER depth reading was dropped because it is the arrival road, is ambiguous too: the two readings are mirror images, so a worker who
+    points back along the arrival road can be read as the branch his mirror image lands on. The existing second view then decides."""
     cands, kept = [], {}
     for fam in ("away", "toward"):
         w = point.world_deg.get(fam)
@@ -164,6 +167,8 @@ def resolve_point(point, branch_yaws: dict, arrival_yaw: float | None, robot_yaw
     if not kept:
         return Resolution(None, "no candidate within reach of a valid branch" if cands else "no pointed direction", cands)
     if len(kept) == 1:
+        if arrival_mirror_ambiguous and any(c["target"] == "ARRIVAL" for c in cands):
+            return Resolution(None, "ambiguous: one of the two readings is the arrival road", cands, True)
         (cmd, (gap, fam, w)), = kept.items()
         return Resolution(cmd, "ok", cands, rel_deg=round(gm.wrap(w - robot_yaw), 2), gap_deg=round(gap, 2))
     pref = point.crosscheck.get("prefers") if use_crosscheck else None
@@ -175,7 +180,7 @@ def resolve_point(point, branch_yaws: dict, arrival_yaw: float | None, robot_yaw
 
 
 def resolve_two_views(view1: dict, cands2: dict, branch_yaws: dict, arrival_yaw: float | None, robot_yaw: float,
-                      max_gap_deg: float, tol_deg: float) -> Resolution:
+                      max_gap_deg: float, tol_deg: float, arrival_mirror_ambiguous: bool = False) -> Resolution:
     """Two-view POINT disambiguation. view1 / cands2: {'away': world yaw | None, 'toward': ...} of the first and the
     second viewpoint. The two depth readings of one view are mirror images about that view's image plane, so after the
     robot has moved only the TRUE direction stays put: a pair (one candidate per view) agrees when the two world yaws
@@ -195,10 +200,11 @@ def resolve_two_views(view1: dict, cands2: dict, branch_yaws: dict, arrival_yaw:
     pseudo = type("P", (), {})()
     pseudo.world_deg = {"away": pairs[0], "toward": pairs[1] if len(pairs) > 1 else None}
     pseudo.crosscheck = {}
-    res = resolve_point(pseudo, branch_yaws, arrival_yaw, robot_yaw, max_gap_deg, False)
+    res = resolve_point(pseudo, branch_yaws, arrival_yaw, robot_yaw, max_gap_deg, False, arrival_mirror_ambiguous)
     res.views = 2
     if res.command is None and res.ambiguous:
-        res.why = "two views: the agreeing candidates still fit two branches"
+        res.why = ("two views: the agreeing candidates still fit two branches" if "arrival" not in res.why
+                   else "two views: an agreeing candidate still has the arrival road as its mirror image")
     return res
 
 
@@ -369,6 +375,7 @@ class ControllerV4(hc.Controller):
         self.two_view_used = False
         self.amb_frames: list[dict] = []
         self.amb_since: float | None = None
+        self.amb_why = ""
         self.approached_360: int | None = None
         self.reapproached = False
         self.commander_since: float | None = None
@@ -461,13 +468,15 @@ class ControllerV4(hc.Controller):
         if r.command == "POINT" and r.point is not None:
             dirs, arrival = branch_directions(self.road, self.node)
             dv = self.v4["dialog"]
+            mirror = self.ld["reject_impossible"]                # AUDIT.md 16.11: a reading whose mirror image is the arrival road is ambiguous
             res = resolve_point(r.point, dirs, arrival, inp.yaw_deg, dv["branch_match_max_deg"],
-                                dv["use_hand_crosscheck_as_tiebreak"])
+                                dv["use_hand_crosscheck_as_tiebreak"], mirror)
             if self.view1 is not None:                         # second view: only a direction both views agree on counts
                 res = resolve_two_views(self.view1, r.point.world_deg, dirs, arrival, inp.yaw_deg, dv["branch_match_max_deg"],
-                                        dv["view_consistency_deg"])
+                                        dv["view_consistency_deg"], mirror)
             elif res.ambiguous and res.command is None and dv["two_view_enabled"] and not self.two_view_used:
                 self.amb_frames.append(dict(r.point.world_deg))
+                self.amb_why = res.why
                 if self.amb_since is None:
                     self.amb_since = inp.persons_time_s
             else:
@@ -702,6 +711,7 @@ class ControllerV4(hc.Controller):
         self.amb_frames, self.amb_since = [], None
         self.free_asks += 1
         self.trace.append(f"{inp.time_s:.2f}:second_view")
+        self._log(inp.time_s, "second_view", self.amb_why or "the two depth readings fit two branches")
         if self.record is not None:
             self.record["second_view_t"] = round(inp.time_s, 3)
         self._reposition(inp, inp.time_s, cmd)
