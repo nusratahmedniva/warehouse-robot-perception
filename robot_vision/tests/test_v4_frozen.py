@@ -92,7 +92,8 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertEqual(fz.blanks(REPO), want)
 
     def test_decided_values_of_the_plan_and_the_blanks_still_open(self):
-        """Decided 2026-10-24 by Anisha; B7, B9 and B11 filled 2026-11-13 by Nusrat in her absence, pending her confirmation (AUDIT.md section 15)."""
+        """Decided 2026-10-24 by Anisha; B7, B9 and B11 filled 2026-11-13 by Nusrat in her absence; B7 and B11 confirmed by Anisha on
+        2026-11-13, B11 updated the same day (AUDIT.md section 15)."""
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
         v3 = json.loads((ROOT / "configs/trials.json").read_text())
         self.assertEqual((plan["task"], plan["dev_seed"], plan["final_seed"], plan["runs_per_setting"], plan["success_radius_m"]),
@@ -105,14 +106,37 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertIn("RTX 3060", plan["machine"])
         self.assertIn("highest development accuracy", plan["threshold_rule"])
         self.assertIn("coverage >= 0.8", plan["threshold_rule"])
-        # 2026-11-13: B7 (plan (b): sunbox_f2 + test clips in every setting, unseen_look a repeat of zoom_on), B9 and B11 filled
+        # 2026-11-13: B7 (plan (b): sunbox_f2 + test clips in every setting, zoom_on_repeat a repeat of zoom_on), B9 and B11 filled
         for k in ("test_assignment", "unity_files_and_guard", "acceptance_criteria"):
             self.assertIsNotNone(plan[k], k)
-        self.assertEqual(plan["test_assignment"]["unseen_look"]["repeat_of"], "zoom_on")
+        self.assertEqual(plan["test_assignment"]["zoom_on_repeat"]["repeat_of"], "zoom_on")
         for s, a in plan["test_assignment"].items():
             self.assertEqual(a["looks"], ["sunbox_f2"], s)
-        self.assertEqual(len(plan["acceptance_criteria"]), 5)
+        self.assertEqual(len(plan["acceptance_criteria"]), 7)
         self.assertEqual(fz.blanks(REPO), [])
+
+    def test_b11_is_validity_only_and_a_watchdog_stop_is_a_result(self):
+        """B11 update of 2026-11-13 (AUDIT.md section 15): no watchdog criterion; frozen hashes, split guard and all runs added;
+        a setting that fails is reported as invalid and never rerun. check_session_v4.ps1 checks exactly these criteria."""
+        plan = json.loads((REPO / fz.PLAN_REL).read_text())
+        crit = plan["acceptance_criteria"]
+        self.assertFalse([c for c in crit if "watchdog" in c.lower()], "a watchdog stop is a result, never an invalidity reason")
+        labels = ("leak test passed", "frozen hashes match", "split guard passed", "all runs present", "every outcome recorded",
+                  "every truth and run file accepted", "run protocol recorded")
+        self.assertEqual(len(crit), len(labels))
+        for c, label in zip(crit, labels):
+            self.assertTrue(c.startswith(label), label)
+        note = plan["acceptance_criteria_note"]
+        for want in ("watchdog stop is a RESULT", "never a reason for invalidity", "reported as invalid", "never rerun"):
+            self.assertIn(want, note)
+        script = (REPO / "finals_v4" / "check_session_v4.ps1").read_text(encoding="utf-8")
+        import re
+        numbers = [int(n) for n in re.findall(r"^\s*Report (\d+) ", script, re.M)]
+        self.assertEqual(numbers, list(range(1, len(crit) + 1)), "one Report line per criterion, in the plan's order")
+        for n, label in enumerate(labels, 1):
+            self.assertRegex(script, rf"(?m)^\s*Report {n} .*\"{re.escape(label)}", f"criterion {n} is '{label}' in the script")
+        self.assertNotRegex(script, r"(?m)^\s*Report \d+ .*watchdog")
+        self.assertIn("never rerun", script)
 
     def test_the_goal_order_of_the_final_seed_is_that_of_the_v3_final(self):
         import hri_trials as ht
@@ -136,7 +160,7 @@ class RecordedFreezeTests(unittest.TestCase):
 
     def test_settings_of_the_plan_are_the_four_final_settings(self):
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
-        self.assertEqual(set(plan["settings"]), {"zoom_on", "zoom_off", "bystanders", "unseen_look"})
+        self.assertEqual(set(plan["settings"]), {"zoom_on", "zoom_off", "bystanders", "zoom_on_repeat"})   # unseen_look renamed 2026-11-13
 
     def test_models_are_located_from_the_frozen_v3_configs(self):
         st = fz.model_status(REPO)

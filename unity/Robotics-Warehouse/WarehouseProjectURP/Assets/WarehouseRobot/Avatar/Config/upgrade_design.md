@@ -451,3 +451,16 @@ Dated entries, each written before the changed design is tested in a Play sessio
      (`sessions/final_zoom_on.json` via `-workersConfig`, development mode, so development looks and clips) and the server as in the
      zoom_on final apart from `--final-setting` (`--control-config configs/v4/control_zoom_on.json`), followed by every B11 check, to show
      batch mode, the run-protocol logging and the checks work end to end. Not a result.
+- **2026-11-13, pre-freeze completion (Anisha confirmed B7 and B11 today; recorded in AUDIT.md section 15).**
+  1. *Finals in the Editor window* (decided by Nusrat): every final runs in the Unity Editor window, without `-batchmode`, as the development
+     sessions D2 to D4 did. Batch mode hangs before the leak test (`TrialRunnerV4.cs` line 481, the batch rehearsal of 2026-11-13) and is not
+     used; no code change is made for it.
+  2. *Rename:* the final setting unseen_look is now **zoom_on_repeat** everywhere (the name says what it is since B7 = plan (b): a repeat of
+     zoom_on). `sessions/final_unseen_look.json` became `sessions/final_zoom_on_repeat.json` (same GUID). Earlier entries keep the old name.
+  3. *Rehearsal config:* `sessions/rehearsal_zoom_on.json` is identical to `sessions/final_zoom_on.json` except its `looks` (the development
+     looks sunbox_m1 and sunbox_f1, alternating by run) and, through the development mode it runs in, the development clips. Edit Mode tests
+     prove the two files differ only there and that the rehearsal can never load sunbox_f2 or a test clip. It is not a final setting and is
+     not frozen.
+  4. *Session launcher:* `finals_v4/run_session_v4.ps1 -Setting NAME [-Rehearsal] [-DryRun]` runs one session end to end (protocol note,
+     launch_prep, server, Unity in the Editor window, the server's exit, cleanup, the B11 check); a final is never retried or rerun. The
+     B11 checker follows the updated criteria (`final_plan.json` `acceptance_criteria`, seven criteria; a watchdog stop is a result).

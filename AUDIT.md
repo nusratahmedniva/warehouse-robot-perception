@@ -1618,3 +1618,74 @@ killed; the server exited on the disconnect; the trial-count override removed). 
 The D2 to D4 sessions ran in the Editor window, where this wait returns. The B11 checker (`finals_v4/check_session_v4.ps1`) and the
 protocol note were shown to work on the D4 session R1 (all five criteria PASS) and in this rehearsal (the note) respectively; the end-to-end
 rehearsal is still to be done once the mode of the finals is decided.
+
+### 2026-11-13, pre-freeze completion (agreements with Anisha, rename, B11 update, disclosures; no freeze, no final)
+
+**Agreed with Anisha today (2026-11-13), recorded here before the freeze:**
+- **B7 confirmed:** every final uses the test look sunbox_f2 with the test clips (plan (b) above), in every setting.
+- **B11 confirmed as validity only** (no performance thresholds), with the update below.
+- **The freeze is run by Nusrat, by hand** (`python freeze_v4.py --freeze`); the AI never runs it and never writes `frozen.json` (CLAUDE.md
+  updated accordingly). B9 (the Unity freeze list) stays as decided by Nusrat above.
+
+**Rename (2026-11-13): the final setting `unseen_look` is now `zoom_on_repeat`.** Since B7 = plan (b) the fourth setting is a repeat of
+zoom_on, and its name now says so. Changed everywhere it is used: `final_plan.json` (`settings`, `test_assignment`), `final_v4.json`, the
+session config (`sessions/final_unseen_look.json` renamed `final_zoom_on_repeat.json`, same GUID), `bridge/server.py` `FINAL_CONTROL`,
+the docstrings of `final_guard_v4.py` and `hri_eval_final_v4.py` (both read the names from the plan), the Python and Unity tests and the
+procedure. The entries above keep the old name.
+
+**B11 update (2026-11-13, before the freeze; `final_plan.json` `acceptance_criteria`, `finals_v4/check_session_v4.ps1`, tests):**
+- (a) **A watchdog stop is a RESULT**: it is counted as a stop of its run (or as that run's failure when the run fails) and is never a reason
+  for invalidity. The earlier criterion 4 ("no watchdog stop after start-up") is removed; the checker prints the count as a result.
+- (b) **Added:** frozen hashes match (`freeze_v4.require_frozen` passes after the session), split guard passed (`data_splits_v4.guard_run` on
+  every run's looks and clips, final evaluation: test split only), all runs present (runs 1 to 20, each with a `results_unity.csv` row, a
+  `run_###` folder and a `python_trial_###.json`).
+- (c) **A setting that fails a criterion is reported as invalid, with the reason, and is never rerun** (the earlier wording allowed a
+  declared repetition; it no longer does).
+- The seven criteria: leak test passed; frozen hashes match; split guard passed; all runs present; every outcome recorded; every truth and
+  run file accepted; run protocol recorded. Checked on the D4 session R1 (`trials_development_Task2_20261113_014205` +
+  `bridge_guide_20261113_014023`): as a development session all PASS (frozen hashes N/A, not required in development); with `-Final` it is
+  refused on five criteria (not frozen, development data, 3 of 20 runs, no final markers, no protocol note given), as it must be.
+
+**Decision (Nusrat, 2026-11-13): the finals run in the Unity Editor window,** without `-batchmode`, as the development sessions D2 to D4 did.
+
+**Disclosures (before the freeze):**
+1. **Calibration replay mismatch.** `calibrate_v4.replay` (the reader re-run on `model_outputs.jsonl`) reads STOP on 419 of 894 PROCEED frames
+   of R1 (and on 47 POINT frames), where the live reader logged in `v4_log.jsonl` reads STOP on none (the D2/D3 entry above). Every reader
+   accuracy in the D3 report, including the per-look frame-level numbers quoted above, comes from that replay and may not describe the live
+   reader; they are development diagnostics, not results. **Code search (`git grep`, 2026-11-13):** `calibrate_v4` is imported only by
+   `tests/test_calibrate_v4.py`; it is not imported or run by `hri_eval_final_v4.py`, `hri_eval_dev_v4.py`, `hri_analysis_v4.py`,
+   `final_guard_v4.py`, `freeze_v4.py`, `bridge/server.py` or `paper_v4/figures_v4.py`, and no code reads its `calibrate_v4_*` output folders.
+   Its only trace in a config is the `calibrated` record of `gesture_reader.json` (the arm ratio, measured from the YOLO keypoints, not from
+   the replay). Its accuracies are not reported as results; the final evaluation computes everything from the live logs with
+   `hri_eval_dev_v4`'s code.
+2. **B12's coverage 0.8 was unreachable.** With frame-level coverage (every frame of the arm's movement counts) no swept value reached 0.8
+   (0.24 to 0.49), so B12 could not move any threshold: **all thresholds kept their committed values except the measured arm ratio**
+   (`point.arm_length_in_shoulder_widths` 1.4 -> 1.683, the median of 880 held in-plane POINT frames).
+3. **Batch mode hangs.** In `-batchmode` the run hangs before the leak test at `yield return new WaitForEndOfFrame()` (`TrialRunnerV4.cs` line
+   481; the batch rehearsal above). Not fixed; batch mode is not used.
+4. **Finals in the Editor window**, like D2 to D4 (the decision above): the same timing conditions as the development data.
+5. **RQ4 is answered as development versus finals.** No final uses a development look, so the unseen look (sunbox_f2) is compared with the
+   development sessions (sunbox_m1, sunbox_f1), not within the finals. The development numbers are **optimistic**: the design, the
+   calibrated arm ratio and every development check were made on those looks and clips, and the development sessions were watched and fixed
+   while they ran (the R3 stand fix). A difference between development and the finals therefore mixes the look with the clips, the seed
+   (1 vs 2), the session and this optimism; it is reported as such.
+
+**Unity and scripts (Nusrat's files):** `sessions/rehearsal_zoom_on.json` (identical to `final_zoom_on.json` except the development looks
+sunbox_m1 and sunbox_f1 and, through development mode, the development clips; two Edit Mode tests prove it and that it can never load sunbox_f2
+or a test clip); `finals_v4/run_session_v4.ps1` (one session end to end, `-Setting`, `-Rehearsal`, `-DryRun`; a final is never retried);
+`finals_v4/check_session_v4.ps1` (the seven criteria); `final_procedure_v4.md` (merge, rehearsal on main, freeze on a fresh branch with a pull
+request, finals on main in the order zoom_on, zoom_off, bystanders, zoom_on_repeat); the "pending her confirmation" notes of `final_v4.json`
+and the final session configs now say B7 is confirmed.
+
+**Changes in Anisha's files (allowed by Nusrat in this task, items Q1 to Q4):**
+- `configs/v4/final_plan.json`: `settings` and `test_assignment` key `unseen_look` -> `zoom_on_repeat` and their notes (Q1);
+  `acceptance_criteria` (seven criteria) and `acceptance_criteria_note` (Q2); `status` and `test_assignment_note` say B7 and B11 are confirmed.
+- `bridge/server.py`: `FINAL_CONTROL` key and the `--final-setting` help text (Q1).
+- `final_guard_v4.py`, `hri_eval_final_v4.py`: the setting names in the module docstrings (Q1; no code change, the names come from the plan).
+- `configs/v4/README.md`, `configs/v4/archive/results_manifest.json`: the setting names in their text (Q1).
+- `tests/test_v4_final.py`: `check_setting("zoom_on_repeat", ...)` (Q1).
+- `tests/test_v4_frozen.py`: the plan's settings and `repeat_of` under the new name (Q1); seven criteria and the docstring (Q2); new
+  `test_b11_is_validity_only_and_a_watchdog_stop_is_a_result` (no watchdog criterion, the seven criteria in order, the never-rerun rule, and
+  `check_session_v4.ps1` reporting exactly these criteria) (Q2).
+- `AUDIT.md`: this entry (Q1 to Q3). `CLAUDE.md`: the freeze is run by Nusrat by hand (Q4).
+- Not changed: `freeze_v4.py` and its messages still say "until Anisha freezes" (text only; the procedure and CLAUDE.md say who runs it).

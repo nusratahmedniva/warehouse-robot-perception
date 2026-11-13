@@ -65,7 +65,7 @@ V4_CONTROL, V4_COMMANDER, V4_READER = "configs/v4/control.json", "configs/v4/com
 V4_PERCEPTION = "configs/v4/perception.json"           # P1 (2026-11-12): the ankle height of the 360 distance
 # P11 (2026-11-12): the control file each final setting must run with (identical except zoom.enabled; a test pins that)
 FINAL_CONTROL = {"zoom_on": "configs/v4/control_zoom_on.json", "zoom_off": "configs/v4/control_zoom_off.json",
-                 "bystanders": "configs/v4/control_zoom_on.json", "unseen_look": "configs/v4/control_zoom_on.json"}
+                 "bystanders": "configs/v4/control_zoom_on.json", "zoom_on_repeat": "configs/v4/control_zoom_on.json"}
 FRAME_COUNTERS = ("frames_360_sent", "frames_360_dropped", "frames_pan_tilt_sent", "frames_pan_tilt_dropped")
 
 
@@ -744,7 +744,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--resource-log", action="store_true",
                     help="log memory, paging, CPU per process and GPU once per second (resources.csv, own process)")
     ap.add_argument("--final-setting", default=None,
-                    help="v4 FINAL run of this setting (zoom_on, zoom_off, bystanders, unseen_look): needs configs/v4/frozen.json "
+                    help="v4 FINAL run of this setting (zoom_on, zoom_off, bystanders, zoom_on_repeat): needs configs/v4/frozen.json "
                          "frozen with every hash matching; refused if the setting was already run (final_guard_v4.py)")
     ap.add_argument("--control-config", default=V4_CONTROL,
                     help="protocol 3 only: the v4 control file (default configs/v4/control.json). Session options are copies "

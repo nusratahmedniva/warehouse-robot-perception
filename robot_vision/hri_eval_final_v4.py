@@ -1,4 +1,4 @@
-"""v4 FINAL evaluation of one setting (zoom_on, zoom_off, bystanders, unseen_look). EVALUATION CODE ONLY.
+"""v4 FINAL evaluation of one setting (zoom_on, zoom_off, bystanders, zoom_on_repeat). EVALUATION CODE ONLY.
 
 Allowed only when ALL of this holds, otherwise refused (SystemExit) before any test data is read:
   1. configs/v4/frozen.json is frozen and every hash matches (v4 configs, v3 files v4 reads, pose weights, MediaPipe model);

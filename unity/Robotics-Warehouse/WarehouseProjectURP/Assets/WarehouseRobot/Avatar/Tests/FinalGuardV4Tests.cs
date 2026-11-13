@@ -19,7 +19,7 @@ namespace WarehouseAvatar.Tests
         static string RepoRoot => Path.GetFullPath(Path.Combine(ProjectDir, "../../.."));
         const string FinalAsset = "Assets/WarehouseRobot/Avatar/Config/final_v4.json";
         const string BaseWorkers = "Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json";
-        static readonly string[] Names = { "zoom_on", "zoom_off", "bystanders", "unseen_look" };
+        static readonly string[] Names = { "zoom_on", "zoom_off", "bystanders", "zoom_on_repeat" };
 
         static FinalConfigV4 Final() => FinalConfigV4.Parse(File.ReadAllText(Path.Combine(ProjectDir, FinalAsset)));
         static TrialWorkersConfig Workers(string asset) => TrialWorkersConfig.Parse(File.ReadAllText(Path.Combine(ProjectDir, asset)));
@@ -54,14 +54,14 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
-        public void UnseenLook_IsARepeatOfZoomOn()
+        public void ZoomOnRepeat_IsARepeatOfZoomOn()
         {
             var f = Final();
             var a = Workers(f.Setting("zoom_on").workers_config);
-            var b = Workers(f.Setting("unseen_look").workers_config);
+            var b = Workers(f.Setting("zoom_on_repeat").workers_config);
             Assert.AreEqual(JsonUtility.ToJson(a), JsonUtility.ToJson(b), "the same config apart from the session_note (not parsed)");
-            Assert.AreEqual(f.Setting("zoom_on").look_split, f.Setting("unseen_look").look_split);
-            Assert.AreEqual(f.Setting("zoom_on").clip_split, f.Setting("unseen_look").clip_split);
+            Assert.AreEqual(f.Setting("zoom_on").look_split, f.Setting("zoom_on_repeat").look_split);
+            Assert.AreEqual(f.Setting("zoom_on").clip_split, f.Setting("zoom_on_repeat").clip_split);
         }
 
         [Test]
@@ -120,7 +120,7 @@ namespace WarehouseAvatar.Tests
 
         const string FilledPlan = "{\"task\": \"Task2\", \"final_seed\": 2, \"final_seed_note\": \"x\", \"runs_per_setting\": 20, \"timeout_s\": 270, " +
                                   "\"timeout_s_source\": \"1.5 x\", \"success_radius_m\": 0.3, \"settings\": {\"zoom_on\": {\"zoom\": true, \"bystanders\": null}, " +
-                                  "\"zoom_off\": {\"zoom\": false}, \"bystanders\": {\"bystanders\": true}, \"unseen_look\": {\"zoom\": null}}, " +
+                                  "\"zoom_off\": {\"zoom\": false}, \"bystanders\": {\"bystanders\": true}, \"zoom_on_repeat\": {\"zoom\": null}}, " +
                                   "\"settings_note\": \"n\", \"test_assignment\": {\"zoom_on\": \"x\"}, \"unity_files_and_guard\": \"listed\", " +
                                   "\"acceptance_criteria\": [\"a\"]}";
 
@@ -173,7 +173,7 @@ namespace WarehouseAvatar.Tests
         static FinalConfigV4 SmallConfig() => FinalConfigV4.Parse(
             "{\"final_plan\": \"p.json\", \"frozen\": \"f.json\", \"done_file\": \"UNITY_FINAL_DONE.json\", \"python_run_marker\": \"FINAL_RUN_DONE.json\", " +
             "\"settings\": [{\"name\": \"zoom_on\", \"workers_config\": \"w.json\", \"look_split\": \"development\", \"clip_split\": \"test\"}, " +
-            "{\"name\": \"unseen_look\", \"workers_config\": \"u.json\", \"look_split\": \"test\", \"clip_split\": \"test\"}], " +
+            "{\"name\": \"zoom_on_repeat\", \"workers_config\": \"u.json\", \"look_split\": \"test\", \"clip_split\": \"test\"}], " +
             "\"freeze_files\": [\"unity/a.json\", \"unity/b.unity\"]}");
 
         static string Frozen(Repo r, bool frozen = true) =>
@@ -246,10 +246,10 @@ namespace WarehouseAvatar.Tests
             using (var r = FreshRepo())
             {
                 var cfg = SmallConfig();
-                r.Marker("trials_final_Task2_unseen_look_20261201_100000", "UNITY_FINAL_DONE.json", FinalGuardV4.DoneJson("unseen_look", 20, 18, "abc", "x", "t"));
+                r.Marker("trials_final_Task2_zoom_on_repeat_20261201_100000", "UNITY_FINAL_DONE.json", FinalGuardV4.DoneJson("zoom_on_repeat", 20, 18, "abc", "x", "t"));
                 CollectionAssert.IsEmpty(FinalGuardV4.Problems(cfg, "zoom_on", FilledPlan, Frozen(r), r.Sha, r.Outputs, false), "another setting's marker");
                 StringAssert.Contains("already run as a final", string.Join(" | ",
-                    FinalGuardV4.Problems(cfg, "unseen_look", FilledPlan, Frozen(r), r.Sha, r.Outputs, false)));
+                    FinalGuardV4.Problems(cfg, "zoom_on_repeat", FilledPlan, Frozen(r), r.Sha, r.Outputs, false)));
                 r.Marker("bridge_guide_20261201_090000", "FINAL_RUN_DONE.json", "{\"setting\": \"zoom_on\", \"kind\": \"run\"}");
                 StringAssert.Contains("bridge_guide_20261201_090000/FINAL_RUN_DONE.json", string.Join(" | ",
                     FinalGuardV4.Problems(cfg, "zoom_on", FilledPlan, Frozen(r), r.Sha, r.Outputs, false)));
@@ -332,11 +332,61 @@ namespace WarehouseAvatar.Tests
         public void Development_StillRefusesTheTestLookAndTestClips_TheFinalPlansAreFinalOnly()
         {
             // outside final mode nothing changes: the development plan refuses the final settings' test data
-            var setting = Final().Setting("unseen_look");
+            var setting = Final().Setting("zoom_on_repeat");
             Assert.IsNull(TrialRunWorkers.Plan(1, "development", Workers(setting.workers_config).WithLooks("sunbox_f2"), Template(), Splits(), out string error));
             StringAssert.Contains("test data", error);
             Assert.IsNull(TrialRunWorkers.Plan(1, "final", Workers(setting.workers_config), Template(), Splits(), out error));
             StringAssert.Contains("development mode only", error);
+        }
+
+        // ---------------------------------------------------------------- the rehearsal of zoom_on (2026-11-13, U2)
+
+        const string RehearsalAsset = "Assets/WarehouseRobot/Avatar/Config/sessions/rehearsal_zoom_on.json";
+
+        static string WithoutLooksAndNote(string text) => string.Join("\n", text.Replace("\r\n", "\n").Split('\n')
+            .Where(l => !l.TrimStart().StartsWith("\"looks\":") && !l.TrimStart().StartsWith("\"session_note\":")));
+
+        [Test]
+        public void Rehearsal_DiffersFromTheZoomOnFinalOnlyInItsLooks()
+        {
+            string finalAsset = Final().Setting("zoom_on").workers_config;
+            Assert.AreEqual(WithoutLooksAndNote(File.ReadAllText(Path.Combine(ProjectDir, finalAsset))),
+                            WithoutLooksAndNote(File.ReadAllText(Path.Combine(ProjectDir, RehearsalAsset))), "every line but looks and session_note");
+            var f = Workers(finalAsset);
+            var r = Workers(RehearsalAsset);
+            CollectionAssert.IsEmpty(r.Validate(), string.Join("\n", r.Validate()));
+            CollectionAssert.AreEqual(new[] { "sunbox_m1", "sunbox_f1" }, r.looks);
+            r.looks = new List<string>(f.looks);
+            Assert.AreEqual(JsonUtility.ToJson(f), JsonUtility.ToJson(r), "the parsed configs agree once the looks are set equal");
+        }
+
+        [Test]
+        public void Rehearsal_UsesOnlyDevelopmentLooksAndClips_AndCanNeverLoadTheTestLookOrATestClip()
+        {
+            var s = Splits();
+            var r = Workers(RehearsalAsset);
+            foreach (var l in r.looks) Assert.AreEqual("development", s.Looks[l], l);
+            for (int run = 1; run <= 20; run++)
+            {
+                // the final's 20 runs, planned as the rehearsal plans them (development mode): m1, f1 alternating, development clips only
+                var p = TrialRunWorkers.Plan(run, "development", r, Template(), s, out string error);
+                Assert.IsNotNull(p, error);
+                Assert.AreEqual("development", p.Split, $"run {run}");
+                Assert.AreEqual(run % 2 == 1 ? "sunbox_m1" : "sunbox_f1", p.CommanderLook, $"run {run}");
+                CollectionAssert.DoesNotContain(p.AllLooks().ToList(), "sunbox_f2", $"run {run}");
+                foreach (var c in p.AllowedClips) Assert.AreEqual("development", s.Clips[c], $"run {run} clip {c}");
+                CollectionAssert.IsNotEmpty(p.AllowedFor("POINT"), $"run {run}");
+                CollectionAssert.IsNotEmpty(p.AllowedFor("PROCEED"), $"run {run}");
+            }
+            // never a final: no setting names it, it is not frozen, a final plan refuses its looks and the development plan refuses
+            // final mode (TrialRunnerV4 also refuses -workersConfig with -finalSetting)
+            var f = Final();
+            Assert.IsFalse(f.settings.Any(x => x.workers_config == RehearsalAsset));
+            Assert.IsFalse(f.freeze_files.Any(x => x.EndsWith("/rehearsal_zoom_on.json")));
+            Assert.IsNull(TrialRunWorkers.PlanFinal(1, f.Setting("zoom_on"), r, Template(), s, out string why));
+            StringAssert.Contains("not a test look", why);
+            Assert.IsNull(TrialRunWorkers.Plan(1, "final", r, Template(), s, out why));
+            StringAssert.Contains("development mode only", why);
         }
     }
 

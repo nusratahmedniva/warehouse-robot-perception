@@ -137,7 +137,7 @@ class SettingChecks(unittest.TestCase):
             r = self.runs(Path(d))
             self.assertTrue(any("needs bystanders" in x for x in fg.check_setting("bystanders", r, repo)))
             self.assertTrue(any("needs zoom off" in x for x in fg.check_setting("zoom_off", r, repo)))
-            self.assertEqual(fg.check_setting("unseen_look", r, repo), [])
+            self.assertEqual(fg.check_setting("zoom_on_repeat", r, repo), [])
 
     def test_blanks_in_the_plan_are_reported(self):
         with tempfile.TemporaryDirectory() as d:

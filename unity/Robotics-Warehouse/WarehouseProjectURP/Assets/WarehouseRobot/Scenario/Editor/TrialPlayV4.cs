@@ -18,7 +18,7 @@ namespace WarehouseRobot.ScenarioEditor
     ///   Unity -projectPath P -executeMethod WarehouseRobot.ScenarioEditor.TrialPlayV4.Run -trialTimeout 1800 -checkDir D -logFile run.log
     /// -workersConfig F (2026-11-12): a declared session config instead of trial_workers_v4.json, F relative to the Unity project
     /// (e.g. Assets/WarehouseRobot/Avatar/Config/sessions/dev_bystanders.json); TrialRunnerV4 records which one it used.
-    /// -finalSetting NAME (2026-11-13, Stage F): a FINAL session of that setting (zoom_on, zoom_off, bystanders, unseen_look), refused
+    /// -finalSetting NAME (2026-11-13, Stage F): a FINAL session of that setting (zoom_on, zoom_off, bystanders, zoom_on_repeat), refused
     /// by TrialRunnerV4's final-run guard unless the v4 configs and the B9 files are frozen, the plan has no blank, the development
     /// override is absent and the setting has not run before. The Python server must run with --final-setting NAME.
     /// </summary>
