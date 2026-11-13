@@ -1700,3 +1700,21 @@ and the final session configs now say B7 is confirmed.
   "until Anisha freezes". Not changed (outside the allowed change): the usage line of its docstring ("Anisha, after the development
   evaluation"), `configs/v4/README.md` line 5, and the `label` of `configs/v4/frozen.json`, which the AI never edits (it says "until
   Anisha freezes it"; the freeze keeps the label).
+
+### 2026-11-13, pre-freeze tidy-up (by Anisha; wording only: no threshold, value or logic changed; no freeze run)
+
+Branch `anisha/v4-prefreeze-tidy`. Sections 1 to 14 are not edited; where they still say the freeze is "by Anisha" (14.7, 14.11) this entry and the 2026-11-13 agreement above supersede them.
+
+1. **Arm-ratio wording in the look check** (`configs/v4/look_check.json` `checks.arm_ratio_p95.why`; the entry above left it for Anisha to reword). It now names the configured
+   1.683 (kept equal to `point.arm_length_in_shoulder_widths` by `tests/test_look_check_v4.py`; 1.4 when the rule was declared on 2026-11-06, calibrated on 2026-11-13) and the range
+   it implies, 1.683 x (1 - 0.30) to 1.683 x (1 + 0.25), i.e. **1.18 to 2.10** (it said 1.4 and 0.98 to 1.75). Only that text changed: `assumed` (1.683), `low_rel` (0.30) and `high_rel` (0.25) are untouched,
+   and a check confirmed that, parsed as JSON, nothing else in the file changed. The same three stale mentions in `docs/look_check_v4.md` (the measured-ratio sentence, the table row, the recording instruction) are corrected to match.
+2. **`freeze_v4.V3_DEPENDENCIES` and `configs/roadmap.json`: reported, NOT changed.** The v4 map is `configs/v4/roadmap.json` (named by `control.json`, frozen with `configs/v4/`). The v3 `configs/roadmap.json` is still read by v4-side code in two places,
+   neither of which lets its content reach a v4 decision: `bridge/server.py` line 605 loads it through `task_route.map_for_task` for every protocol and then, for protocol 3, replaces `road` and `road_files` with the v4 map (so it is not
+   copied to `config_used/` and not in `map_used.json`); and `hri_sim_v4.two_view_study` (a simulator study function, development only, line 607). Other readers are v3 code (`task_route.py`, `hri_eval_dev.py`,
+   `hri_control.make_controller`) and tests (`test_v4_frozen.py` line 203 detects a change of it after freezing, `test_make_results_archive_v4.py` line 85 expects it in the archive; several more use it as a fixture). Unity C# files also mention `roadmap.json`
+   (Nusrat's side; not examined). **Proposal (not applied, awaiting a decision):** removing it from the list is possible because no v4 decision depends on its content, but it needs (a) the list edit, (b) those two tests changed, (c) `bridge/server.py` line 605
+   left reading it (harmless) or reworked, and (d) the stale note text in `frozen.json` left alone (the AI never edits it). The v3 file is already pinned by the v3 freeze (`configs/hri_frozen.json`, `tests/test_hri_frozen.py`), so hashing it again in `frozen.json` is redundant,
+   not wrong. Recommendation: keep it (zero risk, the cost is that an edit to a v3 file fails a v4 test too); do not change the list before the freeze.
+3. **Who runs the freeze** (wording): the `freeze_v4.py` usage line and `configs/v4/README.md` line 5 now say the freeze is run by **Nusrat, by hand**, after the development evaluation (agreed with Anisha on 2026-11-13; CLAUDE.md; the entry above), and never by the AI. These were the two
+   places the entry above listed as not changed. `configs/v4/frozen.json` is not touched (its `label` still says "until Anisha freezes it"; the freeze keeps the label). `freeze_v4.py --freeze` was not run.

@@ -10,7 +10,8 @@ configs/v4/final_plan.json, while a model file is missing, or when the file is a
 Usage (from robot_vision/):
     python freeze_v4.py                 report: status, blanks, what would be hashed, current mismatches
     python freeze_v4.py --refresh-list  rewrite "files" of an UNFROZEN frozen.json from configs/v4/*.json
-    python freeze_v4.py --freeze        write the hashes and set "frozen": true (Anisha, after the development evaluation)
+    python freeze_v4.py --freeze        write the hashes and set "frozen": true (run by Nusrat BY HAND after the development evaluation,
+                                        agreed with Anisha on 2026-11-13; CLAUDE.md, AUDIT.md section 15; never run by the AI)
 
 Library use (final evaluation, server in final mode): problems(), require_frozen().
 """
