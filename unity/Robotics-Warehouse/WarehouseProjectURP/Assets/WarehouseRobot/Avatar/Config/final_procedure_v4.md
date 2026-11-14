@@ -3,6 +3,23 @@
 Updated 2026-11-13 (pre-freeze completion). Nothing here has been run yet: no rehearsal on main, no freeze, no final. The assistant never
 writes `robot_vision/configs/v4/frozen.json`, never runs `freeze_v4.py --freeze`, never pushes and never starts a final.
 
+> **2026-11-14: the finals are now the experiments A/B** (`experiments_ab.md` section 7). The settings `zoom_on`, `zoom_off`, `bystanders`,
+> `zoom_on_repeat` below are **superseded** (`final_v4.json` `superseded_settings`; the Unity guard and the launcher refuse them). The order of the
+> procedure (merge, rehearsal on main, freeze by hand on a fresh branch, finals on main, each setting once) is unchanged; only the setting names and
+> the launcher arguments differ. The final matrix: `A1`, `A2_right`, `A2_left`, `A3`, `A4`, `B1`, `B2_right`, `B3`, `B4` (sittings: section 7).
+> Before the freeze Anisha adds the nine settings to `final_plan.json` and `FINAL_CONTROL`, and the experiment control and map files to the freeze
+> (`robot_vision/outputs/for_anisha_finals_ab_*.md`). From the repository root:
+>
+> ```powershell
+> # a rehearsal (development looks and clips, dev seed; -Trials N), e.g. A2 with the left turn:
+> .\finals_v4\run_session_v4.ps1 -Experiment A2 -Side left -Rehearsal -Trials 3 -DryRun   # then without -DryRun
+> # a final (once per setting, on main, clean tree, frozen), e.g. B3:
+> .\finals_v4\run_session_v4.ps1 -Experiment B3 -DryRun                                   # then without -DryRun
+> ```
+>
+> `-DryRun` lists every reason a real run would be refused now. After a valid final the launcher prints the evaluation and CSV export commands
+> (Anisha's tools, run once). The avatar experiment runs once after the last final (`experiments_ab.md` section 8).
+
 ## 0. Decided and in place
 
 - **B7 = plan (b), confirmed by Anisha on 2026-11-13:** every final uses sunbox_f2 + the test clips; in bystanders every person wears sunbox_f2.

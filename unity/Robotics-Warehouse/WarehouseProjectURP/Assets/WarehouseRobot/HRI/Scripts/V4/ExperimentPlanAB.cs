@@ -192,6 +192,20 @@ namespace WarehouseHRI.V4
             }
         }
 
+        /// <summary>The map name (scenarios_ab.json: corridor, turn or roadmap) of an experiment of the config, or null when the
+        /// experiment or its scenario is unknown (experiments_ab.md section 7: the final configs are checked against it).</summary>
+        public static string MapOfExperiment(ExperimentsUnityConfig cfg, string scenariosJson, string experiment)
+        {
+            var def = cfg.Experiment(experiment);
+            if (def == null) return null;
+            try
+            {
+                var scen = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)MiniJson.Parse(scenariosJson))["scenarios"])[def.scenario];
+                return (string)scen["map"];
+            }
+            catch (Exception e) when (e is KeyNotFoundException || e is InvalidCastException || e is FormatException || e is NullReferenceException) { return null; }
+        }
+
         // ---------------------------------------------------------------- maps
 
         /// <summary>The asking nodes of a map: the start node, then every junction, in file order.</summary>
