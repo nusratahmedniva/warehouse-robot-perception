@@ -251,3 +251,24 @@ experiment configuration's nodes, branches and slots match them and obey every p
   **cartoon_boxo_01: unchanged** (same file; Edit mode only; person 0.08). Licences of both: **not verified** (SOURCES.txt empty) **[N]**. Nothing
   tuned. The two code commits were first made on local `main` by mistake and moved unchanged to `nusrat/v4-experiments-ab-anime`; the three
   look-check run_info files say `git_branch: main` with commit 66f41f6.
+
+## 2026-11-14, section 6: licences, the two failed looks, reports in the repo (after the step 2b results)
+
+- **Licences re-checked.** `unity/downloads/characters_v4/SOURCES.txt` (git-ignored) is now filled in: anime_f_01 is Nusrat's own character made in
+  VRoid Studio and converted to FBX in Blender (VRM Add-on); cartoon_boxo_01 is Nusrat's own character generated procedurally (`make_cartoon_boxo.py`,
+  not in this repository) and rigged with Mixamo's auto-rigger; neither is redistributed. Terms of the tools (read through search results; vroid.com
+  and helpx.adobe.com refused a direct fetch): the VRoid Studio Guidelines allow any use, commercial included, of models made with VRoid Studio and
+  its preset items unless an item carries special clauses; Adobe's Mixamo FAQ says the user keeps the rights to their own creations, allows
+  royalty-free use in personal, commercial and non-profit projects and excludes training machine-learning models on Mixamo content (nothing is
+  trained here). `looks_ab.json` `licence` of both looks updated; the "not verified" of sections 2 and 5 and of the step 2 and 2b reports is
+  superseded by this entry (those texts are kept as written). Both characters stay git-ignored and are never committed.
+- **anime_f_01 and cartoon_boxo_01 stay in the avatar experiment as reported failures; neither is used for navigation** (`navigation` false,
+  no `proposed_split`). Causes (step 2b report): *anime_f_01* (re-export, arm mesh follows its bones): no POINT, WAIT or STOP sequence read at
+  2 m; MediaPipe finds a hand in 0 to 5 % of frames; the POINT clips fold the forearm on this rig (bone arm-to-shoulder ratio 2.28 vs 1.683);
+  facing 0.07 (the bangs cover one eye). *cartoon_boxo_01*: one finger chain per hand, so no hand shape at all (WAIT and STOP impossible by
+  construction, the worker template cannot shape its hand, so it is checked in Edit mode only); YOLO finds a person in 8 % of frames.
+- **Reports in the repo.** Verbatim copies (byte-identical) of the step reports from the git-ignored `robot_vision/outputs/` are tracked in
+  `Avatar/Config/reports_v4/`: `experiments_ab_step1_20261114.md`, `experiments_ab_step2_avatars_20261114.md`,
+  `experiments_ab_step2b_anime_cartoon_20261114.md`, and the roadmap proposal's README as
+  `experiments_ab_roadmaps_20261114_025749_README.md` (its map files stay in the output folder). Paths inside them are relative to
+  `robot_vision/outputs/` as written.
