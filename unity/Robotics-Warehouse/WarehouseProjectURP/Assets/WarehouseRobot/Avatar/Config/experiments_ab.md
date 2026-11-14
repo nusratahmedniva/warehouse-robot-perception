@@ -450,3 +450,10 @@ No look is added, dropped or replaced because of a result; a look that fails is 
 6. Run once: the two output folders (identified by their `run_info.json` commit = the frozen commit) are the avatar experiment. No code guard is
    built for it (declared; a guard like `FinalGuardV4` would be a later, declared change **[N]**).
 7. Reported per kind and per look with every rate's count; the test looks are reported like the others (the finals are over by then).
+
+## 2026-11-14, section 9: what the Python side needs for these finals (step 7)
+
+Written for Anisha to `robot_vision/outputs/for_anisha_finals_ab_20261114_164233.md` (git-ignored; a byte-identical copy is tracked in
+`Avatar/Config/reports_v4/`): the decisions before the freeze (lie detection in the finals, the 270 s timeout, B2 sides, the shared J1 look, the
+sittings), the nine `final_plan.json` settings and their test assignment, the `FINAL_CONTROL` entries, the experiment control and map files for the
+freeze, and a final mode of the evaluation and CSV export per experiment. None of her files was changed.
