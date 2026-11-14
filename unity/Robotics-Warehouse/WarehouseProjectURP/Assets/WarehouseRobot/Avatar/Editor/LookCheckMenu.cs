@@ -37,7 +37,7 @@ namespace WarehouseAvatar.EditorTools
     /// BatchRun (exit code 0 = done).
     /// Third-party code (Sunbox) is reached by reflection only, so this compiles on a machine without the pack.
     /// </summary>
-    public static class LookCheckMenu
+    public static partial class LookCheckMenu
     {
         public const string ScenePath = "Assets/WarehouseRobot/Avatar/LookCheck.unity";
         public const string ConfigPath = "Assets/WarehouseRobot/Avatar/Config/look_check.json";
@@ -273,12 +273,14 @@ namespace WarehouseAvatar.EditorTools
                         foreach (string arm in c.arm_labelled ? cfg.recording.arms : new[] { "" })
                             foreach (var v in c.variants)
                             {
+                                bool proceed = c.command == LookCheckConfig.Proceed;
+                                double Phase(int i) => proceed ? PoseSpec.From(c.command, arm, v, i / 10.0).ForearmDeg : double.NaN;
                                 spawned.Poser.Apply(PoseSpec.From(c.command, arm, v));
                                 var px = Render(stage.checkCamera, pt.width_px, pt.height_px, out byte[] png);
                                 int magenta = LookInventory.MagentaPixels(px, cfg.render.magenta_tolerance);
                                 maxMagenta = Mathf.Max(maxMagenta, magenta);
                                 string name = LookCheckConfig.RecordingName(look.id, c.command, d, arm, v.take);
-                                int n = v.sequence ? cfg.recording.sequence_frames : 1;
+                                int n = v.sequence ? (proceed ? cfg.recording.proceed_sequence_frames : cfg.recording.sequence_frames) : 1;
                                 if (v.sequence)
                                 {
                                     string seqDir = Path.Combine(recDir, name);
@@ -286,15 +288,23 @@ namespace WarehouseAvatar.EditorTools
                                     Directory.CreateDirectory(seqDir);
                                     for (int i = 0; i < n; i++)          // a held pose: the same render for every frame of the second
                                     {
+                                        if (proceed && i > 0)
+                                        {
+                                            // PROCEED (experiments_ab.md section 10 addendum 1): a posed swing, every frame rendered at its time i / 10 s
+                                            spawned.Poser.Apply(PoseSpec.From(c.command, arm, v, i / 10.0));
+                                            px = Render(stage.checkCamera, pt.width_px, pt.height_px, out png);
+                                            magenta = Mathf.Max(magenta, LookInventory.MagentaPixels(px, cfg.render.magenta_tolerance));
+                                            maxMagenta = Mathf.Max(maxMagenta, magenta);
+                                        }
                                         string stem = Path.Combine(seqDir, LookCheckConfig.FrameStem(i));
                                         WriteNew(stem + ".png", png);
-                                        WriteNew(stem + ".json", LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, i, arm, v));
+                                        WriteNew(stem + ".json", LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, i, arm, v, Phase(i)));
                                     }
                                 }
                                 else
                                 {
                                     WriteNew(Path.Combine(recDir, name + ".png"), png);
-                                    WriteNew(Path.Combine(recDir, name + ".json"), LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, 0, arm, v));
+                                    WriteNew(Path.Combine(recDir, name + ".json"), LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, 0, arm, v, Phase(0)));
                                 }
                                 lines.Append(JsonUtility.ToJson(new RecordingRecord
                                 {

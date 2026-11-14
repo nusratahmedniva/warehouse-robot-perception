@@ -68,7 +68,8 @@ namespace WarehouseAvatar.Tests
             string Strip(string s)
             {
                 s = s.Replace("\r\n", "\n");
-                foreach (var key in new[] { "\"note\": \"[^\"]*\",", "\"looks\": \\[[^\\]]*\\],", "\"looks_excluded\": \\{[^}]*\\},", "\"run_prefix\": \"[^\"]*\"," })
+                // section 10 item 5: the avatar experiment's config also records PROCEED (its "proceed" block)
+                foreach (var key in new[] { "\"note\": \"[^\"]*\",", "\"looks\": \\[[^\\]]*\\],", "\"looks_excluded\": \\{[^}]*\\},", "\"run_prefix\": \"[^\"]*\",", "\"proceed\": \\{[^}]*\\}," })
                     s = Regex.Replace(s, "\n[ ]*" + key, "");
                 return s;
             }

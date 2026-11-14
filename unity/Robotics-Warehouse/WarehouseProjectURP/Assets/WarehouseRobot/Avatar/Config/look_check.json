@@ -11,6 +11,7 @@
     "distances_m": [2.0, 4.0],
     "vertical_fov_deg": 60.0,
     "sequence_frames": 11,
+    "proceed_sequence_frames": 21,
     "arms": ["left", "right"],
     "why": {
       "format": "docs/look_check_v4.md: names <look>__<COMMAND>__<distance_m>__<take>; a single frame is <name>.png + <name>.json, a sequence is a folder <name>/ with frame_000.png + frame_000.json ... ; the header is the bridge's frame_pan_tilt header (protocol 3) plus the person's own gesturing arm under 'arm' (POINT, WAIT, STOP). The take label starts with the arm (e.g. left_seq1), because the arm is not part of the name. folder_name holds the recordings only (the tool reads every subfolder as a sequence); the run's own files sit next to it.",
@@ -71,8 +72,22 @@
         { "take": "f4",   "sequence": false, "azimuth_front_deg": 10.0, "elevation_deg": -80.0, "forearm_up": false, "spread_deg": 0.0 },
         { "take": "f5",   "sequence": false, "azimuth_front_deg": 0.0,  "elevation_deg": -78.0, "forearm_up": false, "spread_deg": 0.0 }
       ]
+    },
+    {
+      "command": "PROCEED",
+      "arm_labelled": true,
+      "variants": [
+        { "take": "seq1", "sequence": true,  "azimuth_front_deg": 0.0, "elevation_deg": 0.0, "forearm_up": false, "spread_deg": 0.0, "upper_forward_deg": 15.0, "swing_low_deg": -20.0, "swing_high_deg": 60.0, "swing_hz": 1.5 },
+        { "take": "seq2", "sequence": true,  "azimuth_front_deg": 0.0, "elevation_deg": 0.0, "forearm_up": false, "spread_deg": 0.0, "upper_forward_deg": 35.0, "swing_low_deg": 0.0,   "swing_high_deg": 75.0, "swing_hz": 1.5 },
+        { "take": "f1",   "sequence": false, "azimuth_front_deg": 0.0, "elevation_deg": 0.0, "forearm_up": false, "spread_deg": 0.0, "upper_forward_deg": 15.0, "swing_low_deg": -20.0, "swing_high_deg": -20.0, "swing_hz": 0.0 },
+        { "take": "f2",   "sequence": false, "azimuth_front_deg": 0.0, "elevation_deg": 0.0, "forearm_up": false, "spread_deg": 0.0, "upper_forward_deg": 15.0, "swing_low_deg": 0.0,   "swing_high_deg": 0.0,   "swing_hz": 0.0 },
+        { "take": "f3",   "sequence": false, "azimuth_front_deg": 0.0, "elevation_deg": 0.0, "forearm_up": false, "spread_deg": 0.0, "upper_forward_deg": 15.0, "swing_low_deg": 20.0,  "swing_high_deg": 20.0,  "swing_hz": 0.0 },
+        { "take": "f4",   "sequence": false, "azimuth_front_deg": 0.0, "elevation_deg": 0.0, "forearm_up": false, "spread_deg": 0.0, "upper_forward_deg": 15.0, "swing_low_deg": 40.0,  "swing_high_deg": 40.0,  "swing_hz": 0.0 },
+        { "take": "f5",   "sequence": false, "azimuth_front_deg": 0.0, "elevation_deg": 0.0, "forearm_up": false, "spread_deg": 0.0, "upper_forward_deg": 15.0, "swing_low_deg": 60.0,  "swing_high_deg": 60.0,  "swing_hz": 0.0 }
+      ]
     }
   ],
+  "proceed_note": "PROCEED (2026-11-14, Avatar/Config/experiments_ab.md section 10 item 5 and addendum 1, declared before it was built): the forearm swing as a POSED swing (Edit Mode has no motion): the upper arm straight down turned upper_forward_deg toward the front with the elbow 0.08 arm lengths out to the side, the forearm at swing_low_deg + (swing_high_deg - swing_low_deg) x (1 - cos(2 pi swing_hz t)) / 2 above horizontal toward the front, t = frame / 10 s (the worker's PROCEED law, worker_v4.json proceed_ik_01 and proceed_ik_02 at 1.5 Hz, the middle of proceed_rate_hz), flat hand (fingers along the forearm, 5 deg per joint, palm toward the body). Sequences have recording.proceed_sequence_frames frames (2.0 s, the reader's proceed.window_s), each rendered on its own; singles at fixed forearm angles of proceed_ik_01. Anisha's look_check_v4.py grades PROCEED when present (configs/v4/look_check.json graded_when_present).",
   "commands_note": "Pose design, declared before any model was run on these variants. Every arm direction is in the worker's body frame (the worker faces the camera): azimuth_front_deg turns the arm from straight out to the person's own side (0 = sideways in the image plane) toward the camera (90 = straight at it); elevation_deg is above (+) or below (-) horizontal. forearm_up: the direction is the upper arm's and the forearm is vertical (bent elbow), else the whole arm is straight. POINT: index finger extended along the arm, other fingers curled; seq1 sideways in the image plane and seq2 45 deg toward the front, as docs/look_check_v4.md asks. WAIT: forearm vertical, hand beside the head, index up, other fingers curled, palm toward the camera; seq1 is the Phase 2A pose (0.8 side + 0.3 front, 0.35 down). STOP: fingers up, palm toward the camera, the four fingers fanned by spread_deg per finger away from the middle finger; seq1 extended toward the robot (v3 GestureWorker STOP: front + 0.25 up + 0.2 side), seq2 bent. The other arm hangs relaxed. NONE (optional negative control, no arm label): both arms hang, mirrored, relaxed hands. Singles f1..f5 differ a little in arm direction, hand height and finger spread, as docs/look_check_v4.md recommends.",
   "render": {
     "backdrop_behind_person_m": 4.0,
