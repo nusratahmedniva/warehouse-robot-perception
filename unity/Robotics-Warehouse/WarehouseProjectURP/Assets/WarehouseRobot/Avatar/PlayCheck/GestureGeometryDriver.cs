@@ -57,6 +57,8 @@ namespace WarehouseRobot.AvatarCheck
             public float max_palm_bone_deg = -1f, max_palm_mesh_deg = -1f, max_palm_mesh_flatness = -1f, max_thumb_palm_lengths = -1f;
             public float min_thumb_side = 999f, min_thumb_across = 999f, max_thumb_across = -999f;
             public string hand_first_failure = "";
+            /// <summary>Section 12 addendum 1 (diagnostic, first measured frame): the mesh palm normal of each sub-mesh's palm vertices.</summary>
+            public string palm_mesh_groups = "";
         }
 
         [Serializable]
@@ -124,6 +126,8 @@ namespace WarehouseRobot.AvatarCheck
             public LookPoser.Arm ArmL, ArmR;
             public List<KeyValuePair<SkinnedMeshRenderer, int[]>> PalmL, PalmR;
             public readonly Dictionary<SkinnedMeshRenderer, Mesh> Baked = new Dictionary<SkinnedMeshRenderer, Mesh>();
+            /// <summary>Each vertex's "renderer/material" (the first sub-mesh using it), for the diagnostic of addendum 1.</summary>
+            public readonly Dictionary<SkinnedMeshRenderer, string[]> SubMeshLabels = new Dictionary<SkinnedMeshRenderer, string[]>();
         }
 
         GestureGeometryConfig m_Cfg;
@@ -286,6 +290,19 @@ namespace WarehouseRobot.AvatarCheck
             s.PalmR = PalmVertices(w.LookInstance, s.ArmR.Hand, m_Cfg.tolerance.palm_hand_weight_min);
             s.Record.palm_vertices_left = s.PalmL.Sum(kv => kv.Value.Length);
             s.Record.palm_vertices_right = s.PalmR.Sum(kv => kv.Value.Length);
+            foreach (var smr in s.PalmL.Concat(s.PalmR).Select(kv => kv.Key).Distinct())
+            {
+                var mesh = smr.sharedMesh;
+                var label = new string[mesh.vertexCount];
+                var mats = smr.sharedMaterials;
+                for (int sub = mesh.subMeshCount - 1; sub >= 0; sub--)     // the lowest sub-mesh using a vertex wins
+                {
+                    string name = $"{smr.name}/{(sub < mats.Length && mats[sub] != null ? mats[sub].name.Replace(" (Instance)", "") : "sub" + sub)}";
+                    foreach (int i in mesh.GetTriangles(sub)) label[i] = name;
+                }
+                for (int i = 0; i < label.Length; i++) if (label[i] == null) label[i] = smr.name + "/none";
+                s.SubMeshLabels[smr] = label;
+            }
             if (s.Screens)
             {
                 var sc = m_Cfg.screens;
@@ -472,6 +489,7 @@ namespace WarehouseRobot.AvatarCheck
             var set = right ? s.PalmR : s.PalmL;
             var f = HandGeometry.Frame(arm);
             var verts = new List<Vector3>();
+            var groups = new Dictionary<string, List<Vector3>>();   // section 12 addendum 1 (diagnostic): the palm region per sub-mesh
             if (f.Valid)
                 foreach (var kv in set)
                 {
@@ -481,9 +499,30 @@ namespace WarehouseRobot.AvatarCheck
                     smr.BakeMesh(mesh, true);   // renderer space, the renderer's scale applied
                     var v = mesh.vertices;
                     var m = Matrix4x4.TRS(smr.transform.position, smr.transform.rotation, Vector3.one);
-                    foreach (int i in kv.Value) if (i < v.Length) verts.Add(m.MultiplyPoint3x4(v[i]));
+                    var label = s.SubMeshLabels.TryGetValue(smr, out var l) ? l : null;
+                    foreach (int i in kv.Value)
+                    {
+                        if (i >= v.Length) continue;
+                        var p = m.MultiplyPoint3x4(v[i]);
+                        verts.Add(p);
+                        if (rec.hand_frames > 0 || label == null) continue;      // the first measured frame of each take
+                        string key = label[i];
+                        if (!groups.TryGetValue(key, out var g)) groups[key] = g = new List<Vector3>();
+                        g.Add(p);
+                    }
                 }
             var region = HandGeometry.PalmRegion(verts, f);
+            if (rec.hand_frames == 0 && groups.Count > 0)
+            {
+                var parts = new List<string>();
+                foreach (var kv in groups.OrderByDescending(x => x.Value.Count))
+                {
+                    var gr = HandGeometry.PalmRegion(kv.Value, f);
+                    bool ok = HandGeometry.MeshNormal(gr, f.Normal, 3, 1f, out var gn, out float gf);
+                    parts.Add($"{kv.Key}: {gr.Count} v" + (ok ? $", {F(Vector3.Angle(gn, s.Robot.position - f.P))} deg, flatness {gf.ToString("0.00", Inv)}" : ""));
+                }
+                rec.palm_mesh_groups = string.Join("; ", parts);
+            }
             var th = arm.Fingers[HandShaper.Thumb];
             bool hasTip = th[1] != null && th[2] != null;
             var r = HandGeometry.Evaluate(rec.command, f, region, s.Robot.position, hasTip, hasTip ? HandShaper.Tip(arm, HandShaper.Thumb) : Vector3.zero, m_Cfg.tolerance);
@@ -637,6 +676,12 @@ namespace WarehouseRobot.AvatarCheck
             }
             var fails = f.looks.Where(l => l.status == "ok").SelectMany(l => l.commands.Where(c => c.hand_checked && !c.hand_pass).Select(c => $"- {l.id} {c.command}: {c.hand_failures}")).ToList();
             if (fails.Count > 0) sb.Append("\nFailures (first failing frame of each failing take):\n\n").Append(string.Join("\n", fails)).Append('\n');
+            var diag = f.looks.Where(l => l.status == "ok").SelectMany(l => l.takes.Where(t => t.palm_mesh_groups.Length > 0)
+                                                                                   .GroupBy(t => t.command + " " + t.arm).Select(g => g.First())
+                                                                                   .Select(t => $"- {l.id} {t.command} {t.arm} ({t.clip}): {t.palm_mesh_groups}")).ToList();
+            if (diag.Count > 0)
+                sb.Append("\nDiagnostic (section 12 addendum 1, not a pass rule): the mesh palm normal of each sub-mesh's palm vertices against the camera, " +
+                          "first measured frame of the first take per command and arm:\n\n").Append(string.Join("\n", diag)).Append('\n');
             return sb.ToString();
         }
 

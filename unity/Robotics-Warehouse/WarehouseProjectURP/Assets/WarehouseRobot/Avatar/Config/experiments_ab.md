@@ -734,3 +734,22 @@ frames of every STOP and WAIT take:
 orientation or thumb curl (`HandShaper`, `WorkerV4`) or the import. It is written here as an addendum before the change. Tests must prove
 five-finger looks unchanged (the golden test and the `BatchHandShapes` comparison, value for value). Then the geometry check and its
 screenshots are rerun. Nothing is tuned on a perception result.
+
+*Addendum 1 (2026-11-14, after the first run `gesture_geometry_hand_20261114_214854` on b4cf95c, before any fix).*
+- **The palm faces the camera by the bones on every look:** at most 16.5 deg.
+- **The mesh normal agrees** (10 to 25 deg) on the Sunbox looks, mixamo_worker and anime_f_02.
+- **anime_f_01 and anime_f_03 fail the mesh part at 90 to 101 deg.** These are the long-sleeve variants; the short-sleeve anime_f_02 passes,
+  and the long-sleeve ones have 65 more hand-bound vertices (141 against 76). The suspicion is that sleeve-cuff vertices are weighted to
+  the hand and enter the plane fit.
+- **Boxo's mesh normal is n/a:** its low-poly glove gives 18 to 20 palm vertices, fewer than 30, so its palm rests on the bones (5 to 9 deg).
+- **The WAIT thumb fails on mixamo_worker (1.27 Lp), the three anime looks (1.57 Lp) and Boxo (2.50 Lp)**; the Sunbox looks pass
+  (0.93 to 0.94 Lp).
+
+Four of the five failing looks have five fingers, so item 2's condition "five-finger looks stay unchanged" cannot hold for a fix of
+their thumbs. That is Nusrat's decision. *Diagnostic before asking (report only; the pass rule is not changed):* the geometry check also
+reports the mesh palm normal of each group of palm vertices by sub-mesh (material), so the sleeve suspicion is checked, not assumed. It
+runs on the three anime looks only.
+*Diagnostic result* (`gesture_geometry_hand_diag_20261114_215527`): **inconclusive**. In Play mode the Body mesh gave no sub-mesh
+assignment for any palm vertex (all labelled `Body/none`), so the sleeve could not be separated from the skin. The run reproduces the
+first: anime_f_01 and 03 at 90 to 98 deg (141 to 142 vertices), anime_f_02 at 18 to 22 deg (75 to 76 vertices). The sleeve explanation
+remains a suspicion. Nothing was fixed; Nusrat decides (the thumb of five-finger looks, and the anime mesh result).
