@@ -76,7 +76,10 @@ RUN_FIELDS = {
     "second_opinions": "dialogs started with a further person (ask_next)", "rejections": "answers rejected as impossible",
     "backtracks": "backtracks started", "lies_given": "see Definitions", "lies_detected": "see Definitions",
     "lies_corrected": "see Definitions", "lies_fooled": "see Definitions",
-    "setting": "lie-detection setting label of the session (session.json 'lie_detection': off, on, a, b, bc, abc, mirror), empty when not recorded",
+    "setting": "lie-detection setting label of the session: session.json 'lie_detection' when Unity records one (off, on, a, b, bc, abc, mirror); Unity's experiment sessions do not (AUDIT.md 16.16 decision 7), "
+               "so then the label of the bridge's control file (the field lie_detection); empty when neither is known",
+    "lie_detection": "what the robot ran: the lie-detection switches of the bridge's config_used/control.json as a label: off (all false), on (second opinion + reject impossible, backtrack off), "
+                     "else the letters a = second opinion, b = reject impossible, c = backtrack that are on; empty when the control file has no lie_detection block",
     "final_setting": "the final setting (A1 ... B4_off) when exported in final mode (session.json 'final_setting'), empty otherwise",
     "max_distance_from_optimal_m": "largest distance of the trail from the optimal path (gt_path); empty without gt_path files",
     "share_within_corridor": "share of trail points within gt_path's near distance of the optimal path (the corridor); empty without gt_path files",
@@ -107,6 +110,19 @@ DIALOG_FIELDS = {
 def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
     p = Path(path)
     return json.loads((p if p.is_absolute() else HERE / p).read_text(encoding="utf-8"))
+
+
+def lie_detection_label(ld: dict | None) -> str | None:
+    """The label of a control file's lie_detection switches (AUDIT.md 16.16.2 item 4): 'off' or 'on' as defined by scenarios_ab.json
+    detection, else the letters a (second opinion), b (reject impossible), c (backtrack) that are on, in that order. None without a block."""
+    import final_guard_v4 as fg
+    if not ld:
+        return None
+    flags = {k: bool(ld.get(k)) for k in fg.SWITCHES}
+    for name in ("off", "on"):
+        if flags == {k: bool(v) for k, v in fg.detection_switches(name).items() if k in fg.SWITCHES}:
+            return name
+    return "".join(letter for letter, k in zip("abc", fg.SWITCHES) if flags[k])
 
 
 def check_columns(cfg: dict) -> None:
@@ -305,7 +321,7 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap, watchdog: dict | None 
         trail_m, optimal_m, source = truth_run.get("travelled_m"), truth_run["optimal_m"], "road_route"
     run_row = {
         "experiment": session.get("experiment", truth_run.get("experiment")), "set": session.get("set", truth_run.get("set")),
-        "lie_probability": session.get("lie_probability"), "setting": session.get("lie_detection"),
+        "lie_probability": session.get("lie_probability"), "setting": session.get("lie_detection") or lie_detection_label(ld), "lie_detection": lie_detection_label(ld),
         "final_setting": session.get("final_setting"), "session": run.session, "run": run.name, "trial": run.trial,
         "seed": truth_run.get("seed"), "looks": "+".join(sorted(run.looks)), "route": ">".join(route), "goal": goal,
         "outcome": truth_run.get("outcome"), "failure_reason": truth_run.get("failure_reason"), "time_s": truth_run.get("total_s"),

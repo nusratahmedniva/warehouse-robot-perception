@@ -612,6 +612,57 @@ class NewcombeTests(unittest.TestCase):
         self.assertEqual((r["difference_pp"], r["lo_pp"], r["hi_pp"]), (ev.NOT_EVALUATED,) * 3)
 
 
+class LieDetectionColumnTests(unittest.TestCase):
+    """AUDIT.md 16.16.2 item 4: Unity's session.json has no lie_detection, so the export's setting / lie_detection columns come from the bridge's
+    control file (what the robot ran)."""
+
+    SW = ("second_opinion", "reject_impossible", "backtrack")
+
+    def test_the_label_of_the_switches(self):
+        label = lambda *v: ex.lie_detection_label(dict(zip(self.SW, v)))
+        self.assertEqual(label(False, False, False), "off")
+        self.assertEqual(label(True, True, False), "on")                              # the experiments' "on": backtrack stays off
+        self.assertEqual((label(True, False, False), label(False, True, False), label(False, True, True), label(True, True, True)), ("a", "b", "bc", "abc"))
+        self.assertIsNone(ex.lie_detection_label({}))
+        self.assertIsNone(ex.lie_detection_label(None))
+
+    def test_a_final_export_says_what_the_robot_ran_although_session_json_has_no_label(self):
+        import csv
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            repo, out = final_repo(root / "r"), root / "outputs"
+            out.mkdir()
+            seen = {}
+            for setting, want in (("A3", "on"), ("B3_off", "off")):
+                u, b = session(root, "s_" + setting, setting=setting)
+                self.assertNotIn("lie_detection", json.loads((u / "session.json").read_text()))     # as Unity writes it
+                folder, rows, _ = ex.export_final(setting, [(u, b)], repo, out)
+                with (folder / "runs.csv").open(encoding="utf-8") as f:
+                    table = list(csv.DictReader(f))
+                seen[setting] = {(r["setting"], r["lie_detection"]) for r in table}
+                self.assertEqual({(r["setting"], r["lie_detection"]) for r in rows_as_strings(rows)}, seen[setting])
+            self.assertEqual(seen, {"A3": {("on", "on")}, "B3_off": {("off", "off")}})
+        rp.set_active_roots({})
+
+    def test_a_label_unity_does_record_stays_in_setting_and_lie_detection_is_still_the_control_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            u, b = session(Path(d), "m", setting="B3", extra={"lie_detection": "mirror"})
+            runs = ev.load_sessions([(u, b)], gd.load_config(), final_evaluation=True,
+                                    splits={**json.loads((ROOT / "configs/v4/data_splits.json").read_text()), "placeholder": False})
+            rows, _ = ex.build_tables(runs)
+            self.assertEqual({(r["setting"], r["lie_detection"]) for r in rows}, {("mirror", "on")})
+        rp.set_active_roots({})
+
+    def test_the_columns_are_configured_next_to_each_other(self):
+        cols = [c["field"] for c in json.loads((ROOT / "configs/v4/experiments/export_csv.json").read_text())["runs"]]
+        self.assertEqual(cols[cols.index("setting") + 1], "lie_detection")
+        self.assertIn("lie_detection", ex.RUN_FIELDS)
+
+
+def rows_as_strings(rows):
+    return [{k: ex._fmt(v) for k, v in r.items()} for r in rows]
+
+
 class FinalExportTests(unittest.TestCase):
     """export_csv_v4 final mode (AUDIT.md 16.15 item 5): the same gates as the final evaluation, its own run-once marker, and one combined table."""
 

@@ -2500,11 +2500,11 @@ the PROCEED pose, besides the declared differences already listed; this is discl
   My reading of "fewer", to be confirmed: STOP readings counted per category (PROCEED, POINT, WAIT) as frames and as stop episodes (`false_stop_analysis.json` `episode_gap_s`), for both rules; met when the total over the three categories is
   strictly smaller with the new rule in both counts and no category has more. With 3 negatives per look per arm these counts are small; they are reported as counts, not as a rate with a claim of significance.
 - **(c)** no accepted STOP from an idle worker: zero accepted STOP readings on every idle (NONE) frame, including the pass beside the idle worker.
-If (a) fails, the fallbacks declared in 16.14 apply. **I found no entry named fallback in 16.14.** What 16.14 names as other forms of the cues is: the static cue as the short window (mean wrist speed over the 0.3 s STOP window) instead of the reader's `moving` flag, the
-spread cue alone, and no raised-arm requirement (the 2026-11-08 decision). I read "the declared fallbacks" as those, in that order of being less strict; **please confirm or name them**.
+If (a) fails, the fallbacks apply, in this order (corrected on 2026-11-14 by Anisha; see 16.16.2): **first the short 0.3 s static window** (mean wrist speed over the 0.3 s STOP window instead of the reader's `moving` flag),
+**keeping** open hand, fingertip spread and raised arm; **if that still fails, drop the static cue** and keep open hand + fingertip spread + raised arm. Nothing else is a fallback.
 
 **Decision 3. What Nusrat must record** (development looks `sunbox_m1` and `sunbox_f1` and development clips only; never a test look or clip), both arms, at 2 m, with the new poses:
-- STOP, also while the robot drives (the number as asked in 16.14 item 5: 20 STOPs per look, both arms, part of them while driving);
+- STOP, also while the robot drives: **20 per look (10 per arm), part of them while driving** (confirmed by Anisha on 2026-11-14);
 - PROCEED, POINT and WAIT: 3 negatives of each per look per arm;
 - one pass beside an idle worker (the idle worker shows nothing; this is the hanging-hand case of 16.14).
 The logs of the kind of the zip of 16.14 (`model_outputs.jsonl`, `truth.jsonl`, `decisions.csv`, `v4_log.jsonl`) are needed, read with `analyse_false_stop_v4.py`.
@@ -2530,3 +2530,13 @@ control file): the exporter's `setting` column is therefore empty in the finals,
 - Settled from 16.15.2: item 1 (timeout reading, decision 4), item 2 (STOP criterion reading, decision 5), item 4 (session format, decision 7), item 6 (difference interval, decision 6). Still open: item 3 (the form of the false-STOP rule), item 5 (sittings, `B2_left`), and the two points of this entry
   (my reading of "fewer" in 2(b), and what "the declared fallbacks of 16.14" means).
 - Full suite (venv): exit 0, 1134 tests, 3 skipped. No reader value, `frozen.json`, `unity/`, `external/` or v3 file changed.
+
+#### 16.16.2 Corrections and answers of 2026-11-14 (Anisha), recorded before the code of item 4
+
+1. Criterion (b), "fewer": my reading is right (STOP readings per category as frames and as episodes, total strictly smaller with the new rule in both counts, no category with more).
+2. **Fallbacks corrected.** The first version of decision 2 said I found no entry named fallback in 16.14 and read the fallbacks as the short-window static cue, the spread cue alone and no raised-arm requirement. That was wrong and is replaced in decision 2 above:
+   the fallbacks are, in order, (i) the short 0.3 s static window with open hand, fingertip spread and raised arm kept, (ii) dropping the static cue, keeping open hand + fingertip spread + raised arm. "Spread alone" and "no raised arm" are NOT fallbacks and are removed.
+3. STOP count confirmed: 20 per look, 10 per arm, part of them while driving (decision 3 above).
+4. `lie_detection` is not in Unity's `session.json` (decision 7): the exporter's `setting` column is filled from the bridge's control file (the switches the robot ran: "off", "on", or the letters a = second opinion, b = reject impossible, c = backtrack) when `session.json` has no label,
+   and a new column `lie_detection` always holds that control-file label, so the finals' CSV says what the robot ran. A label that Unity does record is kept in `setting` as before. Test added.
+5. Built: `export_csv_v4.lie_detection_label`, the `setting` fallback and the `lie_detection` column (also in `configs/v4/experiments/export_csv.json`); tests `LieDetectionColumnTests`. Full suite (venv): exit 0, 1138 tests, 3 skipped. No reader value, `frozen.json`, `unity/`, `external/` or v3 file changed.
