@@ -814,3 +814,34 @@ and mesh orientation are the same.
 - *Result* (`hand_shapes_20261114_223517`): only Boxo changed (14 looks identical). **Boxo still misses the goal at the full 90 deg curl:
   2.50 / 2.46 -> 1.08 / 1.03 Lp** (left / right). Its glove thumb is longer than its palm can hold, so it will still fail the check's
   1.0 Lp. This is reported, not tuned further.
+
+*Addendum 4 (2026-11-14, after the palm probe `palm_probe_20261114_225116` on 97c84da plus the uncommitted probe; before any further
+change).*
+
+**Decision 2: the anime mesh palm result is a sleeve artefact of the check.** The Edit-mode probe reproduces the Play failure and
+locates it. The pass rule is unchanged; the earlier mesh result of anime_f_01 and 03 is recorded as the sleeve, not the palm. No
+palm fix is needed.
+
+| look | mesh (a), every hand-bound palm vertex | mesh (b), skin material `N00_000_00_Body_00_SKIN` only |
+|---|---|---|
+| anime_f_01, anime_f_03 | 87 to 89 deg (144 to 145 vertices) | **10.2 to 12.6 deg (74 to 75 vertices)** |
+| anime_f_02 | 10.2 to 12.6 deg (identical to (b), no sleeve) | 10.2 to 12.6 deg |
+
+The bones are at 6.9 deg on all three. The sub-meshes were read from the index data (`Mesh.GetIndices`, Body 9 sub-meshes); in Play
+mode they had not been available.
+
+**Decision 3: Boxo's rigidity is NOT proven.**
+- Only **6 of 576 glove vertices (1.0 %)** are bound to the Hand bone with weight >= 0.95. In the palm region it is **0 of 44 to
+  378**, and only 2 to 4 palm-region vertices are bound mainly to the Hand bone at all (hence "mesh n/a" in Play).
+- Mixamo's auto-rigger spread the glove plate's weights over the finger bones, so the plate does not turn rigidly with the hand bone, and
+  the bones alone do not prove its orientation.
+
+*Diagnostic, declared now:* mesh (c) is the plane fit of Boxo's glove-material vertices in the palm region, whatever their bone
+weights, under the same 30 deg rule, minimum vertices and flatness. It shows whether the rendered plate faces the camera. It is reported
+for Nusrat; the pass rule is not changed.
+*Correction of my probe (before using its numbers):* the first run with mesh (c) (`palm_probe_20261114_225325`) gave Boxo's STOP left
+plate at 91 deg, contradicting the Play screenshots (both STOP palms face-on). The glove vertices had not been limited to the measured
+hand. In the Edit-mode T-pose both hands are at the same height, so the other hand's glove fell into the palm slab, and the 576 "glove
+vertices" were both hands'. The glove counts and mesh (c) now use only the glove vertices of the measured hand: at least half of their
+weight is on that hand bone or a bone below it. The rigid share stays "weight >= 0.95 on the Hand bone itself". The probe is run
+again; the first run is kept.
