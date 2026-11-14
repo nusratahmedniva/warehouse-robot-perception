@@ -925,3 +925,43 @@ declared here as a further addendum before it is built.
 **Step 4: screenshots** of every look, command and arm, from the rerun's neutral camera.
 
 No perception. One commit per step; nothing pushed or frozen.
+
+*Addendum 6 (2026-11-14, after the v3 import `import_characters_20261114_234411` and its finger probe `probe_fingers_20261114_234431`,
+before any change).* v3 imports as Humanoid with 46 bones and 24 of 30 finger bones, but **Unity's automatic Humanoid mapping assigns
+the thumb chain `mixamorig:{Left,Right}HandThumb1-3` to the LITTLE finger**, and no thumb is mapped. v2 was mapped correctly. The shorter
+thumb set near the wrist evidently looks like a little finger to the auto-mapper.
+
+With this mapping the worker template would treat Boxo's thumb as his outermost finger: the palm frame, the thumb tuck and every hand
+measure of the probes would be wrong. The probes of this import are therefore kept, but not used.
+
+*Rule (importer, `ExperimentLooksMenu.ImportOne`, after the scale and avatar rebuild):*
+- It applies to a model whose skeleton uses Mixamo's names (`mixamorig:`).
+- Every finger bone the Humanoid avatar maps is checked against Mixamo's own finger names: Thumb, Index, Middle, Ring and Pinky = Little,
+  joints 1 to 3 = proximal, intermediate, distal.
+- **If any finger mapping contradicts the names, all the finger entries are replaced by the name-based ones** and the avatar is rebuilt
+  from that description. The change is listed in the import report.
+- Nothing else is changed. A model without `mixamorig:` names, or one whose mapping already agrees, is untouched; only Boxo is
+  affected.
+
+Then step 1's probes run again on the corrected import. *Also found, rule unchanged:* the finger probe now reads middle and ring as
+"merged". The denser mesh puts palm-plate vertices into their 4 cm regions: middle moves 41 to 42 % of ring's region, and ring moves only
+58 to 59 % of its own. This is reported again after the remap.
+
+*Step 1 results (2026-11-14; import `import_characters_20261114_234707`, probes `probe_fingers_20261114_234734`,
+`probe_arm_skin_20261114_234751`, `palm_probe_20261114_234807`).*
+- **Remap:** 12 entries changed, Boxo only (both thumbs 1 to 3 from Little to Thumb). The anime imports are untouched (0 changes).
+- **Fingers:** 4 chains per hand, the thumb now mapped as the thumb; 24 of 30 finger bones (no little finger).
+  - Index and thumb read separate (own 84 to 98 %, others at most 11 %).
+  - Middle and ring read "merged" by the unchanged rule: bending middle moves 41 to 42 % of ring's 4 cm region, and ring moves 58 to 59 %
+    of its own. This is reported, not changed.
+- **Colours:** 11 materials, all URP Lit, recoloured as before (glove 0.12/0.12/0.14, helmet 0.95); no error shader, 0 magenta pixels.
+- **Arm skin:** both arms and hands follow their bones (219 to 220 arm and 86 to 92 hand vertices).
+- **Glove / palm (Edit mode):**
+  - Bones: 2.5 to 2.6 deg.
+  - Mesh (a), hand-bound palm vertices: now 60 to 127 vertices (above 30), but **undetermined, flatness 0.53 to 0.68 > 0.5**. The v3 glove
+    plate is 4.5 cm thick, and the region between wrist and finger bases is about as short as that, so the region is not flat.
+  - Mesh (c), the glove plate: STOP 14.5 / 17.3 deg (within 30). WAIT is not reliable (n/a and 88 deg), because the curled fingers fall
+    into the region.
+  - Hand-bone weight >= 0.95: 0 to 3.8 % of palm-region vertices.
+- `looks_ab.json` names v3. The edit-mode `LookPoser` still reports "shapes False" (it requires a little finger); the worker template
+  does not.

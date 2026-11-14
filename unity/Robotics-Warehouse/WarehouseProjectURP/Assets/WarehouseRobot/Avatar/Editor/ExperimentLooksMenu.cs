@@ -551,6 +551,7 @@ namespace WarehouseAvatar.EditorTools
             public string[] recoloured = new string[0];
             public string[] colourless_unmatched = new string[0];
             public string[] alpha_clipped = new string[0];
+            public string[] finger_remap = new string[0];
         }
 
         [Serializable] class ImportReport { public string created_local, unity_version, render_pipeline; public List<CharacterReport> characters = new List<CharacterReport>(); }
@@ -666,6 +667,7 @@ namespace WarehouseAvatar.EditorTools
             var spec = f.recolour?.FirstOrDefault(x => x != null && x.look == id);
             if (spec != null) Recolour(spec, matDir, r);
             FixUnitScale(r);
+            RemapMixamoFingers(r);
 
             var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
             var avatar = AssetDatabase.LoadAllAssetsAtPath(r.asset).OfType<Avatar>().FirstOrDefault();
@@ -724,6 +726,23 @@ namespace WarehouseAvatar.EditorTools
             }
             if (clipped.Count > 0) AssetDatabase.SaveAssets();
             return clipped.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        }
+
+        /// <summary>experiments_ab.md section 12 addendum 6: a Mixamo-rigged model whose Humanoid finger mapping contradicts its bone names
+        /// gets the name-based finger mapping (MixamoFingerMap) and its avatar rebuilt from it; otherwise nothing changes. Idempotent.</summary>
+        static void RemapMixamoFingers(CharacterReport r)
+        {
+            var imp = (ModelImporter)AssetImporter.GetAtPath(r.asset);
+            if (imp.animationType != ModelImporterAnimationType.Human) return;
+            var hd = imp.humanDescription;
+            var fixedHuman = MixamoFingerMap.Correct(hd.human, (hd.skeleton ?? new SkeletonBone[0]).Select(s => s.name), out var changes);
+            if (fixedHuman == null) return;
+            hd.human = fixedHuman;
+            imp.humanDescription = hd;
+            imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            imp.SaveAndReimport();
+            r.finger_remap = changes.ToArray();
+            r.note += $" Humanoid fingers mapped by the Mixamo bone names (section 12 addendum 6): {changes.Count} entries changed.";
         }
 
         /// <summary>experiments_ab.md section 2, unit scale: a Humanoid model whose head-to-foot bone height lies outside [0.5, 2.5] m

@@ -4,11 +4,15 @@ T-pose, Y up, facing +Z, metres. Output: OBJ + MTL for Mixamo's auto-rigger.
 Separate fingers (thumb + 3) so the rig gets finger bones.
 v2: fingers spaced and fanned with clear gaps, so Mixamo's auto-rigger
 sees three separate fingers instead of one merged chain.
+v3: every part is subdivided (edge loops every ~2.5 cm) so skin weights
+blend smoothly (v2's forearm collapsed into a cone and the vest stripes
+bent when an arm was raised); shorter thumb set near the wrist so it can
+tuck across the palm.
 """
 import math
 import os
 
-OUT = "/home/claude/boxo2/out"
+OUT = "/home/claude/boxo3/out"
 os.makedirs(OUT, exist_ok=True)
 
 COLORS = {
@@ -33,23 +37,37 @@ def add_face(mat, idx):
     faces.append((mat, idx))
 
 
+STEP = 0.025   # target edge length for subdivision (m)
+
+
 def box(cx, cy, cz, sx, sy, sz, mat):
+    """Box subdivided into a welded grid on every face (edge ~STEP)."""
     parts.append((len(faces), (cx, cy, cz)))
-    base = len(verts)
-    hx, hy, hz = sx / 2, sy / 2, sz / 2
-    for dx in (-hx, hx):
-        for dy in (-hy, hy):
-            for dz in (-hz, hz):
-                verts.append((cx + dx, cy + dy, cz + dz))
-    v = lambda i: base + i + 1
-    # index = ix*4 + iy*2 + iz
-    quads = [
-        (0, 1, 3, 2), (4, 6, 7, 5),   # -x, +x
-        (0, 4, 5, 1), (2, 3, 7, 6),   # -y, +y
-        (0, 2, 6, 4), (1, 5, 7, 3),   # -z, +z
-    ]
-    for q in quads:
-        add_face(mat, [v(i) for i in q])
+    n = [max(1, math.ceil(d / STEP)) for d in (sx, sy, sz)]
+    size = (sx, sy, sz)
+    ctr = (cx, cy, cz)
+    index = {}
+
+    def vid(ijk):
+        if ijk not in index:
+            verts.append(tuple(ctr[a] - size[a] / 2 + size[a] * ijk[a] / n[a]
+                               for a in range(3)))
+            index[ijk] = len(verts)
+        return index[ijk]
+
+    for axis in range(3):
+        a1, a2 = [a for a in range(3) if a != axis]
+        for side in (0, n[axis]):
+            for i in range(n[a1]):
+                for j in range(n[a2]):
+                    quad = []
+                    for (di, dj) in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                        ijk = [0, 0, 0]
+                        ijk[axis] = side
+                        ijk[a1] = i + di
+                        ijk[a2] = j + dj
+                        quad.append(vid(tuple(ijk)))
+                    add_face(mat, quad)
 
 
 def rounded_box(cx, cy, cz, sx, sy, sz, r, mat, seg=3):
@@ -64,16 +82,19 @@ def rounded_box(cx, cy, cz, sx, sy, sz, r, mat, seg=3):
             a = math.radians(a0 + 90 * s / seg)
             ring.append((ox + r * math.cos(a), oz + r * math.sin(a)))
     n = len(ring)
-    for y in (cy - sy / 2, cy + sy / 2):
+    levels = max(1, math.ceil(sy / STEP))
+    for k in range(levels + 1):
+        y = cy - sy / 2 + sy * k / levels
         for (x, z) in ring:
             verts.append((cx + x, y, cz + z))
-    bot = [base + i + 1 for i in range(n)]
-    top = [base + n + i + 1 for i in range(n)]
-    for i in range(n):
-        j = (i + 1) % n
-        add_face(mat, [bot[i], bot[j], top[j], top[i]])
-    add_face(mat, top)
-    add_face(mat, list(reversed(bot)))
+    lvl = lambda k: [base + k * n + i + 1 for i in range(n)]
+    for k in range(levels):
+        lo, hi = lvl(k), lvl(k + 1)
+        for i in range(n):
+            j = (i + 1) % n
+            add_face(mat, [lo[i], lo[j], hi[j], hi[i]])
+    add_face(mat, lvl(levels))
+    add_face(mat, list(reversed(lvl(0))))
 
 
 def cylinder(p0, p1, rad, mat, seg=10):
@@ -89,18 +110,21 @@ def cylinder(p0, p1, rad, mat, seg=10):
     w = [ax[1] * u[2] - ax[2] * u[1], ax[2] * u[0] - ax[0] * u[2],
          ax[0] * u[1] - ax[1] * u[0]]
     base = len(verts)
-    for p in (p0, p1):
-        for s in range(seg):
-            a = 2 * math.pi * s / seg
+    rings = max(1, math.ceil(L / STEP))
+    for k in range(rings + 1):
+        p = [p0[i] + (p1[i] - p0[i]) * k / rings for i in range(3)]
+        for s_ in range(seg):
+            a = 2 * math.pi * s_ / seg
             verts.append(tuple(p[i] + rad * (math.cos(a) * u[i] + math.sin(a) * w[i])
                                for i in range(3)))
-    b = [base + i + 1 for i in range(seg)]
-    t = [base + seg + i + 1 for i in range(seg)]
-    for i in range(seg):
-        j = (i + 1) % seg
-        add_face(mat, [b[i], b[j], t[j], t[i]])
-    add_face(mat, list(reversed(b)))
-    add_face(mat, t)
+    ring = lambda k: [base + k * seg + i + 1 for i in range(seg)]
+    for k in range(rings):
+        b, t = ring(k), ring(k + 1)
+        for i in range(seg):
+            j = (i + 1) % seg
+            add_face(mat, [b[i], b[j], t[j], t[i]])
+    add_face(mat, list(reversed(ring(0))))
+    add_face(mat, ring(rings))
 
 
 def sphere(c, r, mat, seg=12, rings=8, squash=(1, 1, 1)):
@@ -172,9 +196,9 @@ for xs in (-1, 1):
         f1 = (xs * (BODY_W / 2 + 0.74), SHOULDER_Y, fz1)
         cylinder(f0, f1, 0.02, "glove", seg=8)
         sphere(f1, 0.021, "glove", seg=8, rings=5)
-    # thumb: forward (+z) at about 45 degrees, well clear of the fingers
-    t0 = (xs * (BODY_W / 2 + 0.52), SHOULDER_Y, 0.10)
-    t1 = (xs * (BODY_W / 2 + 0.60), SHOULDER_Y, 0.20)
+    # thumb: short, near the wrist, forward (+z) at about 50 degrees, clear of the fingers
+    t0 = (xs * (BODY_W / 2 + 0.51), SHOULDER_Y, 0.075)
+    t1 = (xs * (BODY_W / 2 + 0.56), SHOULDER_Y, 0.135)
     cylinder(t0, t1, 0.021, "glove", seg=8)
     sphere(t1, 0.022, "glove", seg=8, rings=5)
 
