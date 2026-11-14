@@ -1155,3 +1155,44 @@ change): a correction of the finger grouping.*
   - (c) Re-rig Boxo outside Unity (a rig built by the generator, with joints at the finger cylinders' ends).
 
 No perception was run.
+
+*Addendum 11 (2026-11-15): Nusrat chose option (b). Declared before any change; Boxo only; no perception.* The importer moves Boxo's
+finger chains into his finger meshes and then binds by islands. `looks_ab.json` `island_hands` gets `move_joints: true`. Everything runs
+in `ExperimentCharacterPostprocessor` on every import of the model, in this order: rigid torso, then chain alignment, then binding.
+
+**1. Finger axis per island group** (rest pose, mesh space):
+- the finger groups are as in addenda 9 and 10 (islands joined by closest vertices within 5 mm; the plate is the largest box);
+- each group's axis is the first principal axis (PCA) of its vertices;
+- its **knuckle end** is the end of the axis nearest the palm plate's centroid, and its **tip end** is the other end (the projections'
+  extreme values along the axis).
+
+**2. Chain assignment by a fixed anatomical rule** (no distance matching):
+- the hand's **forward axis** is from the hand bone to the plate's centroid;
+- the **thumb** is the group whose axis (knuckle to tip) deviates most from the forward axis;
+- the other groups are ordered across the palm by their knuckle's distance from the thumb's knuckle along the plate's across axis (its
+  longest principal axis, made perpendicular to the forward axis): nearest = **index**, then **middle**, then **ring**;
+- chains are identified by their Mixamo names (Thumb, Index, Middle, Ring);
+- a hand that does not give exactly one group per chain is refused: reported, nothing moved or bound.
+
+**3. Chain alignment:**
+- Each chain's joints j0 to j3 are placed on its group's axis: **j0 at the knuckle end, j3 at the tip end, j1 and j2 evenly between**.
+  They are set base to tip by position only; joint rotations are kept.
+- The mesh's bind poses are recomputed for every moved bone (bone world-to-local times the renderer's local-to-world, at the import pose).
+- Then the island binding of addenda 9 and 10 runs, with this assignment in place of the distance matching.
+- **The Humanoid avatar is rebuilt from the corrected skeleton:** `ExperimentLooksMenu.ImportOne` writes the imported hierarchy's
+  transforms into the importer's `humanDescription.skeleton` and re-imports. The import report lists the moved joints (old to new
+  position, in cm) and whether the avatar is valid.
+
+**4. The finger probe uses the same assignment** (the shared `IslandHands.Analyse`) instead of its nearest-centroid rule.
+
+**Tests and checks:**
+- Each finger bends at its own knuckles: on the installed Boxo, every joint j0 to j2 of each chain lies inside its group's box (in the
+  group's principal frame, within 1 mm).
+- Bending one finger moves **0 %** of the other fingers' vertices (island probe, both hands).
+- Palm plate shape change under 5 % in every command.
+- Five-finger looks unchanged (`BatchHandShapes` comparison, Sunbox pin test, golden test).
+- Edit Mode tests of the analysis on a synthetic four-finger hand: thumb by axis deviation, order across the palm, joints on the axes.
+- Then all checks rerun on all 15 looks, with screenshots.
+
+**Stop rule (Nusrat's):** if the screenshots still show fingers swinging outside their knuckles, the work STOPS, Boxo reverts to option
+(a) (the auto-rigger's weights and joints), and his hand is documented as it is.
