@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace WarehouseAvatar
@@ -120,6 +121,9 @@ namespace WarehouseAvatar
             return owner;
         }
 
+        /// <summary>Diagnostic lines of the last island measurement (report only): island centroids and chain joints in the hand's frame.</summary>
+        public static readonly List<string> IslandDiagnostic = new List<string>();
+
         /// <summary>Addendum 7 decision 4: each vertex's finger by mesh islands (see MeasureHand); vertex order as BakeAll's.</summary>
         static int[] IslandOwners(Transform hand, IList<SkinnedMeshRenderer> meshes, List<Transform[]> chains, List<Vector3> rest, PalmPlateSpec spec)
         {
@@ -175,7 +179,14 @@ namespace WarehouseAvatar
                             float bd = float.PositiveInfinity;
                             for (int f = 0; f < chains.Count; f++) { float d = Distance(c, chains[f]); if (d < bd) { bd = d; best = f; } }
                             finger[kv.Key] = best;
+                            // diagnostic (report only): where each island lies against each chain, in the hand's frame
+                            Vector3 lc = hand.InverseTransformPoint(c);
+                            IslandDiagnostic.Add($"{hand.name} island {kv.Key} ({size[kv.Key]} v) centroid hand-local ({lc.x:0.000}, {lc.y:0.000}, {lc.z:0.000}) -> " +
+                                                 string.Join(", ", chains.Select((ch, f) => $"{ch[0].name.Replace("mixamorig:", "")} {Distance(c, ch) * 100f:0.0} cm")));
                         }
+                        foreach (var ch in chains)
+                            IslandDiagnostic.Add($"{hand.name} chain {ch[0].name.Replace("mixamorig:", "")} joints hand-local: " +
+                                                 string.Join(" ", ch.Select(t => { var p = hand.InverseTransformPoint(t.position); return $"({p.x:0.000}, {p.y:0.000}, {p.z:0.000})"; })));
                         foreach (int i in mine) if (island[i] >= 0 && finger.TryGetValue(island[i], out int f)) owner[offset + i] = f;
                     }
                 }

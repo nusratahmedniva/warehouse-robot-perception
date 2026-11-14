@@ -294,6 +294,8 @@ namespace WarehouseAvatar.EditorTools
             public List<HandReport> hands = new List<HandReport>();
             /// <summary>Section 12 addendum 7 decision 4: for a palm_plates look, the same probe with each finger's vertices = its mesh islands.</summary>
             public List<HandReport> island_hands = new List<HandReport>();
+            /// <summary>Diagnostic (report only): island centroids and chain joints in each hand's frame.</summary>
+            public List<string> island_diagnostic = new List<string>();
             public List<MaterialReport> materials = new List<MaterialReport>();
         }
 
@@ -361,7 +363,10 @@ namespace WarehouseAvatar.EditorTools
                         if (plateSpec == null) continue;
                         var ih = new HandReport { side = h.side, hand_bone = h.hand_bone, chains = h.chains };
                         p.island_hands.Add(ih);
-                        foreach (var r in FingerSkinCheck.MeasureHand(hand, smrs, plateSpec))
+                        FingerSkinCheck.IslandDiagnostic.Clear();
+                        var islandResults = FingerSkinCheck.MeasureHand(hand, smrs, plateSpec);
+                        p.island_diagnostic.AddRange(FingerSkinCheck.IslandDiagnostic);
+                        foreach (var r in islandResults)
                             ih.fingers.Add(new FingerReport
                             {
                                 name = r.Name, verdict = r.Verdict, most_moved_other = r.MostMovedOther, bones = r.Bones,

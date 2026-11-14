@@ -1122,3 +1122,36 @@ change): a correction of the finger grouping.*
   sphere overlap, so they still join. Everything else in addendum 9 is unchanged.
 - The audit and the installed-Boxo test now also require **every chain of each hand to receive vertices**. The earlier test only checked
   that each vertex lies on one chain, which this fault passed.
+
+*Results of addendums 9 and 10 (2026-11-15; binding committed 148cdbc; import `import_characters_20261115_015143`; rerun
+`gesture_geometry_island_hands_20261115_015310` on 148cdbc, all 15 looks, 120 screenshots; finger probe `probe_fingers_20261115_015834`).*
+
+**Measured (the declared checks):**
+- **Binding:** per hand, the plate's 216 vertices are on the hand bone; index, middle and ring get 114 vertices each and the thumb 90, each
+  on its own chain; 0 vertices cross parts; 4 of 4 chains are used.
+- **Palm plate shape: 0.0 % change in every command** (POINT, PROCEED, WAIT, STOP), under 5 %. The plate's normal is 6.3 deg (STOP) and
+  11.1 deg (WAIT).
+- **Hand check 13 of 15** (Boxo passes; anime_f_01 and 03 are the sleeve artefact). Skinning 15 of 15. Arm geometry 15 of 15.
+- **Five-finger looks unchanged:** `hand_shapes_20261115_015702` against `_011330` is identical on all 15 looks (the bones do not change).
+  The Sunbox pin and golden tests pass.
+
+**But the binding does not give Boxo usable hands. Seen in the screenshots, not measurable by the bone-based checks.**
+- His fingers stick out at odd angles and stand apart from the plate: in WAIT, in STOP, and on the idle hand.
+- The **finger island probe** cannot show "0 % of the other fingers": its nearest-centroid assignment disagrees with the binder's
+  one-to-one matching, so every finger reads "merged" or "inconclusive" (own 0 %, others 44 to 56 %).
+- *Diagnostic (report only):* in each hand's frame,
+  - the **auto-rigger's chains lie bunched within +-3.5 cm** of the middle (index x +0.035, middle 0, ring -0.035 m; the thumb diagonal on
+    the +x side, out of the palm plane);
+  - the **generator's finger meshes fan out to +-15 cm**, with the short 56-vertex thumb mesh on the -x side, opposite the chain named
+    Thumb.
+  - So each finger mesh is bound to a chain whose joints lie several centimetres outside it. It swings about those joints instead of
+    bending at its own knuckles, and no distance rule can identify which mesh finger belongs to which chain.
+- **Cause:** the rig, not the weights. Mixamo placed the finger chains for a human hand, not for Boxo's fanned glove. Island binding
+  removes the plate's bending and the cross-finger weights, but cannot move the joints.
+- **Not fixed, Nusrat's decision:**
+  - (a) Revert the island binding: the auto-rigger's weights, with the bent WAIT plate.
+  - (b) In the importer, move each finger chain's joints into its finger mesh (joint positions along the mesh finger's axis, the bind
+    poses recomputed), then bind by islands. A rig change that needs its own declaration.
+  - (c) Re-rig Boxo outside Unity (a rig built by the generator, with joints at the finger cylinders' ends).
+
+No perception was run.
