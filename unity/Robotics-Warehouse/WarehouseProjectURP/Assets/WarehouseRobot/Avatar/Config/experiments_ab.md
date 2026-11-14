@@ -235,3 +235,19 @@ experiment configuration's nodes, branches and slots match them and obey every p
   were renamed **or newly extracted by this import** (a re-import of an imported model extracts none, so it stays idempotent); nothing else.
   The unlinked import is moved, not deleted, to `unity/downloads/superseded/anime_f_01_fe304543_unlinked/`, and Import Characters runs again.
   The arm-skin probe is repeated on that import (materials do not change skinning; reported).
+- *Addendum 2 (2026-11-14, after the first Play run of the re-imported anime_f_01, before a second one).* After the texture-link fix
+  (`import_characters_20261114_134655`: 18 of 18 base textures linked; emission rule not applied, every material now has an emission map, 17 of 18
+  the all-black `Shader_NoneBlack.png`, the hair `_21.png`, the export's own highlight; arm-skin probe `probe_arm_skin_20261114_134730`: follows,
+  183/183 per side) the Edit check `look_check_ab_20261114_134755` and the Play check `look_check_play_ab_20261114_134932` ran on 66f41f6. In the
+  Play run **56 of the 76 NONE frames show the Editor's flat-cyan placeholder** of a shader variant still compiling (a frame counts with at least
+  500 pixels of (<= 8, >= 247, >= 247)); NONE is recorded first, so these were the first renders of the new materials. All 456 POINT, WAIT and STOP
+  frames, every frame of the step 2 Play run and every Edit-mode render: 0. Rule: the Play check of anime_f_01 is run **once more**, unchanged, on
+  the same commit (the variants are now compiled); both runs are kept and reported; the second is used if it has no cyan frame, otherwise the first
+  is reported with its cyan frames named and nothing is run again.
+- *Results (2026-11-14; report `robot_vision/outputs/experiments_ab_step2b_anime_cartoon_20261114.md`).* Play run 2 `look_check_play_ab_20261114_140152`
+  (tool `look_check_v4_20261114_140845`) has 0 cyan frames and is used; run 1 is kept. **anime_f_01 re-export: the arm mesh follows its bones**
+  (probe and frames); person at 2 m 0.99 (old export 0.79); **verdict still fails**: no POINT, WAIT or STOP sequence read at 2 m, MediaPipe finds a
+  hand in 0 to 5 % of frames, the POINT clips fold the forearm on this rig (bone arm-to-shoulder ratio 2.28), facing 0.07 (bangs over one eye).
+  **cartoon_boxo_01: unchanged** (same file; Edit mode only; person 0.08). Licences of both: **not verified** (SOURCES.txt empty) **[N]**. Nothing
+  tuned. The two code commits were first made on local `main` by mistake and moved unchanged to `nusrat/v4-experiments-ab-anime`; the three
+  look-check run_info files say `git_branch: main` with commit 66f41f6.
