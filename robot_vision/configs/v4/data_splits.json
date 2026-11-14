@@ -4,7 +4,13 @@
   "looks": {
     "sunbox_m1": "development",
     "sunbox_f1": "development",
-    "sunbox_f2": "test"
+    "sunbox_f2": "test",
+    "sunbox_m_shirt_white": "development",
+    "sunbox_m_tshirt_black": "development",
+    "sunbox_f_shirt_white": "development",
+    "sunbox_f_dress_red": "development",
+    "sunbox_m_shirt_plaid": "test",
+    "sunbox_f_shirt_plaid": "test"
   },
   "clips": {
     "point_mixamo_01": "development",
@@ -34,13 +40,20 @@
   "recorded": {
     "structure": "2026-10-23, before any v4 run exists (final_evaluation_done false)",
     "looks_and_clips": "2026-11-08, real names, before any development recording: development looks sunbox_m1, sunbox_f1, test look sunbox_f2; clips development / test: POINT point_mixamo_01, point_ik_01 / point_mixamo_02; WAIT wait_ik_01, wait_raise_01 / wait_ik_02; STOP stop_ik_01, stop_ik_03 / stop_ik_02",
-    "proceed_clips": "2026-11-12, by Nusrat during Anisha's absence (P2; AUDIT.md section 15), before any PROCEED recording: PROCEED proceed_ik_01, proceed_ik_02 / proceed_ik_03 (procedural IK, Avatar/Config/upgrade_design.md section 2)"
+    "proceed_clips": "2026-11-12, by Nusrat during Anisha's absence (P2; AUDIT.md section 15), before any PROCEED recording: PROCEED proceed_ik_01, proceed_ik_02 / proceed_ik_03 (procedural IK, Avatar/Config/upgrade_design.md section 2)",
+    "experiment_looks": "2026-11-14, Anisha's decision (AUDIT.md 16.12 item 5) on Nusrat's proposal (Avatar/Config/looks_ab.json, experiments_ab.md section 2), before any experiment recording: development sunbox_m_shirt_white, sunbox_m_tshirt_black, sunbox_f_shirt_white, sunbox_f_dress_red; test sunbox_m_shirt_plaid, sunbox_f_shirt_plaid (the unseen plaid costume on both genders). All of the Sunbox body family (style sunbox). The earlier looks and every clip are unchanged. Anime, cartoon and Mixamo looks of the avatar experiment are not listed here yet."
   },
   "final_evaluation_done": false,
   "styles": {
     "sunbox_m1": "sunbox",
     "sunbox_f1": "sunbox",
-    "sunbox_f2": "sunbox"
+    "sunbox_f2": "sunbox",
+    "sunbox_m_shirt_white": "sunbox",
+    "sunbox_m_tshirt_black": "sunbox",
+    "sunbox_f_shirt_white": "sunbox",
+    "sunbox_f_dress_red": "sunbox",
+    "sunbox_m_shirt_plaid": "sunbox",
+    "sunbox_f_shirt_plaid": "sunbox"
   },
   "styles_note": "Look style for the per-style tables of hri_analysis_v4.py. All three looks are of the Sunbox body family, so there is one style (decided 2026-11-08): RQ4 asks about an unseen APPEARANCE of the Sunbox body family, not about a new body or a new avatar source. The per-style table therefore has a single row; the per-look table carries the comparison. VRoid was dropped (AUDIT.md 14.15)."
 }

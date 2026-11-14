@@ -2117,8 +2117,8 @@ detection off and on) and shown next to the previous one (16.11), with the effec
 **Item 4. Random layout: bystander margin 0.25 m accepted**, the 3.0 m spacing and turning-point rule of 16.11 unchanged. Rule (as Nusrat's, section 3 of her notes): at every asking node the first
 worker drawn is the one the robot reaches first; every other worker is at least 0.25 m farther from the robot than the first at every point of the last 3.0 m of the arrival road (at the start node: from
 the start position). `scenarios_ab.json` `layout.nearer_margin_m` 0.25, `approach_m` 3.0 (= `hri_control.json` `drive.junction_slow_radius_m`), `max_draws` 100000. Any stall in the reruns is reported.
-The simulator draws the workers one after the other (a worker is redrawn until it satisfies every rule against those already placed); Unity draws the whole set and redraws it: the same rules, a slightly
-different distribution.
+The simulator draws the whole set of workers of a node and redraws it as a whole until every rule holds, as Unity does (drawing the workers one after the other got stuck: 15 of 40 A3 / A4 scenes
+of 20 seeds could not be built with three workers at J1).
 
 **Item 5. For Nusrat's development runs.**
 - *Server map files* for A1 and A2 with both turns, in the robot-map format of `configs/v4/roadmap.json`, in `configs/v4/experiments/`: `roadmap_a1.json`, `roadmap_a2_right.json`, `roadmap_a2_left.json`.
@@ -2147,4 +2147,63 @@ draws from LEFT / FORWARD / RIGHT / BACK, so impossible directions occur at junc
 `anime_f_01` and `cartoon_boxo_01` (`SOURCES.txt` does not exist).
 
 **Choices of mine in this round (to confirm or change):** the 8 control files under `configs/v4/experiments/` and not in `configs/v4/`; PROCEED graded only when a look has PROCEED recordings; `turn_left` taken from
-Nusrat's proposal unchanged; the simulator's sequential draw of random workers; a simulator A2 with the left map selectable by `side="left"` (default right, the decision of 16.2).
+Nusrat's proposal unchanged; the simulator's whole-set draw of random workers (the same as Unity's); a simulator A2 with the left map selectable by `side="left"` (default right, the decision of 16.2).
+
+#### 16.12.1 Results of items 2 to 4 (SIMULATOR; 20 seeds per row, seeds 1 to 20, timeout 270 s; detection off / on = a + b, backtrack off)
+
+Three tables side by side: **previous** = the table of 16.11 (`experiments_ab_v4_main_270s_v3_20261113_234228`: independent lies per gesture, two workers everywhere, the 16.11 layouts); **layouts only** = the new layouts of
+items 3 and 4 (a third worker at J1 in A3, A4, B3, B4; the random layout's 0.25 m bystander margin, whole-set draws) with the earlier lie model (`experiments_ab_v4_layouts_only_270s_20261114_133042`, `--lie-mode per_gesture`);
+**new** = items 2 to 4 together, consistent lies (`experiments_ab_v4_main_270s_v4_20261114_133015`). Previous to layouts-only is the effect of items 3 and 4 (A1 to A3 and B1 to B3 only through the third worker at J1, A4 and B4 also through the
+random placement, which now draws whole sets and therefore differs from the 16.11 placements); layouts-only to new is the effect of item 2 alone (same placements, same seeds).
+
+| experiment | detection | previous (16.11): SUCCESS | failures | median s | stops | + layouts only: SUCCESS | failures | median s | stops | **new (consistent lies): SUCCESS** | failures | median s | coll. | stops |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | off | 20/20 | - | 68.0 | 0 | 20/20 | - | 68.0 | 0 | **20/20** | - | 68.0 | 0 | 0 |
+| A1 | on (a+b) | 20/20 | - | 77.9 | 0 | 20/20 | - | 77.9 | 0 | **20/20** | - | 77.9 | 0 | 0 |
+| A2 | off | 20/20 | - | 82.9 | 0 | 20/20 | - | 82.9 | 0 | **20/20** | - | 82.9 | 0 | 0 |
+| A2 | on (a+b) | 20/20 | - | 110.4 | 0 | 20/20 | - | 110.4 | 0 | **20/20** | - | 110.4 | 0 | 0 |
+| A3 | off | 20/20 | - | 121.8 | 0 | 20/20 | - | 121.8 | 0 | **20/20** | - | 121.8 | 0 | 0 |
+| A3 | on (a+b) | 20/20 | - | 160.7 | 0 | 20/20 | - | 160.7 | 0 | **20/20** | - | 160.7 | 0 | 0 |
+| A4 | off | 20/20 | - | 113.4 | 0 | 20/20 | - | 109.6 | 0 | **20/20** | - | 109.6 | 0 | 0 |
+| A4 | on (a+b) | 20/20 | - | 159.2 | 1 | 20/20 | - | 155.5 | 0 | **20/20** | - | 155.5 | 0 | 0 |
+| B1 | off | 20/20 | - | 68.0 | 0 | 20/20 | - | 68.0 | 0 | **18/20** | aborted 2 | 68.0 | 0 | 0 |
+| B1 | on (a+b) | 20/20 | - | 77.9 | 0 | 20/20 | - | 77.9 | 0 | **20/20** | - | 77.9 | 0 | 0 |
+| B2 | off | 17/20 | aborted 3 | 82.9 | 0 | 17/20 | aborted 3 | 82.9 | 0 | **11/20** | aborted 9 | 82.1 | 0 | 0 |
+| B2 | on (a+b) | 20/20 | - | 119.5 | 0 | 20/20 | - | 119.5 | 0 | **19/20** | aborted 1 | 117.3 | 0 | 0 |
+| B3 | off | 13/20 | aborted 1, wrong_goal 6 | 119.9 | 0 | 13/20 | aborted 1, wrong_goal 6 | 119.9 | 0 | **11/20** | aborted 4, wrong_goal 5 | 119.9 | 0 | 0 |
+| B3 | on (a+b) | 18/20 | aborted 2 | 174.6 | 1 | 18/20 | aborted 1, wrong_goal 1 | 175.5 | 0 | **20/20** | - | 172.0 | 0 | 0 |
+| B4 | off | 18/20 | aborted 1, wrong_goal 1 | 118.5 | 0 | 13/20 | aborted 2, wrong_goal 5 | 108.7 | 0 | **12/20** | aborted 4, wrong_goal 4 | 107.2 | 0 | 0 |
+| B4 | on (a+b) | 18/20 | aborted 2 | 177.4 | 2 | 18/20 | aborted 1, wrong_goal 1 | 183.7 | 1 | **19/20** | wrong_goal 1 | 175.7 | 0 | 1 |
+
+Lies (Set B):
+
+| experiment | detection | previous: lies given | detected | corrected | fooled | layouts only: given | detected | corrected | fooled | **new: given** | detected | corrected | fooled |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | off | 3 | 0 | 0/0 | 0 | 3 | 0 | 0/0 | 0 | 5 | 0 | 0/0 | 0 |
+| B1 | on (a+b) | 6 | 4 | 4/4 | 0 | 6 | 4 | 4/4 | 0 | 12 | 10 | 10/10 | 0 |
+| B2 | off | 13 | 0 | 0/0 | 0 | 13 | 0 | 0/0 | 0 | 19 | 0 | 0/0 | 0 |
+| B2 | on (a+b) | 28 | 20 | 20/20 | 0 | 28 | 20 | 20/20 | 0 | 38 | 32 | 28/32 | 0 |
+| B3 | off | 16 | 0 | 0/0 | 7 | 16 | 0 | 0/0 | 7 | 19 | 0 | 0/0 | 7 |
+| B3 | on (a+b) | 34 | 15 | 15/15 | 0 | 38 | 16 | 15/16 | 2 | 40 | 32 | 32/32 | 0 |
+| B4 | off | 12 | 0 | 0/0 | 1 | 15 | 0 | 0/0 | 7 | 19 | 0 | 0/0 | 6 |
+| B4 | on (a+b) | 31 | 19 | 19/19 | 0 | 39 | 20 | 20/20 | 2 | 49 | 34 | 32/34 | 2 |
+
+Read:
+- **Stalls: none.** 0 collisions and 0 timeouts in all 16 rows of both new tables; one safety stop in B4 with detection on, in both, which did not end in a timeout.
+- **Set A** (truthful): 80/80 with detection off and on in all three tables; A1 to A3 identical to the previous table (the third worker at J1 is never asked when the first two agree), A4 median times differ because the random placements differ.
+- **Set B, detection off: 68/80 (previous), 63/80 (layouts only), 52/80 (new).** A consistent liar repeats the same wrong direction when asked again, so the robot's re-ask no longer helps: aborts grow (B1 2, B2 9, B3 4,
+  B4 4) while the wrong goals stay (B3 5, B4 4).
+- **Set B, detection on: 76/80, 76/80, 78/80 (B1 20, B2 19, B3 20, B4 19 of 20).** Second opinion asks someone else, so the repeated lie of one worker is outvoted; the third worker at J1 gives the vote a majority
+  without the tie rule's re-ask of a (now consistent) first person. Lies detected 32/40 (B3), 34/49 (B4), corrected 100 % of those detected in B1 and B3, 28/32 in B2 and 32/34 in B4; fooled 0/40 (B3), 2/49 (B4), 0 in B1 and B2.
+  The failures left with detection on: B2 1 aborted, B4 1 wrong goal.
+- The gain of detection is therefore larger than before: B on against B off 78/80 against 52/80 (previous 76/80 against 68/80).
+- Same simulator limits as 16.8 item 4. A consistent liar at a one-way node (A1, A2) shows an impossible direction every time, as in Unity's fallback for nodes with no other branch; at a junction the simulator's liar can still
+  show an impossible direction (open point 3 above).
+
+#### 16.12.2 Existing tests changed in this round (each keeps its intent)
+
+- `tests/test_gesture_motion.py` `ArmRatioDeclarationTests`: it pinned the development looks of the split to exactly `sunbox_m1`, `sunbox_f1` and the test look to `sunbox_f2`. It now pins the looks the arm
+  ratio was calibrated on (`sunbox_m1`, `sunbox_f1`) as development, `sunbox_f2` as test, and lists the six new experiment looks of 16.12 item 5 as the only other entries (none was used for the calibration).
+- `tests/test_data_splits_v4.py`: the shipped-config test compares the three earlier looks; new `ExperimentLooksTests`.
+- `tests/test_look_check_v4.py`: the config test knows PROCEED; new `ProceedTests`.
+- `tests/test_lie_detection_v4.py`, `tests/test_export_csv_v4.py`: tests that need exactly two workers at J1 (the tie rule) now ask for two explicitly (`people=2`, which replaces the per-node counts), the look of worker 3 is listed.

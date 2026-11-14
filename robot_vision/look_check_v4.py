@@ -51,6 +51,7 @@ HAND_LINES = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5
               (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (17, 18), (18, 19), (19, 20), (0, 17)]
 EXPECTED_CATEGORY = {"WAIT": "Pointing_Up", "STOP": "Open_Palm"}
 GRADE_ORDER = ["fails", "not_evaluated", "weak", "usable"]       # worst first; not_evaluated is insufficient_data for a look
+FRAME_COMMANDS = ("POINT", "WAIT", "STOP")                       # commands with a per-frame cue; PROCEED is read from a sequence only
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
@@ -407,6 +408,11 @@ def analyse_item(item: Item, det_fn, cfg: dict, rc: dict, cc: dict, rel_tol: flo
             dest = out_dir / "annotated" / (item.name + ".png" if item.kind == "frame" else f"{item.name}/{png.name}")
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(cv2.imencode(".png", annotate(img, rec, draw, item, rc, cfg["annotation"]))[1].tobytes())
+    if item.kind == "sequence" and item.command == "PROCEED" and records:
+        need = rc["proceed"]["window_s"]
+        span = (records[-1]["t"] or 0.0) - (records[0]["t"] or 0.0)
+        if span < need - EPS:
+            errors.append(f"{item.name}: a PROCEED sequence of {span:.1f} s is shorter than the reader's window of {need:g} s: it cannot be read")
     if item.kind == "sequence" and records:
         last = records[-1]
         final = last["reader"] or {"command": "NONE", "score": 0.0, "why": "no person in the last frame"}
@@ -523,14 +529,15 @@ def grade_group(command: str, m: dict, cfg: dict) -> dict:
             entry.update(extra)
         out[name] = entry
 
-    real = command in cfg["input"]["required_commands"]
+    real = command in cfg["input"]["required_commands"] or command in cfg["input"].get("graded_when_present", [])
     add("person_rate", m["person_rate"], c["person_rate"]["usable_min"], c["person_rate"]["weak_min"], True)
     add("arm_valid_rate", m["arm_valid_rate"], c["arm_valid_rate"]["usable_min"], c["arm_valid_rate"]["weak_min"], True,
         applicable=real and c["arm_valid_rate"]["required"][command])
     h = c["hand_linked_rate"]
-    add("hand_linked_rate", m["hand_linked_rate"], h["usable_min"], h["weak_min"], True, applicable=real,
+    add("hand_linked_rate", m["hand_linked_rate"], h["usable_min"], h["weak_min"], True, applicable=real and command in FRAME_COMMANDS,
         cap_weak=not h["hand_required"][command] if real else False)
-    add("own_cue_rate", m["own_cue_rate"], c["own_cue_rate"]["usable_min"], c["own_cue_rate"]["weak_min"], True, applicable=real)
+    add("own_cue_rate", m["own_cue_rate"], c["own_cue_rate"]["usable_min"], c["own_cue_rate"]["weak_min"], True,
+        applicable=real and command in FRAME_COMMANDS)
     add("wrong_class_rate", m["wrong_class_rate"], c["wrong_class_rate"]["usable_max"], c["wrong_class_rate"]["weak_max"], False)
     add("sequence_read_rate", m["sequence_read_rate"], c["sequence_read_rate"]["usable_min"], c["sequence_read_rate"]["weak_min"],
         True, applicable=real)
@@ -593,7 +600,8 @@ def verdict_for(look: str, rows: list[dict], cfg: dict) -> dict:
         reasons.append(f"{level}: {text}")
 
     for d in cfg["distances"]["decisive_m"]:
-        for command in cfg["input"]["required_commands"]:
+        present = [g for g in cfg["input"].get("graded_when_present", []) if any(r["command"] == g for r in mine)]
+        for command in list(cfg["input"]["required_commands"]) + present:
             for arm in arms:
                 label = f"{command} at {d:g} m" + (f", {arm} arm" if labelled else "")
                 rs = [r for r in mine if r["command"] == command and r["role"] == "decisive" and r["distance_m"] == float(d) and r["arm"] == arm]
@@ -610,7 +618,8 @@ def verdict_for(look: str, rows: list[dict], cfg: dict) -> dict:
                         note("weak", f"{label}: {_fmt_check(name, e)}" + (f" - {e['note']}" if e.get("note") else ""))
     for r in mine:
         label = f"{r['command']} at {r['distance_m']:g} m" + (f", {r['arm']} arm" if r["arm"] in cfg["input"]["arms"] else "")
-        if r["role"] == "decisive" and r["command"] not in cfg["input"]["required_commands"]:     # optional NONE control
+        if r["role"] == "decisive" and r["command"] not in list(cfg["input"]["required_commands"]) + list(cfg["input"].get("graded_when_present", [])):
+            # optional NONE control
             for name, e in r["checks"].items():
                 if e["grade"] == "fails":
                     note("fails", f"{label} (negative control): {_fmt_check(name, e)}")

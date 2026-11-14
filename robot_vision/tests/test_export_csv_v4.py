@@ -41,6 +41,7 @@ def scripted(name, goal, script, detection, layout=None, xcheck=False, people=No
         sc["spec"].layout = layout
     if people is not None:
         sc["spec"].layout["people"] = people
+        sc["spec"].layout.pop("people_by_node", None)
     if xcheck:
         sc["sim"].g.crosscheck_accuracy = 1.0
         sc["sim"].c.v4["dialog"]["use_hand_crosscheck_as_tiebreak"] = True
@@ -140,8 +141,8 @@ class Tables(unittest.TestCase):
 
     def test_worker_and_look_are_those_of_the_ask(self):
         for d in self.dr:
-            self.assertIn(d["worker"], (1, 2))
-            self.assertEqual(d["look"], {1: "sunbox_m1", 2: "sunbox_f1"}[d["worker"]])
+            self.assertIn(d["worker"], (1, 2, 3))                           # 3 workers at J1 since 16.12
+            self.assertEqual(d["look"], {1: "sunbox_m1", 2: "sunbox_f1", 3: "sunbox_m1"}[d["worker"]])
 
     def test_a_truthful_accepted_ask_reads_the_true_branch(self):
         ok = [d for d in self.dr if d["truthful"] and d["decision"] == "accepted" and d["true_branch"] in ("LEFT", "FORWARD", "RIGHT")]
@@ -180,7 +181,7 @@ class DecisionsAreVisible(unittest.TestCase):
         self.assertEqual(r["outcome"], "SUCCESS")
 
     def test_a_lie_outvoted_at_the_tie_by_asking_the_first_person_again(self):
-        r = scripted("A3", "E2", [None, None, "RIGHT"], T.SECOND, xcheck=True)
+        r = scripted("A3", "E2", [None, None, "RIGHT"], T.SECOND, xcheck=True, people=2)
         (rr, dr), _ = tables([r])
         self.assertEqual((rr[0]["lies_given"], rr[0]["lies_detected"], rr[0]["lies_corrected"], rr[0]["lies_fooled"]), (1, 1, 1, 0))
         self.assertEqual([d["dialog"] for d in dr if d["junction"] == "J1"], [1, 2, 3])        # first, second, the first asked again

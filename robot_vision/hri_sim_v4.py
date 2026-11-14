@@ -35,6 +35,11 @@ directions LEFT / FORWARD / RIGHT / BACK relative to the arrival direction, trut
 knows B but whose node cannot lead there points BACK (SceneSpec.point_back_when_lost); placements (SceneSpec.layout: "beside"
 the road or "random" in a square, both seeded) and the scenarios A1 to A4 / B1 to B4 (scenario_ab, configs/v4/experiments/scenarios_ab.json).
 The perception stays at the level of the reader's output: the results are properties of this simulator, not measurements.
+
+Added 2026-11-14 (AUDIT.md 16.12): consistent lies (SceneSpec.lie_mode "per_worker": a worker is a liar or not, and which wrong direction it
+shows, drawn ONCE per run and kept, as Unity does; "per_gesture" is the earlier model), a third worker at chosen nodes
+(layout.people_by_node), the bystander margin of the random layout (layout.nearer_margin_m: every other worker at least that much farther from
+the robot than the first along the last approach_m of the arrival road), and an A2 / B2 with the left turn (scenario_ab side="left").
 """
 
 from __future__ import annotations
@@ -289,7 +294,8 @@ class SceneSpec:
     stop: dict | None = None                                     # {"who": "commander" | bystander index, "after_ask_s", "hold_s"}
     # experiments A and B (AUDIT.md section 16); the defaults keep every older simulation unchanged
     anyone_commands: bool = False                                # the person the controller approaches is the commander of that ask
-    lie_probability: float = 0.0                                 # P(a gesture shows a wrong direction), per gesture per worker
+    lie_probability: float = 0.0                                 # P(a gesture shows a wrong direction), per gesture or per worker (lie_mode)
+    lie_mode: str = "per_gesture"                                # "per_gesture": every gesture an independent draw; "per_worker": one draw per worker per run (AUDIT.md 16.12)
     point_back_when_lost: bool = False                           # a worker whose node cannot lead to B points BACK (else no gesture)
     record_truthful: bool = False                                # truth rows carry gesture_truthful
     layout: dict | None = None                                   # {"kind": "beside" | "random" | "fixed", ...}: who stands where (scenario_ab)
@@ -350,24 +356,46 @@ def check_placement(road: hc.Roadmap, node: str, pts: list[tuple[float, float]],
                 raise ValueError(f"placement at {node}: worker {i + 1} is {d:.2f} m from a turning point, rule {min_turning_m:g} m")
 
 
+def approach_points(road: hc.Roadmap, node: str, approach_m: float, step_m: float = 0.1) -> list[tuple[float, float]]:
+    """The robot's positions on the last approach_m of the arrival road of a node (at the start node: the start position alone)."""
+    nx, nz = road.pos(node)
+    prev = road.nodes[node].get("arrive_from")
+    if prev is None:
+        return [(nx, nz)]
+    px, pz = road.pos(prev)
+    length = math.hypot(px - nx, pz - nz)
+    n = int(min(approach_m, length) / step_m + 1e-9)
+    return [(nx + (px - nx) * (k * step_m / length), nz + (pz - nz) * (k * step_m / length)) for k in range(n + 1)]
+
+
 def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_road_m: float, min_sep_m: float,
-                 seed: int | str, min_turning_m: float = 0.0) -> list[tuple[float, float]]:
+                 seed: int | str, min_turning_m: float = 0.0, nearer_margin_m: float = 0.0, approach_m: float = 3.0,
+                 max_draws: int = 10000) -> list[tuple[float, float]]:
     """n people uniform in a square of side 2 * half_size_m centred on the node, at least min_road_m from every road centre
-    line, min_sep_m apart and min_turning_m from every turning point (rejection sampling, seeded by run and node)."""
+    line, min_sep_m apart and min_turning_m from every turning point (rejection sampling, seeded by run and node). With
+    nearer_margin_m > 0 (AUDIT.md 16.12) the FIRST person is the one the robot reaches first: every other person is at least
+    nearer_margin_m farther from the robot than the first at every point of the last approach_m of the arrival road. People are
+    drawn as one set, which is redrawn as a whole until every rule holds (Unity's way, AUDIT.md 16.12)."""
     rng = random.Random(f"{seed}|place|{node}")
     nx, nz = road.pos(node)
     segs = _road_segments(road)
     turns = turning_points(road)
-    out: list[tuple[float, float]] = []
-    for _ in range(10000):
+    robot = approach_points(road, node, approach_m) if nearer_margin_m > 0 else []
+    for _ in range(max_draws):
+        out: list[tuple[float, float]] = []
+        for _k in range(n):                                    # one whole set; it is abandoned at the first worker that breaks a rule
+            x, z = nx + rng.uniform(-half_size_m, half_size_m), nz + rng.uniform(-half_size_m, half_size_m)
+            if not (all(_seg_dist(x, z, sg) >= min_road_m for sg in segs) and all(math.hypot(x - a, z - b) >= min_sep_m for a, b in out)
+                    and all(math.hypot(x - a, z - b) >= min_turning_m for a, b in turns)):
+                break
+            if out and robot and not all(math.hypot(x - qx, z - qz) >= math.hypot(out[0][0] - qx, out[0][1] - qz) + nearer_margin_m
+                                         for qx, qz in robot):
+                break
+            out.append((x, z))
         if len(out) == n:
             return out
-        x, z = nx + rng.uniform(-half_size_m, half_size_m), nz + rng.uniform(-half_size_m, half_size_m)
-        if (all(_seg_dist(x, z, sg) >= min_road_m for sg in segs) and all(math.hypot(x - a, z - b) >= min_sep_m for a, b in out)
-                and all(math.hypot(x - a, z - b) >= min_turning_m for a, b in turns)):
-            out.append((x, z))
-    raise ValueError(f"cannot place {n} people at {node} (half_size {half_size_m}, road {min_road_m}, separation {min_sep_m}, "
-                     f"turning points {min_turning_m})")
+    raise ValueError(f"cannot place {n} people at {node} in {max_draws} draws (half_size {half_size_m}, road {min_road_m}, "
+                     f"separation {min_sep_m}, turning points {min_turning_m}, nearer margin {nearer_margin_m})")
 
 
 def detour_corners(x: float, z: float, target: tuple[float, float], people: list[tuple[float, float]], clearance_m: float,
@@ -494,6 +522,7 @@ class SimulatorV4:
         self.seed, self.truth_dt = seed, truth_dt_s
         self.reader_cfg = reader_cfg or gm.load_config()
         self._worker_rngs: dict[str, random.Random] = {}
+        self._worker_lies: dict[str, str | None] = {}
         self.gestures: list[dict] = []                          # every gesture staged: node, worker, correct, shown, truthful
 
     def _scene_at(self, junction: str) -> Scene:
@@ -501,12 +530,14 @@ class SimulatorV4:
         if sp.layout is not None:
             lay = sp.layout
             rule = sp.placement_rule or {}
+            n = lay.get("people_by_node", {}).get(junction, lay.get("people"))
             if lay["kind"] == "beside":
-                pts = place_beside(self.road, junction, lay["people"], lay["lateral_m"], lay["before_m"])
+                pts = place_beside(self.road, junction, n, lay["lateral_m"], lay["before_m"])
             elif lay["kind"] == "random":
-                pts = place_random(self.road, junction, lay["people"], lay["half_size_m"], lay["min_road_m"],
+                pts = place_random(self.road, junction, n, lay["half_size_m"], lay["min_road_m"],
                                    rule.get("min_worker_separation_m", lay.get("min_sep_m", 0.0)), self.seed,
-                                   rule.get("min_turning_point_m", 0.0))
+                                   rule.get("min_turning_point_m", 0.0), lay.get("nearer_margin_m", 0.0), lay.get("approach_m", 3.0),
+                                   lay.get("max_draws", 10000))
             elif lay["kind"] == "fixed":                       # tests / demonstrations: explicit (x, z) per node
                 pts = [tuple(q) for q in lay["points"][junction]]
             else:
@@ -563,6 +594,14 @@ class SimulatorV4:
             item = sp.lie_script[k] if k < len(sp.lie_script) else None
             if item is not None and item != correct:
                 shown, truthful = item, False
+        elif sp.lie_probability > 0.0 and sp.lie_mode == "per_worker":
+            key = f"{self.seed}|{junction}|{cm_.id}"
+            if key not in self._worker_lies:                      # drawn the first time the worker is asked, then kept for the run
+                rng = self._worker_rng(junction, cm_.id)
+                liar = rng.random() < sp.lie_probability
+                self._worker_lies[key] = rng.choice([k for k in COMPASS if k != correct]) if liar else None
+            if self._worker_lies[key] is not None:
+                shown, truthful = self._worker_lies[key], False
         elif sp.lie_probability > 0.0:
             rng = self._worker_rng(junction, cm_.id)
             if rng.random() < sp.lie_probability:
@@ -599,7 +638,7 @@ class SimulatorV4:
     def run(self, goal: str) -> dict:
         cfg, road, c = self.cfg, self.road, self.c
         rng_seed = self.seed
-        self._worker_rngs, self.gestures = {}, []
+        self._worker_rngs, self._worker_lies, self.gestures = {}, {}, []
         visions: dict[str, ReaderLevelVision] = {}
         x, z = road.pos(road.start)
         if "start_yaw_deg" in road.nodes[road.start]:
@@ -879,13 +918,17 @@ def parse_experiment(name: str) -> tuple[str, str]:
 
 def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict | None = None,
                 control_path: str = "configs/v4/control.json", commander_path: str = "configs/v4/commander.json",
-                gcfg: GestureSimConfig | None = None, sim_cfg: SimConfig | None = None, hook=None) -> dict:
+                gcfg: GestureSimConfig | None = None, sim_cfg: SimConfig | None = None, hook=None, side: str = "right") -> dict:
     """Experiment A1 to A4 / B1 to B4 for one run seed: the controller (lie-detection switches from `detection`, else the
     control config's own), the simulator, the goal and the map. Returns {"sim", "goal", "road", "v4", "spec", "experiment",
     "set", "seed", "lie_probability", "optimal_m"}; sim.run(goal) runs it. The goal and the placements come from the seed only."""
     scen = scen if scen is not None else load_scenarios()
     which, digit = parse_experiment(name)
     sc, p = scen["scenarios"][digit], scen["sets"][which]
+    if side != "right":
+        if side not in sc.get("alternative_maps", {}):
+            raise ValueError(f"experiment {name} has no {side!r} map (alternative_maps: {sorted(sc.get('alternative_maps', {}))})")
+        sc = {**sc, "map": sc["alternative_maps"][side]}
     base, v4 = hv.load_control(control_path)
     if detection is not None:
         v4["lie_detection"] = {**v4.get("lie_detection", {}), **detection}
@@ -905,7 +948,8 @@ def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict 
     avoid = scen.get("avoid_people", {})
     clearance = (ctrl.s["corridor_half_width_m"] + hc.load_json("configs/robot.json")["robot_width_m"] / 2.0) if avoid.get("enabled") else None
     spec = SceneSpec(proceed_forward=True, anyone_commands=True, point_back_when_lost=True, record_truthful=True,
-                     lie_probability=float(p["lie_probability"]), layout=dict(sc["layout"]), avoid_people_m=clearance,
+                     lie_probability=float(p["lie_probability"]), lie_mode=p.get("lie_mode", "per_gesture"), layout=dict(sc["layout"]),
+                     avoid_people_m=clearance,
                      placement_rule={k: float(scen["placement_rule"][k]) for k in ("min_worker_separation_m", "min_turning_point_m")}
                      if "placement_rule" in scen else None)
     cfg = sim_cfg or SimConfig(timeout_s=float(scen["trial_timeout_s"]))

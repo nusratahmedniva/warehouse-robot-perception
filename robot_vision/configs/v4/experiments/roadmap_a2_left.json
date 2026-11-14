@@ -1,0 +1,35 @@
+{
+  "label": "Server map for experiments A2 and B2 with the LEFT turn at B (Nusrat's turn_left proposal, adopted 2026-11-14). The robot's map in the format of configs/v4/roadmap.json; the same map as scenarios_ab.json maps.turn_left (a test pins them equal). Pass it to the server through a control file: configs/v4/experiments/control_lie_{off,on}_a2_left.json (the server takes its map from the control file's 'roadmap').",
+  "declared": "2026-11-14, AUDIT.md 16.12 item 5, for Nusrat's development runs of experiments A and B.",
+  "start": "A",
+  "nodes": {
+    "A": {
+      "x": 6.25,
+      "z": -20.0,
+      "kind": "start",
+      "start_yaw_deg": 0.0
+    },
+    "B": {
+      "x": 6.25,
+      "z": 0.0,
+      "kind": "junction",
+      "arrive_from": "A"
+    },
+    "C": {
+      "x": -13.75,
+      "z": 0.0,
+      "kind": "endpoint"
+    }
+  },
+  "branches": {
+    "A": {
+      "FORWARD": "B"
+    },
+    "B": {
+      "LEFT": "C"
+    }
+  },
+  "worker_stand": {
+    "corner_offset_m": 2.5
+  }
+}

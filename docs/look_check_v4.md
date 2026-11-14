@@ -25,7 +25,7 @@ and the head, both shoulders, both hips and both arms are in view. One person in
 
 | what | values |
 |---|---|
-| command | `POINT`, `WAIT`, `STOP` (required); `NONE` (optional negative control: arms down, nothing to read) |
+| command | `POINT`, `WAIT`, `STOP` (required); `PROCEED` (optional, graded when present: a forearm swing, sequences of at least 2.0 s = 21 frames at 10 Hz, the reader's PROCEED window); `NONE` (optional negative control: arms down, nothing to read) |
 | distance | **2.0 m** (the asking distance: it decides the verdict) and **4.0 m** (a commander seen from afar; it can only lower a look from usable to weak) |
 | arm | **both**: `left` and `right` are the person's own arms (the avatar's left arm appears on the image right) |
 | sequences | at least **2 per command, distance and arm**: 1 s at 10 Hz, **11 frames** (t = 0.0 to 1.0 s; 10 to 20 frames are accepted). The arm is already up and **held still for the whole second**: the check is about the look, not about the raising motion |
@@ -38,6 +38,7 @@ How each command should look (these are the poses of `docs/gesture_reader_v4.md`
   tool measure the arm length in shoulder widths against the assumed 1.683 (calibrated 2026-11-13; it was 1.4 when this check was declared).
 - **WAIT**: one hand raised near the head, forearm vertical, index finger up, the other three fingers curled.
 - **STOP**: open palm toward the camera, four fingers extended and spread, arm bent or extended toward the robot.
+- **PROCEED** (optional, since 2026-11-14): the forearm swings up and down 2 to 4 times, palm toward the body; a sequence of **at least 2.0 s** (21 frames at 10 Hz), because the reader answers only from that window. Graded like a required command when a look has PROCEED recordings (a look without them keeps its verdict). It has no per-frame cue, so `own cue` does not apply; its `wrong class` is the share of frames that alone would read POINT, WAIT or STOP while the swing is shown, which is the false STOP of AUDIT.md 16.12 item 1.
 - **NONE** (optional): arms hanging.
 
 A complete set for one look is 3 commands x 2 arms x 2 distances = 12 groups, each with 2 sequences (and about 5 single frames):
@@ -195,3 +196,4 @@ A look is checked before the clips are recorded; a swapped look is checked again
   now follow the finger geometry; the label stays in the report per frame (`category`). The declared verdict rules of `configs/v4/look_check.json` are unchanged (its
   `own_cue_rate` text still lists "category and score" among the cues; the check itself uses `frame_flags`). Results of look checks made before this date were
   computed with the label required.
+- 2026-11-14 (Anisha, AUDIT.md 16.12 item 5): PROCEED is a command of the look check (`look_check.json` `input.commands`, `graded_when_present`, `PROCEED` in `arm_valid_rate.required` (false) and `hand_linked_rate.hand_required` (false)); a PROCEED sequence shorter than the reader's window is reported as an input problem. No reader, commander or perception value changed.

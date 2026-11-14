@@ -222,8 +222,10 @@ class ConfigTests(unittest.TestCase):
         for name in ("person_rate", "arm_valid_rate", "hand_linked_rate", "own_cue_rate", "wrong_class_rate",
                      "sequence_read_rate", "wrong_read_rate", "arm_ratio_p95"):
             self.assertIn("why", CFG["checks"][name], msg=name)
-        self.assertEqual(set(CFG["checks"]["hand_linked_rate"]["hand_required"]), {"POINT", "WAIT", "STOP"})
-        self.assertEqual(set(CFG["checks"]["arm_valid_rate"]["required"]), {"POINT", "WAIT", "STOP"})
+        self.assertEqual(set(CFG["checks"]["hand_linked_rate"]["hand_required"]), {"POINT", "WAIT", "STOP", "PROCEED"})
+        self.assertEqual(set(CFG["checks"]["arm_valid_rate"]["required"]), {"POINT", "WAIT", "STOP", "PROCEED"})
+        self.assertEqual(CFG["input"]["required_commands"], ["POINT", "WAIT", "STOP"])                  # PROCEED is graded when present, not required
+        self.assertEqual(CFG["input"]["graded_when_present"], ["PROCEED"])
         self.assertEqual(CFG["distances"]["decisive_m"], [2.0])
         self.assertEqual(CFG["distances"]["secondary_m"], [4.0])
 
@@ -353,6 +355,65 @@ class GoodLookTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             _, out = run(self.st, Path(t), annotate=False)
             self.assertFalse((out / "annotated").exists())
+
+
+def proceed_dets(n=25, hz=1.5, z=2.0):
+    """A forearm swinging forward and up (the PROCEED gesture) for n frames at 10 Hz, as detections."""
+    import test_v4_upgrades as tu
+    out = []
+    for i in range(n):
+        a = math.radians(20.0 + 40.0 * math.sin(2 * math.pi * hz * i * 0.1))
+        kp, conf = tu.project(tu.body3d(z0=z, right=(0.0, 1.0, -0.3), right_fore=(0.0, -math.sin(a), -math.cos(a))))
+        out.append(person(kp, conf))
+    return out
+
+
+class ProceedTests(unittest.TestCase):
+    """AUDIT.md 16.12 item 5: PROCEED in the look check."""
+
+    def build(self, proceed=None, look="P"):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        st = Studio(Path(tmp.name) / "in")
+        record_look(st, look, label=False)
+        for n, dets in enumerate(proceed or []):
+            st.sequence(f"{look}__PROCEED__2__{n}", dets)
+        return run(st, Path(tmp.name), annotate=False)[0]
+
+    def test_the_name_is_accepted(self):
+        self.assertEqual(lc.parse_name("Mia__PROCEED__2.0__1", CFG)[1], "PROCEED")
+
+    def test_a_look_without_proceed_recordings_keeps_its_verdict(self):
+        rep = self.build()
+        self.assertEqual(rep["verdicts"]["P"]["verdict"], "usable")
+        self.assertFalse(any(g["command"] == "PROCEED" for g in rep["groups"]))
+
+    def test_a_swing_is_read_as_proceed_and_graded_usable(self):
+        rep = self.build([proceed_dets(), proceed_dets(hz=1.7)])
+        g = [x for x in rep["groups"] if x["command"] == "PROCEED"]
+        self.assertEqual(len(g), 1)
+        self.assertEqual(g[0]["metrics"]["sequence_reads"], {"PROCEED": 2})
+        self.assertEqual(g[0]["metrics"]["sequence_read_rate"], 1.0)
+        self.assertNotIn("own_cue_rate", g[0]["checks"])                       # no per-frame cue for a moving gesture
+        self.assertEqual(g[0]["grade"], "usable", g[0]["checks"])
+        self.assertEqual(rep["verdicts"]["P"]["verdict"], "usable")
+
+    def test_a_flat_hand_read_as_stop_on_a_proceed_recording_fails_the_look(self):
+        stop = [pose("STOP", "right")] * 25                                    # what the false STOP looks like: an open flat hand held up
+        rep = self.build([stop, stop])
+        g = [x for x in rep["groups"] if x["command"] == "PROCEED"][0]
+        self.assertEqual(g["metrics"]["sequence_reads"], {"STOP": 2})
+        self.assertEqual(g["metrics"]["wrong_class_rate"], 1.0)
+        v = rep["verdicts"]["P"]
+        self.assertEqual(v["verdict"], "fails")
+        self.assertTrue(any("PROCEED at 2 m" in r and r.startswith("fails") for r in v["reasons"]), v["reasons"])
+        self.assertFalse(any("negative control" in r for r in v["reasons"]))   # it is a command, not the NONE control
+
+    def test_a_sequence_shorter_than_the_reader_window_is_an_input_problem(self):
+        rep = self.build([proceed_dets(n=11), proceed_dets(n=11)])
+        g = [x for x in rep["groups"] if x["command"] == "PROCEED"][0]
+        self.assertEqual(g["metrics"]["sequence_read_rate"], 0.0)              # insufficient_history: lost coverage
+        self.assertEqual(g["metrics"]["wrong_read_rate"], 0.0)
 
 
 class FailureTests(unittest.TestCase):

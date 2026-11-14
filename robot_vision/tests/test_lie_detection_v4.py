@@ -55,8 +55,9 @@ def run(name, goal, script=None, detection=None, layout=None, seed=1, people=Non
         sc["spec"].lie_script = script
     if layout is not None:
         sc["spec"].layout = layout
-    if people is not None:
+    if people is not None:                                   # an explicit head count replaces the per-node counts of the config (J1 has 3, 16.12)
         sc["spec"].layout["people"] = people
+        sc["spec"].layout.pop("people_by_node", None)
     if p is not None:
         sc["spec"].lie_probability = p
     return sc["sim"].run(goal or sc["goal"])
@@ -421,21 +422,21 @@ class RuleA_SecondOpinion(unittest.TestCase):
         self.assertEqual(len([j for j in r["junctions"] if j["junction"] == "J1"]), 2)        # two dialogs, two records
 
     def test_first_lies_second_truthful_nobody_else_so_the_first_is_asked_again(self):
-        r = run("A3", "E2", [None, None, "RIGHT"], SECOND, xcheck=True)  # J1: p1 lies RIGHT (valid branch), goal is LEFT
+        r = run("A3", "E2", [None, None, "RIGHT"], SECOND, xcheck=True, people=2)  # J1: p1 lies RIGHT (valid branch), goal is LEFT; two people (the tie rule)
         self.assertEqual((r["outcome"], r["v4"]["route"]), ("SUCCESS", ["A", "J1", "J2", "E2"]))
         why = [d["reason"] for d in events(r, "ask_next")]
         self.assertTrue(any("ask the first person again" in w for w in why), why)
         self.assertIn("2 of 3 answers agree", [d["reason"] for d in events(r, "go")])
 
     def test_the_first_person_counts_twice_so_a_persistent_first_liar_can_win(self):
-        r = run("A3", "E2", [None, None, "RIGHT", None, "RIGHT"], SECOND, xcheck=True)
+        r = run("A3", "E2", [None, None, "RIGHT", None, "RIGHT"], SECOND, xcheck=True, people=2)
         self.assertEqual(r["outcome"], "FAILURE")
         j1 = [d for d in events(r, "go") if d["node"] == "J1"][0]
         self.assertEqual((j1["branch"], j1["reason"]), ("RIGHT", "2 of 3 answers agree"))
         self.assertEqual([v["branch"] for v in j1["votes"]], ["RIGHT", "LEFT", "RIGHT"])
 
     def test_three_different_answers_are_unclear_and_abort(self):
-        r = run("A3", "E2", [None, None, "RIGHT", None, "FORWARD"], SECOND, xcheck=True)
+        r = run("A3", "E2", [None, None, "RIGHT", None, "FORWARD"], SECOND, xcheck=True, people=2)
         self.assertEqual((r["outcome"], r["failure_reason"]), ("FAILURE", "aborted"))
         self.assertIn("no majority among 3 answers", r["abort_reason"])
 
@@ -540,6 +541,210 @@ class RuleC_Backtrack(unittest.TestCase):
         bt = events(r, "backtrack")[0]
         lied = [d for d in events(r, "go") if d["node"] == "J1"][0]
         self.assertEqual(bt["withdrawn_serial"], lied["serial"])
+
+
+class ConsistentLies(unittest.TestCase):
+    """AUDIT.md 16.12 item 2: a worker is a liar or not, and which wrong direction it shows, drawn ONCE per run (as in Unity)."""
+
+    def shown_by_worker(self, r):
+        out = {}
+        for g in r["gestures"]:
+            out.setdefault((g["node"], g["worker"]), []).append(g)
+        return out
+
+    def test_set_b_is_per_worker_and_set_a_has_no_lies(self):
+        scen = sv.load_scenarios()
+        self.assertEqual(scen["sets"]["B"]["lie_mode"], "per_worker")
+        self.assertEqual(sv.scenario_ab("B3", 1)["spec"].lie_mode, "per_worker")
+        self.assertEqual(sv.scenario_ab("A3", 1)["spec"].lie_probability, 0.0)
+
+    def test_a_liar_shows_the_same_direction_every_time_it_is_asked(self):
+        multi = 0
+        for name in ("B1", "B2", "B3", "B4"):
+            for seed in range(1, 21):
+                for key, gs in self.shown_by_worker(sv.run_scenario(name, seed, sv.DETECTION_ON)).items():
+                    self.assertEqual(len({(g["shown"], g["truthful"]) for g in gs}), 1, (name, seed, key))
+                    multi += len(gs) > 1
+        self.assertGreater(multi, 20)                                              # many workers were asked more than once
+
+    def test_the_earlier_per_gesture_model_does_vary(self):
+        varied = 0
+        for seed in range(1, 21):
+            sc = sv.scenario_ab("B3", seed, sv.DETECTION_ON)
+            sc["spec"].lie_mode = "per_gesture"
+            sc["spec"].lie_probability = 0.5
+            for gs in self.shown_by_worker(sc["sim"].run(sc["goal"])).values():
+                varied += len({(g["shown"], g["truthful"]) for g in gs}) > 1
+        self.assertGreater(varied, 0)
+
+    def test_the_share_of_liars_is_a_fifth(self):
+        liars = workers = 0
+        for seed in range(1, 41):
+            for gs in self.shown_by_worker(sv.run_scenario("B3", seed, sv.DETECTION_OFF)).values():
+                workers += 1
+                liars += not gs[0]["truthful"]
+        self.assertGreater(workers, 60)
+        self.assertTrue(0.08 < liars / workers < 0.35, liars / workers)
+
+    def test_the_draw_is_seeded_and_does_not_depend_on_what_the_robot_does(self):
+        a = run("B3", None, seed=5, detection=OFF)
+        b = run("B3", None, seed=5, detection=T_ON)
+        la = {k: gs[0]["shown"] for k, gs in self.shown_by_worker(a).items()}
+        lb = {k: gs[0]["shown"] for k, gs in self.shown_by_worker(b).items()}
+        for k in set(la) & set(lb):                                                # the same worker, the same lie, whatever the robot did before
+            self.assertEqual(la[k], lb[k], k)
+        c = run("B3", None, seed=6, detection=OFF)
+        self.assertNotEqual({k: gs[0]["shown"] for k, gs in self.shown_by_worker(c).items()}, la)
+
+    def test_a_consistent_liar_asked_twice_counts_twice_in_the_vote(self):
+        # J1, goal LEFT: the first person asked lies (the script) and, with the tie rule, is asked again: per_worker would repeat the lie.
+        sc = sv.scenario_ab("B3", 1, SECOND)
+        sc["spec"].lie_script = None
+        self.assertEqual(sc["spec"].lie_mode, "per_worker")
+
+    def test_scripted_lies_still_work(self):
+        r = run("A3", "E2", [None, None, "RIGHT"], SECOND, xcheck=True)
+        self.assertEqual([g["shown"] for g in r["gestures"] if not g["truthful"]][:1], ["RIGHT"])
+
+
+T_ON = sv.DETECTION_ON
+
+
+class ThirdWorkerAndMargin(unittest.TestCase):
+    """AUDIT.md 16.12 items 3 and 4."""
+
+    def test_the_config(self):
+        scen = sv.load_scenarios()
+        for k in ("3", "4"):
+            self.assertEqual(scen["scenarios"][k]["layout"]["people_by_node"], {"J1": 3})
+        for k in ("1", "2"):
+            self.assertNotIn("people_by_node", scen["scenarios"][k]["layout"])
+        lay = scen["scenarios"]["4"]["layout"]
+        self.assertEqual((lay["nearer_margin_m"], lay["approach_m"], lay["max_draws"]), (0.25, 3.0, 100000))
+        self.assertEqual(scen["placement_rule"]["min_worker_separation_m"], 3.0)             # the 3.0 m rule is unchanged
+        self.assertEqual(lay["approach_m"], hc.load_json("configs/hri_control.json")["drive"]["junction_slow_radius_m"])
+
+    def test_three_workers_at_j1_and_two_elsewhere_in_a3_a4_b3_b4(self):
+        for name in ("A3", "A4", "B3", "B4"):
+            for seed in (1, 2, 3):
+                sc = sv.scenario_ab(name, seed)
+                for node, v in sc["road"].nodes.items():
+                    if v["kind"] in ("start", "junction"):
+                        n = len(sc["sim"]._scene_at(node).people)
+                        self.assertEqual(n, 3 if node == "J1" else 2, (name, seed, node))
+        for name in ("A1", "A2", "B1", "B2"):
+            sc = sv.scenario_ab(name, 1)
+            self.assertTrue(all(len(sc["sim"]._scene_at(n).people) == 2 for n, v in sc["road"].nodes.items() if v["kind"] in ("start", "junction")))
+
+    def test_the_spacing_rule_holds_for_three_workers_too(self):
+        for name in ("A3", "A4"):
+            for seed in range(1, 21):
+                sc = sv.scenario_ab(name, seed)
+                scene = sc["sim"]._scene_at("J1")
+                sv.check_placement(sc["road"], "J1", [(p.x, p.z) for p in scene.people], 3.0, 3.0)
+
+    def test_the_first_worker_is_nearer_by_the_margin_along_the_whole_approach(self):
+        road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
+        for node in ("A", "J1", "J2", "J3", "J4"):
+            robot = sv.approach_points(road, node, 3.0)
+            for seed in range(1, 21):
+                n = 3 if node == "J1" else 2
+                pts = sv.place_random(road, node, n, 3.0, 1.0, 3.0, seed, 3.0, 0.25, 3.0, 100000)
+                for q in robot:
+                    d0 = math.dist(q, pts[0])
+                    for other in pts[1:]:
+                        self.assertGreaterEqual(math.dist(q, other), d0 + 0.25 - 1e-9, (node, seed))
+
+    def test_the_approach_points(self):
+        road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
+        self.assertEqual(sv.approach_points(road, "A", 3.0), [(6.25, -20.0)])               # the start node: the start position alone
+        pts = sv.approach_points(road, "J1", 3.0)
+        self.assertEqual((pts[0], round(pts[-1][1], 6)), ((6.25, 0.0), -3.0))                # from the node back 3.0 m along the arrival road
+        self.assertEqual(len(pts), 31)
+
+    def test_without_the_margin_nothing_changes_and_an_impossible_set_is_refused(self):
+        road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
+        self.assertEqual(sv.place_random(road, "J1", 2, 3.0, 1.0, 3.0, 7, 3.0), sv.place_random(road, "J1", 2, 3.0, 1.0, 3.0, 7, 3.0, 0.0))
+        with self.assertRaisesRegex(ValueError, "cannot place 3 people at J1 in 50 draws"):
+            sv.place_random(road, "J1", 3, 3.0, 1.0, 3.0, 1, 3.0, 0.25, 3.0, 50)
+
+    def test_every_scenario_still_builds_for_20_seeds(self):
+        for name in ("A3", "A4"):
+            for seed in range(1, 21):
+                sc = sv.scenario_ab(name, seed)
+                for node, v in sc["road"].nodes.items():
+                    if v["kind"] in ("start", "junction"):
+                        sc["sim"]._scene_at(node)
+
+
+class LeftTurn(unittest.TestCase):
+    def test_the_left_map_is_nusrats_proposal_and_consistent(self):
+        scen = sv.load_scenarios()
+        prop = json.loads((ROOT.parent / "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/roadmap_proposals/turn_left.json").read_text(encoding="utf-8"))
+        m = scen["maps"]["turn_left"]
+        self.assertEqual((m["start"], m["nodes"], m["branches"]), (prop["start"], prop["nodes"], prop["branches"]))
+        self.assertEqual(hv.check_labels_v4(hc.Roadmap(m)), [])
+        self.assertAlmostEqual(sv.route_length_m(hc.Roadmap(m), "C"), 40.0)
+
+    def test_a2_and_b2_run_with_the_left_turn(self):
+        for name in ("A2", "B2"):
+            for seed in (1, 2, 3):
+                r = sv.run_scenario(name, seed, sv.DETECTION_ON, side="left")
+                self.assertEqual(sv.scenario_ab(name, seed, side="left")["road"].next("B", "LEFT"), "C")
+                if name == "A2":
+                    self.assertEqual((r["outcome"], r["v4"]["route"][-1]), ("SUCCESS", "C"))
+
+    def test_other_experiments_have_no_left_map_and_right_is_the_default(self):
+        with self.assertRaisesRegex(ValueError, "no 'left' map"):
+            sv.scenario_ab("A1", 1, side="left")
+        self.assertEqual(sv.scenario_ab("A2", 1)["road"].next("B", "RIGHT"), "C")
+
+
+class ExperimentFiles(unittest.TestCase):
+    """AUDIT.md 16.12 item 5: server map files and control files for Nusrat's development runs."""
+    EXP = ROOT / "configs/v4/experiments"
+    MAPS = {"a1": "corridor", "a2_right": "turn", "a2_left": "turn_left"}
+
+    def test_each_map_file_is_its_map_in_scenarios_ab(self):
+        scen = sv.load_scenarios()
+        for tag, m in self.MAPS.items():
+            f = json.loads((self.EXP / f"roadmap_{tag}.json").read_text(encoding="utf-8"))
+            for k in ("start", "nodes", "branches", "worker_stand"):
+                self.assertEqual(f[k], scen["maps"][m][k], (tag, k))
+            self.assertEqual(hv.check_labels_v4(hc.Roadmap(f)), [])
+
+    def test_control_files_differ_from_control_json_in_the_label_the_roadmap_and_the_switches_only(self):
+        scen = sv.load_scenarios()
+        base = json.loads((ROOT / "configs/v4/control.json").read_text(encoding="utf-8"))
+        roads = {"": "configs/v4/roadmap.json", "_a1": "configs/v4/experiments/roadmap_a1.json",
+                 "_a2_right": "configs/v4/experiments/roadmap_a2_right.json", "_a2_left": "configs/v4/experiments/roadmap_a2_left.json"}
+        for suffix, road in roads.items():
+            for mode in ("off", "on"):
+                f = json.loads((self.EXP / f"control_lie_{mode}{suffix}.json").read_text(encoding="utf-8"))
+                self.assertEqual(f["roadmap"], road)
+                for k in ("second_opinion", "reject_impossible", "backtrack"):
+                    self.assertEqual(f["lie_detection"][k], scen["detection"][mode][k], (suffix, mode, k))
+                g, b = json.loads(json.dumps(f)), json.loads(json.dumps(base))
+                for d in (g, b):
+                    d.pop("label"), d.pop("roadmap")
+                    for k in ("second_opinion", "reject_impossible", "backtrack"):
+                        d["lie_detection"].pop(k)
+                self.assertEqual(g, b, (suffix, mode))
+        on = json.loads((self.EXP / "control_lie_on.json").read_text(encoding="utf-8"))["lie_detection"]
+        self.assertEqual([on["second_opinion"], on["reject_impossible"], on["backtrack"]], [True, True, False])     # backtrack off (16.10.2)
+        self.assertEqual([base["lie_detection"][k] for k in ("second_opinion", "reject_impossible", "backtrack")], [False] * 3)
+
+    def test_the_controller_builds_from_every_control_file_with_its_map(self):
+        for suffix, start_next in (("", {"FORWARD": "J1"}), ("_a1", {"FORWARD": "B"}), ("_a2_right", {"FORWARD": "B"}), ("_a2_left", {"FORWARD": "B"})):
+            for mode in ("off", "on"):
+                c = hv.make_controller_v4(str(self.EXP / f"control_lie_{mode}{suffix}.json"))
+                self.assertEqual(c.road.branches["A"], start_next)
+                self.assertEqual((c.ld["second_opinion"], c.ld["backtrack"]), (mode == "on", False))
+
+    def test_the_files_are_outside_the_freeze_list_except_scenarios_ab(self):
+        import freeze_v4 as fz
+        listed = fz.config_files()
+        self.assertEqual([f for f in listed if "/experiments/" in f], list(fz.FROZEN_EXTRA))
 
 
 class DetectionSettings(unittest.TestCase):
