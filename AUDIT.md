@@ -2087,3 +2087,64 @@ Read: **0 collisions and 0 timeouts in all 16 rows** (the previous table had 3 t
 (previous 66/80 and 75/80). Detection on costs time (A1 +10 s, A2 +27 s, A3 +39 s, A4 +46 s, B2 +37 s, B3 +55 s, B4 +59 s median over off); Fix 2 adds to it (B2 108.7 -> 119.5 s, B3 154.5 -> 174.6 s, B4 151.7 -> 177.4 s). Remaining safety stops
 (A4 on 1, B3 on 1, B4 on 2) did not end in a timeout. The failures left in Set B with detection on are aborts (B3 2, B4 2): the fail-safe outcome (unclear after two asks); no wrong goal remains with detection on, no lie was acted on (fooled 0 in
 every B row), against fooled 7/16 (B3) and 1/12 (B4) with detection off. Same simulator limits as 16.8 item 4.
+
+### 16.12 Decisions of 2026-11-14 (Anisha), recorded BEFORE the code
+
+Branch `anisha/v4-experiments-ab-2` (from main `cc95b9e`, which holds 16.1 to 16.11 and Nusrat's Unity side of experiments A and B: `Avatar/Config/experiments_ab.md`,
+`looks_ab.json`, `Scenario/Config/experiments_ab_unity.json`, `roadmap_proposals/turn_left.json`). Read for this entry: Nusrat's `experiments_ab.md` (the step reports
+`experiments_ab_step1_20261114.md` and `experiments_ab_step2_avatars_20261114.md` and `outputs/experiments_ab_roadmaps_20261114_025749/` are not on main and were not available). Python only; nothing under
+`unity/`, `external/` or v3 is touched; `freeze_v4.py --freeze` is not run; no reader value is changed (item 1 stops at 1c).
+
+**Item 1. FALSE STOP of the live reader (found by Nusrat; data in `~/Downloads/false_stop_data.zip`, NOT YET RECEIVED: items 2 to 6 first).** Observed by Nusrat: in the 13 Nov video session 73 of 117
+PROCEED frames read STOP (16 stops); in R1 358 of 877, 196 stops, 3 of them while driving at 0.8 m/s with no gesture shown. Suspected cause: the flat PROCEED hand passes the open-palm test (finger
+spread measured from the wrist, median 38 to 40 deg against the 20 deg limit), there is no palm-direction check, and the MediaPipe label is not required for STOP (decided 2026-11-08). Plan, in this order,
+and only on development looks and development clips (the test looks `sunbox_f2`, `sunbox_*_plaid` and the test clips are never used; the zip is read with `zipfile`, never extracted or copied):
+- (a) find the cause of the 3 stops with no gesture shown: which person, which hand, which cues passed (a report, no change);
+- (b) propose a fix from three candidate cues: the palm normal facing the camera (from the hand landmarks), the STOP hand static over the window (PROCEED swings), the spread measured between the
+  fingertips instead of from the wrist;
+- (c) show, on the zip's data, STOP readings on PROCEED, on POINT, on nothing shown and on a true STOP, before and after, for each cue alone and combined (a table). **Then stop and ask before any
+  reader value (`configs/v4/gesture_reader.json`, `gesture_motion.py`) is changed.**
+
+**Item 2. Consistent lies.** In Unity a lying worker repeats the same wrong direction when asked again. The simulator does the same: one lie draw per worker per run (is the worker a liar, and which wrong
+direction), from the generator `random.Random(f"{seed}|{node}|{worker id}")` of 16.4 item 17, drawn the first time the worker is asked and kept for the run (a re-ask, a second view, a later visit show
+the same direction). This replaces "every gesture is an independent draw" of 16.2 decision 2 (`scenarios_ab.json` `sets.B.lie_mode` "per_worker"; "per_gesture" stays available, it is what produced
+the table of 16.7 and 16.11). Direction model unchanged (one of the other three of LEFT / FORWARD / RIGHT / BACK relative to the arrival direction). The 20-seed table is rerun (A1 to A4, B1 to B4,
+detection off and on) and shown next to the previous one (16.11), with the effect of items 3 and 4 separated.
+
+**Item 3. A third worker at J1** (for the majority vote) in A3, A4, B3, B4: `scenarios_ab.json` `layout.people_by_node` {"J1": 3}. In `beside` the third worker stands 3.0 m behind the first, on its side
+(16.4 item 11, as Nusrat's slot 3); in `random` it is drawn like the others.
+
+**Item 4. Random layout: bystander margin 0.25 m accepted**, the 3.0 m spacing and turning-point rule of 16.11 unchanged. Rule (as Nusrat's, section 3 of her notes): at every asking node the first
+worker drawn is the one the robot reaches first; every other worker is at least 0.25 m farther from the robot than the first at every point of the last 3.0 m of the arrival road (at the start node: from
+the start position). `scenarios_ab.json` `layout.nearer_margin_m` 0.25, `approach_m` 3.0 (= `hri_control.json` `drive.junction_slow_radius_m`), `max_draws` 100000. Any stall in the reruns is reported.
+The simulator draws the workers one after the other (a worker is redrawn until it satisfies every rule against those already placed); Unity draws the whole set and redraws it: the same rules, a slightly
+different distribution.
+
+**Item 5. For Nusrat's development runs.**
+- *Server map files* for A1 and A2 with both turns, in the robot-map format of `configs/v4/roadmap.json`, in `configs/v4/experiments/`: `roadmap_a1.json`, `roadmap_a2_right.json`, `roadmap_a2_left.json`.
+  Her `turn_left` proposal is added to `scenarios_ab.json` `maps` as `turn_left` (C at (-13.75, 0), equal legs; the simulator can run A2 / B2 with it). A test pins every map file to its map in `scenarios_ab.json`.
+- *Control files* for lie detection on and off, the pattern of `control_zoom_on.json` / `control_zoom_off.json` (identical to `control.json` except one block; a test pins it). The server takes its map from the control
+  file's `roadmap` key, so there is one pair per map: `control_lie_off.json` / `control_lie_on.json` (v4 map: A3, A4, B3, B4) and `..._a1`, `..._a2_right`, `..._a2_left` (8 files, `configs/v4/experiments/`;
+  not in the freeze list, which keeps the final settings' frozen set unchanged; the flags are pinned to `scenarios_ab.json` `detection` by a test). "On" = second opinion + reject impossible, backtrack off (16.10.2).
+- *Her look names* in `configs/v4/data_splits.json`: development `sunbox_m_shirt_white`, `sunbox_m_tshirt_black`, `sunbox_f_shirt_white`, `sunbox_f_dress_red`; test `sunbox_m_shirt_plaid`, `sunbox_f_shirt_plaid`
+  (all of the Sunbox body family: style `sunbox`). The existing looks and clips are unchanged.
+- *PROCEED in `look_check_v4.py`*: a recording with command PROCEED is accepted (a sequence of at least `proceed.window_s` 2.0 s), reported like the other commands, and graded when a look has such recordings; a
+  look without PROCEED recordings keeps the verdict it has (PROCEED is not made required, so no existing verdict changes). Its frame-level "wrong class" rate counts a STOP / WAIT / POINT frame read on a PROCEED recording,
+  which is exactly the false STOP of item 1. `configs/v4/look_check.json` is changed for it (declared here, no reader value).
+
+**Item 6. Findings recorded (no change of any value).**
+- *Timing passed* in Nusrat's Play session: loop lag max 68 ms, round trip max 42.5 ms, 0 watchdog stops, free memory minimum 328 MB (**low**: the run protocol asks for free memory; 328 MB is a risk for longer
+  sessions and for the avatar experiment with more avatars). This meets the 14.16 condition on the lag and the round trip (limits 100 ms and 150 ms, 14.14); the memory is reported as a finding.
+- *Arm ratio per avatar kind* (the reader's POINT geometry assumes `arm_length_in_shoulder_widths` 1.683): Sunbox -6 %, Mixamo -33 %, anime +35 %. The Mixamo and anime values lie outside the look check's accepted
+  range of 1.683 x (1 - 0.30) to 1.683 x (1 + 0.25) (`look_check.json` `arm_ratio_p95`): POINT directions of those kinds are biased (the look check can only make such a look "weak"). A finding for the avatar experiment.
+- *Boxo person found in 8 % of the frames* (`cartoon_boxo_01`, thumb + 3 fingers): YOLO does not reliably detect the character as a person. A finding for the avatar experiment; the person rate is far below the look
+  check's `person_rate` bounds (usable 0.95, weak 0.80), so that look fails the check as declared.
+
+**Open points from Nusrat's notes (`experiments_ab.md`), NOT decided here, for Anisha** ([A] = her marker): (1) the `beside` slots: Unity puts the second worker farther away (junction slot 2 at 5.5 m back, +2.0 m; start node slot 2
+at 3.0 m back, +4.0 m) so that the 1.0 m bystander rule holds; the simulator keeps two workers 3.0 m before the node, 2.0 m each side; (2) the goal generator: Unity uses `GoalSequence(seed)`, the simulator
+`random.Random(f"{seed}|goal")`, so the same seed gives different goals; (3) Unity's liar always shows a VALID branch where the node has another one (only where it has none, an impossible direction), the simulator
+draws from LEFT / FORWARD / RIGHT / BACK, so impossible directions occur at junctions in the simulator and not in Unity; (4) `truth.jsonl` carries the extra field `active` in Unity; (5) the licences of
+`anime_f_01` and `cartoon_boxo_01` (`SOURCES.txt` does not exist).
+
+**Choices of mine in this round (to confirm or change):** the 8 control files under `configs/v4/experiments/` and not in `configs/v4/`; PROCEED graded only when a look has PROCEED recordings; `turn_left` taken from
+Nusrat's proposal unchanged; the simulator's sequential draw of random workers; a simulator A2 with the left map selectable by `side="left"` (default right, the decision of 16.2).
