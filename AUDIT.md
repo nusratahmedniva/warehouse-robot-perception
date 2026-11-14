@@ -2207,3 +2207,86 @@ Read:
 - `tests/test_data_splits_v4.py`: the shipped-config test compares the three earlier looks; new `ExperimentLooksTests`.
 - `tests/test_look_check_v4.py`: the config test knows PROCEED; new `ProceedTests`.
 - `tests/test_lie_detection_v4.py`, `tests/test_export_csv_v4.py`: tests that need exactly two workers at J1 (the tie rule) now ask for two explicitly (`people=2`, which replaces the per-node counts), the look of worker 3 is listed.
+
+### 16.13 Decisions of 2026-11-14, third round (Anisha): the simulator matches Unity, recorded BEFORE the code
+
+Branch `anisha/v4-experiments-ab-3` (from main `879ba9a`, which holds 16.12 merged as PR #31). The Unity runs are the experiment, so the simulator must do what Unity does. The three open points of 16.12 are decided as
+"match Unity". The exact rules were read from Nusrat's code on main, not guessed: `HRI/Scripts/V4/ExperimentPlanAB.cs` (`PlanRun`, `SlotPosition`, `DrawRandom`, `NodeProblem`, `NearerMargin`, `DrawLie`, `TruthfulCommand`, `Goals`),
+`HRI/Scripts/GoalSequence.cs` and `Scenario/Config/experiments_ab_unity.json`. Python only; nothing under `unity/` is touched (read only).
+
+1. **Second `beside` worker as Unity places it.** Unity's slots (`before_m` back along the arrival road, at the start node behind it opposite the start heading; `right_m` to the right of the arrival direction, negative = left),
+   position = node - heading x before_m + right x right_m: junctions (3.0, -2.0), (5.5, +2.0), (6.0, -2.0); start node (3.0, -2.0), (3.0, +4.0), (6.0, -2.0); worker k of a node stands at slot k (slot 0 is the first worker).
+   So Unity's first worker is on the LEFT, 3.0 m back; the simulator's earlier pair (3.0 m back, 2.0 m each side, first on the right) is replaced. This settles Nusrat's "PENDING ANISHA" slots note (`slots_note`): the slots are confirmed. They are copied into
+   `scenarios_ab.json` (`layout.junction_slots`, `layout.start_slots`) and a test pins them equal to Unity's file. As Unity, the simulator also checks the bystander margin of the `beside` layout (`nearer_margin_m` 1.0 m along the last
+   `approach_m` 3.0 m of the arrival road), counts the start node and junctions of the physical v4 map as turning points and its roads as roads for every map, and checks the 3.0 m separation across nodes. The random layout sorts the drawn
+   workers by distance to the node so that slot 0 is the one nearest the node (Unity's `DrawRandom`).
+2. **Goals as Unity draws them.** The goal of run k of a session is the k-th value of `GoalSequence(session seed)` over the map's endpoints sorted by name (SplitMix64; never equal to the previous run's goal), not
+   `random.Random(f"{seed}|goal")`. Python's port of the same generator is `hri_trials.goal_order(seed, endpoints, n)`. `scenarios_ab.json` gets `session_seed` 1 (the development seed); run k (seed `first_seed` + k - 1) uses
+   `goal_order(session_seed, sorted endpoints, runs_per_scenario)[k - 1]`. Fixed goals (A1: B, A2: C) are unchanged.
+3. **A liar shows only a real wrong branch** (Unity `DrawLie`): the wrong directions are the node's branches other than the true command (a node that cannot lead to B has the true command BACK, so every branch of the node is wrong);
+   where there is no other branch (A1's A; A2's A and B; the v4 map's start node A) the fallback is any other of LEFT / FORWARD / RIGHT / BACK, uniformly, which is an impossible direction. `scenarios_ab.json` `sets.B.lie_directions`
+   "valid_branch" ("compass" is the earlier model of 16.2 decision 2, still available for the comparison). Together with the consistent lies of 16.12 item 2 this is what Unity does.
+
+**What the simulator still does differently from Unity** (not decided here; listed so that nobody reads the table as a replica): the random numbers are not Unity's SplitMix64 streams (only the goal order is the same generator), so a given
+(seed, run) has the same goal but not the same placements or liars; Unity also checks that a position is a free grid cell and not inside a collider; Unity's activation window (workers rendered only within 8.0 m, at most 6 active) and its
+rule for who answers a new ask (nearest to the camera axis within 3.5 m) have no counterpart in the simulator (the controller asks the person it approached); the A2 side is fixed to the right turn unless `side="left"`; Unity logs `active`.
+Porting Unity's `Rng(seed, run, index, salt)` to make placements and liars identical per (seed, run) is possible and is not done.
+
+#### 16.13.1 Results (SIMULATOR; 20 seeds per row, seeds 1 to 20, timeout 270 s; detection off / on = a + b, backtrack off)
+
+Next to the table of 16.12 (`experiments_ab_v4_main_270s_v4_20261114_133015`: symmetric beside pair, goals from `random.Random`, compass liar, consistent lies), with the three changes of this round separated: **Unity placement + goals, compass liar**
+(`experiments_ab_v4_unity_layouts_compass_liar_20261114_140847`, `--lie-directions compass`: items 1 and 2 only) and **new** (`experiments_ab_v4_main_270s_v5_20261114_140759`: items 1 to 3, the liar shows a real wrong branch). 16.12 to the middle block is the effect of items 1 and 2 (the slots, the
+bystander margin, the physical-map rules and Unity's goal sequence; the random layout also sorts its workers by distance to the node, and the goals of A3, A4, B3, B4 now follow `GoalSequence(1)`); the middle block to
+new is the effect of item 3 alone (same placements, same goals, same seeds).
+
+| experiment | detection | 16.12: SUCCESS | failures | median s | stops | Unity placement + goals, compass liar: SUCCESS | failures | median s | stops | **new (+ valid-branch liar): SUCCESS** | failures | median s | coll. | stops |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | off | 20/20 | - | 68.0 | 0 | 20/20 | - | 68.0 | 0 | **20/20** | - | 68.0 | 0 | 0 |
+| A1 | on (a+b) | 20/20 | - | 77.9 | 0 | 20/20 | - | 82.3 | 0 | **20/20** | - | 82.3 | 0 | 0 |
+| A2 | off | 20/20 | - | 82.9 | 0 | 20/20 | - | 86.1 | 0 | **20/20** | - | 86.1 | 0 | 0 |
+| A2 | on (a+b) | 20/20 | - | 110.4 | 0 | 20/20 | - | 118.1 | 0 | **20/20** | - | 118.1 | 0 | 0 |
+| A3 | off | 20/20 | - | 121.8 | 0 | 20/20 | - | 122.0 | 0 | **20/20** | - | 122.0 | 0 | 0 |
+| A3 | on (a+b) | 20/20 | - | 160.7 | 0 | 20/20 | - | 185.7 | 0 | **20/20** | - | 185.7 | 0 | 0 |
+| A4 | off | 20/20 | - | 109.6 | 0 | 20/20 | - | 116.1 | 0 | **20/20** | - | 116.1 | 0 | 0 |
+| A4 | on (a+b) | 20/20 | - | 155.5 | 0 | 20/20 | - | 165.6 | 0 | **20/20** | - | 165.6 | 0 | 0 |
+| B1 | off | 18/20 | aborted 2 | 68.0 | 0 | 19/20 | aborted 1 | 68.0 | 0 | **19/20** | aborted 1 | 68.0 | 0 | 0 |
+| B1 | on (a+b) | 20/20 | - | 77.9 | 0 | 20/20 | - | 82.3 | 0 | **20/20** | - | 82.3 | 0 | 0 |
+| B2 | off | 11/20 | aborted 9 | 82.1 | 0 | 13/20 | aborted 7 | 86.1 | 0 | **13/20** | aborted 7 | 86.1 | 0 | 0 |
+| B2 | on (a+b) | 19/20 | aborted 1 | 117.3 | 0 | 19/20 | aborted 1 | 118.1 | 0 | **19/20** | aborted 1 | 118.1 | 0 | 0 |
+| B3 | off | 11/20 | aborted 4, wrong_goal 5 | 119.9 | 0 | 12/20 | aborted 3, wrong_goal 5 | 119.7 | 0 | **10/20** | aborted 1, wrong_goal 9 | 119.7 | 0 | 0 |
+| B3 | on (a+b) | 20/20 | - | 172.0 | 0 | 19/20 | aborted 1 | 199.0 | 0 | **15/20** | aborted 2, wrong_goal 3 | 195.7 | 0 | 0 |
+| B4 | off | 12/20 | aborted 4, wrong_goal 4 | 107.2 | 0 | 11/20 | aborted 6, wrong_goal 3 | 105.6 | 0 | **11/20** | aborted 2, wrong_goal 7 | 110.6 | 0 | 0 |
+| B4 | on (a+b) | 19/20 | wrong_goal 1 | 175.7 | 1 | 19/20 | aborted 1 | 179.3 | 0 | **15/20** | aborted 2, wrong_goal 3 | 170.2 | 0 | 0 |
+
+Lies (Set B):
+
+| experiment | detection | 16.12: given | detected | corrected | fooled | compass liar: given | detected | corrected | fooled | **new: given** | detected | corrected | fooled |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | off | 5 | 0 | 0/0 | 0 | 5 | 0 | 0/0 | 0 | 5 | 0 | 0/0 | 0 |
+| B1 | on (a+b) | 12 | 10 | 10/10 | 0 | 12 | 10 | 10/10 | 0 | 12 | 10 | 10/10 | 0 |
+| B2 | off | 19 | 0 | 0/0 | 0 | 18 | 0 | 0/0 | 0 | 18 | 0 | 0/0 | 0 |
+| B2 | on (a+b) | 38 | 32 | 28/32 | 0 | 35 | 32 | 28/32 | 0 | 35 | 32 | 28/32 | 0 |
+| B3 | off | 19 | 0 | 0/0 | 7 | 19 | 0 | 0/0 | 7 | 15 | 0 | 0/0 | 10 |
+| B3 | on (a+b) | 40 | 32 | 32/32 | 0 | 50 | 32 | 30/32 | 2 | 40 | 19 | 19/19 | 8 |
+| B4 | off | 19 | 0 | 0/0 | 6 | 20 | 0 | 0/0 | 5 | 14 | 0 | 0/0 | 8 |
+| B4 | on (a+b) | 49 | 34 | 32/34 | 2 | 48 | 33 | 31/33 | 2 | 37 | 20 | 20/20 | 8 |
+
+Read:
+- **Stalls: none.** 0 collisions, 0 timeouts and 0 safety stops in all 16 rows of both new tables.
+- **Set A** (truthful): 80/80 with detection off and on in all three tables. Detection on takes longer with Unity's slots (median A1 77.9 -> 82.3 s, A2 110.4 -> 118.1 s, A3 160.7 -> 185.7 s, A4 155.5 -> 165.6 s): the second worker
+  of a node stands farther back or out (5.5 m back at a junction, 4.0 m to the right at the start node), so asking a second person is a longer drive.
+- **Items 1 and 2 change little:** Set B off 52/80 -> 55/80, on 78/80 -> 77/80.
+- **Item 3 (a liar shows a real wrong branch) changes a lot: Set B on 77/80 -> 69/80, off 55/80 -> 53/80.** With detection on B3 20 -> 15 of 20 and B4 19 -> 15 of 20 (wrong goal 3 each, aborted 2 each), lies fooled 8/40 and 8/37 (compass liar:
+  2/50 and 2/48). Rule (b) now has almost nothing to catch: a real wrong branch is not an impossible direction, so only the second opinion (a) works, and B on against B off is 69/80 against 53/80 (16.12: 78/80 against 52/80).
+- **Why the fooled lies: the tie rule.** All 8 wrong decisions at nodes that could lead to B (B3 and B4, detection on) are the tie rule of 16.2 decision 4: two workers disagree, nobody else is there, the FIRST worker is asked again and
+  counts twice. A consistent liar repeats the same wrong branch, so when he is the first worker he wins 2 : 1. Across B3 and B4 the rule was used 10 times: **2 times the re-ask gave the correct branch, 8 times a wrong one**
+  (never an abort). With consistent liars (16.12 item 2) the re-ask carries no information; it only weights the first worker's answer double. Reported, **NOT changed**. Proposal for you to confirm: on a tie with nobody else present, do not ask
+  the first person again, treat the answer as unclear (ask again from a new view as for any unclear answer, then abort): the 8 wrong goals would become aborts (the fail-safe outcome) and the 2 rescues aborts too (not measured: a counterfactual run was not made).
+
+#### 16.13.2 Existing tests changed in this round (each keeps its intent)
+
+`tests/test_lie_detection_v4.py`: tests whose geometry came from the old symmetric `beside` pair now use a fixed layout (`NORTH`, and the new `MIRROR_AT_J1`, where the mirror of a LEFT lie at J1 is the arrival road) or no
+longer assume the route of one geometry (the arrival-mirror test asserts that the lie was followed to J2 with the switch off, not that it ended in `wrong_goal`; the compass test uses the node A, which has one branch); the goal test
+compares with `hri_trials.goal_order(1, ...)`; the decisions-log test allows `second_view` events. `tests/test_export_csv_v4.py`: the distance sanity bound 4.0 m became 5.0 m (the second worker stands up to 6 m back). New:
+`MatchesUnity` (slots and margins pinned to Unity's `experiments_ab_unity.json`, slot positions, the bystander rule, the physical map, cross-node separation, Unity's node order, the goal sequence, the wrong directions, a liar
+never showing BACK or a wall at a junction, the compass fallback where there is no other branch).

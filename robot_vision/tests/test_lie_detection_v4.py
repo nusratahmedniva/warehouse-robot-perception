@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 import commander_v4 as cm  # noqa: E402
 import gesture_data as gd  # noqa: E402
+import hri_trials as ht  # noqa: E402
 import golden_sim_v4 as golden  # noqa: E402
 import hri_control as hc  # noqa: E402
 import hri_control_v4 as hv  # noqa: E402
@@ -36,6 +37,8 @@ SECOND = {"second_opinion": True, "reject_impossible": False, "backtrack": False
 # north-east (the mirror of LEFT lands on the arrival road and is dropped).
 NORTH = {"kind": "fixed", "points": {"A": [[6.25, -17.5]], "J1": [[6.25, 2.5]], "J2": [[-6.25, 2.5]], "J3": [[20.55, 1.8]],
                                       "J4": [[-18.75, 2.5]]}}
+# J1 person north-west of the node (camera yaw -45): the mirror of LEFT (-90) is 2 * (-45) + 270 = 180 = the arrival road, the other reading is LEFT itself
+MIRROR_AT_J1 = {"kind": "fixed", "points": {**NORTH["points"], "J1": [[6.25 - 2.5 * math.sin(math.radians(45)), 2.5 * math.cos(math.radians(45))]]}}
 # J1 person due east of the node (camera yaw 90): the mirror of BACK is BACK, both candidates are the arrival road.
 EAST_AT_J1 = {"kind": "fixed", "points": {**NORTH["points"], "J1": [[8.75, 0.0]]}}
 
@@ -104,7 +107,7 @@ class SwitchesOffUnchanged(unittest.TestCase):
         for d in ev:
             self.assertEqual({"t", "node", "event", "reason", "serial"} <= set(d), True)
             self.assertTrue(d["reason"])
-        self.assertEqual({d["event"] for d in ev} <= {"answer_accepted", "go"}, True)
+        self.assertEqual({d["event"] for d in ev} <= {"answer_accepted", "go", "second_view"}, True)
         json.dumps(r["v4"])                                              # serialisable
 
 
@@ -157,11 +160,11 @@ class LieModel(unittest.TestCase):
 
     def test_shown_direction_is_uniform_over_the_other_three(self):
         seen = set()
-        for seed in range(1, 40):
-            for g in run("A3", "E2", p=1.0, seed=seed, detection=OFF)["gestures"]:
-                if g["correct"] == "RIGHT":
+        for seed in range(1, 40):                                         # the compass model of 16.2 (a Set A scenario has no lie_directions key)
+            for g in run("A3", "E2", p=1.0, seed=seed, detection=OFF, layout=NORTH)["gestures"]:
+                if g["correct"] == "FORWARD" and g["node"] == "A":       # A has one branch: the other three directions, all impossible
                     seen.add(g["shown"])
-        self.assertEqual(seen, {"LEFT", "FORWARD", "BACK"})
+        self.assertEqual(seen, {"LEFT", "RIGHT", "BACK"})
 
     def test_a_lie_is_a_lie_in_the_truth_rows_and_the_gesture_log_alike(self):
         r = run("B3" if False else "A3", "E2", p=0.5, seed=4, detection=OFF)
@@ -200,7 +203,7 @@ class LieModel(unittest.TestCase):
         self.assertTrue(0.08 < lies / n < 0.35, lies / n)
 
     def test_a_worker_who_knows_b_but_cannot_lead_there_points_back(self):
-        r = run("A3", "E3", [None, "LEFT"], detection=OFF)                # J1 lie LEFT -> J2, no way to E3 from there
+        r = run("A3", "E3", [None, "LEFT"], OFF, NORTH)                   # J1 lie LEFT -> J2, no way to E3 from there
         g = [x for x in r["gestures"] if x["node"] == "J2"]
         self.assertTrue(g and all(x["correct"] == "BACK" for x in g))
 
@@ -391,9 +394,10 @@ class RuleB_ArrivalMirror(unittest.TestCase):
         self.assertEqual((hv.resolve_point(back, dirs, arrival, 0.0, 30.0, False, True).command, ), (None,))
 
     def test_the_switch_off_changes_nothing_and_the_switch_on_catches_a_lie_whose_mirror_is_the_arrival_road(self):
-        off = run("A3", "E3", [None, "LEFT"], OFF)                       # J1 lie LEFT, read as LEFT: the robot follows it to J2, then E2
-        self.assertEqual((off["failure_reason"], off["v4"]["route"]), ("wrong_goal", ["A", "J1", "J2", "E2"]))
-        on = run("A3", "E3", [None, "LEFT"], REJECT)
+        off = run("A3", "E3", [None, "LEFT"], OFF, MIRROR_AT_J1)        # J1 lie LEFT, read as LEFT: the robot follows it to J2, then E2
+        self.assertEqual(off["v4"]["route"][:3], ["A", "J1", "J2"])         # the lie was followed to J2 (where B cannot be reached; the worker there points back)
+        self.assertEqual(off["outcome"], "FAILURE")
+        on = run("A3", "E3", [None, "LEFT"], REJECT, MIRROR_AT_J1)
         self.assertEqual(on["v4"]["route"], ["A", "J1"])                 # not followed
         self.assertEqual((on["outcome"], on["failure_reason"]), ("FAILURE", "aborted"))     # fail safe: unclear after two asks
         sv_events = events(on, "second_view")
@@ -747,6 +751,137 @@ class ExperimentFiles(unittest.TestCase):
         self.assertEqual([f for f in listed if "/experiments/" in f], list(fz.FROZEN_EXTRA))
 
 
+UNITY_CFG = ROOT.parent / "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json"
+
+
+class MatchesUnity(unittest.TestCase):
+    """AUDIT.md 16.13: the simulator does what Unity's ExperimentPlanAB does (the beside slots, the goal generator, the valid-branch liar)."""
+
+    def setUp(self):
+        self.u = json.loads(UNITY_CFG.read_text(encoding="utf-8"))
+        self.scen = sv.load_scenarios()
+        self.road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
+
+    # -- 1. the beside slots
+    def test_the_slots_and_margins_are_unitys(self):
+        for k in ("1", "2", "3"):
+            lay = self.scen["scenarios"][k]["layout"]
+            self.assertEqual(lay["junction_slots"], self.u["junction_slots"], k)
+            self.assertEqual(lay["start_slots"], self.u["start_slots"], k)
+            self.assertEqual((lay["nearer_margin_m"], lay["approach_m"]), (self.u["nearer_margin_m"], self.u["approach_m"]), k)
+        self.assertEqual(self.scen["scenarios"]["4"]["layout"]["nearer_margin_m"], self.u["random_nearer_margin_m"])
+        self.assertEqual(self.scen["scenarios"]["4"]["layout"]["max_draws"], self.u["random_max_draws"])
+        for e in self.u["experiments"]:                                                  # the third worker at J1 in A3, A4, B3, B4 only
+            lay = self.scen["scenarios"][e["scenario"]]["layout"]
+            self.assertEqual(sorted(lay.get("people_by_node", {})), e["three_worker_nodes"], e["name"])
+        self.assertEqual(self.scen["placement_rule"]["min_worker_separation_m"], 3.0)
+
+    def test_slot_positions(self):
+        js, ss = self.u["junction_slots"], self.u["start_slots"]
+        pts = [tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "J1", 3, js)]
+        self.assertEqual(pts, [(4.25, -3.0), (8.25, -5.5), (4.25, -6.0)])                   # the first worker stands on the LEFT, 3.0 m back
+        self.assertEqual([tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "A", 2, ss)], [(4.25, -23.0), (10.25, -23.0)])
+        j2 = [tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "J2", 2, js)]
+        self.assertEqual(j2, [(-3.25, -2.0), (-0.75, 2.0)])                                  # arrival heading west: back = east, right = north
+        with self.assertRaisesRegex(ValueError, "4 workers but 3 slots"):
+            sv.place_slots(self.road, "J1", 4, js)
+
+    def test_every_scene_of_the_beside_experiments_obeys_the_rules_including_the_bystander_margin(self):
+        for name in ("A1", "A2", "A3", "B3"):
+            sc = sv.scenario_ab(name, 1)
+            for node in sv.ask_nodes(sc["road"]):
+                pts = [(p.x, p.z) for p in sc["sim"]._scene_at(node).people]
+                sv.check_placement(sc["road"], node, pts, 3.0, 3.0, sc["spec"].physical_map, 1.0, 3.0)
+                for o in pts[1:]:
+                    self.assertGreaterEqual(sv.nearer_margin(sc["road"], node, o, pts[0], 3.0), 1.0 - 1e-9, (name, node))
+
+    def test_the_old_symmetric_pair_breaks_the_bystander_rule(self):
+        pair = sv.place_beside(self.road, "J1", 2, 2.0, 3.0)
+        sv.check_placement(self.road, "J1", pair, 3.0, 3.0)                                   # without the margin it passed
+        with self.assertRaisesRegex(ValueError, "farther than the first worker"):
+            sv.check_placement(self.road, "J1", pair, 3.0, 3.0, None, 1.0, 3.0)
+
+    def test_the_physical_map_counts_for_every_map_and_other_nodes_workers_too(self):
+        corridor = hc.Roadmap(self.scen["maps"]["corridor"])
+        phys = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
+        near_j1 = [(6.25, -1.0)]                                                              # 1 m from J1 of the physical map, not near any node of the corridor
+        sv.check_placement(corridor, "A", near_j1, 3.0, 3.0)
+        with self.assertRaisesRegex(ValueError, "turning point"):
+            sv.check_placement(corridor, "A", near_j1, 3.0, 3.0, phys)
+        self.assertEqual(len(sv.turning_points(corridor, phys)), len(sv.turning_points(corridor)) + len(sv.turning_points(phys)))
+        with self.assertRaisesRegex(ValueError, "another node"):
+            sv.check_placement(self.road, "J2", [(-8.0, 3.0)], 3.0, 3.0, None, 0.0, 3.0, [(-8.0, 5.0)])
+
+    def test_random_workers_are_sorted_by_distance_to_the_node_and_keep_away_from_placed_ones(self):
+        for node in ("J1", "J3"):
+            nx, nz = self.road.pos(node)
+            for seed in range(1, 15):
+                pts = sv.place_random(self.road, node, 3 if node == "J1" else 2, 3.0, 1.0, 3.0, seed, 3.0, 0.25, 3.0, 100000)
+                d = [math.hypot(x - nx, z - nz) for x, z in pts]
+                self.assertEqual(d, sorted(d), (node, seed))
+        far = sv.place_random(self.road, "J1", 2, 3.0, 1.0, 3.0, 5, 3.0, 0.25, 3.0, 100000, None, [(8.0, 2.0)])
+        self.assertTrue(all(math.dist(p, (8.0, 2.0)) >= 3.0 for p in far))
+
+    def test_the_planned_run_obeys_every_rule_across_nodes_in_unitys_order(self):
+        self.assertEqual(sv.ask_nodes(self.road), ["A", "J1", "J2", "J3", "J4"])
+        for name in ("A3", "A4"):
+            for seed in range(1, 11):
+                sc = sv.scenario_ab(name, seed)
+                plan = sc["sim"].plan_workers()
+                self.assertEqual(list(plan), sv.ask_nodes(sc["road"]))
+                allp = [q for pts in plan.values() for q in pts]
+                for i, a in enumerate(allp):
+                    for b in allp[i + 1:]:
+                        self.assertGreaterEqual(math.dist(a, b), 3.0 - 1e-9)
+
+    # -- 2. the goals
+    def test_goals_are_unitys_goal_sequence_of_the_session_seed(self):
+        self.assertEqual(self.scen["session_seed"], 1)
+        ends = sorted(self.road.endpoints())
+        want = ht.goal_order(1, ends, 20)
+        got = [sv.scenario_ab("A3", seed)["goal"] for seed in range(1, 21)]
+        self.assertEqual(got, want)
+        self.assertEqual([sv.scenario_ab(n, 7)["goal"] for n in ("A3", "A4", "B3", "B4")], [want[6]] * 4)
+        self.assertTrue(all(a != b for a, b in zip(got, got[1:])))                         # "B changes every run": never the previous goal
+        self.assertEqual(sv.scenario_ab("A1", 5)["goal"], "B")
+
+    # -- 3. the liar shows a real wrong branch
+    def test_the_wrong_directions_are_unitys(self):
+        sim = sv.scenario_ab("B3", 1)["sim"]
+        self.assertEqual(sim.spec.lie_directions, "valid_branch")
+        self.assertEqual(set(sim._wrong_directions("J1", "RIGHT")), {"FORWARD", "LEFT"})        # the other branches of J1
+        self.assertEqual(set(sim._wrong_directions("J2", "BACK")), {"FORWARD", "RIGHT"})        # B cannot be reached from J2: every branch is wrong
+        self.assertEqual(set(sim._wrong_directions("J3", "LEFT")), {"RIGHT"})
+        self.assertEqual(set(sim._wrong_directions("A", "FORWARD")), {"LEFT", "RIGHT", "BACK"})  # no other branch: the compass fallback (impossible)
+        b2 = sv.scenario_ab("B2", 1)["sim"]
+        self.assertEqual(set(b2._wrong_directions("B", "RIGHT")), {"LEFT", "FORWARD", "BACK"})
+        sim.spec.lie_directions = "compass"
+        self.assertEqual(set(sim._wrong_directions("J1", "RIGHT")), {"LEFT", "FORWARD", "BACK"})  # the earlier model
+        self.assertEqual(sv.scenario_ab("A3", 1)["spec"].lie_directions, "compass")             # Set A never lies, the default applies
+
+    def test_a_liar_at_a_junction_never_shows_back_or_a_wall_and_always_the_same_branch(self):
+        liars = 0
+        for name in ("B3", "B4"):
+            for seed in range(1, 21):
+                sc = sv.scenario_ab(name, seed, sv.DETECTION_ON)
+                r = sc["sim"].run(sc["goal"])
+                for g in r["gestures"]:
+                    if not g["truthful"] and g["node"] != "A":
+                        liars += 1
+                        self.assertIsNotNone(sc["road"].next(g["node"], g["shown"]), (name, seed, g))
+        self.assertGreater(liars, 10)
+
+    def test_where_no_other_branch_exists_a_liar_shows_an_impossible_direction(self):
+        seen = set()
+        for seed in range(1, 41):
+            for name, node in (("B1", "A"), ("B2", "B")):
+                sc = sv.scenario_ab(name, seed)
+                for g in sc["sim"].run(sc["goal"])["gestures"]:
+                    if not g["truthful"] and g["node"] == node:
+                        seen.add(sc["road"].next(node, g["shown"]))
+        self.assertEqual(seen, {None})
+
+
 class DetectionSettings(unittest.TestCase):
     def test_the_experiments_detection_blocks_are_the_declared_ones_and_backtrack_is_off(self):
         d = sv.load_scenarios()["detection"]
@@ -789,7 +924,7 @@ class Scenarios(unittest.TestCase):
         for seed in range(1, 8):
             sc = sv.scenario_ab("A3", seed)
             ends = sorted(sc["road"].endpoints())
-            self.assertEqual(sc["goal"], random.Random(f"{seed}|goal").choice(ends))
+            self.assertEqual(sc["goal"], ht.goal_order(1, ends, 20)[seed - 1])                # Unity's GoalSequence(session seed 1), run k = seed k
             self.assertEqual(sc["goal"], sv.scenario_ab("B4", seed)["goal"])               # the same four in set B
         self.assertEqual(sv.scenario_ab("A1", 3)["goal"], "B")
         self.assertEqual(sv.scenario_ab("A2", 3)["goal"], "C")
