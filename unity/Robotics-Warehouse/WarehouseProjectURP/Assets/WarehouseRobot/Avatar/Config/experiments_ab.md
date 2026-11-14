@@ -699,3 +699,38 @@ and on the item 6 tree).*
   seen edge-on and the thumb stands out to the side.
 
 No perception was run.
+
+## 2026-11-14, section 12: palm orientation and the WAIT thumb in the geometry check (declared before building or measuring; nothing run)
+
+Nusrat's check before the merge (branch `nusrat/v4-avatar-fixes`, HEAD 045dce5). The rules of sections 10 and 11 stay: Unity side
+only, geometric, **no perception**, nothing frozen, nothing pushed.
+
+**Added to the Play geometry check** (`GestureGeometryDriver`), for every look of `avatar_experiment`, both arms, on the same measured hold
+frames of every STOP and WAIT take:
+- **Robot camera point C:** the stand-in robot's eye on the stage (the worker's `robotEye`, 2.0 m in front of it at 1.2 m height). It is
+  the point the worker turns its palm toward.
+- **Hand frame from the rendered bones:**
+  - palm centre P is the mean of the hand bone and the index, middle and outermost (little, else ring) proximal bones;
+  - palm length Lp = |middle proximal - hand|;
+  - finger direction = middle proximal - hand.
+- **Palm normal, bones:** `LookPoser.PalmNormal`, the convention the hand shaper aligns.
+- **Palm normal, mesh** (independent of that convention: what the camera sees):
+  - The vertices are the rendered skinned-mesh vertices whose largest bone weight is on the Hand bone and is at least 0.5, lying between
+    the wrist and the finger bases along the finger direction (0 to Lp from the hand bone). This keeps out sleeves and forearm.
+  - The normal is their plane fit (the least-variance axis of the covariance), with its sign chosen to agree with the bone normal.
+  - It is *undetermined* with fewer than 30 vertices or a flatness (smallest / middle variance) above 0.5. An undetermined mesh normal
+    is reported as "mesh n/a" and the palm check then rests on the bone normal; it is never counted as a pass of the mesh part.
+- **Palm facing (STOP and WAIT): the angle between each palm normal (bones, and mesh when determined) and C - P is at most 30 deg.**
+- **WAIT thumb, curled toward the palm:** the thumb tip Tt (`HandShaper.Tip`, one distal-bone length beyond the distal joint) is
+  *tucked* when **|Tt - P| <= 1.0 Lp** (over the palm, not sticking out) **and (Tt - P) . n_bones >= 0** (on the palm side). Also
+  reported, not judged: the tip's position across the palm (0 at the index base, 1 at the outermost base).
+- **Pass rule:** a look x command passes the hand check when every measured frame passes. It is reported per look in a separate hand
+  table (`hand_table.md`) and in `geometry.json`; the arm columns and their pass are unchanged. Values go to `gesture_geometry.json`
+  `tolerance` (`palm_facing_deg` 30, `palm_commands` STOP and WAIT, `thumb_tip_max_palm_lengths` 1.0, `thumb_palm_side_min` 0.0,
+  `palm_mesh_min_vertices` 30, `palm_mesh_flatness_max` 0.5, `palm_hand_weight_min` 0.5). Edit Mode tests of the measures on synthetic
+  hands.
+
+**If any look fails** (Boxo or another): the fix goes into the pipeline, never the reader. It changes the worker template's hand
+orientation or thumb curl (`HandShaper`, `WorkerV4`) or the import. It is written here as an addendum before the change. Tests must prove
+five-finger looks unchanged (the golden test and the `BatchHandShapes` comparison, value for value). Then the geometry check and its
+screenshots are rerun. Nothing is tuned on a perception result.
