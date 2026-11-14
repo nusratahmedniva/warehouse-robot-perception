@@ -43,6 +43,9 @@ namespace WarehouseAvatar
         /// <summary>PROCEED's elbow lies exactly ProceedUpper from the shoulder (its sideways offset included); false = the legacy formula,
         /// whose sideways offset put it ~0.5 % farther.</summary>
         public bool ElbowOnUpperArm;
+        /// <summary>experiments_ab.md section 11 item 2: the target never lies farther from the shoulder than the command's own maximum reach
+        /// (POINT limits.point_reach[1] L, STOP limits.stop_reach[1] L, WAIT and PROCEED L), size and push included; false = the legacy formula.</summary>
+        public bool CapReach;
 
         public static ArmSplit Legacy(float armLength) => new ArmSplit
         {
@@ -52,6 +55,7 @@ namespace WarehouseAvatar
         public static ArmSplit Rig(ArmProportions p) => new ArmSplit
         {
             L = p.Arm, ProceedUpper = p.upper_m, ProceedFore = p.forearm_m, HintAlong = p.upper_m, HintBelow = p.forearm_m, ElbowOnUpperArm = true,
+            CapReach = true,
         };
     }
 
@@ -60,6 +64,8 @@ namespace WarehouseAvatar
     {
         public Vector3 Shoulder, Target, Hint, Elbow;
         public bool HasElbow, Valid;
+        /// <summary>The target was moved toward the shoulder to the command's maximum reach (section 11 item 2).</summary>
+        public bool Capped;
     }
 
     /// <summary>
@@ -134,7 +140,30 @@ namespace WarehouseAvatar
                     break;
                 }
             }
+            if (a.CapReach)
+            {
+                // section 11 item 2: no take asks for more than the arm can do (Mecanim never straightens an arm fully): the target moves
+                // toward the shoulder along its own direction; the hint stays
+                float max = MaxReach(spec.command, lim, L);
+                Vector3 v = g.Target - s;
+                if (v.magnitude > max)
+                {
+                    g.Target = s + v.normalized * max;
+                    g.Capped = true;
+                }
+            }
             return g;
+        }
+
+        /// <summary>The farthest a command's hand target may lie from the shoulder (section 11 item 2), in metres for an arm of length L.</summary>
+        public static float MaxReach(string command, WorkerLimits lim, float L)
+        {
+            switch (command)
+            {
+                case WorkerV4Config.Point: return lim.point_reach[1] * L;
+                case WorkerV4Config.Stop: return lim.stop_reach[1] * L;
+                default: return L;
+            }
         }
     }
 

@@ -213,6 +213,61 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
+        public void ReachCap_APushedStopIsCappedAtItsMaximumReach_InItsOwnDirection()
+        {
+            var w = Worker();
+            var p = new ArmProportions { upper_m = 0.228f, forearm_m = 0.215f };
+            var rig = ArmSplit.Rig(p);
+            var uncapped = rig;
+            uncapped.CapReach = false;
+            float L = p.Arm;
+            int capped = 0;
+            foreach (var spec in w.clips.Where(c => c.command == "STOP"))
+                foreach (var size in new[] { w.variation.size[0], 1f, w.variation.size[1] })
+                    foreach (var push in new[] { 0f, 0.06f * L, 0.15f * L })
+                    {
+                        var g = GestureTargets.Compute(spec, w.limits, rig, S, Side, Fwd, Fwd, size, 0f, 0f, push);
+                        var u = GestureTargets.Compute(spec, w.limits, uncapped, S, Side, Fwd, Fwd, size, 0f, 0f, push);
+                        float max = w.limits.stop_reach[1] * L;
+                        Assert.LessOrEqual(Vector3.Distance(g.Target, S), max + 1e-6f, $"{spec.name} size {size} push {push}: within the arm's reach");
+                        Assert.AreEqual(u.Hint, g.Hint, "the hint is unchanged");
+                        if (Vector3.Distance(u.Target, S) > max)
+                        {
+                            capped++;
+                            Assert.IsTrue(g.Capped);
+                            Assert.AreEqual(max, Vector3.Distance(g.Target, S), 1e-5f, "capped at exactly the maximum reach");
+                            // in its own direction (the cross product: Vector3.Angle's acos cannot resolve below ~0.02 deg)
+                            Assert.Less(Vector3.Cross((g.Target - S).normalized, (u.Target - S).normalized).magnitude, 1e-5f, "in its own direction");
+                            Assert.Greater(Vector3.Dot(g.Target - S, u.Target - S), 0f);
+                        }
+                        else
+                        {
+                            Assert.IsFalse(g.Capped);
+                            Assert.IsTrue(g.Target.x == u.Target.x && g.Target.y == u.Target.y && g.Target.z == u.Target.z, "a take within reach is unchanged bit for bit");
+                        }
+                    }
+            Assert.Greater(capped, 0, "the pushed takes beyond 0.97 L were capped");
+        }
+
+        [Test]
+        public void ReachCap_NeverMovesPointWaitOrProceed()
+        {
+            var w = Worker();
+            var p = new ArmProportions { upper_m = 0.285f, forearm_m = 0.272f };
+            foreach (var spec in w.clips.Where(c => c.command != "STOP"))
+                foreach (var size in new[] { w.variation.size[0], 1f, w.variation.size[1] })
+                    foreach (var phi in new[] { -20f, 30f, 75f })
+                    {
+                        var g = GestureTargets.Compute(spec, w.limits, ArmSplit.Rig(p), S, Side, Fwd, Quaternion.AngleAxis(40f, Vector3.up) * Fwd, size, 10f, phi, 0f);
+                        Assert.IsFalse(g.Capped, $"{spec.name} size {size} phi {phi}");
+                    }
+            Assert.AreEqual(0.97f * 0.5f, GestureTargets.MaxReach("STOP", w.limits, 0.5f), 1e-6f);
+            Assert.AreEqual(0.99f * 0.5f, GestureTargets.MaxReach("POINT", w.limits, 0.5f), 1e-6f);
+            Assert.AreEqual(0.5f, GestureTargets.MaxReach("WAIT", w.limits, 0.5f), 1e-6f);
+            Assert.IsFalse(ArmSplit.Legacy(0.5f).CapReach, "the legacy formula (the target-shift reference) stays uncapped");
+        }
+
+        [Test]
         public void Proportions_AreMeasuredFromTheBones()
         {
             var root = new GameObject("root").transform;
