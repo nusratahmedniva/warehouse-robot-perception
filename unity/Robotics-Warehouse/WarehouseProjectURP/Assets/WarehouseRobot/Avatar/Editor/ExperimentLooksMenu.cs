@@ -292,6 +292,8 @@ namespace WarehouseAvatar.EditorTools
             public string[] material_problems = new string[0];
             public string render = "";
             public List<HandReport> hands = new List<HandReport>();
+            /// <summary>Section 12 addendum 7 decision 4: for a palm_plates look, the same probe with each finger's vertices = its mesh islands.</summary>
+            public List<HandReport> island_hands = new List<HandReport>();
             public List<MaterialReport> materials = new List<MaterialReport>();
         }
 
@@ -355,6 +357,19 @@ namespace WarehouseAvatar.EditorTools
                             });
                         h.verdict = h.fingers.Count <= 1 ? "one_chain" : h.fingers.All(x => x.verdict == FingerSkinCheck.Separate) ? FingerSkinCheck.Separate
                                   : h.fingers.Any(x => x.verdict == FingerSkinCheck.Merged) ? FingerSkinCheck.Merged : FingerSkinCheck.Inconclusive;
+                        var plateSpec = f.palm_plates.FirstOrDefault(x => x != null && x.look == l.id);
+                        if (plateSpec == null) continue;
+                        var ih = new HandReport { side = h.side, hand_bone = h.hand_bone, chains = h.chains };
+                        p.island_hands.Add(ih);
+                        foreach (var r in FingerSkinCheck.MeasureHand(hand, smrs, plateSpec))
+                            ih.fingers.Add(new FingerReport
+                            {
+                                name = r.Name, verdict = r.Verdict, most_moved_other = r.MostMovedOther, bones = r.Bones,
+                                humanoid = FingerSkinCheck.Chains(hand).First(c => c[0].name == r.Name).Where(human.ContainsKey).Select(t => human[t]).ToArray(),
+                                region_vertices = r.Region, region_moved = r.RegionMoved, own_fraction = r.OwnFraction, max_other_fraction = r.MaxOtherFraction,
+                            });
+                        ih.verdict = ih.fingers.Count <= 1 ? "one_chain" : ih.fingers.All(x => x.verdict == FingerSkinCheck.Separate) ? FingerSkinCheck.Separate
+                                   : ih.fingers.Any(x => x.verdict == FingerSkinCheck.Merged) ? FingerSkinCheck.Merged : FingerSkinCheck.Inconclusive;
                     }
                     foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
                         foreach (var m in r.sharedMaterials)
@@ -378,6 +393,7 @@ namespace WarehouseAvatar.EditorTools
             File.WriteAllText(Path.Combine(outDir, "fingers.json"), JsonUtility.ToJson(file, true).Replace("\r\n", "\n") + "\n", Utf8);
             return string.Join("; ", file.looks.Select(x => $"{x.id}: fingers {x.finger_bones_mapped}/30, shapes {x.hand_shapes_possible}, " +
                                                             string.Join(", ", x.hands.Select(h => $"{h.side} {h.chains} chains {h.verdict}")) +
+                                                            (x.island_hands.Count > 0 ? ", by mesh islands: " + string.Join(", ", x.island_hands.Select(h => $"{h.side} {h.verdict}")) : "") +
                                                             $", magenta {x.magenta_pixels}, material problems {x.material_problems.Length} {x.note}")) +
                    $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/fingers.json";
         }

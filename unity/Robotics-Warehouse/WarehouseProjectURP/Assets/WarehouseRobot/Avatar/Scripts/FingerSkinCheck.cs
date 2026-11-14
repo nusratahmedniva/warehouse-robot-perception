@@ -55,8 +55,11 @@ namespace WarehouseAvatar
         public static string Verdict(int region, float own, float maxOther) =>
             region < MinRegion ? Inconclusive : own >= OwnMin && maxOther <= OtherMax ? Separate : Merged;
 
-        /// <summary>Every chain of one hand; each bent bone's rotation is restored afterwards.</summary>
-        public static List<FingerResult> MeasureHand(Transform hand, IList<SkinnedMeshRenderer> meshes)
+        /// <summary>Every chain of one hand; each bent bone's rotation is restored afterwards. With <paramref name="islands"/> (a palm_plates
+        /// rule, experiments_ab.md section 12 addendum 7 decision 4) a finger's vertices are those of its mesh islands instead of the RegionM
+        /// region: every island of the rule's material belonging to this hand except the plate (the largest box), assigned to the chain
+        /// nearest to its centroid.</summary>
+        public static List<FingerResult> MeasureHand(Transform hand, IList<SkinnedMeshRenderer> meshes, PalmPlateSpec islands = null)
         {
             var chains = Chains(hand);
             var results = new List<FingerResult>();
@@ -65,20 +68,9 @@ namespace WarehouseAvatar
             try
             {
                 var rest = BakeAll(meshes, tmp);
-                // region of each vertex: the nearest chain within RegionM (-1 = none)
-                var owner = new int[rest.Count];
+                var owner = islands != null ? IslandOwners(hand, meshes, chains, rest, islands) : RegionOwners(chains, rest);
                 var count = new int[chains.Count];
-                for (int i = 0; i < rest.Count; i++)
-                {
-                    owner[i] = -1;
-                    float best = RegionM;
-                    for (int f = 0; f < chains.Count; f++)
-                    {
-                        float d = Distance(rest[i], chains[f]);
-                        if (d <= best) { best = d; owner[i] = f; }
-                    }
-                    if (owner[i] >= 0) count[owner[i]]++;
-                }
+                foreach (int o in owner) if (o >= 0) count[o]++;
                 Vector3 normal = PalmNormal(hand, chains);
                 for (int f = 0; f < chains.Count; f++)
                 {
@@ -109,6 +101,87 @@ namespace WarehouseAvatar
             }
             finally { Object.DestroyImmediate(tmp); }
             return results;
+        }
+
+        /// <summary>The region of each vertex: the nearest chain within RegionM (-1 = none).</summary>
+        static int[] RegionOwners(List<Transform[]> chains, List<Vector3> rest)
+        {
+            var owner = new int[rest.Count];
+            for (int i = 0; i < rest.Count; i++)
+            {
+                owner[i] = -1;
+                float best = RegionM;
+                for (int f = 0; f < chains.Count; f++)
+                {
+                    float d = Distance(rest[i], chains[f]);
+                    if (d <= best) { best = d; owner[i] = f; }
+                }
+            }
+            return owner;
+        }
+
+        /// <summary>Addendum 7 decision 4: each vertex's finger by mesh islands (see MeasureHand); vertex order as BakeAll's.</summary>
+        static int[] IslandOwners(Transform hand, IList<SkinnedMeshRenderer> meshes, List<Transform[]> chains, List<Vector3> rest, PalmPlateSpec spec)
+        {
+            var owner = new int[rest.Count];
+            for (int i = 0; i < owner.Length; i++) owner[i] = -1;
+            int offset = 0;
+            foreach (var smr in meshes)
+            {
+                var mesh = smr.sharedMesh;
+                int n = mesh != null ? mesh.vertexCount : 0;
+                var bones = smr.bones;
+                var mats = smr.sharedMaterials;
+                if (mesh != null && bones != null)
+                {
+                    var tris = new List<int>();
+                    var glove = new HashSet<int>();
+                    for (int sub = 0; sub < mesh.subMeshCount && sub < mats.Length; sub++)
+                    {
+                        if (mats[sub] == null || mats[sub].name.Replace(" (Instance)", "") != spec.material) continue;
+                        var idx = mesh.GetIndices(sub);
+                        tris.AddRange(idx);
+                        foreach (int i in idx) glove.Add(i);
+                    }
+                    if (tris.Count > 0)
+                    {
+                        var tree = new bool[bones.Length];
+                        for (int b = 0; b < bones.Length; b++) tree[b] = bones[b] != null && (bones[b] == hand || bones[b].IsChildOf(hand));
+                        var bw = mesh.boneWeights;
+                        var local = rest.GetRange(offset, n);
+                        var mine = new List<int>();
+                        foreach (int i in glove)
+                        {
+                            if (i >= bw.Length) continue;
+                            var w = bw[i];
+                            float t = (tree[w.boneIndex0] ? w.weight0 : 0f) + (tree[w.boneIndex1] ? w.weight1 : 0f) + (tree[w.boneIndex2] ? w.weight2 : 0f) + (tree[w.boneIndex3] ? w.weight3 : 0f);
+                            if (t >= 0.5f) mine.Add(i);
+                        }
+                        var island = PalmPlate.Islands(local, tris, spec.weld_m);
+                        int plate = PalmPlate.LargestIsland(local, island, mine);
+                        var centroid = new Dictionary<int, Vector3>();
+                        var size = new Dictionary<int, int>();
+                        foreach (int i in mine)
+                        {
+                            if (island[i] < 0 || island[i] == plate) continue;
+                            centroid[island[i]] = (centroid.TryGetValue(island[i], out var c) ? c : Vector3.zero) + local[i];
+                            size[island[i]] = (size.TryGetValue(island[i], out int k) ? k : 0) + 1;
+                        }
+                        var finger = new Dictionary<int, int>();
+                        foreach (var kv in centroid)
+                        {
+                            Vector3 c = kv.Value / size[kv.Key];
+                            int best = -1;
+                            float bd = float.PositiveInfinity;
+                            for (int f = 0; f < chains.Count; f++) { float d = Distance(c, chains[f]); if (d < bd) { bd = d; best = f; } }
+                            finger[kv.Key] = best;
+                        }
+                        foreach (int i in mine) if (island[i] >= 0 && finger.TryGetValue(island[i], out int f)) owner[offset + i] = f;
+                    }
+                }
+                offset += n;
+            }
+            return owner;
         }
 
         /// <summary>The palm's normal: the mean finger direction crossed with the line through the two finger bases farthest apart (up if the
