@@ -27,7 +27,7 @@ namespace WarehouseAvatar.Tests
             Assert.AreEqual(10f, g.tolerance.forearm_direction_deg);
             Assert.AreEqual(120f, g.tolerance.no_fold_min_elbow_deg);
             CollectionAssert.AreEquivalent(new[] { "POINT" }, g.tolerance.no_fold_commands, "section 11 item 1: the extended gesture only");
-            CollectionAssert.AreEquivalent(new[] { "anime", "cartoon_non_human" }, g.screens.kind_groups);
+            CollectionAssert.AreEquivalent(new[] { "realistic_human", "stylised_human", "anime", "cartoon_non_human" }, g.screens.kind_groups, "section 11 item 7: every look");
         }
 
         [Test]

@@ -27,7 +27,7 @@
     "why": "A new unsaved scene: a grey floor, one directional light, flat ambient, no warehouse. One worker per look on its own spot spacing_m apart along x, a stand-in robot robot_distance_m in front (the asking distance), so each worker turns to face it. Variation stream SetRun(seed, take). hold_frames frames spread over the hold from settle_after_hold_s; PROCEED: every frame of proceed_window_s of the swing (the reader's window, gesture_reader.json proceed.window_s). POINT at the look check's side azimuths (0 = straight out to the person's own side, 45 = toward the front)."
   },
   "screens": {
-    "kind_groups": ["anime", "cartoon_non_human"],
+    "kind_groups": ["realistic_human", "stylised_human", "anime", "cartoon_non_human"],
     "distance_m": 3.0,
     "azimuth_right_deg": 20.0,
     "height_m": 1.3,
@@ -35,7 +35,7 @@
     "aim_height_of_body": 0.6,
     "width_px": 1280,
     "height_px": 960,
-    "why": "Screenshots for Nusrat's visual check (section 10 item 8), NOT the robot cameras' settings and not perception input: a neutral camera distance_m in front of the worker, azimuth_right_deg toward its right, at height_m, aimed at aim_height_of_body x the look's height; one PNG per look of these kind groups (looks_ab.json kind_group), command and arm, in the middle of the hold (PROCEED: at the top of the swing)."
+    "why": "Screenshots for Nusrat's visual check (section 10 item 8), NOT the robot cameras' settings and not perception input: a neutral camera distance_m in front of the worker, azimuth_right_deg toward its right, at height_m, aimed at aim_height_of_body x the look's height; one PNG per look of these kind groups (looks_ab.json kind_group), command and arm, in the middle of the hold (PROCEED: at the top of the swing). Every group since section 11 item 7 (2026-11-14, declared before the rerun: a screenshot of every look); before: anime and cartoon_non_human."
   },
   "output": {
     "root": "robot_vision/outputs",
