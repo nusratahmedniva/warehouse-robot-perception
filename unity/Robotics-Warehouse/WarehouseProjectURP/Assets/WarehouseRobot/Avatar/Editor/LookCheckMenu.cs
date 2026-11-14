@@ -84,15 +84,19 @@ namespace WarehouseAvatar.EditorTools
             var worker = WorkerV4Config.Parse(workerAsset.text);
             var errors = ExperimentLooks.Validate(ab, worker.looks);
             if (errors.Count > 0) throw new InvalidOperationException("looks_ab.json: " + string.Join("; ", errors));
+            // experiments_ab.md section 5: -lookCheckLooks <id>[,<id>...] keeps those looks (recorded in run_info.json looks_subset)
+            var subset = ExperimentLooks.Subset(Environment.GetCommandLineArgs(), ab.avatar_experiment, out string subsetError);
+            if (subsetError != null) throw new ArgumentException(subsetError);
             return Run(cfg =>
             {
                 var looks = new List<LookEntry>();
-                foreach (var id in ab.avatar_experiment)
+                foreach (var id in subset ?? ab.avatar_experiment)
                     looks.Add(ab.looks.FirstOrDefault(l => l.id == id) ?? worker.Look(id) ?? cfg.looks.FirstOrDefault(l => l.id == id)
                               ?? throw new ArgumentException($"look '{id}' is defined nowhere"));
                 cfg.looks = looks.ToArray();
                 cfg.paths.output_prefix = cfg.paths.output_prefix + "_ab";
-            }, new Dictionary<string, string> { { "looks_ab.json", abText }, { "worker_v4.json", workerAsset.text } });
+            }, new Dictionary<string, string> { { "looks_ab.json", abText }, { "worker_v4.json", workerAsset.text } },
+               subset != null ? string.Join(",", subset) : "");
         }
 
         static void Batch(Func<string> action)
@@ -220,7 +224,7 @@ namespace WarehouseAvatar.EditorTools
 
         public static string Run() => Run(null, null);
 
-        static string Run(Action<LookCheckConfig> adjust, Dictionary<string, string> extraConfigs)
+        static string Run(Action<LookCheckConfig> adjust, Dictionary<string, string> extraConfigs, string looksSubset = "")
         {
             var cfgAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(ConfigPath) ?? throw new FileNotFoundException(ConfigPath);
             var cfg = LoadConfig(cfgAsset);
@@ -309,7 +313,7 @@ namespace WarehouseAvatar.EditorTools
             ClearStage(stage);
             WriteNew(Path.Combine(outDir, "recordings.jsonl"), lines.ToString());
             WriteNew(Path.Combine(outDir, "inventory.json"), JsonUtility.ToJson(new InventoryFile { looks = rows.ToArray() }, true));
-            WriteNew(Path.Combine(outDir, "run_info.json"), JsonUtility.ToJson(RunInfo(repo, cfgAsset.text, robotAsset.text), true));
+            WriteNew(Path.Combine(outDir, "run_info.json"), JsonUtility.ToJson(RunInfo(repo, cfgAsset.text, robotAsset.text, looksSubset), true));
             string rel = Path.GetRelativePath(repo, recDir).Replace('\\', '/');
             return $"{recordings} recordings ({frames} frames) of {rows.Count(r => r.status == "ok")} usable looks ({rows.Count} listed) in {rel}. " +
                    string.Join("; ", rows.Select(r => $"{r.id}: {r.status}")) +
@@ -332,10 +336,12 @@ namespace WarehouseAvatar.EditorTools
         {
             public string created_local, git_commit, git_branch, git_status_porcelain, unity_version, render_pipeline, color_space, graphics_device;
             public string univrm_packages, look_check_sha256, robot_unity_config_sha256, note;
+            /// <summary>experiments_ab.md section 5: the looks kept by -lookCheckLooks ("" = the whole list).</summary>
+            public string looks_subset;
             public bool git_dirty;
         }
 
-        static RunInfoRecord RunInfo(string repo, string cfgText, string robotText)
+        static RunInfoRecord RunInfo(string repo, string cfgText, string robotText, string looksSubset)
         {
             string status = Git(repo, "status --porcelain");
             return new RunInfoRecord
@@ -353,6 +359,7 @@ namespace WarehouseAvatar.EditorTools
                 look_check_sha256 = Sha256(cfgText),
                 robot_unity_config_sha256 = Sha256(robotText),
                 note = "v4 Phase 2A look check: a development check of which looks the existing models can see; not an evaluation.",
+                looks_subset = looksSubset ?? "",
             };
         }
 

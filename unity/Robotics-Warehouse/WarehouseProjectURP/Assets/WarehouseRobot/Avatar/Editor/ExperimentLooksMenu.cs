@@ -150,6 +150,100 @@ namespace WarehouseAvatar.EditorTools
                    $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/rigs.json";
         }
 
+        /// <summary>Command line: -executeMethod WarehouseAvatar.EditorTools.ExperimentLooksMenu.BatchProbeArmSkin: does the mesh of every
+        /// prefab-kind look of looks_ab.json follow its Humanoid arm bones (ArmSkinCheck, experiments_ab.md section 5), report only.</summary>
+        public static void BatchProbeArmSkin()
+        {
+            try
+            {
+                Debug.Log("[ExperimentLooks] " + ProbeArmSkin());
+                EditorApplication.Exit(0);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[ExperimentLooks] FAILED: " + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        [Serializable]
+        class ArmSkinSide
+        {
+            public string side, verdict;
+            public int arm_vertices, arm_following, hand_vertices, hand_following;
+            public float arm_following_fraction, hand_following_fraction, arm_error_median_m, arm_expected_move_median_m;
+        }
+
+        [Serializable]
+        class ArmSkinLook
+        {
+            public string id, asset, asset_sha256, verdict, note = "";
+            public int skinned_meshes;
+            public List<ArmSkinSide> sides = new List<ArmSkinSide>();
+        }
+
+        [Serializable] class ArmSkinFile { public string created_local, rule; public List<ArmSkinLook> looks = new List<ArmSkinLook>(); }
+
+        public static string ProbeArmSkin()
+        {
+            var f = Load(out _);
+            var file = new ArmSkinFile
+            {
+                created_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv),
+                rule = $"experiments_ab.md section 5: upper arm rotated {ArmSkinCheck.RotationDeg.ToString("0", Inv)} deg; a vertex follows within " +
+                       $"{ArmSkinCheck.FollowTolerance.ToString("0.00", Inv)} of its expected displacement; a side follows at >= {ArmSkinCheck.PassFraction.ToString("0.00", Inv)} " +
+                       $"of its arm-region vertices (at least {ArmSkinCheck.MinArmVertices})",
+            };
+            foreach (var l in f.looks)
+            {
+                if (l == null || l.kind != LookEntry.KindPrefab) continue;
+                var p = new ArmSkinLook { id = l.id, asset = l.asset, verdict = ArmSkinCheck.Inconclusive };
+                file.looks.Add(p);
+                string path = Path.Combine(Application.dataPath, "..", l.asset);
+                var go = AssetDatabase.LoadAssetAtPath<GameObject>(l.asset);
+                if (go == null || !File.Exists(path)) { p.note = "not installed"; continue; }
+                p.asset_sha256 = Sha256(File.ReadAllBytes(path));
+                var inst = (GameObject)Object.Instantiate(go);
+                try
+                {
+                    inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                    var a = inst.GetComponentInChildren<Animator>();
+                    if (a == null || a.avatar == null || !a.avatar.isHuman) { p.note = "no Humanoid Animator"; continue; }
+                    var smrs = inst.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                    p.skinned_meshes = smrs.Length;
+                    var verdicts = new List<string>();
+                    foreach (bool left in new[] { true, false })
+                    {
+                        Transform u = a.GetBoneTransform(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
+                        Transform lo = a.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
+                        Transform h = a.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
+                        string side = left ? "left" : "right";
+                        if (u == null || lo == null || h == null) { p.note += $" {side} arm bones not mapped."; verdicts.Add(ArmSkinCheck.Inconclusive); continue; }
+                        var r = ArmSkinCheck.MeasureSide(u, lo, h, smrs);
+                        p.sides.Add(new ArmSkinSide
+                        {
+                            side = side, verdict = r.Verdict, arm_vertices = r.ArmVertices, arm_following = r.ArmFollowing,
+                            hand_vertices = r.HandVertices, hand_following = r.HandFollowing,
+                            arm_following_fraction = r.ArmVertices > 0 ? (float)r.ArmFollowing / r.ArmVertices : -1f,
+                            hand_following_fraction = r.HandVertices > 0 ? (float)r.HandFollowing / r.HandVertices : -1f,
+                            arm_error_median_m = r.ArmErrorMedianM, arm_expected_move_median_m = r.ArmExpectedMoveMedianM,
+                        });
+                        verdicts.Add(r.Verdict);
+                    }
+                    p.verdict = ArmSkinCheck.LookVerdict(verdicts);
+                    p.note = p.note.Trim();
+                }
+                finally { Object.DestroyImmediate(inst); }
+            }
+            var repo = RepoRoot(f);
+            string outDir = NewFolder(Path.Combine(repo, f.paths.output_root), "probe_arm_skin");
+            File.WriteAllText(Path.Combine(outDir, "arm_skin.json"), JsonUtility.ToJson(file, true).Replace("\r\n", "\n") + "\n", Utf8);
+            return string.Join("; ", file.looks.Select(x => $"{x.id} ({(x.asset_sha256 ?? "").Substring(0, Math.Min(8, (x.asset_sha256 ?? "").Length))}): {x.verdict} [" +
+                                                            string.Join(", ", x.sides.Select(s => $"{s.side} arm {s.arm_following}/{s.arm_vertices}, hand {s.hand_following}/{s.hand_vertices}")) +
+                                                            $"] {x.note}")) +
+                   $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/arm_skin.json";
+        }
+
         public static ExperimentLooksFile Load(out string text)
         {
             var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(ExperimentLooks.AssetPath) ?? throw new FileNotFoundException(ExperimentLooks.AssetPath);
@@ -232,16 +326,19 @@ namespace WarehouseAvatar.EditorTools
             // textures and materials next to the model, so they can be recoloured and inspected
             string texDir = folder + "/Textures";
             if (!AssetDatabase.IsValidFolder(texDir)) AssetDatabase.CreateFolder(folder, "Textures");
+            int texturesBefore = ImageFiles(texDir);
             imp.ExtractTextures(texDir);
             string matDir = folder + "/Materials";
             if (!AssetDatabase.IsValidFolder(matDir)) AssetDatabase.CreateFolder(folder, "Materials");
             int renamed = GiveExtensions(texDir);
-            if (renamed > 0)
+            int extracted = Math.Max(0, ImageFiles(texDir) - texturesBefore);
+            if (renamed > 0 || extracted > 0)
             {
                 // experiments_ab.md section 2: images without a file extension get the extension of their format; the materials are then
                 // re-created so ExperimentCharacterPostprocessor can link the textures (the earlier extracted copies are forgotten, not the
-                // recoloured ones)
-                r.note += $" {renamed} extracted images had no file extension and were given the extension of their format.";
+                // recoloured ones). Section 5 addendum: also when this import extracted the textures (the model's first import saw none)
+                if (renamed > 0) r.note += $" {renamed} extracted images had no file extension and were given the extension of their format.";
+                if (extracted > 0) r.note += $" {extracted} textures extracted by this import: materials re-created to link them.";
                 AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                 foreach (var kv in imp.GetExternalObjectMap().ToList())
                 {
@@ -452,6 +549,13 @@ namespace WarehouseAvatar.EditorTools
                 n++;
             }
             return n;
+        }
+
+        /// <summary>Image files (any file but .meta) in an asset folder; 0 if it does not exist.</summary>
+        static int ImageFiles(string assetFolder)
+        {
+            string dir = Path.Combine(Application.dataPath, "..", assetFolder);
+            return Directory.Exists(dir) ? Directory.GetFiles(dir).Count(p => !p.EndsWith(".meta", StringComparison.Ordinal)) : 0;
         }
 
         static string Safe(string name) => new string(name.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch).ToArray());

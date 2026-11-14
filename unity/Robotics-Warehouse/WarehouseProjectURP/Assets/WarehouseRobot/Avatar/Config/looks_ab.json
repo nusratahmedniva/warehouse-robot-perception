@@ -105,7 +105,7 @@
       "id": "anime_f_01", "family": "vroid", "role": "candidate", "kind": "prefab", "kind_group": "anime",
       "gender": "female", "person": "anime", "costume": "default", "navigation": false, "proposed_split": "",
       "source": "Nusrat's own VRoid character exported as FBX (unity/downloads/characters_v4/anime_f_01.fbx, git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters)",
-      "licence": "not verified: unity/downloads/characters_v4/SOURCES.txt is missing (Nusrat's own character per the task)",
+      "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, re-checked 2026-11-14): made in VRoid Studio, converted to FBX in Blender (VRM Add-on); VRoid Studio Guidelines allow any use, commercial included, of models made with it and its preset items unless an item carries special clauses (none used); never redistributed, git-ignored (experiments_ab.md section 6)",
       "asset": "Assets/ThirdParty/CharactersV4/anime_f_01/anime_f_01.fbx", "material_override": "",
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     },
@@ -113,7 +113,7 @@
       "id": "cartoon_boxo_01", "family": "cartoon", "role": "candidate", "kind": "prefab", "kind_group": "cartoon_non_human",
       "gender": "none", "person": "boxo", "costume": "default", "navigation": false, "proposed_split": "",
       "source": "Nusrat's own procedurally generated character, thumb + 3 fingers (unity/downloads/characters_v4/cartoon_boxo_01.fbx, git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters)",
-      "licence": "not verified: unity/downloads/characters_v4/SOURCES.txt is missing (Nusrat's own character per the task)",
+      "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, re-checked 2026-11-14): generated procedurally (make_cartoon_boxo.py, not in the repo) and rigged with Mixamo's auto-rigger; Adobe's Mixamo FAQ: the user keeps the rights to their own creations, royalty-free use in personal, commercial and non-profit projects, no ML training on Mixamo content (none here); never redistributed, git-ignored (experiments_ab.md section 6)",
       "asset": "Assets/ThirdParty/CharactersV4/cartoon_boxo_01/cartoon_boxo_01.fbx", "material_override": "",
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     }

@@ -193,3 +193,82 @@ experiment configuration's nodes, branches and slots match them and obey every p
 - **Tests (Edit Mode).** The seeding (the same seed gives the same liars and directions; another run or worker another stream); the rate over many runs
   (0.2 within a binomial bound); consistency (a liar's answer is the same on every ask); valid-branch and fallback directions; the truth field (false
   exactly on a liar's gesture rows, the line format) and the forbidden key.
+
+## 2026-11-14, section 5: anime_f_01 re-export, arm-skin probe, look check of two looks (declared before any of it ran)
+
+- **Inputs (Nusrat, 2026-11-14 afternoon).** `unity/downloads/characters_v4/anime_f_01.fbx` re-exported (sha256 `fe304543...311d`, 9 932 076 bytes;
+  the imported file of section 2 is `79f49bc1...7b377`). `cartoon_boxo_01.fbx` unchanged (`431e6cb2...7632`, same as imported).
+  `unity/downloads/characters_v4/SOURCES.txt` now exists but is **empty (0 bytes)**: the licences of both characters cannot be checked from it and
+  stay **not verified** **[N]**. Nothing of these files is committed either way.
+- **Re-import.** The importer never overwrites an imported FBX that differs (section 2). The superseded import folder
+  `Assets/ThirdParty/CharactersV4/anime_f_01/` (with `anime_f_01.meta`) is **moved, not deleted**, to the git-ignored
+  `unity/downloads/superseded/anime_f_01_79f49bc1/` (outside `Assets/`, so Unity no longer imports it); then `Import Characters` runs unchanged.
+  The declared fixes of section 2 (unit scale, textures without an extension, white emission) apply only where the new file needs them, and the
+  import report says which did. cartoon_boxo_01 is imported again as it is (same file, idempotent). A new problem of the re-export that no declared
+  fix covers is reported, not fixed.
+- **Arm-skin probe (new, report only; `-executeMethod WarehouseAvatar.EditorTools.ExperimentLooksMenu.BatchProbeArmSkin`, every prefab look of
+  looks_ab.json, into `robot_vision/outputs/probe_arm_skin_<time>/`).** Does the mesh follow the Humanoid arm bones? Per side, with the look in its
+  import pose: rotate the upper arm 45 deg about the axis perpendicular to the arm and the vertical (the arm swings up), and bake every skinned mesh
+  before and after. *Arm region* = import-pose vertices within 0.25 x upper-arm length of the forearm segment (elbow to wrist) or of the distal half
+  of the upper arm (midpoint to elbow); *hand region* = the remaining vertices within 0.5 x forearm length of the wrist. A vertex *follows* when its
+  baked position lies within 25 % of its expected displacement of the expected position (the rigid rotation with the upper arm, which carries the
+  forearm and hand). A side **follows** when at least 95 % of its arm-region vertices follow; fewer than 50 arm-region vertices = inconclusive. The
+  hand region is reported the same way, for comparison only. **Controls:** mixamo_worker (expected: follows) and the superseded anime_f_01 import,
+  probed before it is moved (expected: does not follow, the visual finding of section 2). If a control does not come out as expected, the probe's
+  verdict is not used and "the arm follows" is decided from the frames alone, reported as such. An Edit Mode test checks the probe on a synthetic
+  skinned arm (weighted to the arm: follows; weighted to the chest: does not).
+- **Visual check.** The Play-mode frames of anime_f_01 (POINT, WAIT, STOP, both arms) are looked at for the arm mesh following the arm.
+- **Look check of anime_f_01 and cartoon_boxo_01 only.** New command-line option `-lookCheckLooks <id>[,<id>...]` for the Edit-mode
+  (`LookCheckMenu.BatchRunExperiment`) and the Play-mode (`LookCheckPlayMenu.CommandLineRunAB`) look checks: keeps those looks of the run's list, in
+  its order; a name not in the list refuses the run; recorded in `run_info.json` `looks_subset`. No config file changes (copied to `config_used/` as
+  before). With one look, the Play check still records it at both junctions in a round, the coverage each look had in step 2. cartoon_boxo_01 stays
+  out of the Play check (section 2 rule, its file unchanged): its rerun is the Edit-mode check. anime_f_01: Edit and Play. Then Anisha's
+  `look_check_v4.py --input` on both outputs, reported per look in the format of the step 2 report. Nothing is tuned on it.
+- *Addendum (2026-11-14, after the re-import and the arm-skin probe, before any look check of the new file ran).* Results so far:
+  `probe_arm_skin_20261114_133039` (controls before the move: mixamo_worker follows 371/371 and 400/400; superseded anime_f_01 does not follow,
+  115/183 per side; cartoon_boxo_01 follows) and, after the re-import `import_characters_20261114_133118`, `probe_arm_skin_20261114_133152`:
+  **the re-exported anime_f_01 follows (183/183 per side)**. The re-export is in metres (no unit-scale change, humanScale 1.04) and only the
+  white-emission fix applied. **But none of its 18 materials has a base texture** (the superseded import: 18 of 18 linked): the re-export names its
+  25 textures *with* an extension (`_01.png` ...), so the extension step renamed nothing, and the material re-creation that lets
+  `ExperimentCharacterPostprocessor` link the textures ran only after a rename, while the materials were extracted before the textures existed.
+  That is an ordering gap of the declared texture-link fix of section 2, not a new kind of fix. Change: the materials are re-created when textures
+  were renamed **or newly extracted by this import** (a re-import of an imported model extracts none, so it stays idempotent); nothing else.
+  The unlinked import is moved, not deleted, to `unity/downloads/superseded/anime_f_01_fe304543_unlinked/`, and Import Characters runs again.
+  The arm-skin probe is repeated on that import (materials do not change skinning; reported).
+- *Addendum 2 (2026-11-14, after the first Play run of the re-imported anime_f_01, before a second one).* After the texture-link fix
+  (`import_characters_20261114_134655`: 18 of 18 base textures linked; emission rule not applied, every material now has an emission map, 17 of 18
+  the all-black `Shader_NoneBlack.png`, the hair `_21.png`, the export's own highlight; arm-skin probe `probe_arm_skin_20261114_134730`: follows,
+  183/183 per side) the Edit check `look_check_ab_20261114_134755` and the Play check `look_check_play_ab_20261114_134932` ran on 66f41f6. In the
+  Play run **56 of the 76 NONE frames show the Editor's flat-cyan placeholder** of a shader variant still compiling (a frame counts with at least
+  500 pixels of (<= 8, >= 247, >= 247)); NONE is recorded first, so these were the first renders of the new materials. All 456 POINT, WAIT and STOP
+  frames, every frame of the step 2 Play run and every Edit-mode render: 0. Rule: the Play check of anime_f_01 is run **once more**, unchanged, on
+  the same commit (the variants are now compiled); both runs are kept and reported; the second is used if it has no cyan frame, otherwise the first
+  is reported with its cyan frames named and nothing is run again.
+- *Results (2026-11-14; report `robot_vision/outputs/experiments_ab_step2b_anime_cartoon_20261114.md`).* Play run 2 `look_check_play_ab_20261114_140152`
+  (tool `look_check_v4_20261114_140845`) has 0 cyan frames and is used; run 1 is kept. **anime_f_01 re-export: the arm mesh follows its bones**
+  (probe and frames); person at 2 m 0.99 (old export 0.79); **verdict still fails**: no POINT, WAIT or STOP sequence read at 2 m, MediaPipe finds a
+  hand in 0 to 5 % of frames, the POINT clips fold the forearm on this rig (bone arm-to-shoulder ratio 2.28), facing 0.07 (bangs over one eye).
+  **cartoon_boxo_01: unchanged** (same file; Edit mode only; person 0.08). Licences of both: **not verified** (SOURCES.txt empty) **[N]**. Nothing
+  tuned. The two code commits were first made on local `main` by mistake and moved unchanged to `nusrat/v4-experiments-ab-anime`; the three
+  look-check run_info files say `git_branch: main` with commit 66f41f6.
+
+## 2026-11-14, section 6: licences, the two failed looks, reports in the repo (after the step 2b results)
+
+- **Licences re-checked.** `unity/downloads/characters_v4/SOURCES.txt` (git-ignored) is now filled in: anime_f_01 is Nusrat's own character made in
+  VRoid Studio and converted to FBX in Blender (VRM Add-on); cartoon_boxo_01 is Nusrat's own character generated procedurally (`make_cartoon_boxo.py`,
+  not in this repository) and rigged with Mixamo's auto-rigger; neither is redistributed. Terms of the tools (read through search results; vroid.com
+  and helpx.adobe.com refused a direct fetch): the VRoid Studio Guidelines allow any use, commercial included, of models made with VRoid Studio and
+  its preset items unless an item carries special clauses; Adobe's Mixamo FAQ says the user keeps the rights to their own creations, allows
+  royalty-free use in personal, commercial and non-profit projects and excludes training machine-learning models on Mixamo content (nothing is
+  trained here). `looks_ab.json` `licence` of both looks updated; the "not verified" of sections 2 and 5 and of the step 2 and 2b reports is
+  superseded by this entry (those texts are kept as written). Both characters stay git-ignored and are never committed.
+- **anime_f_01 and cartoon_boxo_01 stay in the avatar experiment as reported failures; neither is used for navigation** (`navigation` false,
+  no `proposed_split`). Causes (step 2b report): *anime_f_01* (re-export, arm mesh follows its bones): no POINT, WAIT or STOP sequence read at
+  2 m; MediaPipe finds a hand in 0 to 5 % of frames; the POINT clips fold the forearm on this rig (bone arm-to-shoulder ratio 2.28 vs 1.683);
+  facing 0.07 (the bangs cover one eye). *cartoon_boxo_01*: one finger chain per hand, so no hand shape at all (WAIT and STOP impossible by
+  construction, the worker template cannot shape its hand, so it is checked in Edit mode only); YOLO finds a person in 8 % of frames.
+- **Reports in the repo.** Verbatim copies (byte-identical) of the step reports from the git-ignored `robot_vision/outputs/` are tracked in
+  `Avatar/Config/reports_v4/`: `experiments_ab_step1_20261114.md`, `experiments_ab_step2_avatars_20261114.md`,
+  `experiments_ab_step2b_anime_cartoon_20261114.md`, and the roadmap proposal's README as
+  `experiments_ab_roadmaps_20261114_025749_README.md` (its map files stay in the output folder). Paths inside them are relative to
+  `robot_vision/outputs/` as written.
