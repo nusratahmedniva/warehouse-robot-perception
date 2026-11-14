@@ -115,6 +115,9 @@ namespace WarehouseAvatar
         SeededRandom m_Rng = SeededRandom.For(0, 0, 1);
         LookPoser.Arm m_Left, m_Right;
         Quaternion[][] m_BindLeft, m_BindRight;
+        /// <summary>experiments_ab.md section 12 addendum 2: each hand's tucked WAIT thumb (inactive when the shape alone meets the goal).</summary>
+        public HandShaper.ThumbTuckResult TuckLeft { get; private set; }
+        public HandShaper.ThumbTuckResult TuckRight { get; private set; }
         Vector3 m_Target, m_Hint, m_PointDir;
         float m_IkWeight, m_LookWeight, m_LayerWeight;
         bool m_Mixamo;
@@ -198,6 +201,14 @@ namespace WarehouseAvatar
             if (mirrored > 0.001f) LookDescription += $" Left hand's rest fingers mirrored from the right hand (largest joint correction {(mirrored * 1000f).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} mm).";
             m_BindLeft = HandShaper.Capture(m_Left);        // the prefab's bind pose: straight fingers
             m_BindRight = HandShaper.Capture(m_Right);
+            TuckLeft = HandShaper.ThumbTuck(m_Left, m_BindLeft, Config.hand_shapes.wait);    // section 12 addendum 2: per rig
+            TuckRight = HandShaper.ThumbTuck(m_Right, m_BindRight, Config.hand_shapes.wait);
+            if (TuckLeft.Active || TuckRight.Active)
+            {
+                string Lp(float x) => x.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                LookDescription += (LookDescription.Length > 0 ? " " : "") + $"WAIT thumb tucked (section 12 addendum 2): left {Lp(TuckLeft.BeforeLp)} -> {Lp(TuckLeft.AfterLp)} Lp, " +
+                                   $"right {Lp(TuckRight.BeforeLp)} -> {Lp(TuckRight.AfterLp)} Lp.";
+            }
             ArmLength = 0.5f * (HandShaper.ArmLength(m_Left) + HandShaper.ArmLength(m_Right));
             Proportions = ArmProportions.Measure(m_Left, m_Right, transform);   // experiments_ab.md section 10: the rig's own proportions
             var spine = new List<Transform>();
@@ -539,7 +550,8 @@ namespace WarehouseAvatar
                 palm = eye != null ? Horizontal(eye.position - arm.Hand.position) : transform.forward;
                 if (palm.sqrMagnitude < 1e-6f) palm = transform.forward;
             }
-            HandShaper.Apply(arm, bind, shape, fingerDir, palm.normalized, m_IkWeight);
+            var tuck = CurrentSpec.command == WorkerV4Config.Wait ? (r ? TuckRight : TuckLeft) : null;
+            HandShaper.Apply(arm, bind, shape, fingerDir, palm.normalized, m_IkWeight, tuck);
         }
 
         /// <summary>Option A torso turn (after the Animator): the spine bones share the yaw; the gesturing arm keeps its

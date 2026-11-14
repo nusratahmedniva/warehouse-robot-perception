@@ -58,7 +58,7 @@ namespace WarehouseAvatar.EditorTools
             summary.Append("# Hand shapes (Edit mode)\n\n");
             summary.Append($"Commit {Git(repo, "rev-parse HEAD").Trim()} on {Git(repo, "rev-parse --abbrev-ref HEAD").Trim()}; working tree " +
                            $"{(Git(repo, "status --porcelain").Trim().Length == 0 ? "clean" : "with changes")}; {DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv)}.\n\n");
-            summary.Append("| look | template accepts both hands | fingers per hand (left / right) | rest mirrored (mm) | lines |\n|---|---|---|---|---|\n");
+            summary.Append("| look | template accepts both hands | fingers per hand (left / right) | rest mirrored (mm) | lines | WAIT thumb tucked, left | right |\n|---|---|---|---|---|---|---|\n");
             foreach (var id in subset ?? ab.avatar_experiment)
             {
                 var entry = ab.looks.FirstOrDefault(l => l.id == id) ?? worker.Look(id) ?? cfg.looks.FirstOrDefault(l => l.id == id)
@@ -77,6 +77,8 @@ namespace WarehouseAvatar.EditorTools
                 float mirrored = HandShaper.MirrorRest(right, left);    // as WorkerV4.Initialize
                 var arms = new[] { left, right };
                 var bind = arms.Select(HandShaper.Capture).ToArray();
+                // section 12 addendum 2: the WAIT thumb tucked per rig, as WorkerV4.Initialize does
+                var tucks = new[] { HandShaper.ThumbTuck(left, bind[0], worker.hand_shapes.wait), HandShaper.ThumbTuck(right, bind[1], worker.hand_shapes.wait) };
                 var restHand = arms.Select(a => a.Hand.localRotation).ToArray();
                 var look = spawned.Root.transform;
                 int before = lines.Count;
@@ -93,7 +95,7 @@ namespace WarehouseAvatar.EditorTools
                         {
                             a.Hand.localRotation = restHand[k];
                             for (int f = 0; f < 5; f++) for (int j = 0; j < 3; j++) if (a.Fingers[f][j] != null) a.Fingers[f][j].localRotation = bind[k][f][j];
-                            HandShaper.Apply(a, bind[k], shape, fingerDir, palm, 1f);
+                            HandShaper.Apply(a, bind[k], shape, fingerDir, palm, 1f, name == "wait" ? tucks[k] : null);
                             string key = $"{id}|{(a.IsRight ? "right" : "left")}|{name}|{dirName}";
                             lines.Add(Line(key + "|hand", look, a.Hand));
                             for (int f = 0; f < 5; f++)
@@ -105,8 +107,10 @@ namespace WarehouseAvatar.EditorTools
                     for (int f = 0; f < 5; f++) for (int j = 0; j < 3; j++) if (a.Fingers[f][j] != null) a.Fingers[f][j].localRotation = bind[k][f][j];
                 }
                 int Fingers(LookPoser.Arm a) => Enumerable.Range(0, 5).Count(f => a.Fingers[f][0] != null);
+                string Tuck(HandShaper.ThumbTuckResult t) => !t.Active ? $"no ({t.BeforeLp.ToString("0.00", Inv)} Lp)" :
+                    $"{t.BeforeLp.ToString("0.00", Inv)} -> {t.AfterLp.ToString("0.00", Inv)} Lp (swing {t.Swing.ToString("0.000", Inv)}, curl {t.CurlDeg.ToString("0.0", Inv)} deg)";
                 summary.Append($"| {id} | {(complete ? "yes" : "no")} | {Fingers(left)} / {Fingers(right)} | " +
-                               $"{(mirrored < 0f ? "-" : (mirrored * 1000f).ToString("0.000", Inv))} | {lines.Count - before} |\n");
+                               $"{(mirrored < 0f ? "-" : (mirrored * 1000f).ToString("0.000", Inv))} | {lines.Count - before} | {Tuck(tucks[0])} | {Tuck(tucks[1])} |\n");
             }
             ClearStage(stage);
 

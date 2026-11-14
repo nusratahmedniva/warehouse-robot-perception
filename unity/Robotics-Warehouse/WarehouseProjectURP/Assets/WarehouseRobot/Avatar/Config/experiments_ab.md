@@ -799,3 +799,18 @@ If (nearly) all palm-region glove vertices move rigidly with the hand bone, the 
 and mesh orientation are the same.
 
 **Then** the full geometry and hand check runs on all 15 looks, with screenshots. No perception; one commit per decision.
+
+*Addendum 3 (2026-11-14, after the first tuck run `hand_shapes_20261114_223353`, uncommitted, before any further change).*
+- **Results:** the tuck reaches 0.95 Lp by the root swing alone on mixamo_worker (1.24 to 1.27 -> 0.95; swing 0.43 to 0.46) and on the
+  three anime looks (1.57 -> 0.95; swing 0.68). The 10 Sunbox looks are identical value for value (3584 lines), and on the tucked looks
+  only the WAIT thumb lines changed (12 per look).
+- **Boxo misses** (2.50 / 2.46 -> 1.18 / 1.13 Lp). After the full swing its long thumb lies across the palm, so the declared stage-2 curl
+  axis (the shape's axis, across the fingers) runs almost along the thumb and cannot fold it.
+- *Correction of stage 2 only:* the outer joints curl about the axis perpendicular to the swung thumb (root to tip) and to the palm
+  normal, with the sign that moves the tip toward the palm side. The rule (smallest equal angle up to 90 deg that meets 0.95 Lp) and
+  stage 1 are unchanged.
+- Stage 2 runs only on rigs the full swing does not tuck, so the four looks above and the Sunbox looks keep their values; the comparison
+  with `hand_shapes_20261114_223353` must show only Boxo changed. If Boxo still misses, it is reported, not tuned further.
+- *Result* (`hand_shapes_20261114_223517`): only Boxo changed (14 looks identical). **Boxo still misses the goal at the full 90 deg curl:
+  2.50 / 2.46 -> 1.08 / 1.03 Lp** (left / right). Its glove thumb is longer than its palm can hold, so it will still fail the check's
+  1.0 Lp. This is reported, not tuned further.

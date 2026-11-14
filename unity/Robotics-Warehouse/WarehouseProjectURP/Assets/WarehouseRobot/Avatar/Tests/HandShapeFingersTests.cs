@@ -141,6 +141,66 @@ namespace WarehouseAvatar.Tests
             }
         }
 
+        static HandShapeSpec Straight(float goal) => new HandShapeSpec
+        {
+            thumb_deg = new[] { 0f, 0f, 0f }, index_deg = new[] { 0f, 0f, 0f }, middle_deg = new[] { 95f, 105f, 75f }, ring_deg = new[] { 95f, 105f, 75f },
+            little_deg = new[] { 95f, 105f, 75f }, thumb_tuck_max_palm_lengths = goal, thumb_tuck_side_l = 0.25f,
+        };
+
+        static float ThumbLp(LookPoser.Arm a)
+        {
+            var f = HandGeometry.Frame(a);
+            return Vector3.Distance(HandShaper.Tip(a, HandShaper.Thumb), f.P) / f.Lp;
+        }
+
+        [Test]
+        public void ThumbTuck_TucksAThumbThatSticksOut_OnThePalmSide_ForAnyHandOrientation()
+        {
+            foreach (bool right in new[] { false, true })
+                foreach (int[] remove in new[] { new int[0], new[] { HandShaper.Little } })
+                {
+                    var rig = Rig(remove);
+                    var arm = HandShaper.BuildArm(rig, right);
+                    var bind = HandShaper.Capture(arm);
+                    var shape = Straight(0.95f);
+                    HandShaper.Apply(arm, bind, shape, Vector3.up, Vector3.back, 1f);
+                    float before = ThumbLp(arm);
+                    Assert.Greater(before, 0.95f, "the straight thumb sticks out");
+                    var restHand = arm.Hand.localRotation;
+                    arm.Hand.localRotation = restHand;
+                    for (int f = 0; f < 5; f++) for (int j = 0; j < 3; j++) if (arm.Fingers[f][j] != null) arm.Fingers[f][j].localRotation = bind[f][j];
+                    var tuck = HandShaper.ThumbTuck(arm, bind, shape);
+                    Assert.IsTrue(tuck.Active);
+                    Assert.AreEqual(before, tuck.BeforeLp, 1e-3f);
+                    Assert.LessOrEqual(tuck.AfterLp, 0.95f + 1e-4f);
+                    // the tuck holds for any hand orientation (it is relative to the hand)
+                    foreach (var (fingerDir, palm) in new[] { (Vector3.up, Vector3.back), (Vector3.up, new Vector3(0.6f, 0f, -0.8f)), (right ? Vector3.right : Vector3.left, Vector3.down) })
+                    {
+                        HandShaper.Apply(arm, bind, shape, fingerDir, palm, 1f, tuck);
+                        Assert.LessOrEqual(ThumbLp(arm), 0.95f + 1e-3f, $"tucked ({fingerDir}, {palm})");
+                        var fr = HandGeometry.Frame(arm);
+                        Assert.GreaterOrEqual(Vector3.Dot(HandShaper.Tip(arm, HandShaper.Thumb) - fr.P, fr.Normal), 0f, "on the palm side");
+                    }
+                }
+        }
+
+        [Test]
+        public void ThumbTuck_LeavesAThumbWithinTheGoalUntouched_AndIsOffAtZero()
+        {
+            var w = Worker();
+            var rig = Rig();
+            var arm = HandShaper.BuildArm(rig, true);
+            var bind = HandShaper.Capture(arm);
+            var wide = Straight(5f);
+            Assert.IsFalse(HandShaper.ThumbTuck(arm, bind, wide).Active, "already within 5 palm lengths");
+            Assert.IsFalse(HandShaper.ThumbTuck(arm, bind, Straight(0f)).Active, "0 = off");
+            Assert.IsFalse(HandShaper.ThumbTuck(arm, bind, w.hand_shapes.stop).Active, "only WAIT carries a goal");
+            CollectionAssert.AreEqual(bind.SelectMany(x => x), HandShaper.Capture(arm).SelectMany(x => x), "the bones are restored");
+            Assert.AreEqual(0.95f, w.hand_shapes.wait.thumb_tuck_max_palm_lengths);
+            Assert.AreEqual(0.25f, w.hand_shapes.wait.thumb_tuck_side_l);
+            foreach (var s in new[] { w.hand_shapes.point, w.hand_shapes.stop, w.hand_shapes.proceed }) Assert.AreEqual(0f, s.thumb_tuck_max_palm_lengths);
+        }
+
         [Test]
         public void HandWithoutRingFinger_IsRefused()
         {
