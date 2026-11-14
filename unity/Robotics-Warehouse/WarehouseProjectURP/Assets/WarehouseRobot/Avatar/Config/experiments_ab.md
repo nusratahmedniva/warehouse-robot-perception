@@ -845,3 +845,12 @@ hand. In the Edit-mode T-pose both hands are at the same height, so the other ha
 vertices" were both hands'. The glove counts and mesh (c) now use only the glove vertices of the measured hand: at least half of their
 weight is on that hand bone or a bone below it. The rigid share stays "weight >= 0.95 on the Hand bone itself". The probe is run
 again; the first run is kept.
+
+*Result of decision 3* (`palm_probe_20261114_225451`, the corrected probe; it replaces the counts above):
+- **Rigidity: NOT proven.** Per hand, **6 of 288 glove vertices (2.1 %)** have Hand-bone weight >= 0.95, and **0 of the 22 (STOP) to 193
+  (WAIT)** palm-region glove vertices do. The auto-rigger spread the plate's weights over the finger bones.
+- **Mesh (c), the glove plate itself:** WAIT faces the camera at **13.8 deg (left) and 21.4 deg (right)**, within 30 deg; the flatness of
+  0.33 includes the curled fingers. STOP is *undetermined*: only 22 palm-region vertices, below the declared 30 (a low-poly box plate).
+- The Play screenshots show both STOP plates face-on, a visual check only.
+- So Boxo's palm is judged by the bones (2.0 deg) and, for WAIT, also by the plate mesh; for STOP the mesh cannot be measured under the
+  declared minimum. Nothing is changed for this; it is Nusrat's call.
