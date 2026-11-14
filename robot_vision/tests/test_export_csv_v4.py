@@ -154,7 +154,7 @@ class Tables(unittest.TestCase):
         for d in self.dr:
             if d["decision"] != "unclear":
                 self.assertGreater(d["time_to_read_s"], 0.5)
-            self.assertTrue(1.0 < d["distance_m"] < 4.0, d["distance_m"])
+            self.assertTrue(1.0 < d["distance_m"] < 5.0, d["distance_m"])
         self.assertEqual(len({(d["run"], d["serial"]) for d in self.dr}), len(self.dr))
 
 

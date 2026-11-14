@@ -40,6 +40,12 @@ Added 2026-11-14 (AUDIT.md 16.12): consistent lies (SceneSpec.lie_mode "per_work
 shows, drawn ONCE per run and kept, as Unity does; "per_gesture" is the earlier model), a third worker at chosen nodes
 (layout.people_by_node), the bystander margin of the random layout (layout.nearer_margin_m: every other worker at least that much farther from
 the robot than the first along the last approach_m of the arrival road), and an A2 / B2 with the left turn (scenario_ab side="left").
+
+Added 2026-11-14, second round (AUDIT.md 16.13: the simulator matches Unity, rules read from ExperimentPlanAB.cs): the `beside` workers stand at
+Unity's slots (layout.junction_slots / start_slots), the bystander margin and the turning points / roads of the physical v4 map are checked for
+every layout, workers of the random layout are sorted by distance to the node (slot 0 = nearest), the goal of a run is the k-th value of
+GoalSequence(session_seed) (hri_trials.goal_order), and a liar shows only a real wrong branch (SceneSpec.lie_directions "valid_branch": the node's
+branches other than the true command; the compass directions only where the node has no other branch).
 """
 
 from __future__ import annotations
@@ -296,6 +302,8 @@ class SceneSpec:
     anyone_commands: bool = False                                # the person the controller approaches is the commander of that ask
     lie_probability: float = 0.0                                 # P(a gesture shows a wrong direction), per gesture or per worker (lie_mode)
     lie_mode: str = "per_gesture"                                # "per_gesture": every gesture an independent draw; "per_worker": one draw per worker per run (AUDIT.md 16.12)
+    lie_directions: str = "compass"                              # "compass": any other of LEFT / FORWARD / RIGHT / BACK; "valid_branch": a real wrong branch (Unity, AUDIT.md 16.13)
+    physical_map: object = None                                  # hc.Roadmap of the physical v4 map: its turning points and roads count for every map (Unity)
     point_back_when_lost: bool = False                           # a worker whose node cannot lead to B points BACK (else no gesture)
     record_truthful: bool = False                                # truth rows carry gesture_truthful
     layout: dict | None = None                                   # {"kind": "beside" | "random" | "fixed", ...}: who stands where (scenario_ab)
@@ -309,8 +317,11 @@ class SceneSpec:
 COMPASS = {"LEFT": -90.0, "FORWARD": 0.0, "RIGHT": 90.0, "BACK": 180.0}      # relative to the arrival direction
 
 
-def _road_segments(road: hc.Roadmap) -> list[tuple[float, float, float, float]]:
-    return [(*road.pos(a), *road.pos(b)) for a, br in road.branches.items() for b in br.values()]
+def _road_segments(road: hc.Roadmap, physical: hc.Roadmap | None = None) -> list[tuple[float, float, float, float]]:
+    segs = [(*road.pos(a), *road.pos(b)) for a, br in road.branches.items() for b in br.values()]
+    if physical is not None:
+        segs += [(*physical.pos(a), *physical.pos(b)) for a, br in physical.branches.items() for b in br.values()]
+    return segs
 
 
 def _seg_dist(px: float, pz: float, seg) -> float:
@@ -335,25 +346,76 @@ def place_beside(road: hc.Roadmap, node: str, n: int, lateral_m: float, before_m
     return out
 
 
-def turning_points(road: hc.Roadmap) -> list[tuple[float, float]]:
-    """The places where the path turns or branches: the start node and every junction (endpoints are not turning points)."""
-    return [road.pos(k) for k, v in road.nodes.items() if v["kind"] in ("start", "junction")]
+def turning_points(road: hc.Roadmap, physical: hc.Roadmap | None = None) -> list[tuple[float, float]]:
+    """The places where the path turns or branches: the start node and every junction (endpoints are not turning points); with
+    `physical` also those of the physical v4 map (a worker never stands near a crossing the robot's map does not know)."""
+    pts = [road.pos(k) for k, v in road.nodes.items() if v["kind"] in ("start", "junction")]
+    if physical is not None:
+        pts += [physical.pos(k) for k, v in physical.nodes.items() if v["kind"] in ("start", "junction")]
+    return pts
 
 
-def check_placement(road: hc.Roadmap, node: str, pts: list[tuple[float, float]], min_sep_m: float, min_turning_m: float) -> None:
-    """The placement rule of AUDIT.md 16.11 (decided 2026-11-13): any two workers at least min_sep_m apart, and every worker at least
-    min_turning_m from every turning point of the path, so that asking one worker cannot leave the robot (2.0 m from them) inside the
-    person-in-path stop zone of another. Raises ValueError naming the first violation."""
+def ask_nodes(road: hc.Roadmap) -> list[str]:
+    """The asking nodes of a map in Unity's order (ExperimentPlanAB.AskNodes): the start node, then every junction in file order."""
+    return [k for k, v in road.nodes.items() if v["kind"] == "start"] + [k for k, v in road.nodes.items() if v["kind"] == "junction"]
+
+
+def place_slots(road: hc.Roadmap, node: str, n: int, slots: list[dict]) -> list[tuple[float, float]]:
+    """Unity's `beside` workers (ExperimentPlanAB.SlotPosition): slot k = before_m back along the arrival road (at the start node: behind
+    it, opposite the start heading) and right_m to the RIGHT of the arrival direction (negative = left); worker k stands at slot k."""
+    if n > len(slots):
+        raise ValueError(f"{node}: {n} workers but {len(slots)} slots")
+    h = math.radians(hv.heading_in(road, node))
+    fx, fz = math.sin(h), math.cos(h)
+    rx, rz = fz, -fx
+    nx, nz = road.pos(node)
+    return [(nx - fx * sl["before_m"] + rx * sl["right_m"], nz - fz * sl["before_m"] + rz * sl["right_m"]) for sl in slots[:n]]
+
+
+def nearer_margin(road: hc.Roadmap, node: str, other: tuple[float, float], first: tuple[float, float], approach_m: float,
+                  step_m: float = 0.05) -> float:
+    """Unity's bystander rule (TrialWorkerGeometry.NearerMargin): the smallest (distance to `other` - distance to `first`) over the last
+    approach_m of the arrival road up to the node, sampled every step_m; at the start node, at the node alone."""
+    nx, nz = road.pos(node)
+    prev = road.nodes[node].get("arrive_from")
+    if prev is None:
+        pts = [(nx, nz)]
+    else:
+        px, pz = road.pos(prev)
+        length = math.hypot(px - nx, pz - nz)
+        span = min(approach_m, length)
+        steps = max(0, round(span / step_m))
+        ux, uz = (px - nx) / length, (pz - nz) / length
+        pts = [(nx + ux * (span * i / steps if steps else 0.0), nz + uz * (span * i / steps if steps else 0.0)) for i in range(steps + 1)]
+    return min(math.hypot(q[0] - other[0], q[1] - other[1]) - math.hypot(q[0] - first[0], q[1] - first[1]) for q in pts)
+
+
+def check_placement(road: hc.Roadmap, node: str, pts: list[tuple[float, float]], min_sep_m: float, min_turning_m: float,
+                    physical: hc.Roadmap | None = None, nearer_margin_m: float = 0.0, approach_m: float = 3.0,
+                    placed: list[tuple[float, float]] | tuple = ()) -> None:
+    """The placement rule of AUDIT.md 16.11 / 16.13 (as Unity's NodeProblem): any two workers at least min_sep_m apart (also from the
+    workers already placed at other nodes), every worker at least min_turning_m from every turning point of the path (and of the physical
+    map), so that asking one worker cannot leave the robot (2.0 m from them) inside the person-in-path stop zone of another; and, with
+    nearer_margin_m > 0, every worker after the first at least that much farther from the robot than the first along the last approach_m
+    of the arrival road. Raises ValueError naming the first violation."""
     eps = 1e-9
     for i, (x, z) in enumerate(pts):
+        for q in placed:
+            d = math.hypot(x - q[0], z - q[1])
+            if d < min_sep_m - eps:
+                raise ValueError(f"placement at {node}: worker {i + 1} is {d:.2f} m from a worker at another node, rule {min_sep_m:g} m")
         for j in range(i + 1, len(pts)):
             d = math.hypot(x - pts[j][0], z - pts[j][1])
             if d < min_sep_m - eps:
                 raise ValueError(f"placement at {node}: workers {i + 1} and {j + 1} are {d:.2f} m apart, rule {min_sep_m:g} m")
-        for tx, tz in turning_points(road):
+        for tx, tz in turning_points(road, physical):
             d = math.hypot(x - tx, z - tz)
             if d < min_turning_m - eps:
                 raise ValueError(f"placement at {node}: worker {i + 1} is {d:.2f} m from a turning point, rule {min_turning_m:g} m")
+        if nearer_margin_m > 0 and i > 0:
+            m = nearer_margin(road, node, (x, z), pts[0], approach_m)
+            if m < nearer_margin_m - eps:
+                raise ValueError(f"placement at {node}: worker {i + 1} is only {m:.2f} m farther than the first worker on the approach, rule {nearer_margin_m:g} m")
 
 
 def approach_points(road: hc.Roadmap, node: str, approach_m: float, step_m: float = 0.1) -> list[tuple[float, float]]:
@@ -370,30 +432,33 @@ def approach_points(road: hc.Roadmap, node: str, approach_m: float, step_m: floa
 
 def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_road_m: float, min_sep_m: float,
                  seed: int | str, min_turning_m: float = 0.0, nearer_margin_m: float = 0.0, approach_m: float = 3.0,
-                 max_draws: int = 10000) -> list[tuple[float, float]]:
-    """n people uniform in a square of side 2 * half_size_m centred on the node, at least min_road_m from every road centre
-    line, min_sep_m apart and min_turning_m from every turning point (rejection sampling, seeded by run and node). With
-    nearer_margin_m > 0 (AUDIT.md 16.12) the FIRST person is the one the robot reaches first: every other person is at least
-    nearer_margin_m farther from the robot than the first at every point of the last approach_m of the arrival road. People are
-    drawn as one set, which is redrawn as a whole until every rule holds (Unity's way, AUDIT.md 16.12)."""
+                 max_draws: int = 10000, physical: hc.Roadmap | None = None,
+                 placed: list[tuple[float, float]] | tuple = ()) -> list[tuple[float, float]]:
+    """n people uniform in a square of side 2 * half_size_m centred on the node, at least min_road_m from every road centre line
+    (of the map and of the physical map), min_sep_m apart (also from `placed`, the workers of other nodes) and min_turning_m from every
+    turning point (rejection sampling, seeded by run and node). The drawn set is sorted by distance to the node (the first = the one the
+    robot reaches first, Unity's DrawRandom); with nearer_margin_m > 0 every other person is at least that much farther from the robot than
+    the first along the last approach_m of the arrival road (Unity's bystander rule). The whole set is redrawn until every rule holds."""
     rng = random.Random(f"{seed}|place|{node}")
     nx, nz = road.pos(node)
-    segs = _road_segments(road)
-    turns = turning_points(road)
-    robot = approach_points(road, node, approach_m) if nearer_margin_m > 0 else []
+    segs = _road_segments(road, physical)
+    turns = turning_points(road, physical)
     for _ in range(max_draws):
         out: list[tuple[float, float]] = []
-        for _k in range(n):                                    # one whole set; it is abandoned at the first worker that breaks a rule
+        for _k in range(n):                                    # per-worker rules first: the set is abandoned at the first worker that breaks one
             x, z = nx + rng.uniform(-half_size_m, half_size_m), nz + rng.uniform(-half_size_m, half_size_m)
-            if not (all(_seg_dist(x, z, sg) >= min_road_m for sg in segs) and all(math.hypot(x - a, z - b) >= min_sep_m for a, b in out)
-                    and all(math.hypot(x - a, z - b) >= min_turning_m for a, b in turns)):
-                break
-            if out and robot and not all(math.hypot(x - qx, z - qz) >= math.hypot(out[0][0] - qx, out[0][1] - qz) + nearer_margin_m
-                                         for qx, qz in robot):
+            if not (all(_seg_dist(x, z, sg) >= min_road_m for sg in segs) and all(math.hypot(x - a, z - b) >= min_turning_m for a, b in turns)
+                    and all(math.hypot(x - a, z - b) >= min_sep_m for a, b in placed)):
                 break
             out.append((x, z))
-        if len(out) == n:
-            return out
+        if len(out) < n:
+            continue
+        out.sort(key=lambda q: math.hypot(q[0] - nx, q[1] - nz))
+        if any(math.hypot(a[0] - b[0], a[1] - b[1]) < min_sep_m for i, a in enumerate(out) for b in out[i + 1:]):
+            continue
+        if nearer_margin_m > 0 and any(nearer_margin(road, node, o, out[0], approach_m) < nearer_margin_m for o in out[1:]):
+            continue
+        return out
     raise ValueError(f"cannot place {n} people at {node} in {max_draws} draws (half_size {half_size_m}, road {min_road_m}, "
                      f"separation {min_sep_m}, turning points {min_turning_m}, nearer margin {nearer_margin_m})")
 
@@ -523,27 +588,49 @@ class SimulatorV4:
         self.reader_cfg = reader_cfg or gm.load_config()
         self._worker_rngs: dict[str, random.Random] = {}
         self._worker_lies: dict[str, str | None] = {}
+        self._plan: dict = {}
         self.gestures: list[dict] = []                          # every gesture staged: node, worker, correct, shown, truthful
+
+    def _positions_at(self, junction: str, placed: list) -> list[tuple[float, float]]:
+        """Where the workers of one asking node stand, under the rules of 16.11 and 16.13 (the workers already placed at other nodes in `placed`)."""
+        sp = self.spec
+        lay, rule = sp.layout, sp.placement_rule or {}
+        n = lay.get("people_by_node", {}).get(junction, lay.get("people"))
+        sep, turn = rule.get("min_worker_separation_m", lay.get("min_sep_m", 0.0)), rule.get("min_turning_point_m", 0.0)
+        margin, approach = lay.get("nearer_margin_m", 0.0), lay.get("approach_m", 3.0)
+        if lay["kind"] == "beside":
+            if "junction_slots" in lay:                           # Unity's slots (AUDIT.md 16.13 item 1)
+                slots = lay["start_slots"] if self.road.nodes[junction]["kind"] == "start" else lay["junction_slots"]
+                pts = place_slots(self.road, junction, n, slots)
+            else:                                                  # the earlier symmetric pair
+                pts = place_beside(self.road, junction, n, lay["lateral_m"], lay["before_m"])
+        elif lay["kind"] == "random":
+            pts = place_random(self.road, junction, n, lay["half_size_m"], lay["min_road_m"], sep, self.seed, turn, margin, approach,
+                               lay.get("max_draws", 10000), sp.physical_map, placed)
+        elif lay["kind"] == "fixed":                       # tests / demonstrations: explicit (x, z) per node
+            return [tuple(q) for q in lay["points"][junction]]
+        else:
+            raise ValueError(f"unknown layout kind {lay['kind']!r}")
+        if rule:
+            check_placement(self.road, junction, pts, sep, turn, sp.physical_map, margin, approach, placed)
+        return pts
+
+    def plan_workers(self) -> dict:
+        """Plan every asking node of the run up front, in Unity's order (start node, then the junctions in file order), each against the workers of
+        the nodes before it (Unity's PlanRun). Returns {node: [(x, z), ...]}."""
+        plan: dict = {}
+        if self.spec.layout is None or self.spec.layout["kind"] == "fixed":
+            return plan
+        placed: list = []
+        for node in ask_nodes(self.road):
+            plan[node] = self._positions_at(node, placed)
+            placed += plan[node]
+        return plan
 
     def _scene_at(self, junction: str) -> Scene:
         sp = self.spec
         if sp.layout is not None:
-            lay = sp.layout
-            rule = sp.placement_rule or {}
-            n = lay.get("people_by_node", {}).get(junction, lay.get("people"))
-            if lay["kind"] == "beside":
-                pts = place_beside(self.road, junction, n, lay["lateral_m"], lay["before_m"])
-            elif lay["kind"] == "random":
-                pts = place_random(self.road, junction, n, lay["half_size_m"], lay["min_road_m"],
-                                   rule.get("min_worker_separation_m", lay.get("min_sep_m", 0.0)), self.seed,
-                                   rule.get("min_turning_point_m", 0.0), lay.get("nearer_margin_m", 0.0), lay.get("approach_m", 3.0),
-                                   lay.get("max_draws", 10000))
-            elif lay["kind"] == "fixed":                       # tests / demonstrations: explicit (x, z) per node
-                pts = [tuple(q) for q in lay["points"][junction]]
-            else:
-                raise ValueError(f"unknown layout kind {lay['kind']!r}")
-            if rule and lay["kind"] in ("beside", "random"):
-                check_placement(self.road, junction, pts, rule["min_worker_separation_m"], rule["min_turning_point_m"])
+            pts = self._plan[junction] if junction in self._plan else self._positions_at(junction, [])
             people = [Person(i + 1, x, z, sp.worker_looks[i % len(sp.worker_looks)], "commander" if i == 0 else "bystander")
                       for i, (x, z) in enumerate(pts)]
             return Scene(people, sp.record_truthful)
@@ -560,6 +647,16 @@ class SimulatorV4:
         if key not in self._worker_rngs:
             self._worker_rngs[key] = random.Random(key)
         return self._worker_rngs[key]
+
+    def _wrong_directions(self, node: str, correct: str) -> list[str]:
+        """What a liar can show at a node. "valid_branch" (Unity's DrawLie): the node's branches other than the true command (a node that
+        cannot lead to B has the true command BACK, so every branch is wrong); only where there is no other branch, the other compass
+        directions. "compass": any other of LEFT / FORWARD / RIGHT / BACK."""
+        if self.spec.lie_directions == "valid_branch":
+            wrong = [b for b in self.road.branches.get(node, {}) if b != correct]
+            if wrong:
+                return wrong
+        return [k for k in COMPASS if k != correct]
 
     def _asked_worker(self, scene: Scene) -> Person:
         """The worker the controller is asking: the person nearest the one it approached (the commander of this ask)."""
@@ -599,13 +696,13 @@ class SimulatorV4:
             if key not in self._worker_lies:                      # drawn the first time the worker is asked, then kept for the run
                 rng = self._worker_rng(junction, cm_.id)
                 liar = rng.random() < sp.lie_probability
-                self._worker_lies[key] = rng.choice([k for k in COMPASS if k != correct]) if liar else None
+                self._worker_lies[key] = rng.choice(self._wrong_directions(junction, correct)) if liar else None
             if self._worker_lies[key] is not None:
                 shown, truthful = self._worker_lies[key], False
         elif sp.lie_probability > 0.0:
             rng = self._worker_rng(junction, cm_.id)
             if rng.random() < sp.lie_probability:
-                shown, truthful = rng.choice([k for k in COMPASS if k != correct]), False
+                shown, truthful = rng.choice(self._wrong_directions(junction, correct)), False
         w = yaw_of(shown)
         self.gestures.append({"t": round(t, 3), "node": junction, "worker": cm_.id, "serial": serial, "correct": correct,
                               "shown": shown, "truthful": truthful})
@@ -639,6 +736,7 @@ class SimulatorV4:
         cfg, road, c = self.cfg, self.road, self.c
         rng_seed = self.seed
         self._worker_rngs, self._worker_lies, self.gestures = {}, {}, []
+        self._plan = self.plan_workers()
         visions: dict[str, ReaderLevelVision] = {}
         x, z = road.pos(road.start)
         if "start_yaw_deg" in road.nodes[road.start]:
@@ -941,14 +1039,21 @@ def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict 
         raise ValueError(f"map labels do not match the geometry: {bad}")
     goal = sc["goal"]
     if goal == "random_endpoint":
-        goal = random.Random(f"{seed}|goal").choice(sorted(road.endpoints()))
+        if "session_seed" in scen:                           # Unity's goal generator (AUDIT.md 16.13 item 2): run k = k-th value of GoalSequence(session seed)
+            import hri_trials as ht
+            run = seed - int(scen["first_seed"]) + 1
+            goal = ht.goal_order(int(scen["session_seed"]), sorted(road.endpoints()), max(run, int(scen["runs_per_scenario"])))[run - 1]
+        else:
+            goal = random.Random(f"{seed}|goal").choice(sorted(road.endpoints()))
     ctrl = hv.ControllerV4(base, v4, cm.load_config(commander_path), road)
     if hook is not None:                                              # analysis only: change the controller object of this run (counterfactuals)
         hook(ctrl)
     avoid = scen.get("avoid_people", {})
     clearance = (ctrl.s["corridor_half_width_m"] + hc.load_json("configs/robot.json")["robot_width_m"] / 2.0) if avoid.get("enabled") else None
     spec = SceneSpec(proceed_forward=True, anyone_commands=True, point_back_when_lost=True, record_truthful=True,
-                     lie_probability=float(p["lie_probability"]), lie_mode=p.get("lie_mode", "per_gesture"), layout=dict(sc["layout"]),
+                     lie_probability=float(p["lie_probability"]), lie_mode=p.get("lie_mode", "per_gesture"),
+                     lie_directions=p.get("lie_directions", "compass"), layout=dict(sc["layout"]),
+                     physical_map=hc.Roadmap(hc.load_json(hv.roadmap_path(v4))) if scen.get("physical_map_is_v4") else None,
                      avoid_people_m=clearance,
                      placement_rule={k: float(scen["placement_rule"][k]) for k in ("min_worker_separation_m", "min_turning_point_m")}
                      if "placement_rule" in scen else None)
