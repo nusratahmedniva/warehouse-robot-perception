@@ -44,12 +44,12 @@ namespace WarehouseRobot.AvatarCheck
         public class TakeRecord
         {
             public string command, clip, arm;
-            public int take, frames, frames_failed, frames_outside_hold;
+            public int take, frames, frames_failed, frames_render_failed, frames_fold, frames_outside_hold;
             public float point_side_azimuth_deg = -1f, size, swing_hz;
             public float max_elbow_error_deg, max_arm_direction_error_deg, max_forearm_error_deg = -1f;
             public float min_elbow_deg = 999f, max_elbow_deg, min_intended_elbow_deg = 999f, max_intended_elbow_deg;
             public float max_target_shift_m, max_hint_shift_m;
-            public bool pass;
+            public bool pass, render_pass = true;
             public string first_failure = "";
         }
 
@@ -57,8 +57,9 @@ namespace WarehouseRobot.AvatarCheck
         public class CommandRecord
         {
             public string command;
-            public int takes, frames, frames_failed;
-            public bool pass;
+            public int takes, frames, frames_failed, frames_render_failed, frames_fold;
+            /// <summary>pass = render_pass and no fold frame (experiments_ab.md section 10 addendum 2: rendering and design reported apart).</summary>
+            public bool pass, render_pass;
             public float max_elbow_error_deg, max_arm_direction_error_deg, max_forearm_error_deg = -1f, min_elbow_deg = 999f;
             public float min_intended_elbow_deg = 999f, max_intended_elbow_deg, max_target_shift_m, max_hint_shift_m;
             public string failures = "";
@@ -422,6 +423,8 @@ namespace WarehouseRobot.AvatarCheck
             var legacy = w.LegacyGoal;
             rec.max_target_shift_m = Mathf.Max(rec.max_target_shift_m, R4(Vector3.Distance(g.Target, legacy.Target)));
             rec.max_hint_shift_m = Mathf.Max(rec.max_hint_shift_m, R4(Vector3.Distance(g.Hint, legacy.Hint)));
+            if (!r.RenderPass) { rec.frames_render_failed++; rec.render_pass = false; }
+            if (r.Fold) rec.frames_fold++;
             if (!r.Pass)
             {
                 rec.frames_failed++;
@@ -455,12 +458,15 @@ namespace WarehouseRobot.AvatarCheck
             {
                 var takes = l.takes.Where(x => x.command == cmd).ToList();
                 if (takes.Count == 0) continue;
-                var c = new CommandRecord { command = cmd, takes = takes.Count, pass = true };
+                var c = new CommandRecord { command = cmd, takes = takes.Count, pass = true, render_pass = true };
                 foreach (var t in takes)
                 {
                     c.frames += t.frames;
                     c.frames_failed += t.frames_failed;
+                    c.frames_render_failed += t.frames_render_failed;
+                    c.frames_fold += t.frames_fold;
                     if (!t.pass || t.frames == 0) c.pass = false;
+                    if (!t.render_pass || t.frames == 0) c.render_pass = false;
                     if (!t.pass) c.failures += (c.failures.Length > 0 ? "; " : "") + $"{t.arm} {t.clip}" + (t.point_side_azimuth_deg >= 0f ? $" az {F(t.point_side_azimuth_deg)}" : "") + $": {t.first_failure}";
                     else if (t.frames == 0) c.failures += (c.failures.Length > 0 ? "; " : "") + $"{t.arm} {t.clip}: no frame measured";
                     c.max_elbow_error_deg = Mathf.Max(c.max_elbow_error_deg, t.max_elbow_error_deg);
@@ -482,15 +488,16 @@ namespace WarehouseRobot.AvatarCheck
             var sb = new StringBuilder();
             sb.Append($"# Gesture geometry ({(f.label.Length > 0 ? f.label + ", " : "")}{f.created_local})\n\n");
             sb.Append($"Tolerance: {f.tolerance}. Worst values over every measured frame of every take (both arms, every clip).\n\n");
-            sb.Append("| look | kind | upper / fore (m) | upper share | shoulders (m) | arm / shoulders | command | takes | frames | elbow rendered min (deg) | elbow intended (deg) | elbow err max | arm dir err max | forearm err max | target shift vs old (m) | pass |\n");
-            sb.Append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+            sb.Append("| look | kind | upper / fore (m) | upper share | shoulders (m) | arm / shoulders | command | takes | frames | elbow rendered min (deg) | elbow intended (deg) | elbow err max | arm dir err max | forearm err max | target shift vs old (m) | rendering | no fold (frames below) | pass |\n");
+            sb.Append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
             foreach (var l in f.looks)
             {
-                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | | | | | {l.status}: {l.problem} | | | | | | | | | no |\n"); continue; }
+                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | | | | | {l.status}: {l.problem} | | | | | | | | | | | no |\n"); continue; }
                 foreach (var c in l.commands)
                     sb.Append($"| {l.id} | {l.kind_group} | {F3(l.upper_arm_m)} / {F3(l.forearm_m)} | {F3(l.upper_share)} | {F3(l.shoulder_width_m)} | {F3(l.arm_to_shoulder_ratio)} | {c.command} | {c.takes} | {c.frames} | " +
                               $"{F(c.min_elbow_deg)} | {F(c.min_intended_elbow_deg)} to {F(c.max_intended_elbow_deg)} | {F(c.max_elbow_error_deg)} | {F(c.max_arm_direction_error_deg)} | " +
-                              $"{(c.max_forearm_error_deg >= 0f ? F(c.max_forearm_error_deg) : "-")} | {F3(c.max_target_shift_m)} | {(c.pass ? "yes" : "**no**")} |\n");
+                              $"{(c.max_forearm_error_deg >= 0f ? F(c.max_forearm_error_deg) : "-")} | {F3(c.max_target_shift_m)} | {(c.render_pass ? "ok" : "**fails**")} | " +
+                              $"{(c.frames_fold == 0 ? "ok" : $"**{c.frames_fold}**")} | {(c.pass ? "yes" : "**no**")} |\n");
             }
             var fails = f.looks.Where(l => l.status == "ok").SelectMany(l => l.commands.Where(c => !c.pass).Select(c => $"- {l.id} {c.command}: {c.failures}")).ToList();
             if (fails.Count > 0) sb.Append("\nFailures (first failing frame of each failing take):\n\n").Append(string.Join("\n", fails)).Append('\n');

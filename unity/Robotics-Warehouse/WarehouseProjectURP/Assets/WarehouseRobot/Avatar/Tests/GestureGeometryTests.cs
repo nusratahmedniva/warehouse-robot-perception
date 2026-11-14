@@ -58,6 +58,7 @@ namespace WarehouseAvatar.Tests
             var bad = GestureGeometry.Evaluate(Sample("POINT", e, w, w), tol);
             Assert.IsFalse(bad.Pass);
             Assert.IsTrue(bad.Fold);
+            Assert.IsTrue(bad.RenderPass, "the rendered pose is the intended one: the fold is the design's (addendum 2)");
             StringAssert.Contains("fold", bad.Why);
             // a wrong direction: the wrist 10 deg off the target's direction
             var off = GestureGeometry.Evaluate(Sample("STOP", e, Quaternion.AngleAxis(10f, Vector3.up) * new Vector3(0.55f, 0f, 0f), new Vector3(0.55f, 0f, 0f)), tol);
@@ -157,6 +158,12 @@ namespace WarehouseAvatar.Tests
                         Assert.IsTrue(g.HasElbow);
                         Assert.AreEqual(p.upper_m, Vector3.Distance(g.Elbow, S), 1e-5f, $"{spec.name} share {share}: elbow at the upper arm's length");
                         Assert.AreEqual(p.forearm_m, Vector3.Distance(g.Target, g.Elbow), 1e-5f, $"{spec.name} share {share}: hand at the forearm's length");
+                        // addendum 3: the hint lies in the plane of shoulder, hand and intended elbow, on the elbow's side of the axis
+                        Vector3 n = Vector3.Cross(g.Target - S, g.Elbow - S).normalized;
+                        Assert.AreEqual(0f, Vector3.Dot(g.Hint - S, n), 1e-4f, $"{spec.name}: hint in the bend plane");
+                        Vector3 ax = (g.Target - S).normalized;
+                        Vector3 offE = (g.Elbow - S) - Vector3.Dot(g.Elbow - S, ax) * ax, offH = (g.Hint - S) - Vector3.Dot(g.Hint - S, ax) * ax;
+                        Assert.Greater(Vector3.Dot(offE, offH), 0f, $"{spec.name}: hint on the elbow's side");
                     }
                 // hints: POINT and STOP at the upper arm along the arm, WAIT the forearm below the hand
                 var point = w.clips.First(c => c.command == "POINT");

@@ -106,6 +106,14 @@ namespace WarehouseAvatar
                     float pr = proceedPhiDeg * Mathf.Deg2Rad;
                     g.Target = g.Elbow + (Mathf.Cos(pr) * fwd + Mathf.Sin(pr) * up) * a.ProceedFore;
                     g.Hint = g.Elbow + side * (0.1f * L) - up * (0.02f * L);
+                    if (a.ElbowOnUpperArm)
+                    {
+                        // section 10 addendum 3: Mecanim bends the arm in the plane of shoulder, hand and hint; put the hint beyond the
+                        // intended elbow, away from the shoulder-to-hand axis, so that plane holds the intended elbow
+                        Vector3 axis = g.Target - s;
+                        Vector3 off = axis.sqrMagnitude > 1e-10f ? (g.Elbow - s) - Vector3.Project(g.Elbow - s, axis) : Vector3.zero;
+                        if (off.sqrMagnitude > 1e-10f) g.Hint = g.Elbow + off.normalized * (0.5f * L);
+                    }
                     break;
                 }
                 case WorkerV4Config.Wait:
@@ -209,7 +217,9 @@ namespace WarehouseAvatar
     public struct GeometryResult
     {
         public float ElbowDeg, IntendedElbowDeg, ElbowErrorDeg, ArmDirectionErrorDeg, ForearmErrorDeg;   // ForearmErrorDeg -1 = not measured
-        public bool Fold, Pass;
+        /// <summary>RenderPass: elbow, direction and forearm within tolerance (the rendered pose is the intended one). Fold: a straight-arm
+        /// command below the no-fold angle (a property of the intended pose when RenderPass holds). Pass: both.</summary>
+        public bool Fold, RenderPass, Pass;
         public string Why;
     }
 
@@ -245,6 +255,7 @@ namespace WarehouseAvatar
             if (!(r.ElbowErrorDeg <= tol.elbow_angle_deg)) why.Add("elbow angle");
             if (!(r.ArmDirectionErrorDeg <= tol.arm_direction_deg)) why.Add("arm direction");
             if (r.ForearmErrorDeg >= 0f && !(r.ForearmErrorDeg <= tol.forearm_direction_deg)) why.Add("forearm direction");
+            r.RenderPass = why.Count == 0;
             if (r.Fold) why.Add("fold");
             r.Pass = why.Count == 0;
             r.Why = string.Join(", ", why);

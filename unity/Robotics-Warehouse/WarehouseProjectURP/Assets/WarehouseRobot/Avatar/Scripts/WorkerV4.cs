@@ -473,8 +473,8 @@ namespace WarehouseAvatar
             m_Hint = goal.Hint;
         }
 
-        /// <summary>The lengths the targets use (experiments_ab.md section 10).</summary>
-        ArmSplit Split => ArmSplit.Legacy(ArmLength);
+        /// <summary>The lengths the targets use (experiments_ab.md section 10): the rig's own upper arm and forearm, not Sunbox's split.</summary>
+        ArmSplit Split => ArmSplit.Rig(Proportions);
 
         /// <summary>Diagnostics (the geometric check, experiments_ab.md section 10): this frame's goal of the gesturing arm (sway included),
         /// and the goal of the split used before section 10 (Sunbox's, sway left out).</summary>

@@ -546,3 +546,50 @@ engineering checks and are never the experiment. Edit Mode tests of every refusa
 **8. Screenshots for Nusrat's visual check** (not perception input): from the geometry check's neutral camera, NOT the robot cameras' settings:
 3.0 m in front of the worker, 20 deg to its right, 1.3 m high, vertical field of view 35 deg, 1280 x 960 PNG, in the middle of the hold (PROCEED: at
 the top of the swing), every anime look and Boxo, each of POINT, PROCEED, WAIT and STOP, both arms, into `gesture_geometry_<time>/screens/`.
+
+*Addendum 1 (2026-11-14, after the Boxo v2 import and its finger probe; before the arm-scaling change, the Edit-mode PROCEED or any screenshot).*
+Results: `import_characters_20261114_180918` (Boxo v2: unit scale x100 and avatar rebuilt as section 2, humanScale 0.774, bone height 1.138 m; 46
+Humanoid bones; finger bones **24 of 30**: thumb, index, middle and ring mapped, **no little finger** on either hand; `glovemat` and `helmetmat`
+recoloured, `eye_whitemat` and `stripemat` colourless and matched by no rule; the variants: 55 bones, 30 of 30 finger bones, 25 textures linked).
+`probe_fingers_20261114_181109`: **Boxo v2 has 4 chains per hand (Thumb, Index, Middle, Ring) and every finger is separate** (own region 93 to 100 %
+moves, no other finger's region more than 4 %); no material problem, 0 magenta pixels. Controls: mixamo_worker 5 separate chains per hand (own 87 to
+96 %, others at most 7 %); anime_f_01 reads "merged" by the rule (own 61 to 89 %, others at most 15 %: no finger moves its neighbour, but the 4 cm
+region of this small hand reaches palm vertices weighted to the hand bone), reported as it is, the rule is not changed. So the fingers are no longer
+one chain and the work continues. **Consequences (declared now):**
+- Boxo v2 still cannot be spawned by the worker template: `HandShaper` needs index to little (section 2 rule; the template is not changed to make a
+  look pass; a three-finger hand shape would be a template change for **[N]**). It stays out of the Play look check and the Play geometry check;
+  `look_check_play_ab.json` `looks_excluded` gets the new reason. It stays in the Edit-mode look check (which records it as before).
+- Item 5 applies: **PROCEED is added to the Edit-mode look check** (`look_check.json`) for every look of it, as a posed swing: upper arm down and
+  `upper_forward_deg` forward with the elbow 0.08 L out, forearm at `phi(t) = low + (high - low) * (1 - cos(2 pi f t)) / 2`, f 1.5 Hz,
+  t = frame / 10 s; flat hand, fingers along the forearm, palm toward the body (the worker's PROCEED shape). Takes: two 21-frame sequences
+  (`seq1` = proceed_ik_01: 15, -20, 60 deg; `seq2` = proceed_ik_02: 35, 0, 75 deg) and singles at fixed phases of proceed_ik_01 (forearm at -20, 0,
+  20, 40, 60 deg), with no `time_s` (Anisha's tool then uses 10 Hz). A sequence's frames are rendered one by one (the held-pose sequences keep one
+  render per sequence). Recordings named as the others.
+- **Boxo's geometric check comes from its Edit-mode poses** (`LookPoser`, every POINT, WAIT, STOP and PROCEED take of `look_check.json`, both arms):
+  rendered elbow angle, upper-arm and forearm directions against the pose's intended ones, with the declared tolerance (elbow 10 deg, upper-arm
+  direction 5 deg in place of the shoulder-to-wrist direction, forearm 10 deg; no fold for the POINT and STOP poses designed straight: the STOP takes
+  with `forearm_up` are bent by design since Phase 2A). The same Edit-mode geometry is reported for every look of the Edit-mode check
+  (`pose_geometry_<time>/`).
+
+*Addendum 2 (2026-11-14, after the baseline geometry run, before the arm-scaling change).* Baseline `gesture_geometry_baseline_20261114_182535`
+(commit 3e6054b, targets unchanged; 12 looks spawned, Boxo not: "lacks arm or finger bones"). **POINT and WAIT pass on every look, anime_f_01
+included**: its POINT elbow is never below 151.0 deg (intended 151.9 to 157.0), so the "forearm folds back" of section 5 is NOT in the bones; it was
+read from YOLO's wrist on the rendered frames (the wide sleeve), which this work does not measure. **PROCEED fails on every look** (forearm 10.7 to
+12.9 deg off its goal): the Sunbox split and the sideways offset put the intended elbow where the arm cannot reach, exactly what item 1 changes. No
+other cause is found, so no further change is added. Measured proportions: upper-arm share of L 0.512 (every Sunbox look), 0.536 (mixamo_worker),
+0.514 (anime_f_01); arm-to-shoulder ratio 1.590, 1.098, 2.241. **Found, not changed (decision for [N]):** STOP is flagged "fold" on 10 looks at
+elbows of 116.2 to 119.8 deg with an elbow error of at most 0.7 deg there: the rendered pose equals the intended one, and the intended one is
+`worker_v4.json` `limits.stop_reach` [0.85, 0.97] at its lower bound (0.85 L gives 116 deg). The declared no-fold threshold (120 deg) is stricter
+than the frozen STOP design; neither is changed after seeing this. STOP is reported with this split: elbow, direction and forearm checks
+(rendering) and the no-fold check (design) separately.
+
+*Addendum 3 (2026-11-14, after the first run with item 1, before any further change).* `gesture_geometry_after_20261114_183103` (item 1 applied,
+uncommitted, on 3e6054b): POINT, WAIT and the rendering of STOP pass on every look as before; PROCEED's forearm error falls from 12.3 to 12.9 deg
+(Sunbox) to 10.1 to 10.6 deg (mixamo_worker 10.9 to 11.2) but still exceeds 10 deg, **with an elbow-angle error of 0.0 and an arm-direction error of
+0.0 deg on every frame**: the hand is on its target and the elbow has the intended angle, so the only freedom left is the elbow's swivel about the
+shoulder-to-hand axis, which Mecanim takes from the hint. PROCEED's hint lies 0.1 L sideways and 0.02 L below the intended elbow, so the bend plane
+misses it. *Change (a cause item 1 does not cover):* with the rig split, PROCEED's hint is the intended elbow pushed away from the shoulder-to-hand
+axis (hint = E* + 0.5 L x the unit vector from the axis to E*), so the bend plane contains E*; with the legacy split the old hint is kept (it stays
+the reference of the target-shift column). Nothing else changes; the tolerance stays.
+- **Boxo's screenshots come from its Edit-mode poses** with the neutral camera of item 8 (POINT and WAIT `seq1`, STOP `seq1`, PROCEED at the top of
+  the `seq1` swing; both arms). The anime looks' screenshots come from the Play geometry check (the worker template), as declared.
