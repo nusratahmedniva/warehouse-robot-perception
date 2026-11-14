@@ -326,16 +326,19 @@ namespace WarehouseAvatar.EditorTools
             // textures and materials next to the model, so they can be recoloured and inspected
             string texDir = folder + "/Textures";
             if (!AssetDatabase.IsValidFolder(texDir)) AssetDatabase.CreateFolder(folder, "Textures");
+            int texturesBefore = ImageFiles(texDir);
             imp.ExtractTextures(texDir);
             string matDir = folder + "/Materials";
             if (!AssetDatabase.IsValidFolder(matDir)) AssetDatabase.CreateFolder(folder, "Materials");
             int renamed = GiveExtensions(texDir);
-            if (renamed > 0)
+            int extracted = Math.Max(0, ImageFiles(texDir) - texturesBefore);
+            if (renamed > 0 || extracted > 0)
             {
                 // experiments_ab.md section 2: images without a file extension get the extension of their format; the materials are then
                 // re-created so ExperimentCharacterPostprocessor can link the textures (the earlier extracted copies are forgotten, not the
-                // recoloured ones)
-                r.note += $" {renamed} extracted images had no file extension and were given the extension of their format.";
+                // recoloured ones). Section 5 addendum: also when this import extracted the textures (the model's first import saw none)
+                if (renamed > 0) r.note += $" {renamed} extracted images had no file extension and were given the extension of their format.";
+                if (extracted > 0) r.note += $" {extracted} textures extracted by this import: materials re-created to link them.";
                 AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                 foreach (var kv in imp.GetExternalObjectMap().ToList())
                 {
@@ -546,6 +549,13 @@ namespace WarehouseAvatar.EditorTools
                 n++;
             }
             return n;
+        }
+
+        /// <summary>Image files (any file but .meta) in an asset folder; 0 if it does not exist.</summary>
+        static int ImageFiles(string assetFolder)
+        {
+            string dir = Path.Combine(Application.dataPath, "..", assetFolder);
+            return Directory.Exists(dir) ? Directory.GetFiles(dir).Count(p => !p.EndsWith(".meta", StringComparison.Ordinal)) : 0;
         }
 
         static string Safe(string name) => new string(name.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch).ToArray());

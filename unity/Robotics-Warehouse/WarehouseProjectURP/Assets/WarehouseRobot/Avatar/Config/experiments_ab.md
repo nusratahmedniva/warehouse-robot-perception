@@ -224,3 +224,14 @@ experiment configuration's nodes, branches and slots match them and obey every p
   before). With one look, the Play check still records it at both junctions in a round, the coverage each look had in step 2. cartoon_boxo_01 stays
   out of the Play check (section 2 rule, its file unchanged): its rerun is the Edit-mode check. anime_f_01: Edit and Play. Then Anisha's
   `look_check_v4.py --input` on both outputs, reported per look in the format of the step 2 report. Nothing is tuned on it.
+- *Addendum (2026-11-14, after the re-import and the arm-skin probe, before any look check of the new file ran).* Results so far:
+  `probe_arm_skin_20261114_133039` (controls before the move: mixamo_worker follows 371/371 and 400/400; superseded anime_f_01 does not follow,
+  115/183 per side; cartoon_boxo_01 follows) and, after the re-import `import_characters_20261114_133118`, `probe_arm_skin_20261114_133152`:
+  **the re-exported anime_f_01 follows (183/183 per side)**. The re-export is in metres (no unit-scale change, humanScale 1.04) and only the
+  white-emission fix applied. **But none of its 18 materials has a base texture** (the superseded import: 18 of 18 linked): the re-export names its
+  25 textures *with* an extension (`_01.png` ...), so the extension step renamed nothing, and the material re-creation that lets
+  `ExperimentCharacterPostprocessor` link the textures ran only after a rename, while the materials were extracted before the textures existed.
+  That is an ordering gap of the declared texture-link fix of section 2, not a new kind of fix. Change: the materials are re-created when textures
+  were renamed **or newly extracted by this import** (a re-import of an imported model extracts none, so it stays idempotent); nothing else.
+  The unlinked import is moved, not deleted, to `unity/downloads/superseded/anime_f_01_fe304543_unlinked/`, and Import Characters runs again.
+  The arm-skin probe is repeated on that import (materials do not change skinning; reported).
