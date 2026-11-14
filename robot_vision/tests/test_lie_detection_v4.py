@@ -745,10 +745,14 @@ class ExperimentFiles(unittest.TestCase):
                 self.assertEqual(c.road.branches["A"], start_next)
                 self.assertEqual((c.ld["second_opinion"], c.ld["backtrack"]), (mode == "on", False))
 
-    def test_the_files_are_outside_the_freeze_list_except_scenarios_ab(self):
+    def test_the_freeze_list_holds_the_files_a_final_runs_with_and_not_the_csv_columns(self):
+        """16.10: scenarios_ab.json; 16.15 (2026-11-14): the eight control files and the three robot maps are frozen too (an experiment final runs
+        with them). export_csv.json and false_stop_analysis.json stay outside."""
         import freeze_v4 as fz
         listed = fz.config_files()
-        self.assertEqual([f for f in listed if "/experiments/" in f], list(fz.FROZEN_EXTRA))
+        self.assertEqual([f for f in listed if "/experiments/" in f], sorted(fz.FROZEN_EXTRA))
+        self.assertEqual({Path(f).name for f in fz.FROZEN_EXTRA},
+                         {"scenarios_ab.json"} | {p.name for p in self.EXP.glob("control_lie_*.json")} | {p.name for p in self.EXP.glob("roadmap_a*.json")})
 
 
 UNITY_CFG = ROOT.parent / "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json"

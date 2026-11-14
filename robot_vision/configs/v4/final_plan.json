@@ -1,6 +1,6 @@
 {
   "label": "v4 final plan: the settings of the final runs and their fixed numbers. Frozen with the other v4 configs (configs/v4/frozen.json). Every null below is a BLANK that Anisha must fill before freezing; freeze_v4.py refuses to freeze while one is left. docs: AUDIT.md section 14.",
-  "status": "no blank left (test_assignment, unity_files_and_guard and acceptance_criteria filled 2026-11-13 by Nusrat in Anisha's absence (Avatar/Config/upgrade_design.md section 13; AUDIT.md section 15); B7 and B11 confirmed by Anisha on 2026-11-13, B11 updated the same day; final setting unseen_look renamed zoom_on_repeat on 2026-11-13); not frozen until Nusrat runs freeze_v4.py --freeze by hand (agreed with Anisha 2026-11-13)",
+  "status": "2026-11-14: settings replaced by the 13 settings of the experiments A/B finals (AUDIT.md 16.15); no blank left (test_assignment, unity_files_and_guard and acceptance_criteria filled 2026-11-13 by Nusrat in Anisha's absence (Avatar/Config/upgrade_design.md section 13; AUDIT.md section 15); B7 and B11 confirmed by Anisha on 2026-11-13, B11 updated the same day; final setting unseen_look renamed zoom_on_repeat on 2026-11-13); not frozen until Nusrat runs freeze_v4.py --freeze by hand (agreed with Anisha 2026-11-13)",
   "blanks_note": "Numbers are chosen by Anisha, not by the code, and not from final results. freeze_v4.py refuses to freeze while a null below or a placeholder name in data_splits.json is left.",
   "decided": "2026-10-24, by Anisha, before any v4 development or final data existed.",
   "task": "Task2",
@@ -11,12 +11,145 @@
   "runs_per_setting": 20,
   "timeout_s": 270,
   "timeout_s_source": "Set 2026-11-12 by the rule declared before the session (P7; unity/.../Avatar/Config/upgrade_design.md section 6): timeout_s = ceil_to_10(1.5 * L_max / v_run + wait_timeout_s), never below 240 s, with L_max = 65.0 m (the longest v4 route), v_run = 0.3944 m/s (median over the 19 successful runs of the Stage C development session trials_development_Task2_20261112_163710 + bridge_guide_20261112_163011 of road length / run duration) and wait_timeout_s = 20 s: 1.5 * 65.0 / 0.3944 + 20 = 267.2 -> 270 s. Was the v3 value 240 s (configs/trials.json), which fitted the shorter v3 route.",
+  "timeout_s_rule": "Declared 2026-11-14 (AUDIT.md 16.15 decision 2, corrected in 16.16 decision 4), applied after the step-5 development runs of Nusrat: timeout_s = 1.5 x the longest SUCCESSFUL development run (the sessions made with the same configs as the finals), rounded up to a multiple of 30 s, never below 270 s. One value for all settings. A run that timed out does not count as a duration; every development timeout is reported and its cause is found before the freeze. timeout_s stays 270 until the rule is applied by a declared edit before the freeze (final_guard_v4.timeout_from_development, development_timeout).",
   "success_radius_m": 0.3,
   "success_radius_m_source": "the v3 success radius (same two files)",
   "machine": "Nusrat's Windows PC with the NVIDIA RTX 3060, the same machine as the v3 Task 1 final (AUDIT.md section 10)",
   "threshold_rule": "Each initial threshold is set on DEVELOPMENT data as the value with the highest development accuracy among those with coverage >= 0.8; ties go to the v3 value, or else to the more conservative value (the one that answers less often, rejects more). Decided 2026-10-24.",
   "bootstrap": "2000 resamples, seed 1 (configs/v4/analysis.json): confirmed 2026-10-24.",
   "settings": {
+    "A1": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "A1",
+      "set": "A",
+      "map": "corridor",
+      "roadmap": "configs/v4/experiments/roadmap_a1.json",
+      "lie_detection": "on",
+      "note": "Experiment A1: straight corridor, truthful workers, 2 at A (beside)."
+    },
+    "A2_right": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "A2",
+      "set": "A",
+      "map": "turn",
+      "roadmap": "configs/v4/experiments/roadmap_a2_right.json",
+      "lie_detection": "on",
+      "note": "Experiment A2, right turn (goal C), truthful workers, 2 at A and at B."
+    },
+    "A2_left": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "A2",
+      "set": "A",
+      "map": "turn_left",
+      "roadmap": "configs/v4/experiments/roadmap_a2_left.json",
+      "lie_detection": "on",
+      "note": "Experiment A2, left turn: a turn-direction check with truthful workers (no Set B counterpart)."
+    },
+    "A3": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "A3",
+      "set": "A",
+      "map": "roadmap",
+      "roadmap": "configs/v4/roadmap.json",
+      "lie_detection": "on",
+      "note": "Experiment A3: v4 map, GoalSequence(2) over E1..E6, truthful workers, 2 per node and 3 at J1 (beside)."
+    },
+    "A4": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "A4",
+      "set": "A",
+      "map": "roadmap",
+      "roadmap": "configs/v4/roadmap.json",
+      "lie_detection": "on",
+      "note": "Experiment A4: as A3 with the random layout."
+    },
+    "B1": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "B1",
+      "set": "B",
+      "map": "corridor",
+      "roadmap": "configs/v4/experiments/roadmap_a1.json",
+      "lie_detection": "on",
+      "note": "Experiment B1 (lie probability 0.2), lie detection ON."
+    },
+    "B2_right": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "B2",
+      "set": "B",
+      "map": "turn",
+      "roadmap": "configs/v4/experiments/roadmap_a2_right.json",
+      "lie_detection": "on",
+      "note": "Experiment B2, right turn only (lie probability 0.2), lie detection ON."
+    },
+    "B3": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "B3",
+      "set": "B",
+      "map": "roadmap",
+      "roadmap": "configs/v4/roadmap.json",
+      "lie_detection": "on",
+      "note": "Experiment B3 (lie probability 0.2), lie detection ON."
+    },
+    "B4": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "B4",
+      "set": "B",
+      "map": "roadmap",
+      "roadmap": "configs/v4/roadmap.json",
+      "lie_detection": "on",
+      "note": "Experiment B4, random layout (lie probability 0.2), lie detection ON."
+    },
+    "B1_off": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "B1",
+      "set": "B",
+      "map": "corridor",
+      "roadmap": "configs/v4/experiments/roadmap_a1.json",
+      "lie_detection": "off",
+      "note": "B1 with lie detection OFF: Set B's main comparison (same runs as B1, detection off)."
+    },
+    "B2_right_off": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "B2",
+      "set": "B",
+      "map": "turn",
+      "roadmap": "configs/v4/experiments/roadmap_a2_right.json",
+      "lie_detection": "off",
+      "note": "B2 right with lie detection OFF."
+    },
+    "B3_off": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "B3",
+      "set": "B",
+      "map": "roadmap",
+      "roadmap": "configs/v4/roadmap.json",
+      "lie_detection": "off",
+      "note": "B3 with lie detection OFF."
+    },
+    "B4_off": {
+      "zoom": null,
+      "bystanders": null,
+      "experiment": "B4",
+      "set": "B",
+      "map": "roadmap",
+      "roadmap": "configs/v4/roadmap.json",
+      "lie_detection": "off",
+      "note": "B4 with lie detection OFF."
+    }
+  },
+  "superseded_settings": {
     "zoom_on": {
       "zoom": true,
       "bystanders": null,
@@ -38,12 +171,161 @@
       "note": "A REPEAT of zoom_on since 2026-11-13 (B7 = plan (b): every final uses the test look sunbox_f2, never seen in development); named unseen_look until its rename on 2026-11-13 (AUDIT.md section 15). Research question 4 is answered by comparing the finals with the development results."
     }
   },
+  "superseded_settings_note": "The four v4 Task 2 settings of 2026-10-24 .. 2026-11-13, replaced on 2026-11-14 by the experiments A/B matrix (AUDIT.md 16.15 decision 1). Kept for the record only: no tool reads this key, Unity refuses these names as superseded (final_v4.json superseded_settings), and none was ever run as a final.",
   "settings_note": "null = not constrained by the setting. Every final session must lie wholly in the test split (data_splits_v4.guard_run with --final-evaluation); a setting's own constraints are checked on top. Which setting uses which test looks and clips is part of the plan: fill the setting notes in AUDIT.md section 14.",
   "run_once": "Each setting is run once. A setting with a FINAL_DONE.json in its evaluation folder or in a bridge run folder cannot be started or evaluated again (final_guard_v4.py).",
-  "test_assignment": {"zoom_on": {"looks": ["sunbox_f2"], "clips": ["point_mixamo_02", "proceed_ik_03"]}, "zoom_off": {"looks": ["sunbox_f2"], "clips": ["point_mixamo_02", "proceed_ik_03"]}, "bystanders": {"looks": ["sunbox_f2"], "clips": ["point_mixamo_02", "proceed_ik_03"], "bystander_looks": ["sunbox_f2", "sunbox_f2"]}, "zoom_on_repeat": {"looks": ["sunbox_f2"], "clips": ["point_mixamo_02", "proceed_ik_03"], "repeat_of": "zoom_on"}},
-  "test_assignment_note": "B7 = plan (b), decided by Nusrat on 2026-11-13 in Anisha's absence and confirmed by Anisha on 2026-11-13 (Avatar/Config/upgrade_design.md section 13; AUDIT.md section 15): every final uses the test look sunbox_f2 with the test clips of the direction scenario (POINT point_mixamo_02, PROCEED proceed_ik_03), the only plan data_splits_v4.guard_run accepts unchanged for all four settings. zoom_on_repeat (named unseen_look until 2026-11-13) is a REPEAT of zoom_on (same configs, a second session: a repeatability measure); the unseen-look question (RQ4) is answered by comparing the finals with the development results (sunbox_m1, sunbox_f1). In bystanders every person wears sunbox_f2, so the commander is told apart only by behaviour.",
-  "unity_files_and_guard": {"freeze_list": "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/final_v4.json", "freeze_list_key": "freeze_files", "guard": "FinalGuardV4 in TrialRunnerV4 (TrialPlayV4 -finalSetting NAME): refuses an unknown setting, a blank here, an unfrozen frozen.json, a listed Unity file missing, unrecorded or changed, the development override trials.local.json, and a setting already run (UNITY_FINAL_DONE.json or FINAL_RUN_DONE.json)"},
+  "test_assignment": {
+    "A1": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "A2_right": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "A2_left": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "A3": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "A4": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "B1": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "B2_right": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "B3": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "B4": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "B1_off": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "B2_right_off": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "B3_off": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    },
+    "B4_off": {
+      "looks": [
+        "sunbox_m_shirt_plaid",
+        "sunbox_f_shirt_plaid"
+      ],
+      "clips": [
+        "point_mixamo_02",
+        "proceed_ik_03"
+      ]
+    }
+  },
+  "test_assignment_note": "2026-11-14 (AUDIT.md 16.15): every one of the 13 settings uses the test looks sunbox_m_shirt_plaid (male slots 1 and 3) and sunbox_f_shirt_plaid (female slot 2) and the test clips point_mixamo_02 (POINT) and proceed_ik_03 (PROCEED), the two commands an experiment worker shows. DISCLOSED: with one test look per gender the third worker at J1 (A3, A4, B3, B4 and the _off twins) wears the same look as the first; development rotates two looks per gender. The earlier note (B7, plan (b), sunbox_f2 for the four Task 2 settings) is superseded with them.",
+  "unity_files_and_guard": {
+    "freeze_list": "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/final_v4.json",
+    "freeze_list_key": "freeze_files",
+    "guard": "FinalGuardV4 in TrialRunnerV4 (TrialPlayV4 -finalSetting NAME): refuses an unknown setting, a blank here, an unfrozen frozen.json, a listed Unity file missing, unrecorded or changed, the development override trials.local.json, and a setting already run (UNITY_FINAL_DONE.json or FINAL_RUN_DONE.json)"
+  },
   "unity_files_and_guard_note": "B9, decided by Nusrat on 2026-11-13 in Anisha's absence, PENDING HER CONFIRMATION (Avatar/Config/upgrade_design.md section 13; AUDIT.md section 15). freeze_v4.py records the LF-normalised SHA-256 of every file of freeze_list (its freeze_files) under unity_files in frozen.json; its checks and the Unity guard compare them.",
-  "acceptance_criteria": ["leak test passed in Unity (session.json leak_test.passed) and in Python (gt_path.py session)", "frozen hashes match: freeze_v4.require_frozen passes after the session (frozen.json frozen; every v4 config, v3 file v4 reads, B9 Unity file and model file matching its recorded hash)", "split guard passed: the looks and clips of every run (run_###/truth.jsonl) pass data_splits_v4.guard_run with final_evaluation (test split only, no mix, no unlisted name)", "all runs present: runs_per_setting runs numbered 1 to runs_per_setting, each with one results_unity.csv row, one run_### folder and one python_trial_###.json", "every outcome recorded: summary_unity.json and UNITY_FINAL_DONE.json in the Unity folder; FINAL_RUN_DONE.json and summary.json in the bridge folder", "every truth and run file accepted: gesture_data.py for every run_###/truth.jsonl, gt_path.py run for every run folder", "run protocol recorded: bridge run_info.json machine state and resources.csv, plus the free memory and programs running before the session"],
-  "acceptance_criteria_note": "B11 = validity only: decided by Nusrat on 2026-11-13 in Anisha's absence, confirmed by Anisha on 2026-11-13 and updated the same day before the freeze (AUDIT.md section 15): (a) a watchdog stop is a RESULT, counted as a stop of that run (or as its failure when the run fails), never a reason for invalidity (the earlier criterion 'no watchdog stop after start-up' is removed); (b) frozen hashes match, split guard passed and all runs present are added; (c) a setting that fails a criterion is reported as invalid with the reason and is never rerun. No performance thresholds: results are reported whatever they are, with coverage and intervals. finals_v4/check_session_v4.ps1 checks these criteria."
+  "acceptance_criteria": [
+    "leak test passed in Unity (session.json leak_test.passed) and in Python (gt_path.py session)",
+    "frozen hashes match: freeze_v4.require_frozen passes after the session (frozen.json frozen; every v4 config, v3 file v4 reads, B9 Unity file and model file matching its recorded hash)",
+    "split guard passed: the looks and clips of every run (run_###/truth.jsonl) pass data_splits_v4.guard_run with final_evaluation (test split only, no mix, no unlisted name)",
+    "all runs present: runs_per_setting runs numbered 1 to runs_per_setting, each with one results_unity.csv row, one run_### folder and one python_trial_###.json",
+    "every outcome recorded: summary_unity.json and UNITY_FINAL_DONE.json in the Unity folder; FINAL_RUN_DONE.json and summary.json in the bridge folder",
+    "every truth and run file accepted: gesture_data.py for every run_###/truth.jsonl, gt_path.py run for every run folder",
+    "run protocol recorded: bridge run_info.json machine state and resources.csv, plus the free memory and programs running before the session"
+  ],
+  "acceptance_criteria_note": "B11 = validity only: decided by Nusrat on 2026-11-13 in Anisha's absence, confirmed by Anisha on 2026-11-13 and updated the same day before the freeze (AUDIT.md section 15): (a) a watchdog stop is a RESULT, counted as a stop of that run (or as its failure when the run fails), never a reason for invalidity (the earlier criterion 'no watchdog stop after start-up' is removed); (b) frozen hashes match, split guard passed and all runs present are added; (c) a setting that fails a criterion is reported as invalid with the reason and is never rerun. No performance thresholds: results are reported whatever they are, with coverage and intervals. finals_v4/check_session_v4.ps1 checks these criteria.",
+  "false_stop_rule": {
+    "status": "off",
+    "switch_on_only_if": "Nusrat's STOP recordings (development looks and clips) pass the criterion of AUDIT.md 16.15 decision 3: every true STOP is read within 1.0 s with the rule on",
+    "note": "Declared 2026-11-14. No reader value changed; the form of the rule is still Anisha's decision (AUDIT.md 16.14 questions i and ii)."
+  }
 }

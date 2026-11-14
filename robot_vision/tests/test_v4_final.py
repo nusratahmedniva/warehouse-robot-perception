@@ -1,5 +1,6 @@
-"""v4 final modes: a final evaluation or final run is refused unless the v4 configs are frozen with every hash matching, the data
-is test-split only and is what its setting says, and a setting is run / evaluated once (final_guard_v4.py)."""
+"""v4 final modes: a final evaluation, export or run is refused unless the v4 configs are frozen with every hash matching, the data
+is test-split only and is what its setting says, and a setting is run / evaluated / exported once (final_guard_v4.py). Since 2026-11-14
+(AUDIT.md 16.15) the settings are the 13 of the experiments A/B (A1 ... B4, B1_off ... B4_off); the four Task 2 settings are superseded."""
 
 import json
 import sys
@@ -11,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
+import export_csv_v4 as ex  # noqa: E402
 import final_guard_v4 as fg  # noqa: E402
 import freeze_v4 as fz  # noqa: E402
 import gesture_data as gd  # noqa: E402
@@ -22,8 +24,9 @@ import test_hri_sim_v4_trials as tt  # noqa: E402
 import test_v4_frozen as tfz  # noqa: E402
 from bridge import server as S  # noqa: E402
 
-TEST_SPEC = dict(commander_look="sunbox_f2",
-                 clips={"POINT": "point_mixamo_02", "WAIT": "wait_ik_02", "STOP": "stop_ik_02"})
+# the test look and clips of the experiments A/B finals (plan test_assignment); the synthetic scenes show POINT only
+TEST_SPEC = dict(commander_look="sunbox_m_shirt_plaid", clips={"POINT": "point_mixamo_02", "PROCEED": "proceed_ik_03"})
+SCENARIOS = json.loads((ROOT / "configs/v4/experiments/scenarios_ab.json").read_text(encoding="utf-8"))
 
 
 def final_repo(tmp: Path, freeze: bool = True, runs: int = 2) -> Path:
@@ -31,7 +34,8 @@ def final_repo(tmp: Path, freeze: bool = True, runs: int = 2) -> Path:
     repo = tfz.make_repo(tmp)
     plan = repo / fz.PLAN_REL
     d = json.loads(plan.read_text())
-    d.update(runs_per_setting=runs, final_seed=7, task="Task2")
+    real = json.loads((ROOT.parent / fz.PLAN_REL).read_text())
+    d.update(runs_per_setting=runs, final_seed=7, task="Task2", test_assignment=real["test_assignment"])   # make_repo fills a stub
     plan.write_text(json.dumps(d))
     sp = repo / fz.V4_DIR / "data_splits.json"
     d = json.loads(sp.read_text())
@@ -58,12 +62,21 @@ def leak_images(folder: Path, differ: bool = False) -> None:
 
 
 def session(tmp: Path, name: str, n: int = 2, zoom: bool = True, mode: str = "final", seed: int = 7, spec_kw=None, goal="E2",
-            leak: str = "ok", unity_leak=True):
-    """A synthetic session. leak: 'ok' identical image pairs, 'differ' one pixel differs, 'none' no leak_test/ folder.
-    unity_leak: the value Unity records under the leak key in session.json (None = key absent)."""
+            leak: str = "ok", unity_leak=True, setting: str = "A3", extra=None, control_edit=None):
+    """A synthetic session of an experiment setting (default A3: the v4 map, so goal E2 exists). Its session.json carries the experiment, set
+    and lie probability Unity records, and its bridge run folder the control file the server must run that setting with (S.FINAL_CONTROL).
+    leak: 'ok' identical image pairs, 'differ' one pixel differs, 'none' no leak_test/ folder. unity_leak: the value Unity records under the
+    leak key in session.json (None = key absent). extra: more session.json keys; control_edit: a function changing the control dict."""
     spec = sv.SceneSpec(**{**TEST_SPEC, **(spec_kw or {})})
     results = [tt.trial(goal, spec, zoom=zoom, seed=k + 1) for k in range(n)]
-    u, b = sv.export_session(results, tmp, zoom, seed=seed, name=name, mode=mode)
+    entry = fg.plan(REPO_REAL)["settings"][setting]
+    control = json.loads((ROOT / S.FINAL_CONTROL[setting]).read_text(encoding="utf-8"))
+    if control_edit is not None:
+        control_edit(control)
+    u, b = sv.export_session(results, tmp, zoom, seed=seed, name=name, mode=mode, v4_override=control,
+                             session_extra={"experiment": entry["experiment"], "set": entry["set"],
+                                            "lie_probability": SCENARIOS["sets"][entry["set"]]["lie_probability"],
+                                            "final_setting": setting, **(extra or {})})
     if leak != "none":
         leak_images(u / "leak_test", differ=(leak == "differ"))
     if unity_leak is not None:
@@ -77,40 +90,49 @@ class GuardTests(unittest.TestCase):
     def test_markers_are_per_setting_and_per_kind(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            (root / "bridge_a").mkdir()
-            (root / "eval_b").mkdir()
-            fg.write_done(root / "bridge_a", "zoom_on", "run")
-            fg.write_done(root / "eval_b", "zoom_off", "evaluation")
-            self.assertEqual(len(fg.markers(root, "zoom_on", "run")), 1)
-            self.assertEqual(fg.markers(root, "zoom_on", "evaluation"), [])        # a finished run does not block its evaluation
-            self.assertEqual(fg.markers(root, "zoom_off", "run"), [])
+            for n in ("bridge_a", "eval_b", "export_c"):
+                (root / n).mkdir()
+            fg.write_done(root / "bridge_a", "A1", "run")
+            fg.write_done(root / "eval_b", "B1_off", "evaluation")
+            fg.write_done(root / "export_c", "A3", "export")
+            self.assertEqual(len(fg.markers(root, "A1", "run")), 1)
+            self.assertEqual(fg.markers(root, "A1", "evaluation"), [])             # a finished run does not block its evaluation
+            self.assertEqual(fg.markers(root, "A1", "export"), [])                 # nor its export: three kinds, three markers
+            self.assertEqual(fg.markers(root, "B1_off", "run"), [])
+            self.assertEqual(fg.markers(root, "B1", "evaluation"), [])             # B1 is not B1_off: a name is a setting
             with self.assertRaisesRegex(SystemExit, "already run as a final"):
-                fg.ensure_not_done(root, "zoom_on", "run")
+                fg.ensure_not_done(root, "A1", "run")
             with self.assertRaisesRegex(SystemExit, "already evaluated as a final"):
-                fg.ensure_not_done(root, "zoom_off", "evaluation")
-            fg.ensure_not_done(root, "bystanders", "run")                          # another setting is free
+                fg.ensure_not_done(root, "B1_off", "evaluation")
+            with self.assertRaisesRegex(SystemExit, "already exported as a final"):
+                fg.ensure_not_done(root, "A3", "export")
+            fg.ensure_not_done(root, "A4", "run")                                  # another setting is free
+            fg.ensure_not_done(root, "A2_left", "export")                          # and A2_left is not A2_right
 
     def test_never_overwritten_and_unreadable_markers_are_ignored(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "x").mkdir()
-            fg.write_done(root / "x", "zoom_on", "run")
+            fg.write_done(root / "x", "A1", "run")
             with self.assertRaises(FileExistsError):
-                fg.write_done(root / "x", "zoom_on", "run")
+                fg.write_done(root / "x", "A1", "run")
             (root / "y").mkdir()
             (root / "y" / fg.MARKERS["run"]).write_text("{not json")
-            self.assertEqual(len(fg.markers(root, "zoom_on", "run")), 1)
-            self.assertEqual(fg.markers(root / "missing", "zoom_on", "run"), [])
+            self.assertEqual(len(fg.markers(root, "A1", "run")), 1)
+            self.assertEqual(fg.markers(root / "missing", "A1", "run"), [])
 
-    def test_unknown_setting_is_refused(self):
+    def test_unknown_and_superseded_settings_are_refused(self):
         with self.assertRaisesRegex(SystemExit, "unknown final setting"):
             fg.ensure_not_done(".", "zoom_sideways", "run")
+        for old in ("zoom_on", "zoom_off", "bystanders", "zoom_on_repeat"):            # the four Task 2 settings are superseded
+            with self.assertRaisesRegex(SystemExit, "unknown final setting"):
+                fg.ensure_not_done(".", old, "run")
 
     def test_the_marker_records_what_was_done(self):
         with tempfile.TemporaryDirectory() as d:
-            p = fg.write_done(d, "bystanders", "evaluation", {"git_commit": "abc", "runs": 10})
+            p = fg.write_done(d, "B4_off", "evaluation", {"git_commit": "abc", "runs": 10})
             rec = json.loads(p.read_text())
-            self.assertEqual((rec["setting"], rec["kind"], rec["runs"]), ("bystanders", "evaluation", 10))
+            self.assertEqual((rec["setting"], rec["kind"], rec["runs"]), ("B4_off", "evaluation", 10))
             self.assertIn("written", rec)
 
 
@@ -123,21 +145,64 @@ class SettingChecks(unittest.TestCase):
     def test_a_matching_session_is_fine(self):
         with tempfile.TemporaryDirectory() as d:
             repo = final_repo(Path(d) / "r")
-            self.assertEqual(fg.check_setting("zoom_on", self.runs(Path(d)), repo), [])
+            self.assertEqual(fg.check_setting("A3", self.runs(Path(d)), repo), [])
+
+    def test_the_off_twin_is_a_session_with_detection_off(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = final_repo(Path(d) / "r")
+            r = self.runs(Path(d), setting="B3_off")
+            self.assertEqual(fg.check_setting("B3_off", r, repo), [])
+            p = " | ".join(fg.check_setting("B3", r, repo))                       # detection off run, checked as B3 (detection on)
+            self.assertIn("lie_detection.second_opinion is False but setting B3 needs True", p)
+            self.assertIn("lie_detection.reject_impossible is False but setting B3 needs True", p)
+            self.assertNotIn("backtrack", p)                                       # backtrack is off in both
 
     def test_each_mismatch_is_reported(self):
         with tempfile.TemporaryDirectory() as d:
             repo = final_repo(Path(d) / "r")
-            r = self.runs(Path(d), n=3, zoom=False, mode="development", seed=1)
-            p = " | ".join(fg.check_setting("zoom_on", r, repo))
-            for want in ("needs zoom on", "3 runs, the plan has 2", "seed 1 but the plan's final seed is 7", "not 'final'"):
+            r = self.runs(Path(d), n=3, mode="development", seed=1)
+            p = " | ".join(fg.check_setting("A3", r, repo))
+            for want in ("3 runs, the plan has 2", "seed 1 but the plan's final seed is 7", "not 'final'"):
                 self.assertIn(want, p)
         with tempfile.TemporaryDirectory() as d:
             repo = final_repo(Path(d) / "r")
-            r = self.runs(Path(d))
-            self.assertTrue(any("needs bystanders" in x for x in fg.check_setting("bystanders", r, repo)))
-            self.assertTrue(any("needs zoom off" in x for x in fg.check_setting("zoom_off", r, repo)))
-            self.assertEqual(fg.check_setting("zoom_on_repeat", r, repo), [])
+            r = self.runs(Path(d))                                                  # an A3 session
+            p = " | ".join(fg.check_setting("B3", r, repo))                          # checked as B3
+            self.assertIn("experiment 'A3' but setting B3 is experiment B3", p)
+            self.assertIn("set 'A' but setting B3 is set B", p)
+            self.assertIn("lie probability 0.0 but set B has 0.2", p)
+            p = " | ".join(fg.check_setting("A1", r, repo))                          # the corridor setting: another map
+            self.assertIn("roadmap is 'configs/v4/roadmap.json' but setting A1 needs 'configs/v4/experiments/roadmap_a1.json'", p)
+
+    def test_unity_records_a_float32_lie_probability_and_the_setting_it_ran(self):
+        """Read in Unity's TrialRunnerV4Experiment (16.16 decision 7): lie_probability is a float (0.2f), final_setting the setting name."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = final_repo(Path(d) / "r")
+            r = self.runs(Path(d), setting="B3", extra={"lie_probability": 0.20000000298023224})
+            self.assertEqual(fg.check_setting("B3", r, repo), [])                       # float32 0.2f is 0.2
+        with tempfile.TemporaryDirectory() as d:
+            repo = final_repo(Path(d) / "r")
+            r = self.runs(Path(d), setting="B3", extra={"final_setting": "B4"})
+            self.assertIn("Unity ran final setting 'B4', not 'B3'", " | ".join(fg.check_setting("B3", r, repo)))
+        with tempfile.TemporaryDirectory() as d:
+            repo = final_repo(Path(d) / "r")
+            r = self.runs(Path(d), setting="B3", extra={"lie_probability": 0.25})
+            self.assertIn("lie probability 0.25 but set B has 0.2", " | ".join(fg.check_setting("B3", r, repo)))
+        with tempfile.TemporaryDirectory() as d:                                       # no final_setting recorded (older sessions): not a problem
+            repo = final_repo(Path(d) / "r")
+            r = self.runs(Path(d), setting="B3", extra={"final_setting": ""})
+            self.assertEqual(fg.check_setting("B3", r, repo), [])
+
+    def test_looks_and_clips_must_be_the_settings_test_assignment(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = final_repo(Path(d) / "r")
+            r = self.runs(Path(d), spec_kw={"commander_look": "sunbox_f2", "clips": {"POINT": "point_mixamo_02", "PROCEED": "proceed_ik_03"}})
+            p = " | ".join(fg.check_setting("A3", r, repo))                          # sunbox_f2 is a test look, but not this setting's
+            self.assertIn("looks ['sunbox_f2'] / clips [] are not in the setting's test assignment", p)
+        with tempfile.TemporaryDirectory() as d:
+            repo = final_repo(Path(d) / "r")
+            r = self.runs(Path(d), spec_kw={"clips": {"POINT": "wait_ik_02", "PROCEED": "proceed_ik_03"}})
+            self.assertIn("clips ['wait_ik_02']", " | ".join(fg.check_setting("A3", r, repo)))
 
     def test_blanks_in_the_plan_are_reported(self):
         with tempfile.TemporaryDirectory() as d:
@@ -146,8 +211,66 @@ class SettingChecks(unittest.TestCase):
             p = json.loads(plan.read_text())
             p["final_seed"] = None
             plan.write_text(json.dumps(p))
-            self.assertIn("final_plan.json: final_seed is blank", fg.check_setting("zoom_on", [object()], repo))
+            self.assertIn("final_plan.json: final_seed is blank", fg.check_setting("A3", [object()], repo))
         self.assertEqual(fg.check_setting("nonsense", [], REPO_REAL), ["unknown setting 'nonsense'"])
+
+
+class PlanAndControlFiles(unittest.TestCase):
+    """AUDIT.md 16.15: the 13 settings, their control files and maps agree with each other and with scenarios_ab.json."""
+
+    PLAN = fg.plan(fz.REPO)
+
+    def test_every_setting_has_its_control_file_and_it_fits(self):
+        self.assertEqual(set(S.FINAL_CONTROL), set(self.PLAN["settings"]))
+        for setting, f in S.FINAL_CONTROL.items():
+            control = json.loads((ROOT / f).read_text(encoding="utf-8"))
+            self.assertEqual(fg.control_problems(setting, control, fz.REPO), [], setting)
+            S.check_final_control(setting, f)
+        self.assertEqual({S.FINAL_CONTROL[s] for s in S.FINAL_CONTROL}, {f"configs/v4/experiments/{n}.json" for n in (
+            "control_lie_on", "control_lie_on_a1", "control_lie_on_a2_right", "control_lie_on_a2_left",
+            "control_lie_off", "control_lie_off_a1", "control_lie_off_a2_right")})        # no off file for A2_left: it has no Set B twin
+        self.assertEqual(S.FINAL_CONTROL["B1_off"], "configs/v4/experiments/control_lie_off_a1.json")
+
+    def test_a_control_file_of_another_setting_is_found(self):
+        on = json.loads((ROOT / "configs/v4/experiments/control_lie_on.json").read_text())
+        off = json.loads((ROOT / "configs/v4/experiments/control_lie_off.json").read_text())
+        self.assertIn("lie_detection.second_opinion is False but setting B3 needs True", fg.control_problems("B3", off, fz.REPO)[0])
+        self.assertEqual(len(fg.control_problems("B3_off", on, fz.REPO)), 2)            # second opinion and reject impossible
+        a1 = json.loads((ROOT / "configs/v4/experiments/control_lie_on_a1.json").read_text())
+        self.assertTrue(any("roadmap is" in x for x in fg.control_problems("A3", a1, fz.REPO)))
+        backtrack = json.loads(json.dumps(on))
+        backtrack["lie_detection"]["backtrack"] = True                                  # backtrack stays off in every experiment (16.10.2)
+        self.assertTrue(any("backtrack" in x for x in fg.control_problems("A3", backtrack, fz.REPO)))
+
+    def test_entries_agree_with_scenarios_ab(self):
+        for setting, e in self.PLAN["settings"].items():
+            n = e["experiment"][1:]
+            sc = SCENARIOS["scenarios"][n]
+            side = "_left" if "_left" in setting else "_right" if "_right" in setting else ""
+            want_map = {"": sc["map"], "_right": "turn", "_left": "turn_left"}[side]
+            self.assertEqual(e["map"], want_map, setting)
+            self.assertEqual(e["lie_detection"], "off" if setting.endswith("_off") else "on", setting)
+            self.assertEqual(e["set"], e["experiment"][0], setting)
+            self.assertEqual(SCENARIOS["detection"][e["lie_detection"]], fg.detection_switches(e["lie_detection"], fz.REPO))
+            if e["map"] in SCENARIOS["maps"]:
+                road = json.loads((ROOT / e["roadmap"]).read_text(encoding="utf-8"))
+                self.assertEqual(road["start"], SCENARIOS["maps"][e["map"]]["start"], setting)
+            else:
+                self.assertEqual(e["roadmap"], "configs/v4/roadmap.json")
+        self.assertEqual(SCENARIOS["sets"]["A"]["lie_probability"], 0.0)
+        self.assertEqual(SCENARIOS["sets"]["B"]["lie_probability"], 0.2)
+
+    def test_the_comparisons_of_the_combined_table_follow_from_the_plan(self):
+        names = list(self.PLAN["settings"])
+        pairs = ex.comparisons(names, self.PLAN)
+        kinds = [(c["kind"], c["x"], c["y"]) for c in pairs]
+        for pair in (("A vs B", "A1", "B1"), ("A vs B", "A2_right", "B2_right"), ("A vs B", "A3", "B3"), ("A vs B", "A4", "B4"),
+                     ("B on vs off", "B1_off", "B1"), ("B on vs off", "B2_right_off", "B2_right"), ("B on vs off", "B3_off", "B3"),
+                     ("B on vs off", "B4_off", "B4"), ("A2 right vs left", "A2_left", "A2_right")):
+            self.assertIn(pair, kinds)
+        self.assertEqual(len(pairs), 9)                                                 # A2_left has no B twin; nothing else is compared
+        self.assertTrue(all(c["available"] for c in pairs))
+        self.assertFalse(any(c["available"] for c in ex.comparisons(["A1"], self.PLAN)))
 
 
 REPO_REAL = fz.REPO
@@ -170,34 +293,38 @@ class FinalEvaluationTests(unittest.TestCase):
 
     def test_the_real_repository_is_not_frozen_so_a_final_is_refused(self):
         with self.assertRaisesRegex(SystemExit, "not frozen"):
-            ef.evaluate_final("zoom_on", [], REPO_REAL, self.out)
+            ef.evaluate_final("A3", [], REPO_REAL, self.out)
 
     def test_a_frozen_test_session_is_evaluated_once(self):
-        out, res = ef.evaluate_final("zoom_on", self.pairs(), self.repo, self.out)
-        self.assertTrue(out.name.startswith("hri_eval_final_v4_zoom_on_"))
+        out, res = ef.evaluate_final("A3", self.pairs(), self.repo, self.out)
+        self.assertTrue(out.name.startswith("hri_eval_final_v4_A3_"))
         for name in ("eval.json", "eval.md", "run.json", "FINAL_DONE.json", "config_used/frozen.json", "config_used/control.json",
                      "config_used/final_plan.json"):
             self.assertTrue((out / name).exists(), name)
-        self.assertEqual(res["final_setting"], "zoom_on")
+        self.assertEqual(res["final_setting"], "A3")
+        exp = res["experiment"]                                                     # AUDIT.md 16.15 item 6: the experiment's own numbers
+        self.assertEqual((exp["setting"], exp["plan_entry"]["experiment"], exp["summary"]["runs"], len(exp["runs_table"])), ("A3", "A3", 2, 2))
+        self.assertEqual(exp["summary"]["success"]["n"], 2)
+        self.assertIn("### Experiment numbers, setting A3", (out / "eval.md").read_text(encoding="utf-8"))
         self.assertIn("TEST looks", res["splits"])
         done = json.loads((out / "FINAL_DONE.json").read_text())
-        self.assertEqual((done["setting"], done["runs"], done["git_commit"] is not None), ("zoom_on", 2, True))
+        self.assertEqual((done["setting"], done["runs"], done["git_commit"] is not None), ("A3", 2, True))
         self.assertEqual(done["frozen_sha256"], fz.sha256_lf(self.repo / fz.FROZEN_REL))
         with self.assertRaisesRegex(SystemExit, "already evaluated as a final"):
-            ef.evaluate_final("zoom_on", self.pairs(name="again"), self.repo, self.out)
-        other, _ = ef.evaluate_final("zoom_off", self.pairs(name="off", zoom=False), self.repo, self.out)   # another setting is free
-        self.assertTrue(other.name.startswith("hri_eval_final_v4_zoom_off_"))
+            ef.evaluate_final("A3", self.pairs(name="again"), self.repo, self.out)
+        other, _ = ef.evaluate_final("B3_off", self.pairs(name="off", setting="B3_off"), self.repo, self.out)   # another setting is free
+        self.assertTrue(other.name.startswith("hri_eval_final_v4_B3_off_"))
 
     def test_a_crash_leaves_no_marker_and_does_not_block(self):
         real = ev.evaluate
         ev.evaluate = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
         try:
             with self.assertRaises(RuntimeError):
-                ef.evaluate_final("zoom_on", self.pairs(), self.repo, self.out)
+                ef.evaluate_final("A3", self.pairs(), self.repo, self.out)
         finally:
             ev.evaluate = real
-        self.assertEqual(fg.markers(self.out, "zoom_on", "evaluation"), [])
-        ef.evaluate_final("zoom_on", self.pairs(name="retry"), self.repo, self.out)
+        self.assertEqual(fg.markers(self.out, "A3", "evaluation"), [])
+        ef.evaluate_final("A3", self.pairs(name="retry"), self.repo, self.out)
 
     def test_a_changed_config_after_the_freeze_refuses_before_any_data_is_read(self):
         f = self.repo / fz.V4_DIR / "gesture_reader.json"
@@ -207,7 +334,7 @@ class FinalEvaluationTests(unittest.TestCase):
         ev.load_sessions = lambda *a, **k: called.append(1)
         try:
             with self.assertRaisesRegex(SystemExit, "freeze is broken"):
-                ef.evaluate_final("zoom_on", self.pairs(), self.repo, self.out)
+                ef.evaluate_final("A3", self.pairs(), self.repo, self.out)
         finally:
             ev.load_sessions = real
         self.assertEqual(called, [])
@@ -217,12 +344,12 @@ class FinalEvaluationTests(unittest.TestCase):
                                                     "clips": {"POINT": "point_mixamo_01", "WAIT": "wait_ik_01",
                                                               "STOP": "stop_ik_01"}})]
         with self.assertRaisesRegex(SystemExit, "--final-evaluation given"):
-            ef.evaluate_final("zoom_on", pairs, self.repo, self.out)
+            ef.evaluate_final("A3", pairs, self.repo, self.out)
 
     def test_a_mix_of_development_and_test_is_refused(self):
         pairs = [session(self.root, "mix", spec_kw={"bystander_offsets_m": [(1.2, 0.3)], "bystander_looks": ["sunbox_m1"]})]
         with self.assertRaisesRegex(SystemExit, "mixes development and test"):
-            ef.evaluate_final("bystanders", pairs, self.repo, self.out)
+            ef.evaluate_final("A3", pairs, self.repo, self.out)
 
     def test_placeholder_names_cannot_be_frozen_so_no_final_can_start(self):
         repo = tfz.make_repo(self.root / "p")
@@ -234,18 +361,23 @@ class FinalEvaluationTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "placeholders"):
             fz.freeze(repo)
         with self.assertRaisesRegex(SystemExit, "not frozen"):
-            ef.evaluate_final("zoom_on", self.pairs(name="ph"), repo, self.out)
+            ef.evaluate_final("A3", self.pairs(name="ph"), repo, self.out)
 
-    def test_wrong_zoom_runs_seed_or_unity_mode_are_refused(self):
-        with self.assertRaisesRegex(SystemExit, "needs zoom on"):
-            ef.evaluate_final("zoom_on", self.pairs(name="a", zoom=False), self.repo, self.out)
+    def test_wrong_runs_seed_mode_experiment_control_or_looks_are_refused(self):
         with self.assertRaisesRegex(SystemExit, "the plan has 2 per setting"):
-            ef.evaluate_final("zoom_on", self.pairs(name="b", n=3), self.repo, self.out)
+            ef.evaluate_final("A3", self.pairs(name="b", n=3), self.repo, self.out)
         with self.assertRaisesRegex(SystemExit, "final seed is 7"):
-            ef.evaluate_final("zoom_on", self.pairs(name="c", seed=1), self.repo, self.out)
+            ef.evaluate_final("A3", self.pairs(name="c", seed=1), self.repo, self.out)
         with self.assertRaisesRegex(SystemExit, "not 'final'"):
-            ef.evaluate_final("zoom_on", self.pairs(name="d", mode="development"), self.repo, self.out)
-        self.assertEqual(fg.markers(self.out, "zoom_on", "evaluation"), [])          # refusals leave no marker
+            ef.evaluate_final("A3", self.pairs(name="d", mode="development"), self.repo, self.out)
+        with self.assertRaisesRegex(SystemExit, "experiment 'A3' but setting B3 is experiment B3"):          # the other experiment's name
+            ef.evaluate_final("B3", self.pairs(name="e"), self.repo, self.out)
+        with self.assertRaisesRegex(SystemExit, "lie_detection.second_opinion is False but setting A3 needs True"):   # detection off run as A3
+            ef.evaluate_final("A3", self.pairs(name="f", setting="B3_off", extra={"experiment": "A3", "set": "A", "lie_probability": 0.0}),
+                              self.repo, self.out)
+        with self.assertRaisesRegex(SystemExit, "not in the setting's test assignment"):
+            ef.evaluate_final("A3", self.pairs(name="g", spec_kw={"commander_look": "sunbox_f2"}), self.repo, self.out)
+        self.assertEqual(fg.markers(self.out, "A3", "evaluation"), [])          # refusals leave no marker
 
     def refused_for_leak(self, why: str, **kw):
         called = []
@@ -253,12 +385,12 @@ class FinalEvaluationTests(unittest.TestCase):
         ev.load_sessions = lambda *a, **k: called.append(1)
         try:
             with self.assertRaisesRegex(SystemExit, "leak test has not passed") as cm:
-                ef.evaluate_final("zoom_on", [session(self.root, kw.pop("name", "lk"), **kw)], self.repo, self.out)
+                ef.evaluate_final("A3", [session(self.root, kw.pop("name", "lk"), **kw)], self.repo, self.out)
         finally:
             ev.load_sessions = real
         self.assertIn(why, str(cm.exception))
         self.assertEqual(called, [])                                           # refused before any test data was read
-        self.assertEqual(fg.markers(self.out, "zoom_on", "evaluation"), [])    # and no FINAL_DONE.json
+        self.assertEqual(fg.markers(self.out, "A3", "evaluation"), [])    # and no FINAL_DONE.json
 
     def test_the_leak_test_is_enforced_before_the_final_evaluation(self):
         self.refused_for_leak("Unity's own leak test failed", name="u", unity_leak=False)
@@ -268,15 +400,15 @@ class FinalEvaluationTests(unittest.TestCase):
 
     def test_a_passing_leak_test_is_recorded_by_the_evaluation(self):
         pairs = self.pairs()
-        out, _ = ef.evaluate_final("zoom_on", pairs, self.repo, self.out)
+        out, _ = ef.evaluate_final("A3", pairs, self.repo, self.out)
         rec = json.loads((pairs[0][0] / "leak_test" / "leak_test.json").read_text())
         self.assertTrue(rec["passed"])                                         # written by the independent check, not by Unity
         self.assertTrue((out / "FINAL_DONE.json").exists())
 
     def test_a_run_marker_does_not_stop_the_evaluation(self):
         (self.out / "bridge_x").mkdir()
-        fg.write_done(self.out / "bridge_x", "zoom_on", "run")
-        out, _ = ef.evaluate_final("zoom_on", self.pairs(), self.repo, self.out)
+        fg.write_done(self.out / "bridge_x", "A3", "run")
+        out, _ = ef.evaluate_final("A3", self.pairs(), self.repo, self.out)
         self.assertTrue((out / "FINAL_DONE.json").exists())
 
 
@@ -293,7 +425,7 @@ class UnconfirmedKeyTests(unittest.TestCase):
             u, b = session(Path(d), "s")
             try:
                 with self.assertRaisesRegex(SystemExit, "placeholder, not confirmed by Nusrat"):
-                    ef.evaluate_final("zoom_on", [(u, b)], repo, Path(d) / "out")
+                    ef.evaluate_final("A3", [(u, b)], repo, Path(d) / "out")
             finally:
                 rp.set_active_roots({})
 
@@ -309,15 +441,15 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
 
     def test_refused_while_the_configs_are_not_frozen(self):
         with self.assertRaisesRegex(SystemExit, "not frozen"):
-            S.preflight_final(self.cfg, "guide", "zoom_on")
+            S.preflight_final(self.cfg, "guide", "A3")
 
     def test_protocol_2_and_hello_mode_are_refused(self):
         fz.require_frozen = lambda *a, **k: {}
         v2, _ = S.load_config()
         with self.assertRaisesRegex(SystemExit, "protocol 3"):
-            S.preflight_final(v2, "guide", "zoom_on")
+            S.preflight_final(v2, "guide", "A3")
         with self.assertRaisesRegex(SystemExit, "protocol 3"):
-            S.preflight_final(self.cfg, "hello", "zoom_on")
+            S.preflight_final(self.cfg, "hello", "A3")
 
     def test_unknown_setting_zoom_mismatch_and_earlier_run(self):
         fz.require_frozen = lambda *a, **k: {}
@@ -326,13 +458,35 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(SystemExit, "unknown final setting"):
                 S.preflight_final(cfg, "guide", "nonsense")
             with self.assertRaisesRegex(SystemExit, "must run with --control-config"):
-                S.preflight_final(cfg, "guide", "zoom_off")                          # P11: control.json is not zoom_off's file
-            S.preflight_final(cfg, "guide", "zoom_off", "configs/v4/control_zoom_off.json")
-            S.preflight_final(cfg, "guide", "zoom_on", "configs/v4/control_zoom_on.json")
+                S.preflight_final(cfg, "guide", "B3_off")                            # P11: control.json is not B3_off's file
+            with self.assertRaisesRegex(SystemExit, "must run with --control-config"):
+                S.preflight_final(cfg, "guide", "B3_off", "configs/v4/experiments/control_lie_on.json")   # detection ON file for an OFF setting
+            S.preflight_final(cfg, "guide", "B3_off", "configs/v4/experiments/control_lie_off.json")
+            S.preflight_final(cfg, "guide", "A3", "configs/v4/experiments/control_lie_on.json")
+            S.preflight_final(cfg, "guide", "B2_right_off", "configs/v4/experiments/control_lie_off_a2_right.json")
             (Path(d) / "bridge_guide_1").mkdir()
-            fg.write_done(Path(d) / "bridge_guide_1", "zoom_on", "run")
+            fg.write_done(Path(d) / "bridge_guide_1", "A3", "run")
             with self.assertRaisesRegex(SystemExit, "already run as a final"):
-                S.preflight_final(cfg, "guide", "zoom_on", "configs/v4/control_zoom_on.json")
+                S.preflight_final(cfg, "guide", "A3", "configs/v4/experiments/control_lie_on.json")
+            S.preflight_final(cfg, "guide", "B3", "configs/v4/experiments/control_lie_on.json")   # the B3 twin is another setting
+
+    def test_a_control_file_that_does_not_fit_its_setting_is_refused_even_under_the_right_name(self):
+        """The file name is right but the content is another setting's (detection or map): the preflight reads the content (16.15)."""
+        fz.require_frozen = lambda *a, **k: {}
+        wrong = json.loads((ROOT / "configs/v4/experiments/control_lie_on.json").read_text())
+        wrong["lie_detection"]["second_opinion"] = False
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**self.cfg, "paths": {"output_root": d}}
+            f = ROOT / "configs/v4/experiments/control_lie_on.json"
+            real = f.read_text(encoding="utf-8")
+            real_read = S.dio.read_json
+            S.dio.read_json = lambda p: wrong if Path(p).name == "control_lie_on.json" else real_read(p)
+            try:
+                with self.assertRaisesRegex(SystemExit, r"setting 'A3' refused: lie_detection.second_opinion is False but setting A3 needs True"):
+                    S.preflight_final(cfg, "guide", "A3", "configs/v4/experiments/control_lie_on.json")
+            finally:
+                S.dio.read_json = real_read
+            self.assertEqual(f.read_text(encoding="utf-8"), real)
 
     async def test_a_final_run_writes_its_setting_and_the_done_marker_only_after_a_trial(self):
         from test_v4_integration import FakeWorkerV4
@@ -348,12 +502,12 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory() as d:
                 cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}, "perception_workers": {"mode": "threads"}}   # these tests patch the thread factory
                 cfg_path = ROOT / "configs" / "v4" / "bridge.json"
-                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
-                                  control_config="configs/v4/control_zoom_on.json")
+                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="A3",
+                                  control_config="configs/v4/experiments/control_lie_on.json")
                 self.assertTrue((out / "FINAL_SETTING.json").exists())
-                self.assertEqual(json.loads((out / "FINAL_SETTING.json").read_text())["setting"], "zoom_on")
+                self.assertEqual(json.loads((out / "FINAL_SETTING.json").read_text())["setting"], "A3")
                 self.assertFalse((out / "FINAL_RUN_DONE.json").exists())             # no trial finished: no marker, no block
-                self.assertEqual(fg.markers(d, "zoom_on", "run"), [])
+                self.assertEqual(fg.markers(d, "A3", "run"), [])
         finally:
             S.make_perception_worker_v4 = real
 
@@ -371,19 +525,250 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory() as d:
                 cfg = {**self.cfg, "port": 0, "paths": {"output_root": d}, "perception_workers": {"mode": "threads"}}   # these tests patch the thread factory
                 cfg_path = ROOT / "configs" / "v4" / "bridge.json"
-                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
-                                  control_config="configs/v4/control_zoom_on.json")
+                out = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="A3",
+                                  control_config="configs/v4/experiments/control_lie_on.json")
                 marker = json.loads((out / "FINAL_RUN_DONE.json").read_text())
-                self.assertEqual((marker["setting"], marker["kind"], marker["trials_written"]), ("zoom_on", "run", 1))
+                self.assertEqual((marker["setting"], marker["kind"], marker["trials_written"]), ("A3", "run", 1))
                 time.sleep(1.1)                                                       # run folders are named by the second
                 with self.assertRaisesRegex(SystemExit, "already run as a final"):
-                    await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="zoom_on",
-                                  control_config="configs/v4/control_zoom_on.json")
-                other = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="bystanders",
-                                      control_config="configs/v4/control_zoom_on.json")
+                    await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="A3",
+                                  control_config="configs/v4/experiments/control_lie_on.json")
+                other = await S.run(cfg, cfg_path, "guide", duration_s=0.3, perception="vision", task="Task2", final_setting="B3",
+                                      control_config="configs/v4/experiments/control_lie_on.json")
                 self.assertTrue((other / "FINAL_SETTING.json").exists())
         finally:
             S.make_perception_worker_v4 = real
+
+
+class SummaryTests(unittest.TestCase):
+    """export_csv_v4.summarize: the numbers of one setting, each with its count (the same code the final evaluation and the combined table use)."""
+
+    def rows(self):
+        base = dict(outcome="SUCCESS", failure_reason="none", time_s=100.0, trail_over_optimal=1.1, max_distance_from_optimal_m=0.4,
+                    share_within_corridor=0.9, stops=0, stop_s=0.0, collisions=0, lies_given=2, lies_detected=1, lies_corrected=1,
+                    lies_fooled=0, watchdog_stops=0)
+        return [dict(base), dict(base, time_s=120.0, stops=2, stop_s=3.5, lies_detected=2, lies_corrected=2),
+                dict(base, outcome="FAILURE", failure_reason="timeout", time_s=270.0, lies_fooled=1, lies_corrected=0, watchdog_stops=1),
+                dict(base, outcome="FAILURE", failure_reason="wrong_goal", time_s=90.0, collisions=1),
+                dict(base, outcome="FAILURE", failure_reason="weird"),
+                dict(base, outcome=None, failure_reason=None, time_s=None, trail_over_optimal=None, lies_given=None, lies_detected=None,
+                     lies_corrected=None, lies_fooled=None, stops=None, collisions=None, watchdog_stops=None)]
+
+    def test_counts_rates_and_intervals(self):
+        import hri_analysis as ha
+        sm = ex.summarize(self.rows(), 1.96)
+        self.assertEqual((sm["runs"], sm["runs_with_an_outcome"]), (6, 5))
+        self.assertEqual((sm["success"]["k"], sm["success"]["n"], sm["success"]["ratio"]), (2, 5, 0.4))
+        self.assertEqual(sm["success"]["wilson95"], list(ha.wilson(2, 5, 1.96)))
+        self.assertEqual(sm["failure_kinds"], {"collision": 0, "timeout": 1, "aborted": 0, "wrong_goal": 1, "other": 1})
+        self.assertEqual(sm["time_s"]["all_runs"], {"n": 5, "median": 100.0})
+        self.assertEqual(sm["time_s"]["success_runs"], {"n": 2, "median": 110.0})
+        self.assertEqual(sm["trail_over_optimal"], {"n": 5, "median": 1.1})
+        ls = sm["lies"]
+        self.assertEqual((ls["runs_evaluated"], ls["given"], ls["detected"]["total"], ls["corrected"]["total"], ls["fooled"]["total"]), (5, 10, 6, 5, 1))
+        self.assertEqual((ls["fooled"]["k"], ls["fooled"]["n"], ls["fooled"]["wilson95"]), (1, 10, list(ha.wilson(1, 10, 1.96))))
+        self.assertEqual((sm["safety_stops"]["runs_counted"], sm["safety_stops"]["runs_with_a_stop"]["k"], sm["safety_stops"]["stops_total"],
+                          sm["safety_stops"]["seconds_in_stops"]), (5, 1, 2, 3.5))
+        self.assertEqual((sm["watchdog_stops"]["runs_counted"], sm["watchdog_stops"]["stops_total"], sm["watchdog_stops"]["runs_with_a_stop"]["k"]), (5, 1, 1))
+        self.assertEqual((sm["collisions"]["runs_with_a_collision"], sm["collisions"]["collisions_total"]), (1, 1))
+        self.assertIn("**SUCCESS 2/5 = 0.4**", ex.summary_markdown("B3", sm))
+
+    def test_nothing_is_guessed_without_data_or_without_lies(self):
+        sm = ex.summarize([], 1.96)
+        self.assertEqual((sm["success"]["ratio"], sm["success"]["wilson95"]), (ev.NOT_EVALUATED, ev.NOT_EVALUATED))
+        self.assertEqual(sm["time_s"]["all_runs"]["median"], ev.NOT_EVALUATED)
+        rows = [dict(outcome="SUCCESS", failure_reason="none", time_s=50.0, lies_given=0, lies_detected=0, lies_corrected=0, lies_fooled=0)] * 3
+        sm = ex.summarize(rows, 1.96)                                                  # Set A: no lies, so no detection rates
+        self.assertEqual((sm["lies"]["given"], sm["lies"]["detected"]["rate"]), (0, "no lies given"))
+        self.assertIn("no lies, so no detection rates", ex.summary_markdown("A3", sm))
+
+
+class NewcombeTests(unittest.TestCase):
+    """The Newcombe hybrid-score interval of a difference of two rates (AUDIT.md 16.16 decision 6), in percentage points."""
+
+    def test_the_published_example(self):
+        # Newcombe (1998), Statistics in Medicine 17, example 1 (56/70 against 48/80): difference 0.2000, 95 % interval 0.0524 to 0.3339 (method 10)
+        r = ex.newcombe(48, 80, 56, 70)
+        self.assertEqual((r["difference_pp"], r["lo_pp"], r["hi_pp"]), (20.0, 5.2, 33.4))
+        self.assertEqual(r["method"], "Newcombe hybrid score")
+
+    def test_the_sign_follows_y_minus_x_and_the_interval_is_symmetric_for_equal_rates(self):
+        up, down = ex.newcombe(10, 20, 15, 20), ex.newcombe(15, 20, 10, 20)
+        self.assertEqual((up["difference_pp"], down["difference_pp"]), (25.0, -25.0))
+        self.assertEqual((up["lo_pp"], up["hi_pp"]), (-down["hi_pp"], -down["lo_pp"]))
+        eq = ex.newcombe(0, 20, 0, 20)
+        self.assertEqual((eq["difference_pp"], eq["lo_pp"], eq["hi_pp"]), (0.0, -16.1, 16.1))       # 0/20 against 0/20: still wide
+
+    def test_the_interval_stays_within_minus_and_plus_100_and_contains_the_difference(self):
+        for k1, k2 in ((0, 20), (20, 0), (20, 20), (1, 19), (7, 13)):
+            r = ex.newcombe(k1, 20, k2, 20)
+            self.assertLessEqual(-100.0, r["lo_pp"])
+            self.assertLessEqual(r["hi_pp"], 100.0)
+            self.assertLessEqual(r["lo_pp"], r["difference_pp"])
+            self.assertLessEqual(r["difference_pp"], r["hi_pp"])
+
+    def test_a_rate_without_a_denominator_is_not_evaluated(self):
+        r = ex.newcombe(0, 0, 1, 2)
+        self.assertEqual((r["difference_pp"], r["lo_pp"], r["hi_pp"]), (ev.NOT_EVALUATED,) * 3)
+
+
+class FinalExportTests(unittest.TestCase):
+    """export_csv_v4 final mode (AUDIT.md 16.15 item 5): the same gates as the final evaluation, its own run-once marker, and one combined table."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.repo = final_repo(self.root / "r")
+        self.out = self.root / "outputs"
+        self.out.mkdir()
+
+    def tearDown(self):
+        rp.set_active_roots({})
+        self.tmp.cleanup()
+
+    def pairs(self, **kw):
+        return [session(self.root, kw.pop("name", "s"), **kw)]
+
+    def test_the_real_repository_is_not_frozen_so_an_export_is_refused(self):
+        with self.assertRaisesRegex(SystemExit, "not frozen"):
+            ex.export_final("A3", [], REPO_REAL, self.out)
+
+    def test_a_frozen_test_session_is_exported_once_with_its_own_marker(self):
+        out, rows, sm = ex.export_final("A3", self.pairs(), self.repo, self.out)
+        self.assertTrue(out.name.startswith("export_csv_v4_final_A3_"))
+        for name in ("runs.csv", "dialogs.csv", "summary.json", "export.json", "run.json", "FINAL_EXPORT_DONE.json", "config_used/frozen.json",
+                     "config_used/final_plan.json", "config_used/export_csv.json"):
+            self.assertTrue((out / name).exists(), name)
+        self.assertEqual(len(rows), 2)
+        import csv
+        with (out / "runs.csv").open(encoding="utf-8") as f:
+            table = list(csv.DictReader(f))
+        self.assertEqual([(r["final_setting"], r["experiment"], r["set"]) for r in table], [("A3", "A3", "A")] * 2)
+        for col in ("share_within_corridor", "max_distance_from_optimal_m", "watchdog_stops", "lies_given"):
+            self.assertIn(col, table[0])
+        done = json.loads((out / "FINAL_EXPORT_DONE.json").read_text())
+        self.assertEqual((done["setting"], done["kind"], done["runs"]), ("A3", "export", 2))
+        self.assertEqual(done["frozen_sha256"], fz.sha256_lf(self.repo / fz.FROZEN_REL))
+        self.assertEqual(json.loads((out / "summary.json").read_text())["summary"]["runs"], sm["runs"])
+        with self.assertRaisesRegex(SystemExit, "already exported as a final"):
+            ex.export_final("A3", self.pairs(name="again"), self.repo, self.out)
+        other, *_ = ex.export_final("B3_off", self.pairs(name="off", setting="B3_off"), self.repo, self.out)      # another setting is free
+        self.assertTrue(other.name.startswith("export_csv_v4_final_B3_off_"))
+        ef.evaluate_final("A3", self.pairs(name="ev"), self.repo, self.out)               # an export does not block the evaluation ...
+        with self.assertRaisesRegex(SystemExit, "already evaluated as a final"):
+            ef.evaluate_final("A3", self.pairs(name="ev2"), self.repo, self.out)
+        with self.assertRaisesRegex(SystemExit, "already exported as a final"):           # ... and the evaluation never lifts the export marker
+            ex.export_final("A3", self.pairs(name="ex2"), self.repo, self.out)
+
+    def test_an_evaluation_does_not_block_the_export(self):
+        ef.evaluate_final("A4", self.pairs(name="ev", setting="A4"), self.repo, self.out)
+        out, *_ = ex.export_final("A4", self.pairs(name="ex", setting="A4"), self.repo, self.out)
+        self.assertTrue((out / "FINAL_EXPORT_DONE.json").exists())
+
+    def test_refusals_leave_no_marker_and_read_no_test_data(self):
+        f = self.repo / fz.V4_DIR / "gesture_reader.json"
+        f.write_text(f.read_text() + " ")
+        called = []
+        real = ev.load_sessions
+        ev.load_sessions = lambda *a, **k: called.append(1)
+        try:
+            with self.assertRaisesRegex(SystemExit, "freeze is broken"):
+                ex.export_final("A3", self.pairs(), self.repo, self.out)
+        finally:
+            ev.load_sessions = real
+        self.assertEqual(called, [])
+        f.write_text(f.read_text().rstrip(" "))                                            # restored: now the data checks
+        dev = [session(self.root, "dev", spec_kw={"commander_look": "sunbox_m1", "clips": {"POINT": "point_mixamo_01", "PROCEED": "proceed_ik_01"}})]
+        with self.assertRaisesRegex(SystemExit, "--final-evaluation given"):
+            ex.export_final("A3", dev, self.repo, self.out)
+        with self.assertRaisesRegex(SystemExit, "experiment 'A3' but setting B3 is experiment B3"):
+            ex.export_final("B3", self.pairs(name="wrong"), self.repo, self.out)
+        with self.assertRaisesRegex(SystemExit, "the plan has 2 per setting"):
+            ex.export_final("A3", self.pairs(name="three", n=3), self.repo, self.out)
+        with self.assertRaisesRegex(SystemExit, "leak test has not passed"):
+            ex.export_final("A3", self.pairs(name="leak", unity_leak=False), self.repo, self.out)
+        for st in ("A3", "B3"):
+            self.assertEqual(fg.markers(self.out, st, "export"), [])
+
+    def test_a_crash_leaves_no_marker_and_does_not_block(self):
+        real = ex.build_tables
+        ex.build_tables = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+        try:
+            with self.assertRaises(RuntimeError):
+                ex.export_final("A3", self.pairs(), self.repo, self.out)
+        finally:
+            ex.build_tables = real
+        self.assertEqual(fg.markers(self.out, "A3", "export"), [])
+        ex.export_final("A3", self.pairs(name="retry"), self.repo, self.out)
+
+    def test_an_unknown_or_superseded_setting_is_refused_on_the_command_line(self):
+        with self.assertRaisesRegex(SystemExit, "unknown final setting 'zoom_on'"):
+            ex.main(["--final", "--setting", "zoom_on", "--session", "u", "b"])
+        with self.assertRaisesRegex(SystemExit, "--final needs --setting and --session"):
+            ex.main(["--final", "--session", "u", "b"])
+        with self.assertRaisesRegex(SystemExit, "development export"):
+            ex.main(["--setting", "A3"])
+        with self.assertRaisesRegex(SystemExit, "--final-combine takes only export folders"):
+            ex.main(["--final-combine", "x", "--final"])
+
+    def exported(self, *settings):
+        folders = []
+        for st in settings:
+            out, *_ = ex.export_final(st, self.pairs(name="x_" + st, setting=st), self.repo, self.out)
+            folders.append(out)
+        return folders
+
+    def test_the_combined_table_compares_the_settings_with_counts_and_intervals(self):
+        folders = self.exported("A3", "B3", "B3_off", "A4")
+        out, res = ex.combine(folders, self.repo, self.out)
+        self.assertEqual(res["settings"], ["A3", "A4", "B3", "B3_off"])                                  # in the plan's order
+        names = {(c["name"], c["metric"]) for c in res["comparisons"]}
+        self.assertIn(("A vs B, scenario 3", "success"), names)
+        self.assertIn(("B detection on vs off, scenario 3", "success"), names)
+        unavailable = [c for c in res["comparisons"] if not c["available"]]
+        self.assertTrue(unavailable and all("not available" in c["x_cell"] for c in unavailable))     # the settings not exported are said so
+        row = next(c for c in res["comparisons"] if c["name"] == "A vs B, scenario 3" and c["metric"] == "success")
+        sa, sb = res["per_setting"]["A3"]["summary"]["success"], res["per_setting"]["B3"]["summary"]["success"]
+        self.assertEqual(row["x_cell"], ex._cell(sa))
+        self.assertEqual(row["difference_pp"], round(100 * (sb["ratio"] - sa["ratio"]), 1))
+        nc = ex.newcombe(sa["k"], sa["n"], sb["k"], sb["n"], res["wilson_z"])
+        self.assertEqual((row["difference_lo_pp"], row["difference_hi_pp"]), (nc["lo_pp"], nc["hi_pp"]))      # the interval of the difference
+        self.assertLessEqual(row["difference_lo_pp"], row["difference_pp"])
+        self.assertLessEqual(row["difference_pp"], row["difference_hi_pp"])
+        for name in ("combined.md", "combined.json", "combined_settings.csv", "combined_comparisons.csv", "run.json", "config_used/frozen.json"):
+            self.assertTrue((out / name).exists(), name)
+        md = (out / "combined.md").read_text(encoding="utf-8")
+        self.assertIn("Wilson 95 %", md)
+        self.assertIn("Newcombe 95 %", md)
+        self.assertIn("no claim of significance", md)
+        import csv
+        with (out / "combined_comparisons.csv").open(encoding="utf-8") as f:
+            cmp_rows = list(csv.DictReader(f))
+        self.assertIn("difference_lo_pp", cmp_rows[0])
+        self.assertIn("difference_hi_pp", cmp_rows[0])
+        self.assertFalse(list(out.glob("FINAL_*")))                                     # derived data: no run-once marker of its own
+        import time
+        time.sleep(1.1)                                                                 # run folders are named by the second, never overwritten
+        out2, _ = ex.combine(folders, self.repo, self.out)                              # and it can be rerun into a new folder
+        self.assertNotEqual(out, out2)
+
+    def test_the_combined_table_refuses_what_is_not_a_final_export(self):
+        folders = self.exported("A3", "B3")
+        with self.assertRaisesRegex(SystemExit, "not a final export folder"):
+            ex.combine([self.out], self.repo, self.out)
+        with self.assertRaisesRegex(SystemExit, "given twice"):
+            ex.combine([folders[0], folders[0]], self.repo, self.out)
+        f = self.repo / fz.V4_DIR / "gesture_reader.json"
+        f.write_text(f.read_text() + " ")
+        with self.assertRaisesRegex(SystemExit, "freeze is broken"):
+            ex.combine(folders, self.repo, self.out)
+
+    def test_the_combined_table_refuses_an_export_made_under_another_freeze(self):
+        folders = self.exported("A3")
+        rec = json.loads((folders[0] / "FINAL_EXPORT_DONE.json").read_text())
+        (folders[0] / "FINAL_EXPORT_DONE.json").write_text(json.dumps({**rec, "frozen_sha256": "0" * 64}))
+        with self.assertRaisesRegex(SystemExit, "another frozen.json"):
+            ex.combine(folders, self.repo, self.out)
 
 
 def write_messages(bridge: Path, telemetry: list, extra_lines: tuple = ()) -> None:
@@ -437,7 +822,7 @@ class WatchdogStopTests(unittest.TestCase):
             out.mkdir()
             u, b = session(root, "wd")
             write_messages(b, [(0, 1, True), (1, 1, True), (1, 2, True), (1, 2, False)])
-            folder, res = ef.evaluate_final("zoom_on", [(u, b)], repo, out)
+            folder, res = ef.evaluate_final("A3", [(u, b)], repo, out)
             rp.set_active_roots({})
             w = res["watchdog_stops"]
             self.assertEqual([(p["trial"], p["watchdog_stops"]) for p in w["per_run"]], [(1, 1), (2, 0)])
@@ -451,7 +836,7 @@ class WatchdogStopTests(unittest.TestCase):
             root = Path(d)
             repo, out = final_repo(root / "r"), root / "outputs"
             out.mkdir()
-            _, res = ef.evaluate_final("zoom_on", [session(root, "nolog")], repo, out)
+            _, res = ef.evaluate_final("A3", [session(root, "nolog")], repo, out)
             rp.set_active_roots({})
             self.assertEqual({p["watchdog_stops"] for p in res["watchdog_stops"]["per_run"]}, {ev.NOT_EVALUATED})
 

@@ -67,11 +67,21 @@ class RecordedFreezeTests(unittest.TestCase):
                      "gesture_data.json", "gt_eval.json", "final_plan.json", "analysis.json"):
             self.assertIn(f"{fz.V4_DIR}/{must}", REC["files"], must)
 
-    def test_the_experiments_file_is_frozen_and_the_csv_columns_are_not(self):
+    def test_the_experiments_files_are_frozen_and_the_csv_columns_are_not(self):
+        """16.10 (scenarios_ab.json) and 16.15 (2026-11-14: the eight control files and the three robot maps a final of experiments A/B runs with).
+        export_csv.json (CSV columns) and false_stop_analysis.json (an analysis tool's settings) stay outside: no result depends on them."""
         files = fz.config_files()
         self.assertIn(f"{fz.V4_DIR}/experiments/scenarios_ab.json", files)
-        self.assertNotIn(f"{fz.V4_DIR}/experiments/export_csv.json", files)
-        self.assertEqual([f for f in files if "/experiments/" in f], list(fz.FROZEN_EXTRA))
+        for f in ("export_csv.json", "false_stop_analysis.json"):
+            self.assertNotIn(f"{fz.V4_DIR}/experiments/{f}", files)
+        self.assertEqual([f for f in files if "/experiments/" in f], sorted(fz.FROZEN_EXTRA))
+        self.assertEqual(len(fz.FROZEN_EXTRA), 1 + 8 + 3)
+        for on in ("on", "off"):
+            for m in ("", "_a1", "_a2_right", "_a2_left"):
+                self.assertIn(f"{fz.V4_DIR}/experiments/control_lie_{on}{m}.json", files)
+        for m in ("a1", "a2_right", "a2_left"):
+            self.assertIn(f"{fz.V4_DIR}/experiments/roadmap_{m}.json", files)
+        self.assertEqual(fz.problems(REPO) if REC["frozen"] else [], [])
 
 
     def test_unfrozen_holds_no_hashes(self):
@@ -116,12 +126,14 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertIn("RTX 3060", plan["machine"])
         self.assertIn("highest development accuracy", plan["threshold_rule"])
         self.assertIn("coverage >= 0.8", plan["threshold_rule"])
-        # 2026-11-13: B7 (plan (b): sunbox_f2 + test clips in every setting, zoom_on_repeat a repeat of zoom_on), B9 and B11 filled
+        # 2026-11-13: B9 and B11 filled; 2026-11-14 (AUDIT.md 16.15): the 13 settings of the experiments A/B use the plaid test looks and the
+        # two test clips (the B7 plan (b) assignment of sunbox_f2 belonged to the four Task 2 settings, now under superseded_settings)
         for k in ("test_assignment", "unity_files_and_guard", "acceptance_criteria"):
             self.assertIsNotNone(plan[k], k)
-        self.assertEqual(plan["test_assignment"]["zoom_on_repeat"]["repeat_of"], "zoom_on")
+        self.assertEqual(set(plan["test_assignment"]), set(plan["settings"]))
         for s, a in plan["test_assignment"].items():
-            self.assertEqual(a["looks"], ["sunbox_f2"], s)
+            self.assertEqual(a["looks"], ["sunbox_m_shirt_plaid", "sunbox_f_shirt_plaid"], s)
+            self.assertEqual(a["clips"], ["point_mixamo_02", "proceed_ik_03"], s)
         self.assertEqual(len(plan["acceptance_criteria"]), 7)
         self.assertEqual(fz.blanks(REPO), [])
 
@@ -168,9 +180,55 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertEqual(hc.load_json("configs/hri_control.json")["dialog"]["reask_shift_m"], 0.4)  # v3 file untouched
         self.assertIn("0.8", " ".join(json.loads((ROOT / "configs/v4/analysis.json").read_text())["declared_differences"]))
 
-    def test_settings_of_the_plan_are_the_four_final_settings(self):
+    def test_settings_of_the_plan_are_the_thirteen_experiment_settings(self):
+        """AUDIT.md 16.15 decision 1 (2026-11-14): nine settings with lie detection on, four Set B settings with it off. The four Task 2
+        settings (zoom_on, zoom_off, bystanders, zoom_on_repeat) are superseded: kept for the record, not settings."""
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
-        self.assertEqual(set(plan["settings"]), {"zoom_on", "zoom_off", "bystanders", "zoom_on_repeat"})   # unseen_look renamed 2026-11-13
+        on = {"A1", "A2_right", "A2_left", "A3", "A4", "B1", "B2_right", "B3", "B4"}
+        off = {"B1_off", "B2_right_off", "B3_off", "B4_off"}
+        self.assertEqual(set(plan["settings"]), on | off)
+        self.assertEqual(set(plan["superseded_settings"]), {"zoom_on", "zoom_off", "bystanders", "zoom_on_repeat"})
+        self.assertEqual({s for s, e in plan["settings"].items() if e["lie_detection"] == "off"}, off)
+        for s, e in plan["settings"].items():
+            self.assertEqual((e["zoom"], e["bystanders"]), (None, None), s)
+            self.assertEqual(e["set"], "B" if s.startswith("B") else "A", s)
+            self.assertEqual(s, e["experiment"] + ("_right" if "_right" in s else "_left" if "_left" in s else "") + ("_off" if s.endswith("_off") else ""))
+
+    def test_the_timeout_stays_270_and_the_rule_is_declared(self):
+        """AUDIT.md 16.15 decision 2, corrected in 16.16 decision 4: 1.5 x the longest SUCCESSFUL development run, up to a multiple of 30 s, never
+        below 270 s; a timed-out run is no duration but is reported and explained before the freeze; 270 until applied."""
+        import final_guard_v4 as fg
+        plan = json.loads((REPO / fz.PLAN_REL).read_text())
+        self.assertEqual(plan["timeout_s"], 270)
+        for word in ("1.5", "longest SUCCESSFUL development run", "30 s", "270", "cause is found before the freeze", "does not count as a duration"):
+            self.assertIn(word, plan["timeout_s_rule"])
+        self.assertEqual([fg.timeout_from_development(x) for x in (50, 180, 181, 200, 280, 400)], [270, 270, 300, 300, 420, 600])
+        self.assertEqual(fg.timeout_from_development(180.0), 270)
+        with self.assertRaises(ValueError):
+            fg.timeout_from_development(0)
+
+    def test_only_successful_development_runs_give_the_longest_duration(self):
+        import final_guard_v4 as fg
+
+        def run(outcome, total, reason="none"):
+            return {"outcome": outcome, "total_s": total, "failure_reason": reason}
+        runs = [run("SUCCESS", 150.0), run("SUCCESS", 190.0), run("FAILURE", 270.0, "timeout"), run("FAILURE", 40.0, "collision"), run("FAILURE", 300.0, "timeout")]
+        r = fg.development_timeout(runs)
+        self.assertEqual((r["longest_successful_s"], r["timeout_s"]), (190.0, 300.0))          # 1.5 x 190 = 285 -> 300; the 270 s timeout is not a duration
+        self.assertEqual((r["successful_runs"], r["runs"], r["timeouts"], r["other_failures"]), (2, 5, 2, 1))
+        self.assertTrue(r["cause_needed_before_the_freeze"])
+        self.assertEqual([t["total_s"] for t in r["timeouts_to_explain"]], [270.0, 300.0])      # every timeout is listed for its cause
+        clean = fg.development_timeout([run("SUCCESS", 100.0), run("SUCCESS", 120.0)])
+        self.assertEqual((clean["timeout_s"], clean["timeouts"], clean["cause_needed_before_the_freeze"]), (270.0, 0, False))     # never below 270
+        self.assertEqual(fg.development_timeout([run("SUCCESS", 281.0)])["timeout_s"], 450.0)    # 421.5 -> 450
+        with self.assertRaisesRegex(ValueError, "no successful development run"):
+            fg.development_timeout([run("FAILURE", 270.0, "timeout")])
+
+    def test_the_false_stop_rule_is_off_until_the_stop_recordings_pass(self):
+        """AUDIT.md 16.15 decision 3: no reader value is changed; the rule is only declared."""
+        plan = json.loads((REPO / fz.PLAN_REL).read_text())
+        self.assertEqual(plan["false_stop_rule"]["status"], "off")
+        self.assertIn("every true STOP is read within 1.0 s", plan["false_stop_rule"]["switch_on_only_if"])
 
     def test_models_are_located_from_the_frozen_v3_configs(self):
         st = fz.model_status(REPO)

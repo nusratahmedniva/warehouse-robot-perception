@@ -100,6 +100,18 @@
       "field": "backtracks"
     },
     {
+      "field": "final_setting"
+    },
+    {
+      "field": "max_distance_from_optimal_m"
+    },
+    {
+      "field": "share_within_corridor"
+    },
+    {
+      "field": "watchdog_stops"
+    },
+    {
       "field": "session"
     },
     {
@@ -214,5 +226,6 @@
     "order": "Plan of 2026-11-13: runs.csv = experiment, set, seed, looks, route, goal, outcome, time, trail vs optimal, stops, collisions, lies given / detected / corrected / fooled; dialogs.csv = junction, worker, look, command shown, truthful, command read, correct, time to read, distance, decision. 'trail vs optimal' is three columns (trail_m, optimal_m, trail_over_optimal).",
     "correct": "The plan's 'correct' can mean the reader was right (command_read == command_shown) or the decision was right; the exporter gives three columns, correct (the command read is the command shown), correct_direction (the branch read is the branch shown) and correct_branch (the branch read is the true branch toward B). Keep the ones the faculty means.",
     "lies": "lies_given counts lying gestures in truth.jsonl; detected, corrected and fooled are defined in the docstring of export_csv_v4.py and in export.json."
-  }
+  },
+  "declared_2026_11_14": "Added 2026-11-14 (AUDIT.md 16.15, before the finals): final_setting, max_distance_from_optimal_m, share_within_corridor and watchdog_stops, after the other run columns. This file is deliberately NOT frozen (16.10.1): the combined table of the finals reads summary.json, not these columns."
 }

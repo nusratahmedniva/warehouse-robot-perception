@@ -11,7 +11,17 @@ run_###/truth.jsonl, and the bridge run folder with v4_log.jsonl, python_trial_#
 
 Which columns, in which order and under which header is in configs/v4/experiments/export_csv.json (so they can be matched to the faculty's list
 later without touching code); a field name that is not known is refused with the list of known fields. Development data only
-(hri_eval_dev_v4.load_sessions runs data_splits_v4.guard_run before anything is read).
+(hri_eval_dev_v4.load_sessions runs data_splits_v4.guard_run before anything is read), except in the FINAL mode below.
+
+FINAL mode (2026-11-14, AUDIT.md 16.15; the finals of experiments A and B, evaluation code):
+  --final --setting S --session UNITY BRIDGE [...]   one setting's runs.csv and dialogs.csv. Refused unless configs/v4/frozen.json is frozen with
+        every hash matching, the leak test passed, every run lies wholly in the TEST split (guard_run with final_evaluation) and is what setting S
+        says (final_guard_v4.check_setting), and S was not exported before (its own marker FINAL_EXPORT_DONE.json, written last). Writes
+        <output_root>/export_csv_v4_final_<S>_<time>/ with runs.csv, dialogs.csv, summary.json (the counts of the setting: SUCCESS with a Wilson
+        95 % interval, failure kinds, medians, lies, stops), export.json, config_used/, run.json. No threshold is changed here.
+  --final-combine FOLDER [...]   ONE combined table over the per-setting export folders (each with its marker, no setting twice): every setting,
+        then A vs B per scenario, B detection on vs off, A2 right vs left, every rate with its count and a Wilson 95 % interval, the difference
+        in percentage points with a Newcombe (Wilson-based) 95 % interval, only as a description. Derived from the exports (no test data is read again): rerunnable into a new folder.
 
 Definitions (AUDIT.md 16.3), per run:
   lies given     lying gestures in truth.jsonl (gesture_truthful false): one per clip;
@@ -67,6 +77,10 @@ RUN_FIELDS = {
     "backtracks": "backtracks started", "lies_given": "see Definitions", "lies_detected": "see Definitions",
     "lies_corrected": "see Definitions", "lies_fooled": "see Definitions",
     "setting": "lie-detection setting label of the session (session.json 'lie_detection': off, on, a, b, bc, abc, mirror), empty when not recorded",
+    "final_setting": "the final setting (A1 ... B4_off) when exported in final mode (session.json 'final_setting'), empty otherwise",
+    "max_distance_from_optimal_m": "largest distance of the trail from the optimal path (gt_path); empty without gt_path files",
+    "share_within_corridor": "share of trail points within gt_path's near distance of the optimal path (the corridor); empty without gt_path files",
+    "watchdog_stops": "Unity watchdog stops while this run was running (bridge messages.jsonl); empty when the bridge log has no telemetry of the run (B11(a): a result)",
     "second_opinion_on": "the switch of the control config used", "reject_impossible_on": "the switch", "backtrack_on": "the switch",
 }
 DIALOG_FIELDS = {
@@ -161,8 +175,9 @@ def _road_for(run: ev.Run, cache: dict) -> hc.Roadmap:
     return cache[key]
 
 
-def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap) -> tuple[dict, list[dict]]:
-    """(the runs.csv row as a dict of every known field, the dialogs.csv rows) of one run."""
+def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap, watchdog: dict | None = None) -> tuple[dict, list[dict]]:
+    """(the runs.csv row as a dict of every known field, the dialogs.csv rows) of one run. watchdog = the counts of the run's bridge
+    folder (hri_eval_final_v4.bridge_watchdog_counts), None when it has no messages.jsonl."""
     unity, bridge = Path(run.unity_dir), Path(run.bridge_dir)
     session = _json(unity / "session.json") or {}
     truth_run = _json(unity / f"truth_run{run.trial:03d}.json") or {}
@@ -279,20 +294,23 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap) -> tuple[dict, list[di
             fooled += 1
     n_lies, n_gestures = lying_clips(run.truth)
     route = v4.get("route") or [j["junction"] for j in run.junctions]
-    trail_m = optimal_m = None
+    trail_m = optimal_m = max_dist = share = None
     source = ""
     run_dir = unity / f"run_{run.trial:03d}"
     if gt_path.has_v4_files(run_dir):
         meas = gt_path.evaluate_run(run_dir)["measures"]
         trail_m, optimal_m, source = meas.get("trail_length_m"), meas.get("optimal_length_m"), "gt_path"
+        max_dist, share = meas.get("max_distance_from_optimal_m"), meas.get("share_within_near_distance")
     elif truth_run.get("optimal_m") is not None:
         trail_m, optimal_m, source = truth_run.get("travelled_m"), truth_run["optimal_m"], "road_route"
     run_row = {
         "experiment": session.get("experiment", truth_run.get("experiment")), "set": session.get("set", truth_run.get("set")),
-        "lie_probability": session.get("lie_probability"), "setting": session.get("lie_detection"), "session": run.session, "run": run.name, "trial": run.trial,
+        "lie_probability": session.get("lie_probability"), "setting": session.get("lie_detection"),
+        "final_setting": session.get("final_setting"), "session": run.session, "run": run.name, "trial": run.trial,
         "seed": truth_run.get("seed"), "looks": "+".join(sorted(run.looks)), "route": ">".join(route), "goal": goal,
         "outcome": truth_run.get("outcome"), "failure_reason": truth_run.get("failure_reason"), "time_s": truth_run.get("total_s"),
-        "trail_m": trail_m, "optimal_m": optimal_m,
+        "trail_m": trail_m, "optimal_m": optimal_m, "max_distance_from_optimal_m": max_dist, "share_within_corridor": share,
+        "watchdog_stops": (watchdog["per_trial"].get(run.trial, 0) if watchdog is not None and run.trial in watchdog["trials_seen"] else None),
         "trail_over_optimal": round(trail_m / optimal_m, 4) if trail_m is not None and optimal_m else None, "trail_source": source,
         "stops": v4.get("safety_stops"), "stop_s": py.get("safety_stop_s"), "collisions": truth_run.get("collisions"),
         "closest_person_m": truth_run.get("closest_human_m"), "final_distance_m": truth_run.get("final_distance_to_b_m"),
@@ -313,11 +331,16 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap) -> tuple[dict, list[di
 
 
 def build_tables(runs: list, ecfg: dict | None = None) -> tuple[list[dict], list[dict]]:
+    import hri_eval_final_v4 as ef            # lazy: hri_eval_final_v4 imports this module
     ecfg = ecfg if ecfg is not None else ev.load_config()
     roads: dict = {}
+    wd: dict = {}
     run_rows, dialog_rows = [], []
     for run in runs:
-        rr, dr = run_tables(run, ecfg, _road_for(run, roads))
+        key = str(run.bridge_dir)
+        if key not in wd:                      # one read of each bridge log, not one per run
+            wd[key] = ef.bridge_watchdog_counts(Path(run.bridge_dir)) if run.bridge_dir is not None else None
+        rr, dr = run_tables(run, ecfg, _road_for(run, roads), wd[key])
         run_rows.append(rr)
         dialog_rows += dr
     return run_rows, dialog_rows
@@ -333,13 +356,313 @@ def write_csv(path: Path, rows: list[dict], columns: list[dict], empty: str = ""
             w.writerow([_fmt(r.get(c["field"]), empty) for c in columns])
 
 
+# ---------------------------------------------------------------- the numbers of one setting (final mode, and the final evaluation)
+
+FAILURE_KINDS = ("collision", "timeout", "aborted", "wrong_goal")
+
+
+def _wilson(k: int, n: int, z: float) -> dict:
+    import hri_analysis as ha
+    if n == 0:
+        return {"k": k, "n": n, "ratio": ev.NOT_EVALUATED, "wilson95": ev.NOT_EVALUATED}
+    lo, hi = ha.wilson(k, n, z)
+    return {"k": k, "n": n, "ratio": round(k / n, 4), "wilson95": [lo, hi]}
+
+
+def _wilson_exact(k: int, n: int, z: float) -> tuple[float, float, float]:
+    """(p, lower, upper) of the Wilson score interval, unrounded (the rounded one of hri_analysis.wilson would bias a combination)."""
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return p, max(0.0, c - h), min(1.0, c + h)
+
+
+def newcombe(k1: int, n1: int, k2: int, n2: int, z: float = 1.96) -> dict:
+    """The difference p2 - p1 of two rates with the Newcombe hybrid-score 95 % interval (Newcombe 1998, method 10: the Wilson intervals of the
+    two rates combined), in percentage points. A description of two small samples, not a test. Either n is 0: not evaluated."""
+    if n1 == 0 or n2 == 0:
+        return {"difference_pp": ev.NOT_EVALUATED, "lo_pp": ev.NOT_EVALUATED, "hi_pp": ev.NOT_EVALUATED, "method": "Newcombe hybrid score"}
+    p1, l1, u1 = _wilson_exact(k1, n1, z)
+    p2, l2, u2 = _wilson_exact(k2, n2, z)
+    d = p2 - p1
+    lo = d - math.sqrt((p2 - l2) ** 2 + (u1 - p1) ** 2)
+    hi = d + math.sqrt((u2 - p2) ** 2 + (p1 - l1) ** 2)
+    return {"difference_pp": round(100 * d, 1), "lo_pp": round(100 * lo, 1), "hi_pp": round(100 * hi, 1), "method": "Newcombe hybrid score"}
+
+
+def _median(v: list):
+    import statistics
+    return {"n": len(v), "median": round(statistics.median(v), 3)} if v else {"n": 0, "median": ev.NOT_EVALUATED}
+
+
+def wilson_z(repo: Path | None = None) -> float:
+    import freeze_v4 as fz
+    return float(json.loads(((repo or fz.REPO) / "robot_vision/configs/v4/analysis.json").read_text(encoding="utf-8"))["wilson_z"])
+
+
+def summarize(run_rows: list[dict], z: float) -> dict:
+    """The numbers of one setting from its run rows (run_tables), every rate with its count and a Wilson interval (z from analysis.json).
+    Nothing that cannot be evaluated is guessed: a rate without a denominator is 'not_evaluated'."""
+    n_runs = len(run_rows)
+    have = [r for r in run_rows if r.get("outcome")]
+    ok = [r for r in have if r["outcome"] == "SUCCESS"]
+    fails = [r for r in have if r["outcome"] != "SUCCESS"]
+    kinds = {k: sum(r.get("failure_reason") == k for r in fails) for k in FAILURE_KINDS}
+    kinds["other"] = len(fails) - sum(kinds.values())
+    times = [float(r["time_s"]) for r in run_rows if r.get("time_s") is not None]
+    ok_times = [float(r["time_s"]) for r in ok if r.get("time_s") is not None]
+    ratios = [float(r["trail_over_optimal"]) for r in run_rows if r.get("trail_over_optimal") is not None]
+    maxd = [float(r["max_distance_from_optimal_m"]) for r in run_rows if r.get("max_distance_from_optimal_m") is not None]
+    shares = [float(r["share_within_corridor"]) for r in run_rows if r.get("share_within_corridor") is not None]
+    lied = [r for r in run_rows if r.get("lies_given") is not None]
+    given = sum(r["lies_given"] for r in lied)
+    lies = {"runs_evaluated": len(lied), "given": given}
+    for k in ("detected", "corrected", "fooled"):
+        tot = sum(r[f"lies_{k}"] for r in lied if r.get(f"lies_{k}") is not None)
+        lies[k] = {"total": tot, **(_wilson(tot, given, z) if given else {"rate": "no lies given"})}
+    stops = [r for r in run_rows if r.get("stops") is not None]
+    wd = [r for r in run_rows if r.get("watchdog_stops") is not None]
+    cols = [r for r in run_rows if r.get("collisions") is not None]
+    return {
+        "runs": n_runs, "runs_with_an_outcome": len(have),
+        "success": _wilson(len(ok), len(have), z), "failure_kinds": kinds,
+        "time_s": {"all_runs": _median(times), "success_runs": _median(ok_times)},
+        "trail_over_optimal": _median(ratios),
+        "corridor": {"max_distance_from_optimal_m": _median(maxd), "share_within_corridor": _median(shares),
+                     "note": "median over the runs with gt_path files; the corridor is gt_path's near distance around the optimal path"},
+        "lies": lies,
+        "safety_stops": {"runs_counted": len(stops), "runs_with_a_stop": _wilson(sum(1 for r in stops if r["stops"] > 0), len(stops), z),
+                         "stops_total": sum(r["stops"] for r in stops), "seconds_in_stops": round(sum(float(r.get("stop_s") or 0.0) for r in stops), 3)},
+        "watchdog_stops": {"runs_counted": len(wd), "runs_with_a_stop": _wilson(sum(1 for r in wd if r["watchdog_stops"] > 0), len(wd), z),
+                           "stops_total": sum(r["watchdog_stops"] for r in wd),
+                           "note": "B11(a): a result, never a reason for invalidity"},
+        "collisions": {"runs_counted": len(cols), "runs_with_a_collision": sum(1 for r in cols if r["collisions"]),
+                       "collisions_total": sum(int(r["collisions"]) for r in cols)},
+    }
+
+
+def summary_markdown(setting: str, sm: dict) -> str:
+    sc = sm["success"]
+    iv = f"{sc['wilson95'][0]}-{sc['wilson95'][1]}" if isinstance(sc["wilson95"], list) else sc["wilson95"]
+    L = [f"### Experiment numbers, setting {setting} ({sm['runs']} runs, {sm['runs_with_an_outcome']} with an outcome)", "",
+         f"- **SUCCESS {sc['k']}/{sc['n']} = {sc['ratio']}** (Wilson 95 %: {iv}); failures: " + ", ".join(f"{k} {v}" for k, v in sm["failure_kinds"].items()),
+         f"- time (s): median {sm['time_s']['all_runs']['median']} over {sm['time_s']['all_runs']['n']} runs; of SUCCESS runs "
+         f"{sm['time_s']['success_runs']['median']} over {sm['time_s']['success_runs']['n']}",
+         f"- trail / optimal: median {sm['trail_over_optimal']['median']} over {sm['trail_over_optimal']['n']} runs; largest distance from the optimal path "
+         f"(median) {sm['corridor']['max_distance_from_optimal_m']['median']} m; share of the trail within the corridor (median) "
+         f"{sm['corridor']['share_within_corridor']['median']} ({sm['corridor']['share_within_corridor']['n']} runs with gt_path files)"]
+    ls = sm["lies"]
+    if ls["given"]:
+        L.append(f"- lies given {ls['given']} in {ls['runs_evaluated']} runs; " + "; ".join(
+            f"{k} {ls[k]['total']}/{ls['given']} = {ls[k]['ratio']} (Wilson 95 %: {ls[k]['wilson95'][0]}-{ls[k]['wilson95'][1]})" for k in ("detected", "corrected", "fooled")))
+    else:
+        L.append(f"- lies given 0 in {ls['runs_evaluated']} runs evaluated (no lies, so no detection rates)")
+    ss, wd = sm["safety_stops"], sm["watchdog_stops"]
+    L.append(f"- safety stops: {ss['stops_total']} in {ss['runs_counted']} runs ({ss['runs_with_a_stop']['k']} runs with a stop), {ss['seconds_in_stops']} s; "
+             f"watchdog stops (a result): {wd['stops_total']} in {wd['runs_counted']} runs counted ({wd['runs_with_a_stop']['k']} runs with a stop); "
+             f"collisions {sm['collisions']['collisions_total']} in {sm['collisions']['runs_counted']} runs counted")
+    return "\n".join(L) + "\n"
+
+
+# ---------------------------------------------------------------- final mode
+
+def export_final(setting: str, pairs, repo: Path | None = None, output_root: Path | None = None, config_path: str | Path = DEFAULT_CONFIG):
+    """One setting's final export. Returns (folder, run rows, summary). Raises SystemExit when refused; the marker is written last."""
+    import decision_io as dio
+    import final_guard_v4 as fg
+    import freeze_v4 as fz
+    import hri_eval_final_v4 as ef
+    repo = repo or fz.REPO
+    output_root = Path(output_root) if output_root is not None else dio.resolve("outputs")
+    cfg_path = Path(config_path) if Path(config_path).is_absolute() else dio.resolve(config_path)
+    cfg = load_config(cfg_path)
+    check_columns(cfg)
+    gcfg, ecfg = gd.load_config(repo / "robot_vision/configs/v4/gesture_data.json"), ev.load_config(repo / "robot_vision/configs/v4/eval_dev.json")
+    runs = ef.gate(setting, pairs, output_root, gcfg, repo, kind="export")      # frozen, not exported, leak test, test split, the setting's checks
+    run_rows, dialog_rows = build_tables(runs, ecfg)
+    for r in run_rows:
+        r["final_setting"] = r.get("final_setting") or setting
+    sm = summarize(run_rows, wilson_z(repo))
+    out = dio.new_run_dir({"paths": {"output_root": str(output_root)}}, f"{fg.EXPORT_PREFIX}_{setting}")
+    (out / "config_used").mkdir()
+    for f in fz.config_files(repo):
+        (out / "config_used" / Path(f).name).write_bytes((repo / f).read_bytes())
+    (out / "config_used" / "frozen.json").write_bytes((repo / fz.FROZEN_REL).read_bytes())
+    (out / "config_used" / cfg_path.name).write_bytes(cfg_path.read_bytes())
+    write_csv(out / "runs.csv", run_rows, cfg["runs"], cfg.get("empty", ""))
+    write_csv(out / "dialogs.csv", dialog_rows, cfg["dialogs"], cfg.get("empty", ""))
+    dio.write_json(out / "summary.json", {"setting": setting, "summary": sm,
+                                          "plan_entry": fg.plan(repo)["settings"][setting]})
+    dio.write_json(out / "export.json", {"final_setting": setting, "runs": len(run_rows), "asks": len(dialog_rows),
+                                         "runs_columns": [c["field"] for c in cfg["runs"]], "dialogs_columns": [c["field"] for c in cfg["dialogs"]],
+                                         "definitions": {"runs": RUN_FIELDS, "dialogs": DIALOG_FIELDS},
+                                         "splits": "TEST looks and clips only (data_splits_v4.guard_run, final evaluation), frozen configs verified"})
+    frozen_sha = fz.sha256_lf(repo / fz.FROZEN_REL)
+    git = dio.git_info()
+    dio.write_json(out / "run.json", {"git": git, "setting": setting, "sessions": [[u.name, b.name] for u, b in pairs], "frozen_sha256": frozen_sha})
+    fg.write_done(out, setting, "export", {"git_commit": git["commit"], "export_folder": out.name, "runs": len(run_rows), "frozen_sha256": frozen_sha})
+    return out, run_rows, sm
+
+
+# ---------------------------------------------------------------- the combined table
+
+def _side(setting: str) -> str:
+    return next((p for p in setting.split("_") if p in ("right", "left")), "")
+
+
+def comparisons(settings: list[str], plan: dict) -> list[dict]:
+    """The pairs the combined table compares, derived from the plan: (name, x, y, what): A vs B per scenario (both detection on), B detection on vs
+    off, A2 right vs left. 'x' is the reference (A, detection off, left), 'y' the other."""
+    pairs = []
+    entries = plan["settings"]
+    for name, spec in entries.items():
+        if spec.get("set") == "B" and spec.get("lie_detection") == "on":
+            twin_a = next((n for n, e in entries.items() if e.get("experiment") == "A" + spec["experiment"][1:] and _side(n) == _side(name)
+                           and e.get("lie_detection") == "on"), None)
+            twin_off = next((n for n, e in entries.items() if e.get("experiment") == spec["experiment"] and _side(n) == _side(name)
+                             and e.get("lie_detection") == "off"), None)
+            if twin_a:
+                pairs.append({"name": f"A vs B, scenario {spec['experiment'][1:]}" + (f" ({_side(name)})" if _side(name) else ""), "x": twin_a, "y": name,
+                              "kind": "A vs B"})
+            if twin_off:
+                pairs.append({"name": f"B detection on vs off, scenario {spec['experiment'][1:]}" + (f" ({_side(name)})" if _side(name) else ""),
+                              "x": twin_off, "y": name, "kind": "B on vs off"})
+    if "A2_left" in entries and "A2_right" in entries:
+        pairs.append({"name": "A2 right vs left (truthful workers, detection on)", "x": "A2_left", "y": "A2_right", "kind": "A2 right vs left"})
+    for p in pairs:
+        p["available"] = p["x"] in settings and p["y"] in settings
+    return pairs
+
+
+def _cell(m: dict) -> str:
+    if not isinstance(m.get("wilson95"), list):
+        return f"{m.get('k')}/{m.get('n')} (not evaluated)"
+    return f"{m['k']}/{m['n']} = {m['ratio']} [{m['wilson95'][0]}-{m['wilson95'][1]}]"
+
+
+def combine(folders, repo: Path | None = None, output_root: Path | None = None):
+    """The combined table over per-setting final exports. Each folder must carry its FINAL_EXPORT_DONE.json and a summary.json; no
+    setting may appear twice; the configs must still be frozen and unchanged. Returns (new folder, result dict)."""
+    import decision_io as dio
+    import final_guard_v4 as fg
+    import freeze_v4 as fz
+    repo = repo or fz.REPO
+    fz.require_frozen(repo)
+    output_root = Path(output_root) if output_root is not None else dio.resolve("outputs")
+    per: dict = {}
+    for f in map(Path, folders):
+        marker, summ = f / fg.MARKERS["export"], f / "summary.json"
+        if not (marker.is_file() and summ.is_file()):
+            raise SystemExit(f"{f.name}: not a final export folder (needs {fg.MARKERS['export']} and summary.json)")
+        m, sj = json.loads(marker.read_text(encoding="utf-8")), json.loads(summ.read_text(encoding="utf-8"))
+        if m["setting"] != sj["setting"]:
+            raise SystemExit(f"{f.name}: marker says setting {m['setting']!r}, summary.json says {sj['setting']!r}")
+        fg.check_name(m["setting"], repo)
+        if m["setting"] in per:
+            raise SystemExit(f"setting {m['setting']!r} given twice ({per[m['setting']]['folder']} and {f.name})")
+        if m.get("frozen_sha256") != fz.sha256_lf(repo / fz.FROZEN_REL):
+            raise SystemExit(f"{f.name}: exported under another frozen.json than the current one")
+        per[m["setting"]] = {"folder": f.name, **sj}
+    plan = fg.plan(repo)
+    order = [s for s in plan["settings"] if s in per]
+    pairs = comparisons(order, plan)
+    z = wilson_z(repo)
+    rows = []
+    for s in order:
+        sm, spec = per[s]["summary"], plan["settings"][s]
+        ls = sm["lies"]
+        rows.append({"row": "setting", "setting": s, "experiment": spec["experiment"], "set": spec["set"], "lie_detection": spec["lie_detection"],
+                     "runs": sm["runs"], "success_k": sm["success"]["k"], "success_n": sm["success"]["n"], "success_ratio": sm["success"]["ratio"],
+                     "success_wilson_lo": sm["success"]["wilson95"][0] if isinstance(sm["success"]["wilson95"], list) else "",
+                     "success_wilson_hi": sm["success"]["wilson95"][1] if isinstance(sm["success"]["wilson95"], list) else "",
+                     **{f"failed_{k}": v for k, v in sm["failure_kinds"].items()},
+                     "median_time_s_success": sm["time_s"]["success_runs"]["median"], "median_trail_over_optimal": sm["trail_over_optimal"]["median"],
+                     "lies_given": ls["given"], **{f"lies_{k}": ls[k]["total"] for k in ("detected", "corrected", "fooled")},
+                     "runs_with_safety_stop": sm["safety_stops"]["runs_with_a_stop"]["k"], "runs_with_watchdog_stop": sm["watchdog_stops"]["runs_with_a_stop"]["k"],
+                     "collisions": sm["collisions"]["collisions_total"]})
+    comp_rows = []
+    for c in pairs:
+        if not c["available"]:
+            comp_rows.append({**c, "metric": "success", "x_cell": "not available (setting not exported)", "y_cell": "", "difference_pp": "",
+                              "difference_lo_pp": "", "difference_hi_pp": ""})
+            continue
+        sx, sy = per[c["x"]]["summary"], per[c["y"]]["summary"]
+        dx, dy = sx["success"], sy["success"]
+        nc = newcombe(dx["k"], dx["n"], dy["k"], dy["n"], z)
+        comp_rows.append({**c, "metric": "success", "x_cell": _cell(dx), "y_cell": _cell(dy), "difference_pp": nc["difference_pp"],
+                          "difference_lo_pp": nc["lo_pp"], "difference_hi_pp": nc["hi_pp"]})
+        if sx["lies"]["given"] and sy["lies"]["given"]:
+            fx, fy = sx["lies"]["fooled"], sy["lies"]["fooled"]
+            nc = newcombe(fx["k"], fx["n"], fy["k"], fy["n"], z)
+            comp_rows.append({**c, "metric": "lies fooled (of lies given)", "x_cell": _cell(fx), "y_cell": _cell(fy), "difference_pp": nc["difference_pp"],
+                              "difference_lo_pp": nc["lo_pp"], "difference_hi_pp": nc["hi_pp"]})
+    res = {"settings": order, "per_setting": {s: per[s] for s in order}, "comparisons": comp_rows, "wilson_z": z,
+           "note": "Every rate with its count and a Wilson 95 % interval; the difference is in percentage points (y minus x) with a Newcombe hybrid-score 95 % interval "
+                   "(Wilson-based, Newcombe 1998 method 10). It only describes the two rates: no test, no claim of significance. Derived from the per-setting exports; "
+                   "no test data is read here. 20 runs per setting is small: read the intervals."}
+    out = dio.new_run_dir({"paths": {"output_root": str(output_root)}}, f"{fg.EXPORT_PREFIX}_combined")
+    (out / "config_used").mkdir()
+    (out / "config_used" / "frozen.json").write_bytes((repo / fz.FROZEN_REL).read_bytes())
+    for name, table in (("combined_settings.csv", rows), ("combined_comparisons.csv", comp_rows)):
+        cols = list(dict.fromkeys(k for r in table for k in r))
+        with (out / name).open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(cols)
+            for r in table:
+                w.writerow([_fmt(r.get(k)) for k in cols])
+    dio.write_json(out / "combined.json", res)
+    L = ["# Experiments A and B, final: combined table", "", f"Settings: {', '.join(order)}. Per-setting exports: " + ", ".join(per[s]["folder"] for s in order), "",
+         "## Per setting", "", "| setting | experiment | set | detection | SUCCESS (k/n, Wilson 95 %) | failures | median time of SUCCESS (s) | trail/optimal | lies given / detected / corrected / fooled | runs with safety stop | runs with watchdog stop |",
+         "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for s in order:
+        sm, spec = per[s]["summary"], plan["settings"][s]
+        ls = sm["lies"]
+        L.append(f"| {s} | {spec['experiment']} | {spec['set']} | {spec['lie_detection']} | {_cell(sm['success'])} | "
+                 + ", ".join(f"{k} {v}" for k, v in sm["failure_kinds"].items() if v) + f" | {sm['time_s']['success_runs']['median']} | {sm['trail_over_optimal']['median']} | "
+                 + f"{ls['given']} / {ls['detected']['total']} / {ls['corrected']['total']} / {ls['fooled']['total']} | "
+                 + f"{sm['safety_stops']['runs_with_a_stop']['k']}/{sm['safety_stops']['runs_counted']} | {sm['watchdog_stops']['runs_with_a_stop']['k']}/{sm['watchdog_stops']['runs_counted']} |")
+    L += ["", "## Comparisons (y minus x, percentage points, with the Newcombe 95 % interval)", "",
+          "| comparison | metric | x | y | y - x (pp) | Newcombe 95 % (pp) |", "|---|---|---|---|---|---|"]
+    for c in comp_rows:
+        ci = f"[{c['difference_lo_pp']}, {c['difference_hi_pp']}]" if c["difference_lo_pp"] != "" else ""
+        L.append(f"| {c['name']} | {c['metric']} | {c['x']}: {c['x_cell']} | {c['y']}: {c['y_cell']} | {c['difference_pp']} | {ci} |")
+    L += ["", res["note"], ""]
+    (out / "combined.md").write_text("\n".join(L), encoding="utf-8")
+    dio.write_json(out / "run.json", {"git": dio.git_info(), "folders": [Path(f).name for f in folders],
+                                      "frozen_sha256": fz.sha256_lf(repo / fz.FROZEN_REL)})
+    return out, res
+
+
 def main(argv=None) -> None:
     import decision_io as dio
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--session", nargs=2, action="append", required=True, metavar=("UNITY", "BRIDGE"))
+    ap.add_argument("--session", nargs=2, action="append", metavar=("UNITY", "BRIDGE"))
     ap.add_argument("--config", default=DEFAULT_CONFIG)
+    ap.add_argument("--final", action="store_true", help="final mode: one setting's export (needs --setting); test data only, once per setting")
+    ap.add_argument("--setting", default=None, help="the final setting (final_plan.json), with --final")
+    ap.add_argument("--final-combine", nargs="+", metavar="FOLDER", default=None,
+                    help="the combined table over per-setting final export folders")
     a = ap.parse_args(argv)
+    if a.final_combine:
+        if a.final or a.setting or a.session:
+            raise SystemExit("--final-combine takes only export folders")
+        out, res = combine([dio.resolve(f) for f in a.final_combine])
+        print((out / "combined.md").read_text(encoding="utf-8") + f"Folder: {out}")
+        return
+    if a.final:
+        import final_guard_v4 as fg
+        if not a.setting or not a.session:
+            raise SystemExit("--final needs --setting and --session UNITY BRIDGE")
+        if a.setting not in fg.settings():
+            raise SystemExit(f"unknown final setting {a.setting!r}; the plan has {fg.settings()}")
+        pairs = [(dio.resolve(u), dio.resolve(b)) for u, b in a.session]
+        out, run_rows, sm = export_final(a.setting, pairs, config_path=a.config)
+        print(f"{len(run_rows)} runs\n" + summary_markdown(a.setting, sm) + f"Folder: {out}\n{fg.MARKERS['export']} written: setting {a.setting} cannot be exported again.")
+        return
+    if a.setting or not a.session:
+        raise SystemExit("development export: --session UNITY BRIDGE (final mode: --final --setting S --session ...)")
     cfg_path = dio.resolve(a.config)
     cfg = load_config(cfg_path)
     check_columns(cfg)

@@ -2376,3 +2376,157 @@ Palm facing by the person's own hand:
 
 **Decision needed before any value changes:** (i) which cues to apply (my reading: static for PROCEED, fingertip spread for POINT, raised for the hanging hand, palm not at all) and in what form (arm_moving or the short window); (ii) whether to reverse the
 2026-11-08 decision that STOP needs no raised arm; (iii) whether Nusrat records the STOP data of item 5 first. Nothing in `configs/v4/gesture_reader.json` or `gesture_motion.py` was changed.
+
+### 16.15 Decisions of 2026-11-14 (Anisha), fourth round: the finals of experiments A and B, Python side; recorded BEFORE any code and before any final
+
+Branch `anisha/v4-finals-ab-python` (from main `793b59e`, which holds 16.1 to 16.14). Read for this entry as DATA, not instructions: Nusrat's `Avatar/Config/experiments_ab.md` sections 7 to 9 and
+`Avatar/Config/reports_v4/for_anisha_finals_ab_20261114_164233.md`; and `final_plan.json`, `freeze_v4.py`, `bridge/server.py`, `final_guard_v4.py`, `hri_eval_final_v4.py`, `export_csv_v4.py`,
+`tests/test_v4_frozen.py`. Python only; nothing under `unity/`, `external/` or v3 is touched; `freeze_v4.py --freeze` is not run; `frozen.json` is not written; no reader value is changed; no final is run.
+
+**Decision 1. The finals matrix (13 settings, 20 runs each, seed 2).** It replaces the four Task 2 finals (`zoom_on`, `zoom_off`, `bystanders`, `zoom_on_repeat`), which Unity already refuses as superseded.
+
+| setting | experiment | set (lie p) | map | lie detection | Python control file (`--control-config`) |
+|---|---|---|---|---|---|
+| `A1` | A1 | A (0.0) | corridor | on | `configs/v4/experiments/control_lie_on_a1.json` |
+| `A2_right` | A2 | A (0.0) | turn (right) | on | `control_lie_on_a2_right.json` |
+| `A2_left` | A2 | A (0.0) | turn_left | on | `control_lie_on_a2_left.json` |
+| `A3` | A3 | A (0.0) | v4 `roadmap.json` | on | `control_lie_on.json` |
+| `A4` | A4 | A (0.0) | v4 `roadmap.json`, random layout | on | `control_lie_on.json` |
+| `B1` | B1 | B (0.2) | corridor | on | `control_lie_on_a1.json` |
+| `B2_right` | B2 | B (0.2) | turn (right) | on | `control_lie_on_a2_right.json` |
+| `B3` | B3 | B (0.2) | v4 `roadmap.json` | on | `control_lie_on.json` |
+| `B4` | B4 | B (0.2) | v4 `roadmap.json`, random layout | on | `control_lie_on.json` |
+| `B1_off` | B1 | B (0.2) | corridor | **off** | `control_lie_off_a1.json` |
+| `B2_right_off` | B2 | B (0.2) | turn (right) | **off** | `control_lie_off_a2_right.json` |
+| `B3_off` | B3 | B (0.2) | v4 `roadmap.json` | **off** | `control_lie_off.json` |
+| `B4_off` | B4 | B (0.2) | v4 `roadmap.json`, random layout | **off** | `control_lie_off.json` |
+
+- Seed 2, 20 runs per setting, test looks `sunbox_m_shirt_plaid` (male slots 1 and 3) and `sunbox_f_shirt_plaid` (female slot 2), test clips `point_mixamo_02` (POINT) and `proceed_ik_03` (PROCEED) in every setting.
+  **Disclosed difference from development:** the third worker at J1 (A3, A4, B3, B4 and their `_off` twins) wears the same test look as the first (one test look per gender exists); development rotates two looks
+  per gender. The two are told apart by position only.
+- B2 is run with the right turn only; `A2_left` has no Set B counterpart and is a turn-direction check with truthful workers (decided; `B2_left` is NOT added).
+- "Detection OFF" = second opinion, reject impossible and backtrack all false (`scenarios_ab.json` `detection.off`); "on" = second opinion + reject impossible, backtrack off (`detection.on`, 16.10.2). Set B's main
+  comparison is `B*` against `B*_off`; `A*` against `B*` (both on) isolates the lies.
+- **The exact Unity names Nusrat must add for the four `_off` settings** (the spelling matters: Unity's guard, the run-once markers and Python's `--final-setting` look them up by it):
+  `B1_off`, `B2_right_off`, `B3_off`, `B4_off`. For each: an entry in `final_v4.json` `settings` (`experiment_config` = `sessions/final_ab_<setting>.json`, test / test as for the other nine); the config
+  `Avatar/Config/sessions/final_ab_B1_off.json`, `final_ab_B2_right_off.json`, `final_ab_B3_off.json`, `final_ab_B4_off.json` with `experiment` "B1" / "B2" / "B3" / "B4" (side "right" for B2), `lie_detection` **"off"**,
+  `python_control` = `configs/v4/experiments/control_lie_off_a1.json` (B1_off), `control_lie_off_a2_right.json` (B2_right_off), `control_lie_off.json` (B3_off and B4_off), and the same test looks and clips as the on
+  twin; the four files added to `freeze_files` (22 to 26 files); the session folder `trials_final_Task2_<setting>_<time>`; `session.json` `final_setting` = the setting name; the launcher's `-Experiment B1 ... -LieDetection off`
+  (or whatever form Nusrat gives it) must pass the matching `--final-setting`. Unity's checks already accept `lie_detection` "off" (her report, item 1.1); that is hers to verify.
+
+**Decision 2. The timeout rule, declared now, applied after Nusrat's step-5 development runs.** `timeout_s` = 1.5 x the longest development run (the step-5 development sessions made with the same configs as the finals:
+same maps, layouts, lie probabilities and detection switches), rounded UP to a multiple of 30 s, never below 270 s. **`timeout_s` stays 270 until then**; the rule text is added to `final_plan.json`
+(`timeout_s_rule`), the value is changed only by a declared edit before the freeze. One value for all 13 settings (Unity reads one). Reading I chose, to be confirmed: "longest run" = the largest `total_s` of
+`truth_run###.json` over those development runs whatever their outcome, so a development run that hit the old 270 s limit counts as 270 s and would raise the value to 420 s (1.5 x 270 = 405, up to 420); every
+development timeout is reported next to the value. `final_guard_v4.timeout_from_development(longest_s)` computes it, so that the arithmetic is fixed in code and tested.
+Why this rule: Nusrat's estimate puts 8 of 20 runs of A3, B3 and B4 above 0.9 x 270 s with detection on (`experiments_ab.md` section 7), from Task 2 runs without second opinions; the declared rule takes the value from
+the configs that will be run.
+
+**Decision 3. The false-STOP rule is switched on only after Nusrat's STOP recordings pass a criterion; the criterion is declared here (it did not exist).** Nothing in `gesture_reader.json` / `gesture_motion.py` changes now
+(16.14: the zip holds no true STOP, so the cost of any cue on a true STOP is unknown). Criterion: with the rule switched on, **every true STOP is read within 1.0 s**. Operationally (my reading, to be confirmed): on the
+STOP recordings (development looks and development clips only, never a test look or clip; the recordings asked for in 16.14 item 5: STOPs at 2 m from `sunbox_m1` and `sunbox_f1`, both arms, raised from the hip and
+held, plus a pass beside a standing worker for the hanging hand), the replayed reader (`analyse_false_stop_v4.py` replay, the logged `model_outputs.jsonl`) reads STOP no later than 1.0 s after the first truth row of that
+STOP in a shown phase (`false_stop_analysis.json` `shown_phases`); the unit is one STOP, the criterion is met only when it is n of n (no exception), reported with n and with the count per look and arm. A STOP that is
+never read, or read after 1.0 s, fails the criterion and the rule stays off. The same recordings also report the false STOP on the pass-by and on PROCEED / POINT, without a threshold of their own (the criterion is the gate,
+not the choice of cue). **The form of the rule (which cues, arm-moving or short window, raised arm) is still your decision (16.14 questions i and ii); this entry does not make it.** Because `gesture_reader.json`
+is in the freeze list, the order is: STOP recordings, criterion passed, rule written (declared first), then the freeze.
+
+**Work (items 2 to 5 of Nusrat's report), with the values I chose where nothing above settles them (for you to confirm or change):**
+1. `final_plan.json`: the 13 settings above (replacing the four; they move to `superseded_settings` for the record, not read by any tool), each with `experiment`, `set`, `map`, `roadmap` (the robot map the control file names),
+   `lie_detection`, `zoom` null, `bystanders` null, a note; `test_assignment` for each; `timeout_s_rule`; `false_stop_rule` (status off, pointer to this entry). Tests updated.
+2. `bridge/server.py` `FINAL_CONTROL`: the 13 entries of the table. `preflight_final` also refuses a control file whose lie-detection switches or `roadmap` do not fit the setting's entry (it only checked zoom).
+3. `freeze_v4.py`: `FROZEN_EXTRA` gets the eight `control_lie_*` files and `roadmap_a1.json`, `roadmap_a2_right.json`, `roadmap_a2_left.json` (an explicit list, not a glob: `export_csv.json` and
+   `false_stop_analysis.json` stay outside, 16.10.1); `tests/test_v4_frozen.py` pinned lists updated. The `files` list of `frozen.json` is not edited by me (it is rewritten by the freeze itself).
+4. `final_guard_v4.check_setting` also checks, for an experiment setting: the looks and clips of the runs lie within the setting's `test_assignment`; the bridge's `config_used/control.json` has the lie-detection
+   switches and `roadmap` of the setting; `session.json` `experiment` and `set` (and `lie_probability`, when recorded) are the setting's. A third marker kind `export` (`FINAL_EXPORT_DONE.json`).
+5. `export_csv_v4.py` final mode (`--final --setting S`): `fz.require_frozen`, leak test, test split with `final_evaluation`, `check_setting`, once per setting (own marker, written last), folder
+   `export_csv_v4_final_<setting>_<time>/` with `runs.csv`, `dialogs.csv`, `export.json`, `config_used/`, `run.json`; and `--final-combine FOLDER...`: one combined table over the per-setting exports (each must carry its marker;
+   derived data, rerunnable into a new folder): per setting, then A vs B per scenario, B on vs off, A2 right vs left, every rate with its count and a Wilson 95 % interval (`analysis.json` `wilson_z` 1.96), the
+   difference of two rates in percentage points as a description only (no test, no interval).
+6. `hri_eval_final_v4.py`: per experiment, in `eval.json` / `eval.md`: SUCCESS with a Wilson interval and failure kinds (collision / timeout / aborted / wrong goal, counted), median time (of all runs with a time and of
+   SUCCESS runs, with n), trail against the optimal corridor (median ratio, share of trail points within the corridor when `gt_path` gives it), lies given / detected / corrected / fooled (totals and rates over lies given
+   with Wilson intervals; Set A has none), safety stops (runs with at least one, total, seconds) and watchdog stops (already there; B11(a): a result, never a refusal). Same rate definitions in the export's combined table.
+Not decided here and not done: the sittings and run order (item 1.5 of her report), `B2_left`, the Unity-versus-simulator differences still open in 16.13.
+
+#### 16.15.1 What was built (files; nothing under `unity/`, `external/` or v3 was edited; no final was run; `frozen.json` untouched; `freeze_v4.py --freeze` not run)
+
+- `configs/v4/final_plan.json`: the 13 settings (each with `experiment`, `set`, `map`, `roadmap`, `lie_detection`, `zoom` null, `bystanders` null), `test_assignment` for all 13 (plaid looks, the two test clips), the four Task 2 settings under
+  `superseded_settings` (no tool reads them), `timeout_s_rule` (`timeout_s` stays 270), `false_stop_rule` (status off). `final_guard_v4.settings()` is therefore the 13 names.
+- `bridge/server.py`: `FINAL_CONTROL` for the 13 (the `_off` settings use `control_lie_off_a1.json`, `control_lie_off_a2_right.json`, `control_lie_off.json`); `preflight_final` also reads the control file and refuses
+  one whose lie-detection switches or `roadmap` are not the setting's (`final_guard_v4.control_problems`), whatever its name; the `--final-setting` help text names the 13.
+- `freeze_v4.py`: `FROZEN_EXTRA` = `scenarios_ab.json` + the eight `control_lie_*` files + `roadmap_a1.json`, `roadmap_a2_right.json`, `roadmap_a2_left.json` (12 files; an explicit list). `export_csv.json` and
+  `false_stop_analysis.json` stay outside. `frozen.json` is not written by me: its `files` list is stale (it also lacked `scenarios_ab.json` before today) and is rewritten by the freeze itself.
+  `control_zoom_on.json` / `control_zoom_off.json` stay in the freeze list (the glob reaches them); no setting uses them any more; they are harmless, and dropping them would be a v3-style change I did not make unasked.
+- `final_guard_v4.py`: a third marker kind `export` (`FINAL_EXPORT_DONE.json`); `timeout_from_development`; `detection_switches`, `control_problems`; `check_setting` also checks experiment / set / lie probability in `session.json`, the looks and clips against
+  `test_assignment`, and the bridge's `config_used/control.json` against the setting.
+- `export_csv_v4.py`: new run fields `final_setting`, `max_distance_from_optimal_m`, `share_within_corridor`, `watchdog_stops`; `summarize` (SUCCESS with Wilson 95 % and counts, failure kinds collision / timeout / aborted / wrong goal / other,
+  median time of all runs and of SUCCESS runs, trail / optimal, corridor measures, lies given / detected / corrected / fooled with rates over lies given, safety and watchdog stops, collisions); `--final --setting S --session U B` (gates in
+  `hri_eval_final_v4.gate(..., kind="export")`: frozen, not exported, leak test, test split with `final_evaluation`, `check_setting`; marker last; folder `export_csv_v4_final_<S>_<time>/` with `summary.json`); `--final-combine FOLDER...`
+  (`combined.md`, `combined.json`, `combined_settings.csv`, `combined_comparisons.csv`; comparisons derived from the plan: A vs B x4, B on vs off x4, A2 right vs left; a pair whose second setting was not exported says "not available").
+  `configs/v4/experiments/export_csv.json` gets the four new columns at the end of `runs`.
+- `hri_eval_final_v4.py`: `eval.json` `experiment` {setting, plan entry, summary, runs_table} and a section of `eval.md`, from the same `summarize`; the watchdog block is unchanged (B11(a): a result, never a refusal).
+- Tests: `tests/test_v4_final.py` rewritten for the 13 settings (guards, `check_setting`, plan / control / scenarios pinning, summary arithmetic, final evaluation, final export, combined table, server preflight);
+  `tests/test_v4_frozen.py` (settings pin, freeze list, `test_assignment`, timeout rule, false-STOP rule off); `tests/test_lie_detection_v4.py` (freeze-list test for the 16.15 list);
+  `tests/test_export_csv_v4.py` (the isolation test lets `hri_eval_final_v4.py` import the exporter: it is evaluation code; the rule for every other file is unchanged).
+
+#### 16.15.2 Open points for Anisha (nothing below was decided by me)
+
+1. **Timeout rule reading** (decision 2): a development run that timed out at 270 s counts as 270 s, so it would raise the value to 420 s. Say if timed-out runs should be left out.
+2. **STOP criterion reading** (decision 3): onset = first truth row of the STOP in a shown phase, unit = one STOP, n of n; and the recordings are those of 16.14 item 5. Say if the unit or the onset should be different.
+3. **The form of the false-STOP rule** (16.14 questions i and ii) is still open and is needed before the freeze, because `gesture_reader.json` is frozen.
+4. **Not checked by the Python side:** Unity's `session.json` `map` and `lie_detection` label (their written format is not in her report); the Python side checks what it controls (the bridge's control file, i.e. what the robot actually ran) and the experiment, set and lie probability Unity records.
+   If Unity writes `experiment` or `set` in another form than "A3" / "B" (it should be as in `session.json` of her report, item 5), the check refuses the evaluation before any data is read, without a marker, so the form can be fixed.
+5. **Run order and sittings** (her item 1.5) and `B2_left` are not decided here. Detection OFF adds 80 runs (about 2.5 h, her estimate), so the matrix is 260 runs.
+6. The combined table's difference column is a plain difference in percentage points between two rates of 20 runs each; it has no interval of its own (the intervals are on the two rates). Say if a difference interval is wanted.
+
+#### 16.15.3 Tests changed besides those listed in 16.15.1, and the suite
+
+`tests/test_hri_analysis_v4.py` and `tests/test_make_results_archive_v4.py` used the superseded setting `zoom_on` as the name of a final (the analysis tool's `--final` mode and the archive's manifest check the name against the plan): their final-mode fixtures now
+use `A3` (the analysis test that refused a zoom-off session now refuses a detection-off session given as `A3`). `configs/v4/archive/results_manifest.json` and `configs/v4/README.md`: label text only. Full suite (`python -m unittest discover -s tests`, venv): exit 0, 1128 tests, 3 skipped (1108 before this round).
+No reader value, `frozen.json`, `unity/`, `external/` or v3 file was changed.
+
+### 16.16 Decisions of 2026-11-14 (Anisha), fifth round: the new PROCEED pose, the STOP re-check, timeout, intervals; recorded BEFORE any new recording and before the code of items 1 and 3
+
+State at the time of writing: branch `anisha/v4-finals-ab-python` (16.15, staged, not yet committed); `origin/main` is `793b59e`. **The pose change is announced by Nusrat, PR not yet merged at the time of writing:** `origin/nusrat/v4-avatar-fixes` (tip `e6c6bfd`, ten commits) exists
+on the remote and is not an ancestor of `origin/main`. I did not confirm the pose change itself (that her branch changes the PROCEED forearm by about 12 degrees on every look); I know it from the instruction, not from the code. `git pull --ff-only` brought nothing.
+Python and docs only; nothing under `unity/`, `external/` or v3 is changed; no reader value is changed; no recording was made.
+
+**Decision 1. Disclosure.** The development results D2 to D4 (and the false-STOP analysis of 16.14) were made with the OLD PROCEED pose (forearm about 12 degrees off, Nusrat). The finals use the new pose. So the development figures and the finals differ in
+the PROCEED pose, besides the declared differences already listed; this is disclosed here and must be repeated wherever development and final numbers are compared.
+
+**Decision 2. The candidate STOP rule is re-checked on Nusrat's next session, which uses the new poses.** Nothing is switched on before it (16.15 decision 3 stands). Pass criteria, declared now, all three needed:
+- **(a)** every true STOP is read within 1.0 s: unchanged, and confirmed in its reading (16.15 decision 3): from the first truth row of the shown STOP, one STOP per unit, n of n within 1.0 s, reported with n and the count per look and arm.
+- **(b)** on the PROCEED, POINT and WAIT frames of the new poses (3 negatives of each per look per arm), the new rule gives fewer accepted false STOPs than the current rule, **reported with the counts of both rules**.
+  My reading of "fewer", to be confirmed: STOP readings counted per category (PROCEED, POINT, WAIT) as frames and as stop episodes (`false_stop_analysis.json` `episode_gap_s`), for both rules; met when the total over the three categories is
+  strictly smaller with the new rule in both counts and no category has more. With 3 negatives per look per arm these counts are small; they are reported as counts, not as a rate with a claim of significance.
+- **(c)** no accepted STOP from an idle worker: zero accepted STOP readings on every idle (NONE) frame, including the pass beside the idle worker.
+If (a) fails, the fallbacks declared in 16.14 apply. **I found no entry named fallback in 16.14.** What 16.14 names as other forms of the cues is: the static cue as the short window (mean wrist speed over the 0.3 s STOP window) instead of the reader's `moving` flag, the
+spread cue alone, and no raised-arm requirement (the 2026-11-08 decision). I read "the declared fallbacks" as those, in that order of being less strict; **please confirm or name them**.
+
+**Decision 3. What Nusrat must record** (development looks `sunbox_m1` and `sunbox_f1` and development clips only; never a test look or clip), both arms, at 2 m, with the new poses:
+- STOP, also while the robot drives (the number as asked in 16.14 item 5: 20 STOPs per look, both arms, part of them while driving);
+- PROCEED, POINT and WAIT: 3 negatives of each per look per arm;
+- one pass beside an idle worker (the idle worker shows nothing; this is the hanging-hand case of 16.14).
+The logs of the kind of the zip of 16.14 (`model_outputs.jsonl`, `truth.jsonl`, `decisions.csv`, `v4_log.jsonl`) are needed, read with `analyse_false_stop_v4.py`.
+
+**Decision 4. Timeout rule, corrected (replaces the reading of 16.15 decision 2).** `timeout_s` = 1.5 x the longest SUCCESSFUL development run (same configs as the finals), rounded up to a multiple of 30 s, never below 270 s. A development run that
+timed out (or failed otherwise) does not count as a duration. **Every development timeout is reported, and its cause is found before the freeze.** `timeout_s_rule` and `final_guard_v4.timeout_from_development` are updated with a test; `timeout_s` stays 270.
+
+**Decision 5. STOP criterion (a)**: the reading of 16.15 decision 3 is right (recorded above).
+
+**Decision 6. Combined table**: each difference of two rates also gets a Newcombe (Wilson-based) 95 % interval (method 10 of Newcombe 1998: the Wilson intervals of the two rates combined), as a description only; tests with Newcombe's published example.
+
+**Decision 7. The `session.json` values Unity writes, read in the Unity code on main (read only, nothing changed):** `experiment` = the experiment of the final config ("A1" ... "B4"; "B2" for `B2_right` and `B2_right_off`, "A2" for `A2_left`), `set` = "A" or "B",
+`lie_probability` = the set's value as a float, `map` = the scenario's map name ("corridor", "turn", "roadmap"; "turn" also for the left turn), `final_setting` = the setting name. **`lie_detection` is NOT written to `session.json`** (it is only in the final config and Python's
+control file): the exporter's `setting` column is therefore empty in the finals, and the Python checks use the control file the bridge ran with, which they already do. Consequences made in Python: the `lie_probability` comparison tolerates float32 (1e-6); a recorded
+`final_setting` must equal the setting.
+
+#### 16.16.1 What was built, and which open points of 16.15.2 are now settled
+
+- `final_guard_v4.py`: `timeout_from_development` (longest SUCCESSFUL run) and `development_timeout(runs)` (applies the rule to the `truth_run###.json` dicts; lists every timeout for its cause; raises when no run succeeded); `final_plan.json` `timeout_s_rule` rewritten; `timeout_s` still 270.
+  `check_setting` tolerates float32 in `lie_probability` (1e-6) and refuses a recorded `final_setting` that is not the setting.
+- `export_csv_v4.py`: `newcombe(k1, n1, k2, n2, z)`; every difference of the combined table has `difference_lo_pp` / `difference_hi_pp` (also in `combined_comparisons.csv` and `combined.md`), for SUCCESS and for lies fooled.
+- Tests: Newcombe's published example (56/70 against 48/80: 20.0, 5.2 to 33.4), sign and symmetry, bounds, no denominator; the development timeout (timeouts listed, never below 270, no success refused); the float32 lie probability and `final_setting`; the combined table's interval columns.
+- Settled from 16.15.2: item 1 (timeout reading, decision 4), item 2 (STOP criterion reading, decision 5), item 4 (session format, decision 7), item 6 (difference interval, decision 6). Still open: item 3 (the form of the false-STOP rule), item 5 (sittings, `B2_left`), and the two points of this entry
+  (my reading of "fewer" in 2(b), and what "the declared fallbacks of 16.14" means).
+- Full suite (venv): exit 0, 1134 tests, 3 skipped. No reader value, `frozen.json`, `unity/`, `external/` or v3 file changed.
