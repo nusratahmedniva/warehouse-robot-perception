@@ -400,3 +400,53 @@ dirty tree, `trials.local.json`, the setting already run (Unity's or Python's ma
 setting or naming another control file, `frozen.json` not frozen, then the server's own `preflight_final`. `-Setting zoom_on` etc. is refused as
 superseded. `-DryRun` prints every command and every reason a real run would be refused now. After a valid B11 check it prints the evaluation and
 CSV export commands (Anisha's tools; their final mode for the experiments is pending). `final_procedure_v4.md` has a 2026-11-14 block on top.
+
+## 2026-11-14, section 8: the avatar experiment, protocol (declared only; nothing run)
+
+Question: how does the kind of avatar change what the robot's perception finds and reads (person, arm, hand, the gesture), with the frozen
+reader? An engineering measurement with Anisha's `look_check_v4.py` **unchanged** (its rules: `docs/look_check_v4.md`, `configs/v4/look_check.json`);
+no value of any tool, reader or config is tuned on it, and its results never feed back into the navigation finals.
+
+**Looks per kind** (the `avatar_experiment` list of `looks_ab.json`, unchanged; 13 looks):
+
+| kind | looks | recorded in |
+|---|---|---|
+| realistic human | `mixamo_worker` | Edit mode and Play mode |
+| stylised human (Sunbox body family) | development: `sunbox_m1`, `sunbox_f1`, `sunbox_m2`, `sunbox_m_shirt_white`, `sunbox_m_tshirt_black`, `sunbox_f_shirt_white`, `sunbox_f_dress_red`; test: `sunbox_f2`, `sunbox_m_shirt_plaid`, `sunbox_f_shirt_plaid` | Edit mode and Play mode |
+| anime | `anime_f_01` (the re-export of section 5) | Edit mode and Play mode |
+| cartoon non-human | `cartoon_boxo_01` | Edit mode only: the worker template cannot spawn it (one finger chain per hand; `look_check_play_ab.json` `looks_excluded`, section 2 rule) |
+
+No look is added, dropped or replaced because of a result; a look that fails is reported as failed (as anime_f_01 and cartoon_boxo_01 in section 6).
+
+**Commands, distances, repeats** (the existing configs, unchanged):
+- *Commands:* POINT, WAIT, STOP and the negative control NONE (the worker idle, facing the robot). PROCEED is **not evaluated**: the Unity look checks
+  record `WorkerV4Config.Commands` (POINT, WAIT, STOP) only, and Anisha's tool grades PROCEED only when PROCEED recordings exist (AUDIT.md 16.12
+  item 5). Recording PROCEED would be a Unity change, to be declared before the freeze if wanted **[N]**.
+- *Edit mode* (`Avatar/Config/look_check.json` with the looks of `looks_ab.json`, `LookCheckMenu.BatchRunExperiment`, every look of the list): the declared held
+  poses on the neutral stage at 2.0 m (verdict distance) and 4.0 m, both arms, 11-frame sequences and singles as `look_check.json` `recording`.
+- *Play mode* (`Avatar/Config/look_check_play_ab.json`, unchanged: venue `WarehouseRobot_v4.unity`, the J1 and J2 worker stands, asking bearings
+  15 to 50 deg, real motion with the worker template, seed 1): per look, command, distance (2.0 and 4.0 m +- 0.15 m) and arm (left, right; NONE
+  has none): **2 sequences of 11 frames + 16 single frames = 38 frames** per group, so 12 POINT/WAIT/STOP groups (456 frames) and 2 NONE groups
+  (76 frames) = **532 frames per look**, 12 looks = 6 384 frames. The seed is the one of the step 2 check (the same poses are drawn again, so the
+  numbers are comparable with that engineering check, which is not part of the experiment).
+- *Measures, per look and summed per kind:* the fields of Anisha's report (person found, arm valid, hand linked, own cue, wrong class, sequence
+  read, arm-to-shoulder ratio p95, facing, verdict) at 2.0 m and at 4.0 m, each with its count (coverage); plus the Unity-side checks of section 2
+  (bone arm-to-shoulder ratio against 1.683, hand reach to the IK target, the mirror-rest correction, material problems, magenta pixels).
+
+**How it runs, once, after the freeze.**
+1. Precondition: `configs/v4/frozen.json` frozen with every hash matching, *and the last navigation final of section 7 is done* (so no avatar
+   result can influence a final). The configs it reads (`looks_ab.json`, `look_check.json`, `look_check_play_ab.json`, `worker_v4.json`,
+   `WorkerV4.prefab`, the v4 scene) are on the B9 list (section 7 step 4) and therefore frozen.
+2. On main at the frozen commit, clean tree, Nusrat's PC, the run protocol (other apps closed, Best performance; `run_protocol_v4.ps1 -Label avatar_experiment`).
+3. Edit mode (batch mode works for it), from the repository root:
+   `& "C:\Program Files\Unity\Hub\Editor\2022.3.62f3\Editor\Unity.exe" -batchmode -quit -projectPath unity\Robotics-Warehouse\WarehouseProjectURP -executeMethod WarehouseAvatar.EditorTools.LookCheckMenu.BatchRunExperiment -logFile robot_vision\outputs\avatar_experiment_edit_<time>.log`
+   -> `robot_vision/outputs/look_check_ab_<time>/`.
+4. Play mode in the Editor WINDOW (no `-batchmode`, as the finals):
+   `& "C:\Program Files\Unity\Hub\Editor\2022.3.62f3\Editor\Unity.exe" -projectPath unity\Robotics-Warehouse\WarehouseProjectURP -executeMethod WarehouseAvatar.EditorTools.LookCheckPlayMenu.CommandLineRunAB -lookCheckTimeout 10800 -logFile robot_vision\outputs\avatar_experiment_play_<time>.log`
+   -> `robot_vision/outputs/look_check_play_ab_<time>/` (recordings in its `looks_check_<time>/`).
+5. From `robot_vision\`: `.\.venv\Scripts\python.exe look_check_v4.py --input <the recordings folder of the Edit-mode run>` and the same for the
+   Play folder; nothing else is run on them. A cyan-placeholder frame (section 5, addendum 2) or a crash is reported as it is; the run is **not
+   repeated** (as for a final). The step 2 and 2b look checks stay engineering checks and are not results of the experiment.
+6. Run once: the two output folders (identified by their `run_info.json` commit = the frozen commit) are the avatar experiment. No code guard is
+   built for it (declared; a guard like `FinalGuardV4` would be a later, declared change **[N]**).
+7. Reported per kind and per look with every rate's count; the test looks are reported like the others (the finals are over by then).
