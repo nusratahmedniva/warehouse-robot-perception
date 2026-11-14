@@ -14,8 +14,8 @@ namespace WarehouseAvatar.EditorTools
     /// The Edit-mode pose geometry and the screenshots of looks the worker template cannot spawn (experiments_ab.md section 10 addendum 1).
     /// Every look of looks_ab.json avatar_experiment is posed on the LookCheck stage with every POINT, WAIT, STOP and PROCEED take of
     /// look_check.json, both arms (PROCEED sequences frame by frame); the rendered elbow angle, upper-arm and forearm directions are compared
-    /// with the pose's intended ones (LookPoser.Intended) under the declared tolerance of gesture_geometry.json; no fold for the POINT and
-    /// STOP poses designed straight. Looks of the screenshot kind groups whose hands the worker template cannot shape are rendered from the
+    /// with the pose's intended ones (LookPoser.Intended) under the declared tolerance of gesture_geometry.json; no fold for the poses of
+    /// its no_fold_commands designed straight (POINT only since section 11 item 1). Looks of the screenshot kind groups whose hands the worker template cannot shape are rendered from the
     /// neutral camera of gesture_geometry.json screens. No perception model is run. Writes robot_vision/outputs/pose_geometry_&lt;time&gt;/.
     /// Command line: -executeMethod WarehouseAvatar.EditorTools.LookCheckMenu.BatchPoseGeometry (batch mode works).
     /// </summary>

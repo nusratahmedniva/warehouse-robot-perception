@@ -26,7 +26,7 @@ namespace WarehouseAvatar.Tests
             Assert.AreEqual(5f, g.tolerance.arm_direction_deg);
             Assert.AreEqual(10f, g.tolerance.forearm_direction_deg);
             Assert.AreEqual(120f, g.tolerance.no_fold_min_elbow_deg);
-            CollectionAssert.AreEquivalent(new[] { "POINT", "STOP" }, g.tolerance.no_fold_commands);
+            CollectionAssert.AreEquivalent(new[] { "POINT" }, g.tolerance.no_fold_commands, "section 11 item 1: the extended gesture only");
             CollectionAssert.AreEquivalent(new[] { "anime", "cartoon_non_human" }, g.screens.kind_groups);
         }
 
@@ -64,6 +64,30 @@ namespace WarehouseAvatar.Tests
             var off = GestureGeometry.Evaluate(Sample("STOP", e, Quaternion.AngleAxis(10f, Vector3.up) * new Vector3(0.55f, 0f, 0f), new Vector3(0.55f, 0f, 0f)), tol);
             Assert.IsFalse(off.Pass);
             StringAssert.Contains("arm direction", off.Why);
+        }
+
+        [Test]
+        public void Evaluate_StopAndProceed_AreCheckedAgainstTheirOwnDesignElbow_NotTheNoFoldRule()
+        {
+            var tol = Geometry().tolerance;
+            // section 11 item 1: STOP at its design's lower reach (0.85 L, ~116 deg) is the intended pose and passes
+            const float u = 0.3f, f = 0.25f;
+            float d = 0.85f * (u + f);
+            float atS = Mathf.Acos((u * u + d * d - f * f) / (2f * u * d));     // the upper arm's angle off the shoulder-to-hand axis
+            Vector3 target = new Vector3(d, 0f, 0f), e = new Vector3(u * Mathf.Cos(atS), u * Mathf.Sin(atS), 0f);
+            var bent = GestureGeometry.Evaluate(Sample("STOP", e, target, target, u, f), tol);
+            Assert.Less(bent.ElbowDeg, tol.no_fold_min_elbow_deg, "the design's STOP elbow is below the no-fold angle");
+            Assert.AreEqual(bent.IntendedElbowDeg, bent.ElbowDeg, 0.1f);
+            Assert.IsFalse(bent.Fold, "STOP is not under the no-fold rule");
+            Assert.IsTrue(bent.Pass, bent.Why);
+            // the same bent arm where the design asks for an extended STOP fails on its own design elbow angle
+            var wrong = GestureGeometry.Evaluate(Sample("STOP", e, target, new Vector3(0.97f * (u + f), 0f, 0f), u, f), tol);
+            Assert.IsFalse(wrong.Pass);
+            StringAssert.Contains("elbow angle", wrong.Why);
+            Assert.IsFalse(wrong.Fold);
+            // PROCEED bent by design (elbow ~ 60 deg) is no fold
+            var p = Sample("PROCEED", e, target, target, u, f);
+            Assert.IsFalse(GestureGeometry.Evaluate(p, tol).Fold);
         }
 
         [Test]

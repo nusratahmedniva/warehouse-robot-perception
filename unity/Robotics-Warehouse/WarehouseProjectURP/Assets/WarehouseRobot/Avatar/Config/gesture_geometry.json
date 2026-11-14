@@ -5,8 +5,8 @@
     "arm_direction_deg": 5.0,
     "forearm_direction_deg": 10.0,
     "no_fold_min_elbow_deg": 120.0,
-    "no_fold_commands": ["POINT", "STOP"],
-    "why": "Declared in experiments_ab.md section 10 before any measurement. elbow_angle_deg: the rendered elbow's interior angle (shoulder-elbow-wrist) against the two-bone angle of the goal's shoulder-to-target distance with the rig's own upper arm and forearm. arm_direction_deg: shoulder-to-wrist against shoulder-to-target. forearm_direction_deg: elbow-to-wrist against vertical (WAIT) or against intended elbow-to-target (PROCEED). no_fold_min_elbow_deg: a straight-arm command (POINT 144 to 163 deg by design, worker_v4.json limits; STOP extended) whose elbow closes below 120 deg has folded. A look x command passes when every measured frame of every take passes all of them."
+    "no_fold_commands": ["POINT"],
+    "why": "Declared in experiments_ab.md section 10 before any measurement. elbow_angle_deg: the rendered elbow's interior angle (shoulder-elbow-wrist) against the two-bone angle of the goal's shoulder-to-target distance with the rig's own upper arm and forearm. arm_direction_deg: shoulder-to-wrist against shoulder-to-target. forearm_direction_deg: elbow-to-wrist against vertical (WAIT) or against intended elbow-to-target (PROCEED). no_fold_min_elbow_deg: a straight-arm command (POINT 144 to 163 deg by design, worker_v4.json limits) whose elbow closes below 120 deg has folded. A look x command passes when every measured frame of every take passes all of them. 2026-11-14, section 11 item 1 (Nusrat's check correction, declared before the change): no_fold_commands POINT only, the one extended gesture; STOP (stop_reach 0.85 to 0.97 L: 116 to 152 deg by design), PROCEED (bent, 38 to 125 deg over the swing) and WAIT are checked against their own design elbow angle by elbow_angle_deg. Before: POINT and STOP."
   },
   "stage": {
     "seed": 1,
