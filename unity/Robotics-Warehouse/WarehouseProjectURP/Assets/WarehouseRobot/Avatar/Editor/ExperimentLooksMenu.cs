@@ -244,6 +244,189 @@ namespace WarehouseAvatar.EditorTools
                    $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/arm_skin.json";
         }
 
+        /// <summary>Command line: -executeMethod WarehouseAvatar.EditorTools.ExperimentLooksMenu.BatchProbeFingers [-lookCheckLooks a,b]: per
+        /// prefab-kind look of looks_ab.json, each hand's bone chains, the Humanoid finger mapping, the finger skin probe (FingerSkinCheck,
+        /// experiments_ab.md section 10), every material (shader, base colour, base texture), the error-shader check and the magenta pixels of
+        /// a neutral render (saved next to the report). Report only.</summary>
+        public static void BatchProbeFingers()
+        {
+            try
+            {
+                Debug.Log("[ExperimentLooks] " + ProbeFingers());
+                EditorApplication.Exit(0);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[ExperimentLooks] FAILED: " + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        [Serializable]
+        class FingerReport
+        {
+            public string name, verdict, most_moved_other;
+            public string[] bones = new string[0];
+            public string[] humanoid = new string[0];
+            public int region_vertices, region_moved;
+            public float own_fraction, max_other_fraction;
+        }
+
+        [Serializable]
+        class HandReport
+        {
+            public string side, hand_bone, verdict;
+            public int chains;
+            public List<FingerReport> fingers = new List<FingerReport>();
+        }
+
+        [Serializable]
+        class MaterialReport { public string renderer, material, shader, base_colour, base_texture; }
+
+        [Serializable]
+        class FingerLook
+        {
+            public string id, asset, asset_sha256, note = "";
+            public int finger_bones_mapped, magenta_pixels = -1;
+            public bool hand_shapes_possible;
+            public string[] material_problems = new string[0];
+            public string render = "";
+            public List<HandReport> hands = new List<HandReport>();
+            public List<MaterialReport> materials = new List<MaterialReport>();
+        }
+
+        [Serializable] class FingerFile { public string created_local, rule; public List<FingerLook> looks = new List<FingerLook>(); }
+
+        public static string ProbeFingers()
+        {
+            var f = Load(out _);
+            var ids = f.looks.Where(l => l != null && l.kind == LookEntry.KindPrefab).Select(l => l.id).ToList();
+            var subset = ExperimentLooks.Subset(Environment.GetCommandLineArgs(), ids, out string subsetError);
+            if (subsetError != null) throw new ArgumentException(subsetError);
+            var file = new FingerFile
+            {
+                created_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv),
+                rule = $"experiments_ab.md section 10: each chain's first bone bent {FingerSkinCheck.BendDeg.ToString("0", Inv)} deg; a vertex moves above " +
+                       $"{(FingerSkinCheck.MoveM * 1000f).ToString("0", Inv)} mm; region = within {(FingerSkinCheck.RegionM * 100f).ToString("0", Inv)} cm of its own chain and nearest to it; " +
+                       $"separate when >= {FingerSkinCheck.OwnMin.ToString("0.00", Inv)} of its own region and <= {FingerSkinCheck.OtherMax.ToString("0.00", Inv)} of every other moves (at least {FingerSkinCheck.MinRegion} vertices)",
+            };
+            var repo = RepoRoot(f);
+            string outDir = NewFolder(Path.Combine(repo, f.paths.output_root), "probe_fingers");
+            foreach (var id in subset ?? ids.ToArray())
+            {
+                var l = f.looks.First(x => x.id == id);
+                var p = new FingerLook { id = l.id, asset = l.asset };
+                file.looks.Add(p);
+                string path = Path.Combine(Application.dataPath, "..", l.asset);
+                var go = AssetDatabase.LoadAssetAtPath<GameObject>(l.asset);
+                if (go == null || !File.Exists(path)) { p.note = "not installed"; continue; }
+                p.asset_sha256 = Sha256(File.ReadAllBytes(path));
+                var inst = (GameObject)Object.Instantiate(go);
+                try
+                {
+                    inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                    var a = inst.GetComponentInChildren<Animator>();
+                    if (a == null || a.avatar == null || !a.avatar.isHuman) { p.note = "no Humanoid Animator"; continue; }
+                    if (!string.IsNullOrEmpty(l.material_override))
+                    {
+                        var mo = AssetDatabase.LoadAssetAtPath<Material>(l.material_override);
+                        if (mo != null) foreach (var r in inst.GetComponentsInChildren<Renderer>(true)) r.sharedMaterials = Enumerable.Repeat(mo, Mathf.Max(1, r.sharedMaterials.Length)).ToArray();
+                    }
+                    var bones = new AnimatorBones(a);
+                    p.finger_bones_mapped = LookInventory.FingerBones.Count(b => bones.Get(b) != null);
+                    var poser = new LookPoser(bones, new LookCheckHand { fist_curl_deg = 1f });
+                    p.hand_shapes_possible = poser.HasArms && poser.HasFingers;
+                    var human = new Dictionary<Transform, string>();
+                    foreach (var b in LookInventory.FingerBones) { var t = bones.Get(b); if (t != null) human[t] = b.ToString(); }
+                    var smrs = inst.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                    foreach (bool left in new[] { true, false })
+                    {
+                        var hand = a.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
+                        var h = new HandReport { side = left ? "left" : "right", hand_bone = hand != null ? hand.name : "unmapped" };
+                        p.hands.Add(h);
+                        if (hand == null) { h.verdict = FingerSkinCheck.Inconclusive; continue; }
+                        h.chains = FingerSkinCheck.Chains(hand).Count;
+                        foreach (var r in FingerSkinCheck.MeasureHand(hand, smrs))
+                            h.fingers.Add(new FingerReport
+                            {
+                                name = r.Name, verdict = r.Verdict, most_moved_other = r.MostMovedOther, bones = r.Bones,
+                                humanoid = FingerSkinCheck.Chains(hand).First(c => c[0].name == r.Name).Where(human.ContainsKey).Select(t => human[t]).ToArray(),
+                                region_vertices = r.Region, region_moved = r.RegionMoved, own_fraction = r.OwnFraction, max_other_fraction = r.MaxOtherFraction,
+                            });
+                        h.verdict = h.fingers.Count <= 1 ? "one_chain" : h.fingers.All(x => x.verdict == FingerSkinCheck.Separate) ? FingerSkinCheck.Separate
+                                  : h.fingers.Any(x => x.verdict == FingerSkinCheck.Merged) ? FingerSkinCheck.Merged : FingerSkinCheck.Inconclusive;
+                    }
+                    foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
+                        foreach (var m in r.sharedMaterials)
+                        {
+                            if (m == null) { p.materials.Add(new MaterialReport { renderer = r.name, material = "(missing)" }); continue; }
+                            Color c = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.HasProperty("_Color") ? m.GetColor("_Color") : Color.white;
+                            Texture t = m.HasProperty("_BaseMap") ? m.GetTexture("_BaseMap") : m.HasProperty("_MainTex") ? m.GetTexture("_MainTex") : null;
+                            p.materials.Add(new MaterialReport
+                            {
+                                renderer = r.name, material = m.name, shader = m.shader != null ? m.shader.name : "(none)",
+                                base_colour = $"rgb({c.r.ToString("0.00", Inv)}, {c.g.ToString("0.00", Inv)}, {c.b.ToString("0.00", Inv)})",
+                                base_texture = t != null ? t.name : "",
+                            });
+                        }
+                    p.material_problems = LookInventory.MaterialProblems(inst, out _).ToArray();
+                    p.render = l.id + "_neutral.png";
+                    p.magenta_pixels = RenderNeutral(inst, Path.Combine(outDir, p.render));
+                }
+                finally { Object.DestroyImmediate(inst); }
+            }
+            File.WriteAllText(Path.Combine(outDir, "fingers.json"), JsonUtility.ToJson(file, true).Replace("\r\n", "\n") + "\n", Utf8);
+            return string.Join("; ", file.looks.Select(x => $"{x.id}: fingers {x.finger_bones_mapped}/30, shapes {x.hand_shapes_possible}, " +
+                                                            string.Join(", ", x.hands.Select(h => $"{h.side} {h.chains} chains {h.verdict}")) +
+                                                            $", magenta {x.magenta_pixels}, material problems {x.material_problems.Length} {x.note}")) +
+                   $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/fingers.json";
+        }
+
+        /// <summary>A front view of the model in its import pose on a grey background (one directional light); the PNG is saved and the
+        /// error-shader magenta pixels counted (LookInventory.MagentaPixels, tolerance 8).</summary>
+        static int RenderNeutral(GameObject model, string pngPath)
+        {
+            var b = new Bounds(model.transform.position, Vector3.zero);
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true)) b.Encapsulate(r.bounds);
+            var camGo = new GameObject("ProbeCamera");
+            var lightGo = new GameObject("ProbeLight");
+            var rt = new RenderTexture(768, 1024, 24, RenderTextureFormat.ARGB32);
+            var tex = new Texture2D(768, 1024, TextureFormat.RGBA32, false);
+            try
+            {
+                var light = lightGo.AddComponent<Light>();
+                light.type = LightType.Directional;
+                light.intensity = 1.1f;
+                lightGo.transform.rotation = Quaternion.Euler(40f, 160f, 0f);
+                var cam = camGo.AddComponent<Camera>();
+                cam.enabled = false;
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.78f, 0.78f, 0.78f, 1f);
+                cam.fieldOfView = 30f;
+                // the model faces +z: the camera in front of it, far enough for its whole height and arm span
+                float size = Mathf.Max(b.size.y, b.size.x * 0.75f);
+                float dist = 0.6f * size / Mathf.Tan(15f * Mathf.Deg2Rad) + b.extents.z;
+                cam.transform.SetPositionAndRotation(b.center + Vector3.forward * dist, Quaternion.LookRotation(Vector3.back, Vector3.up));
+                cam.targetTexture = rt;
+                cam.Render();
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
+                tex.Apply(false);
+                RenderTexture.active = prev;
+                cam.targetTexture = null;
+                File.WriteAllBytes(pngPath, tex.EncodeToPNG());
+                return LookInventory.MagentaPixels(tex.GetPixels32(), 8);
+            }
+            finally
+            {
+                Object.DestroyImmediate(camGo);
+                Object.DestroyImmediate(lightGo);
+                Object.DestroyImmediate(rt);
+                Object.DestroyImmediate(tex);
+            }
+        }
+
         public static ExperimentLooksFile Load(out string text)
         {
             var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(ExperimentLooks.AssetPath) ?? throw new FileNotFoundException(ExperimentLooks.AssetPath);

@@ -2,11 +2,13 @@
 
 T-pose, Y up, facing +Z, metres. Output: OBJ + MTL for Mixamo's auto-rigger.
 Separate fingers (thumb + 3) so the rig gets finger bones.
+v2: fingers spaced and fanned with clear gaps, so Mixamo's auto-rigger
+sees three separate fingers instead of one merged chain.
 """
 import math
 import os
 
-OUT = "/home/claude/boxo"
+OUT = "/home/claude/boxo2/out"
 os.makedirs(OUT, exist_ok=True)
 
 COLORS = {
@@ -160,17 +162,21 @@ for xs in (-1, 1):
     cylinder(sh, el, ARM_R, "limb")
     cylinder(el, wr, ARM_R * 0.92, "limb")
     sphere(el, ARM_R * 1.05, "limb", seg=10, rings=6)
-    # palm
-    px = xs * (BODY_W / 2 + 0.53)
-    box(px, SHOULDER_Y, 0, 0.12, 0.04, 0.12, "glove")
-    # three fingers, pointing outward along x, separated along z
-    for fz in (-0.04, 0.0, 0.04):
-        f0 = (xs * (BODY_W / 2 + 0.585), SHOULDER_Y, fz)
-        f1 = (xs * (BODY_W / 2 + 0.70), SHOULDER_Y, fz)
-        cylinder(f0, f1, 0.016, "glove", seg=6)
-    # thumb, forward (+z) and slightly out
-    cylinder((px, SHOULDER_Y, 0.06), (xs * (BODY_W / 2 + 0.57), SHOULDER_Y, 0.13),
-             0.017, "glove", seg=6)
+    # palm: wider front-to-back so the fingers can sit apart
+    px = xs * (BODY_W / 2 + 0.54)
+    box(px, SHOULDER_Y, 0, 0.12, 0.045, 0.21, "glove")
+    # three fingers, pointing outward along x, fanned apart along z with
+    # gaps of at least 3 cm between them (v1: 8 mm, which merged them)
+    for fz0, fz1 in ((-0.075, -0.11), (0.0, 0.0), (0.075, 0.11)):
+        f0 = (xs * (BODY_W / 2 + 0.59), SHOULDER_Y, fz0)
+        f1 = (xs * (BODY_W / 2 + 0.74), SHOULDER_Y, fz1)
+        cylinder(f0, f1, 0.02, "glove", seg=8)
+        sphere(f1, 0.021, "glove", seg=8, rings=5)
+    # thumb: forward (+z) at about 45 degrees, well clear of the fingers
+    t0 = (xs * (BODY_W / 2 + 0.52), SHOULDER_Y, 0.10)
+    t1 = (xs * (BODY_W / 2 + 0.60), SHOULDER_Y, 0.20)
+    cylinder(t0, t1, 0.021, "glove", seg=8)
+    sphere(t1, 0.022, "glove", seg=8, rings=5)
 
 # legs: trousers, thin, apart; boots
 for xs in (-1, 1):
