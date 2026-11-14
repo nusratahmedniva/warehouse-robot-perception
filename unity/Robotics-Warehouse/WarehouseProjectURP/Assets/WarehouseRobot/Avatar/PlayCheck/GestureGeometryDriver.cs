@@ -59,6 +59,11 @@ namespace WarehouseRobot.AvatarCheck
             public string hand_first_failure = "";
             /// <summary>Section 12 addendum 1 (diagnostic, first measured frame): the mesh palm normal of each sub-mesh's palm vertices.</summary>
             public string palm_mesh_groups = "";
+            // section 12 addendum 5: skinning (forearm volume, torso rigidity); -1 / 999 = not measured
+            public bool skin_pass = true;
+            public int skin_frames, skin_frames_failed, skin_forearm_na, forearm_vertices, forearm_bands, torso_vertices;
+            public float min_forearm_ratio = 999f, max_torso_percentile_m = -1f, max_torso_max_m = -1f;
+            public string skin_first_failure = "";
         }
 
         [Serializable]
@@ -77,6 +82,11 @@ namespace WarehouseRobot.AvatarCheck
             public float max_palm_bone_deg = -1f, max_palm_mesh_deg = -1f, max_palm_mesh_flatness = -1f, max_thumb_palm_lengths = -1f;
             public float min_thumb_side = 999f, min_thumb_across = 999f, max_thumb_across = -999f;
             public string hand_failures = "";
+            // section 12 addendum 5
+            public bool skin_pass = true;
+            public int skin_frames, skin_frames_failed, skin_forearm_na, forearm_vertices, torso_vertices;
+            public float min_forearm_ratio = 999f, max_torso_percentile_m = -1f, max_torso_max_m = -1f;
+            public string skin_failures = "";
         }
 
         [Serializable]
@@ -88,6 +98,8 @@ namespace WarehouseRobot.AvatarCheck
             /// <summary>Section 12: every STOP and WAIT take passes the hand check (palm toward the robot camera; WAIT thumb tucked).</summary>
             public bool hand_pass;
             public int palm_vertices_left, palm_vertices_right;
+            /// <summary>Section 12 addendum 5: every take passes the skinning checks.</summary>
+            public bool skin_pass;
             public List<CommandRecord> commands = new List<CommandRecord>();
             public List<TakeRecord> takes = new List<TakeRecord>();
             public List<string> screens = new List<string>();
@@ -128,6 +140,21 @@ namespace WarehouseRobot.AvatarCheck
             public readonly Dictionary<SkinnedMeshRenderer, Mesh> Baked = new Dictionary<SkinnedMeshRenderer, Mesh>();
             /// <summary>Each vertex's "renderer/material" (the first sub-mesh using it), for the diagnostic of addendum 1.</summary>
             public readonly Dictionary<SkinnedMeshRenderer, string[]> SubMeshLabels = new Dictionary<SkinnedMeshRenderer, string[]>();
+            // section 12 addendum 5: the skinning sets and the take's reference (the idle pose before its request)
+            public List<SkinPart> ForearmL, ForearmR, Torso;
+            public int[] RefBands;
+            public float[] RefRadii;
+            public Vector3[] RefTorso;
+            public readonly List<float> SkinTimes = new List<float>();
+            public int NextSkin;
+        }
+
+        /// <summary>The vertices of one skinned mesh in a skinning set, with each vertex's dominant bone.</summary>
+        sealed class SkinPart
+        {
+            public SkinnedMeshRenderer Smr;
+            public int[] Idx;
+            public Transform[] Bone;
         }
 
         GestureGeometryConfig m_Cfg;
@@ -197,6 +224,7 @@ namespace WarehouseRobot.AvatarCheck
             WriteNew(Path.Combine(OutputFolder, "geometry.json"), JsonUtility.ToJson(file, true).Replace("\r\n", "\n") + "\n");
             WriteNew(Path.Combine(OutputFolder, "table.md"), Table(file));
             WriteNew(Path.Combine(OutputFolder, "hand_table.md"), HandTable(file, m_Cfg.tolerance));
+            WriteNew(Path.Combine(OutputFolder, "skin_table.md"), SkinTable(file, m_Cfg.skinning));
             Git(out info.git_commit, out info.git_branch);
             info.finished_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv);
             info.unity_version = Application.unityVersion;
@@ -210,7 +238,8 @@ namespace WarehouseRobot.AvatarCheck
             info.note = "Geometric check of the worker template's gestures (experiments_ab.md section 10): rendered bones against the worker's own goal; no perception model run. An engineering check.";
             WriteNew(Path.Combine(OutputFolder, "run_info.json"), JsonUtility.ToJson(info, true).Replace("\r\n", "\n") + "\n");
             Finish($"done: {file.looks.Count} looks ({file.looks.Count(l => l.status == "ok" && l.pass)} pass, {failed} fail, {absent} not spawned; " +
-                   $"hand check {file.looks.Count(l => l.hand_pass)} pass: {string.Join(", ", file.looks.Where(l => l.status == "ok" && !l.hand_pass).Select(l => l.id).DefaultIfEmpty("no failure"))}) in {Path.GetFileName(OutputFolder)}");
+                   $"hand check {file.looks.Count(l => l.hand_pass)} pass: {string.Join(", ", file.looks.Where(l => l.status == "ok" && !l.hand_pass).Select(l => l.id).DefaultIfEmpty("no failure"))}; " +
+                   $"skinning {file.looks.Count(l => l.skin_pass)} pass: {string.Join(", ", file.looks.Where(l => l.status == "ok" && !l.skin_pass).Select(l => l.id).DefaultIfEmpty("no failure"))}) in {Path.GetFileName(OutputFolder)}");
         }
 
         void Finish(string status)
@@ -290,6 +319,12 @@ namespace WarehouseRobot.AvatarCheck
             s.PalmR = PalmVertices(w.LookInstance, s.ArmR.Hand, m_Cfg.tolerance.palm_hand_weight_min);
             s.Record.palm_vertices_left = s.PalmL.Sum(kv => kv.Value.Length);
             s.Record.palm_vertices_right = s.PalmR.Sum(kv => kv.Value.Length);
+            var sk = m_Cfg.skinning;
+            Transform lowerL = w.Animator.GetBoneTransform(HumanBodyBones.LeftLowerArm), lowerR = w.Animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
+            var torsoBones = new HashSet<Transform>(sk.torso_bones.Select(b => w.Animator.GetBoneTransform((HumanBodyBones)Enum.Parse(typeof(HumanBodyBones), b))).Where(t => t != null));
+            s.ForearmL = DominantSet(w.LookInstance, t => t == lowerL, sk.forearm_weight_min);
+            s.ForearmR = DominantSet(w.LookInstance, t => t == lowerR, sk.forearm_weight_min);
+            s.Torso = DominantSet(w.LookInstance, torsoBones.Contains, sk.torso_weight_min);
             foreach (var smr in s.PalmL.Concat(s.PalmR).Select(kv => kv.Key).Distinct())
             {
                 var mesh = smr.sharedMesh;
@@ -379,6 +414,7 @@ namespace WarehouseRobot.AvatarCheck
             var req = new GestureRequest { Command = cmd, Clip = clip, Arm = arm, PointDirection = Quaternion.AngleAxis(bodyAz, Vector3.up) * fwd };
             var rec = new TakeRecord { command = cmd, clip = clip, arm = arm, take = take, point_side_azimuth_deg = cmd == WorkerV4Config.Point ? sideAz : -1f, pass = true };
             s.Record.takes.Add(rec);
+            SkinReference(s, arm == "right");       // section 12 addendum 5: the idle pose just before the request
             w.IsCommander = true;
             if (!w.Request(req, out string error)) { rec.pass = false; rec.first_failure = "request refused: " + error; w.IsCommander = false; yield break; }
             yield return new WaitForSeconds(st.question_after_request_s);
@@ -393,10 +429,14 @@ namespace WarehouseRobot.AvatarCheck
             s.Proceed = cmd == WorkerV4Config.Proceed;
             s.SampleTimes.Clear();
             s.NextSample = 0;
+            s.SkinTimes.Clear();
+            s.NextSkin = 0;
             if (s.Proceed)
             {
                 s.SampleFrom = hold0 + st.settle_after_hold_s;
                 s.SampleTo = s.SampleFrom + st.proceed_window_s;
+                int n = m_Cfg.skinning.proceed_frames;
+                for (int i = 0; i < n; i++) s.SkinTimes.Add(Mathf.Lerp(s.SampleFrom, s.SampleTo - 0.05f, i / (float)(n - 1)));   // the last inside the window
             }
             else
             {
@@ -480,6 +520,13 @@ namespace WarehouseRobot.AvatarCheck
             }
             var pc = m_Cfg.tolerance.palm_commands;
             if (pc != null && Array.IndexOf(pc, rec.command) >= 0) MeasureHand(s, rec, right);
+            // section 12 addendum 5: skinning on the hold frames; PROCEED on proceed_frames frames evenly over its window
+            if (!s.Proceed) MeasureSkin(s, rec, right);
+            else if (s.NextSkin < s.SkinTimes.Count && Time.time >= s.SkinTimes[s.NextSkin])
+            {
+                MeasureSkin(s, rec, right);
+                while (s.NextSkin < s.SkinTimes.Count && Time.time >= s.SkinTimes[s.NextSkin]) s.NextSkin++;
+            }
         }
 
         /// <summary>Section 12: the gesturing hand's palm normal (bones; skinned mesh) against the robot camera, and the WAIT thumb.</summary>
@@ -550,6 +597,126 @@ namespace WarehouseRobot.AvatarCheck
                 if (rec.hand_first_failure.Length == 0)
                     rec.hand_first_failure = $"{r.Why}: palm bones {F(r.BoneAngleDeg)} deg, mesh {(r.MeshDetermined ? F(r.MeshAngleDeg) + " deg" : "n/a")}" +
                                              (r.ThumbMeasured ? $", thumb {r.ThumbPalmLengths.ToString("0.00", Inv)} Lp, side {r.ThumbSide.ToString("0.00", Inv)} Lp" : "");
+            }
+        }
+
+        /// <summary>Section 12 addendum 5: the vertices of every skinned mesh of the look whose largest bone weight is on a bone that pick
+        /// accepts and at least minWeight, each with that bone.</summary>
+        static List<SkinPart> DominantSet(GameObject look, Func<Transform, bool> pick, float minWeight)
+        {
+            var list = new List<SkinPart>();
+            if (look == null) return list;
+            foreach (var smr in look.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = smr.sharedMesh;
+                var bones = smr.bones;
+                if (mesh == null || bones == null) continue;
+                var ok = bones.Select(b => b != null && pick(b)).ToArray();
+                if (!ok.Any(x => x)) continue;
+                var bw = mesh.boneWeights;
+                var idx = new List<int>();
+                var bone = new List<Transform>();
+                for (int i = 0; i < bw.Length; i++)
+                {
+                    var b = bw[i];
+                    int best = b.boneIndex0;
+                    float wt = b.weight0;
+                    if (b.weight1 > wt) { best = b.boneIndex1; wt = b.weight1; }
+                    if (b.weight2 > wt) { best = b.boneIndex2; wt = b.weight2; }
+                    if (b.weight3 > wt) { best = b.boneIndex3; wt = b.weight3; }
+                    if (best < 0 || best >= ok.Length || !ok[best] || wt < minWeight) continue;
+                    idx.Add(i);
+                    bone.Add(bones[best]);
+                }
+                if (idx.Count > 0) list.Add(new SkinPart { Smr = smr, Idx = idx.ToArray(), Bone = bone.ToArray() });
+            }
+            return list;
+        }
+
+        /// <summary>The world positions of a skinning set's vertices now (each renderer baked once per call through the site's cache).</summary>
+        static List<Vector3> Positions(Site s, List<SkinPart> set, Dictionary<SkinnedMeshRenderer, Vector3[]> frame)
+        {
+            var pts = new List<Vector3>();
+            foreach (var part in set)
+            {
+                if (part.Smr == null) continue;
+                if (!frame.TryGetValue(part.Smr, out var v))
+                {
+                    if (!s.Baked.TryGetValue(part.Smr, out var mesh)) s.Baked[part.Smr] = mesh = new Mesh();
+                    part.Smr.BakeMesh(mesh, true);
+                    var m = Matrix4x4.TRS(part.Smr.transform.position, part.Smr.transform.rotation, Vector3.one);
+                    v = mesh.vertices;
+                    for (int i = 0; i < v.Length; i++) v[i] = m.MultiplyPoint3x4(v[i]);
+                    frame[part.Smr] = v;
+                }
+                foreach (int i in part.Idx) pts.Add(i < v.Length ? v[i] : Vector3.zero);
+            }
+            return pts;
+        }
+
+        static List<Vector3> TorsoLocal(List<Vector3> pts, List<SkinPart> set)
+        {
+            var r = new List<Vector3>(pts.Count);
+            int k = 0;
+            foreach (var part in set)
+                for (int j = 0; j < part.Idx.Length; j++, k++)
+                    r.Add(part.Bone[j] != null ? SkinGeometry.InBone(pts[k], part.Bone[j].position, part.Bone[j].rotation) : pts[k]);
+            return r;
+        }
+
+        /// <summary>Section 12 addendum 5: the take's reference, the idle pose just before its request.</summary>
+        void SkinReference(Site s, bool right)
+        {
+            var sk = m_Cfg.skinning;
+            var frame = new Dictionary<SkinnedMeshRenderer, Vector3[]>();
+            var a = s.Worker.Animator;
+            Vector3 e = a.GetBoneTransform(right ? HumanBodyBones.RightLowerArm : HumanBodyBones.LeftLowerArm).position;
+            Vector3 wr = a.GetBoneTransform(right ? HumanBodyBones.RightHand : HumanBodyBones.LeftHand).position;
+            var fore = Positions(s, right ? s.ForearmR : s.ForearmL, frame);
+            s.RefBands = SkinGeometry.Bands(fore, e, wr, sk.forearm_bands, sk.forearm_min_band_vertices);
+            s.RefRadii = SkinGeometry.BandRadii(fore, s.RefBands, sk.forearm_bands, e, wr);
+            s.RefTorso = TorsoLocal(Positions(s, s.Torso, frame), s.Torso).ToArray();
+        }
+
+        /// <summary>Section 12 addendum 5: one frame's skinning checks against the take's reference.</summary>
+        void MeasureSkin(Site s, TakeRecord rec, bool right)
+        {
+            var sk = m_Cfg.skinning;
+            var frame = new Dictionary<SkinnedMeshRenderer, Vector3[]>();
+            var a = s.Worker.Animator;
+            Vector3 e = a.GetBoneTransform(right ? HumanBodyBones.RightLowerArm : HumanBodyBones.LeftLowerArm).position;
+            Vector3 wr = a.GetBoneTransform(right ? HumanBodyBones.RightHand : HumanBodyBones.LeftHand).position;
+            var fore = Positions(s, right ? s.ForearmR : s.ForearmL, frame);
+            float ratio = s.RefBands != null ? SkinGeometry.MinRatio(s.RefRadii, SkinGeometry.BandRadii(fore, s.RefBands, sk.forearm_bands, e, wr)) : float.NaN;
+            var torso = TorsoLocal(Positions(s, s.Torso, frame), s.Torso);
+            var disp = new List<float>(torso.Count);
+            for (int i = 0; i < torso.Count && s.RefTorso != null && i < s.RefTorso.Length; i++) disp.Add(Vector3.Distance(torso[i], s.RefTorso[i]));
+            float p = SkinGeometry.Percentile(disp, sk.torso_percentile), max = disp.Count > 0 ? disp.Max() : float.NaN;
+            rec.skin_frames++;
+            rec.forearm_vertices = fore.Count;
+            rec.forearm_bands = s.RefBands != null ? s.RefBands.Where(b => b >= 0).Distinct().Count() : 0;
+            rec.torso_vertices = torso.Count;
+            var why = new List<string>();
+            if (float.IsNaN(ratio)) { rec.skin_forearm_na++; why.Add("forearm not measurable"); }
+            else
+            {
+                rec.min_forearm_ratio = Mathf.Min(rec.min_forearm_ratio, R4(ratio));
+                if (ratio < sk.forearm_min_ratio) why.Add("forearm loses volume");
+            }
+            if (!float.IsNaN(p))
+            {
+                rec.max_torso_percentile_m = Mathf.Max(rec.max_torso_percentile_m, R4(p));
+                rec.max_torso_max_m = Mathf.Max(rec.max_torso_max_m, R4(max));
+                if (!(p < sk.torso_max_displacement_m)) why.Add("torso deforms");
+            }
+            else why.Add("torso not measurable");
+            if (why.Count > 0)
+            {
+                rec.skin_frames_failed++;
+                rec.skin_pass = false;
+                if (rec.skin_first_failure.Length == 0)
+                    rec.skin_first_failure = $"{string.Join(", ", why)}: forearm {(float.IsNaN(ratio) ? "n/a" : ratio.ToString("0.00", Inv))}, torso p{sk.torso_percentile} " +
+                                             $"{(float.IsNaN(p) ? "n/a" : (p * 100f).ToString("0.00", Inv) + " cm")}, max {(float.IsNaN(max) ? "n/a" : (max * 100f).ToString("0.00", Inv) + " cm")}";
             }
         }
 
@@ -624,6 +791,19 @@ namespace WarehouseRobot.AvatarCheck
                     c.max_intended_elbow_deg = Mathf.Max(c.max_intended_elbow_deg, t.max_intended_elbow_deg);
                     c.max_target_shift_m = Mathf.Max(c.max_target_shift_m, t.max_target_shift_m);
                     c.max_hint_shift_m = Mathf.Max(c.max_hint_shift_m, t.max_hint_shift_m);
+                    c.skin_frames += t.skin_frames;
+                    c.skin_frames_failed += t.skin_frames_failed;
+                    c.skin_forearm_na += t.skin_forearm_na;
+                    c.forearm_vertices = Math.Max(c.forearm_vertices, t.forearm_vertices);
+                    c.torso_vertices = Math.Max(c.torso_vertices, t.torso_vertices);
+                    c.min_forearm_ratio = Mathf.Min(c.min_forearm_ratio, t.min_forearm_ratio);
+                    c.max_torso_percentile_m = Mathf.Max(c.max_torso_percentile_m, t.max_torso_percentile_m);
+                    c.max_torso_max_m = Mathf.Max(c.max_torso_max_m, t.max_torso_max_m);
+                    if (!t.skin_pass || t.skin_frames == 0)
+                    {
+                        c.skin_pass = false;
+                        c.skin_failures += (c.skin_failures.Length > 0 ? "; " : "") + $"{t.arm} {t.clip}: " + (t.skin_frames == 0 ? "no frame measured" : t.skin_first_failure);
+                    }
                     if (!t.hand_checked) continue;
                     c.hand_checked = true;
                     c.hand_frames += t.hand_frames;
@@ -647,6 +827,32 @@ namespace WarehouseRobot.AvatarCheck
                 if (!c.pass) l.pass = false;
             }
             l.hand_pass = l.status == "ok" && l.commands.Any(c => c.hand_checked) && l.commands.Where(c => c.hand_checked).All(c => c.hand_pass);
+            l.skin_pass = l.status == "ok" && l.commands.Count > 0 && l.commands.All(c => c.skin_pass);
+        }
+
+        /// <summary>Section 12 addendum 5: the skinning checks per look and command.</summary>
+        static string SkinTable(GeometryFile f, GeometrySkinning sk)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"# Skinning check: forearm volume and torso rigidity ({(f.label.Length > 0 ? f.label + ", " : "")}{f.created_local})\n\n");
+            sb.Append($"experiments_ab.md section 12 addendum 5. Reference: the idle pose just before each take's request. Forearm: vertices bound mainly to the gesturing LowerArm " +
+                      $"(>= {sk.forearm_weight_min.ToString("0.0#", Inv)}) in {sk.forearm_bands} bands along elbow to wrist (bands under {sk.forearm_min_band_vertices} vertices skipped); " +
+                      $"each band's mean distance from the elbow-to-wrist line over its reference; the narrowest must keep >= {sk.forearm_min_ratio.ToString("0.00", Inv)}. " +
+                      $"Torso: vertices bound mainly to {string.Join(", ", sk.torso_bones)} (>= {sk.torso_weight_min.ToString("0.0#", Inv)}), each in its own bone's frame; " +
+                      $"p{sk.torso_percentile} displacement < {(sk.torso_max_displacement_m * 100f).ToString("0.0#", Inv)} cm. Worst values over every measured frame of every take, both arms.\n\n");
+            sb.Append("| look | kind | command | frames | forearm vertices | forearm narrowest band (ratio, min) | torso vertices | torso p" + sk.torso_percentile + " max (cm) | torso max (cm) | pass |\n");
+            sb.Append("|---|---|---|---|---|---|---|---|---|---|\n");
+            foreach (var l in f.looks)
+            {
+                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | {l.status} | | | | | | | no |\n"); continue; }
+                foreach (var c in l.commands)
+                    sb.Append($"| {l.id} | {l.kind_group} | {c.command} | {c.skin_frames} | {c.forearm_vertices} | {(c.min_forearm_ratio < 900f ? c.min_forearm_ratio.ToString("0.00", Inv) : "n/a")} | " +
+                              $"{c.torso_vertices} | {(c.max_torso_percentile_m >= 0f ? (c.max_torso_percentile_m * 100f).ToString("0.00", Inv) : "n/a")} | " +
+                              $"{(c.max_torso_max_m >= 0f ? (c.max_torso_max_m * 100f).ToString("0.00", Inv) : "n/a")} | {(c.skin_pass ? "yes" : "**no**")} |\n");
+            }
+            var fails = f.looks.Where(l => l.status == "ok").SelectMany(l => l.commands.Where(c => !c.skin_pass).Select(c => $"- {l.id} {c.command}: {c.skin_failures}")).ToList();
+            if (fails.Count > 0) sb.Append("\nFailures (first failing frame of each failing take):\n\n").Append(string.Join("\n", fails)).Append('\n');
+            return sb.ToString();
         }
 
         /// <summary>Section 12: the hand check per look and command (palm toward the robot camera; WAIT thumb tucked).</summary>

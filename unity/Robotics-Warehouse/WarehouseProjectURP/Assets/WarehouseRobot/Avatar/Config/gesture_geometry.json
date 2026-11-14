@@ -45,6 +45,18 @@
     "height_px": 960,
     "why": "Screenshots for Nusrat's visual check (section 10 item 8), NOT the robot cameras' settings and not perception input: a neutral camera distance_m in front of the worker, azimuth_right_deg toward its right, at height_m, aimed at aim_height_of_body x the look's height; one PNG per look of these kind groups (looks_ab.json kind_group), command and arm, in the middle of the hold (PROCEED: at the top of the swing). Every group since section 11 item 7 (2026-11-14, declared before the rerun: a screenshot of every look); before: anime and cartoon_non_human."
   },
+  "skinning": {
+    "forearm_bands": 5,
+    "forearm_min_band_vertices": 8,
+    "forearm_min_ratio": 0.70,
+    "forearm_weight_min": 0.5,
+    "torso_bones": ["Hips", "Spine", "Chest", "UpperChest"],
+    "torso_weight_min": 0.5,
+    "torso_percentile": 95,
+    "torso_max_displacement_m": 0.01,
+    "proceed_frames": 5,
+    "why": "2026-11-14, experiments_ab.md section 12 addendum 5 (Nusrat's skinning checks, declared before they were built or measured). Reference: the idle pose just before each take's request. Forearm volume: the vertices of every skinned mesh whose largest bone weight is on the gesturing arm's LowerArm bone (>= forearm_weight_min), put in forearm_bands bands along elbow to wrist at the reference (a band with fewer than forearm_min_band_vertices is skipped); on each measured frame each band's mean distance from the elbow-to-wrist line over its reference value; the narrowest band must keep at least forearm_min_ratio. Torso: the vertices whose largest bone weight is on a torso_bones bone (>= torso_weight_min), each in its own dominant bone's frame (rotation and position, no scale); their displacement from the reference; the torso_percentile-th percentile must stay below torso_max_displacement_m (the maximum is reported). Frames: the arm check's hold frames; PROCEED proceed_frames frames evenly over its window. Reported in skin_table.md; the arm and hand checks are unchanged."
+  },
   "output": {
     "root": "robot_vision/outputs",
     "run_prefix": "gesture_geometry"

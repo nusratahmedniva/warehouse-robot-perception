@@ -176,6 +176,8 @@ namespace WarehouseAvatar
         public GeometryStage stage;
         public GeometryScreens screens;
         public GeometryOutput output;
+        /// <summary>experiments_ab.md section 12 addendum 5: the skinning checks.</summary>
+        public GeometrySkinning skinning;
 
         public static GestureGeometryConfig Parse(string json) =>
             JsonUtility.FromJson<GestureGeometryConfig>(json ?? "") ?? throw new FormatException("gesture_geometry.json: not a JSON object");
@@ -209,6 +211,8 @@ namespace WarehouseAvatar
             }
             if (screens == null || screens.width_px < 64 || screens.height_px < 64 || !(screens.vertical_fov_deg > 0f)) e.Add("screens: size and field of view");
             if (output == null || string.IsNullOrEmpty(output.root) || string.IsNullOrEmpty(output.run_prefix)) e.Add("output.root and run_prefix required");
+            if (skinning == null) e.Add("skinning missing");
+            else e.AddRange(skinning.Validate());
             return e;
         }
     }
