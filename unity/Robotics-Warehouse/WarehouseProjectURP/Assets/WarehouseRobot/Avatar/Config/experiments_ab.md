@@ -603,3 +603,79 @@ both look checks (format checked: 21 frames, Play spans 2.006 to 2.015 s after a
 both parts today (not frozen, finals not done). SOURCES.txt's name for anime_f_03 differs from the file **[N]**. No perception was run.
 - **Boxo's screenshots come from its Edit-mode poses** with the neutral camera of item 8 (POINT and WAIT `seq1`, STOP `seq1`, PROCEED at the top of
   the `seq1` swing; both arms). The anime looks' screenshots come from the Play geometry check (the worker template), as declared.
+
+## 2026-11-14, section 11: Nusrat's decisions on the section 10 results (declared before any change; nothing run)
+
+Branch `nusrat/v4-avatar-fixes` (renamed from `nusrat/v4-finals-ab`; HEAD e6c6bfd, `main` merged in, Anisha's PR #35 false-STOP analysis
+included). The rules of section 10 stay: Unity side only (nothing under `robot_vision/`, `docs/` or `external/` changes), every fix verified
+GEOMETRICALLY, **no perception** (YOLO, MediaPipe, `look_check_v4.py`) on any avatar-experiment look, nothing frozen, nothing pushed, one commit
+per decision. Nusrat has corrected `SOURCES.txt` (the third anime file is `anime_f_03_bangs_parted.fbx`), which closes the section 10 [N] on its name.
+
+**1. Check correction (the no-fold rule).** The 120 deg no-fold rule was meant for extended gestures only. Nusrat named POINT and PROCEED.
+PROCEED's elbow is bent by design, though: 38 to 125 deg over the swing (`gesture_geometry_final_20261114_193832`, rendered with 0.0 deg error),
+so the rule would flag almost every PROCEED frame. Asked about this, Nusrat chose (2026-11-14) **POINT only**: `gesture_geometry.json`
+`no_fold_commands` becomes `["POINT"]`. STOP, PROCEED and WAIT are checked against their own design elbow angle within the 10 deg elbow
+tolerance, which is the existing elbow measure (the two-bone angle of the take's target with the rig's own upper arm and forearm). Both geometry
+tools read the rule from the config (the Play check and the Edit-mode pose geometry). This corrects a mis-specified check, not the avatars; the
+STOP design (`worker_v4.json` `limits.stop_reach` [0.85, 0.97]) is not changed. *Disclosed:* a check rule changed after its results were seen
+(section 10 addendum 2), by Nusrat's decision.
+
+**2. Reach cap.** `GestureTargets.Compute` caps the hand target's distance from the shoulder, `|T - s|`, after the size and the STOP push are
+applied, at the command's own maximum reach in the rig's own `L` (upper arm + forearm, measured per rig in section 10). The caps are
+POINT `limits.point_reach[1]` (0.99 L) and STOP `limits.stop_reach[1]` (0.97 L). WAIT and PROCEED are capped at `L`; their designs never
+reach it, so this cap is a guard only. The target moves toward the shoulder along `T - s`, so its direction is kept, and the elbow hint is
+unchanged. The cap level is Nusrat's answer (2026-11-14) to whether "the rig's own reach" means `L` or the command's maximum: Mecanim does not
+straighten an arm fully, so out-of-reach takes rendered at 168.8 to 174 deg against an intended 180 deg. `worker_v4.json` is not changed.
+The legacy goal (the "target shift vs old" column) stays uncapped, so that column shows what the cap moved. Expected effect: only STOP takes
+whose push carried the target beyond 0.97 L. anime_f_02's STOP is re-verified. Edit Mode tests: a pushed STOP target is capped at exactly
+0.97 L in its own direction, and a take within reach is unchanged bit for bit.
+
+**3. Boxo in Play mode (the worker template accepts hands without a little finger).** `HandShaper.Complete` now requires the upper arm,
+forearm, hand and the index, middle and ring proximal bones; the little finger is optional. Two hand measures used the little finger's base:
+the palm normal (`LookPoser.PalmNormal`, from the index and little bases) and the thumb's swing across the palm. Both now use the outermost
+finger present (little, otherwise ring). Every shape bends only the bones that exist, as before. On a five-finger rig every code path is the
+one used before.
+**Proof that five-finger looks are unchanged:**
+- (a) An Edit Mode test with golden values computed by the UNCHANGED code before the change: a synthetic five-finger hand, every hand shape of
+  `worker_v4.json`, both hands, every finger joint and tip within 1e-6 m. It is committed with the change and must pass before and after.
+- (b) A new Edit-mode tool, `ExperimentLooksMenu.BatchHandShapes`, runs on every installed avatar-experiment look. It writes every finger
+  bone's world position and rotation after `HandShaper.Apply` for every hand shape and both hands, on the rest pose with fixed directions and
+  `MirrorRest` as the template applies it. It runs before and after the change, and the two outputs are compared value for value: every
+  five-finger look must be **exactly** equal.
+- A Play run is not bit-reproducible (it depends on frame timing), so the identity is proven in Edit mode on the functions the template
+  calls. The Play geometry rerun (item 7) then shows every look within tolerance.
+
+Boxo then joins `look_check_play_ab.json` `looks` (its exclusion is removed), the Play geometry check and its screenshots, PROCEED included. A
+**format check** of the Play recordings runs on Boxo alone (`-lookCheckLooks cartoon_boxo_01`; an engineering check, not the experiment; no
+perception). *Disclosed:* Boxo's Edit-mode poses change too, because before this its palm was never turned (`PalmNormal` found no little finger).
+
+**4. anime_f_02's black patches (alpha clipping in the importer).** The cause was found by reading the files only. Every imported anime
+material is URP Lit, Opaque. The FBX (Blender's export) links an alpha texture (`TransparencyFactor`) only on the EyeIris, EyeHighlight,
+FaceBrow, FaceEyelash and FaceEyeline materials. Each base texture carries VRoid's cut-out mask in its alpha channel; for example, anime_f_02's
+dress textures `_15` and `_19` have 96 and 99 % of their texels below alpha 0.5, black underneath. The FBX conversion lost the clothing
+material's cut-out link, so opaque rendering shows those texels black.
+*Rule (`ExperimentLooksMenu.ImportOne`, every look it imports):* a material whose base texture has an alpha channel with at least 0.1 % of
+its texels below 0.5 gets URP alpha clipping: `_AlphaClip` 1, `_Cutoff` 0.5 (URP's and glTF's default), keyword `_ALPHATEST_ON`, render
+queue AlphaTest, RenderType TransparentCutout. The surface stays opaque, with no blending. It applies to anime_f_01 and 03 as well (same
+importer, same kind of textures), so the controlled variants stay controlled; Boxo's materials carry no texture and are unaffected.
+Import Characters is re-run (the imports are kept, only material settings change, all git-ignored), with each clipped material in the import
+report. New screenshots come from item 7.
+
+**5. anime_f_02's skeleton shift (1.55 mm as a whole) is an export difference and is accepted.** It is recorded in `looks_ab.json`
+`variant_changes` of anime_f_02. The variant probe's 1 mm "same body" rule and its result stay as reported. In the same commit, the anime_f_03
+licence text drops the SOURCES.txt name mismatch (corrected by Nusrat).
+
+**6. Note for Anisha** (`reports_v4/for_anisha_avatar_fixes_20261114.md`):
+- PROCEED changed on every look (forearm error about 12 deg -> 0.0 deg; hand target moved by up to 22 mm), so her false-STOP fix (PR #35)
+  must be confirmed on the new PROCEED pose in step 5.
+- The anime "fold" was YOLO placing the wrist on the sleeve, not the bones (POINT elbow at least 150.9 deg before and after).
+- Items 2 and 4 change some STOP takes and the anime looks' materials.
+
+A Unity-side note only; nothing of hers is edited.
+
+**7. Rerun.** `gesture_geometry.json` `screens.kind_groups` becomes every group (realistic_human, stylised_human, anime, cartoon_non_human),
+so there is a screenshot of every look, each command and both arms. Then:
+- the Play geometry check of every look of `avatar_experiment`, Boxo included (label `decisions`);
+- the Edit-mode pose geometry, since item 1 applies to it.
+
+Tables are copied byte-identical to `reports_v4/`. No perception is run, and nothing is tuned on these results.
