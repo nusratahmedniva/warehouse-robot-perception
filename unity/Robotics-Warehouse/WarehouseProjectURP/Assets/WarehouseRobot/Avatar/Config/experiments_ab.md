@@ -869,3 +869,59 @@ a1981fc, clean tree, all 15 looks, 120 screenshots; tables in `reports_v4/`).*
 - **Screenshots (visual only):** mixamo_worker's WAIT thumb no longer sticks out; Boxo's thumb lies bunched with its curled fingers.
 
 No perception was run.
+
+*Addendum 5 (2026-11-14): Boxo v3 replaces v2, and skinning checks are added. Declared before any change; nothing run.*
+
+Nusrat's finding in the v2 screenshots:
+- WAIT's forearm collapses into a cone and the hand looks detached;
+- the vest stripes bend into a V when an arm is raised.
+
+The cause is that the generator built limbs and body with almost no edge loops, so skinning could not bend or twist smoothly.
+
+**v3** (`unity/downloads/characters_v4/cartoon_boxo_01.fbx`, sha256 `4a69abed...`, 504 944 bytes; SOURCES.txt "version 3"):
+- every part is subdivided with edge loops about every 2.5 cm (`STEP = 0.025` in `unity/tools/avatars/make_cartoon_boxo.py`, committed
+  with step 1);
+- a shorter thumb, set near the wrist;
+- the same look.
+
+v2 (`00fbf466...`) is kept as `unity/downloads/superseded/cartoon_boxo_01_v2.fbx`.
+
+**Step 1: re-import and probes.**
+- The v2 import folder `Assets/ThirdParty/CharactersV4/cartoon_boxo_01/` (and its `.meta`) is moved, not deleted, to the git-ignored
+  `unity/downloads/superseded/cartoon_boxo_01_00fbf466_import/`. Then Import Characters runs unchanged: scale and avatar rebuild,
+  recolour rules, alpha clipping (Boxo has no textures).
+- Probes as before:
+  - the finger probe (chains, Humanoid mapping, skin per finger, materials and colours, error shader, magenta pixels);
+  - the arm-skin probe;
+  - the palm / glove probe of addendum 2.
+- `looks_ab.json` Boxo's source text names v3.
+
+**Step 2: new skinning checks for every look, in the Play geometry check.** These are separate from the arm and hand checks, which do not
+change. The limits are declared now in `gesture_geometry.json` `skinning`.
+- **Reference:** the idle pose just before each take's request (arms down), baked once per take.
+- **Forearm volume** of the gesturing arm:
+  - The forearm vertices are those of every skinned mesh whose largest bone weight is on the LowerArm bone and at least 0.5 (sleeves
+    included: what the camera sees).
+  - At the reference they are assigned to 5 bands by their position along elbow to wrist (0 to 0.2, ..., 0.8 to 1.0); a band with fewer
+    than 8 vertices is skipped.
+  - On each measured frame, each band's mean distance from the current elbow-to-wrist line is divided by its reference value.
+  - **The narrowest band's ratio must be at least 0.70**, on every measured frame of every command.
+- **Torso stays rigid:**
+  - The torso vertices are those whose largest bone weight is on Hips, Spine, Chest or UpperChest and at least 0.5 (vest, shirt and
+    body included).
+  - Each vertex's position is taken in its own dominant bone's frame, so bending or turning of the spine is not counted, only
+    deformation from other bones.
+  - Its displacement from the reference is measured on every measured frame. **The 95th percentile of the displacement must be below
+    1.0 cm.** The maximum is reported too.
+- **Frames:** the arm check's hold frames for POINT, WAIT and STOP; for PROCEED, 5 frames evenly spaced over its 2.0 s window.
+- **Output:** a look x command passes when every frame passes. Reported per look in `skin_table.md`.
+- Edit Mode tests on synthetic meshes cover the bands, the ratio and the percentile.
+- The five-finger looks are expected to pass with their meshes unchanged. If one does not, it is reported, not tuned.
+
+**Step 3: rerun of the geometry, hand and skinning checks on all 15 looks** (WAIT thumb 1.0 Lp; the mesh palm, where Boxo should now have
+at least 30 palm vertices). If Boxo's tucked WAIT thumb still exceeds 1.0 Lp, a thumb opposition at the base joint for him alone is
+declared here as a further addendum before it is built.
+
+**Step 4: screenshots** of every look, command and arm, from the rerun's neutral camera.
+
+No perception. One commit per step; nothing pushed or frozen.
