@@ -22,13 +22,39 @@ REAL = {
 }
 
 
+class ExperimentLooksTests(unittest.TestCase):
+    """2026-11-14 (Anisha, AUDIT.md 16.12 item 5): Nusrat's look names of experiments A and B."""
+    DEV = ("sunbox_m_shirt_white", "sunbox_m_tshirt_black", "sunbox_f_shirt_white", "sunbox_f_dress_red")
+    TEST = ("sunbox_m_shirt_plaid", "sunbox_f_shirt_plaid")
+
+    def test_split_and_style(self):
+        s = ds.load()
+        self.assertEqual(ds.check_config(s), [])
+        for n in self.DEV:
+            self.assertEqual((s["looks"][n], s["styles"][n]), ("development", "sunbox"), n)
+        for n in self.TEST:
+            self.assertEqual((s["looks"][n], s["styles"][n]), ("test", "sunbox"), n)
+        self.assertEqual(s["looks"]["sunbox_f2"], "test")                          # the earlier test look keeps its role
+        self.assertEqual(ds.load()["clips"]["proceed_ik_03"], "test")
+
+    def test_the_guard_accepts_development_looks_and_refuses_the_plaid_ones_and_mixes(self):
+        self.assertEqual(ds.guard_run(list(self.DEV), ["point_ik_01"]), "development")
+        for plaid in self.TEST:
+            with self.assertRaises(SystemExit):
+                ds.guard_run([plaid], ["point_ik_01"])                                 # a test look in a development run
+        with self.assertRaises(SystemExit):
+            ds.guard_run([self.DEV[0], self.TEST[0]], ["point_ik_01"])                 # a mix of the two
+        self.assertEqual(ds.guard_run(list(self.TEST), ["point_mixamo_02"], True), "test")
+
+
 class ConfigTests(unittest.TestCase):
     def test_shipped_config_is_valid_and_has_the_real_names_of_2026_11_08(self):
         s = ds.load()
         self.assertFalse(s["placeholder"])
         self.assertEqual(ds.check_config(s), [])
         self.assertFalse(s["final_evaluation_done"])
-        self.assertEqual(s["looks"], {"sunbox_m1": "development", "sunbox_f1": "development", "sunbox_f2": "test"})
+        self.assertEqual({k: v for k, v in s["looks"].items() if k in ("sunbox_m1", "sunbox_f1", "sunbox_f2")},
+                         {"sunbox_m1": "development", "sunbox_f1": "development", "sunbox_f2": "test"})   # the looks of 2026-11-08, unchanged
         self.assertEqual(s["clips"], {
             "point_mixamo_01": "development", "point_ik_01": "development", "point_mixamo_02": "test",
             "wait_ik_01": "development", "wait_raise_01": "development", "wait_ik_02": "test",

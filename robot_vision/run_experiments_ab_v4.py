@@ -9,7 +9,7 @@ exports runs.csv and dialogs.csv (export_csv_v4.py, columns from configs/v4/expe
 table.json). Set A with detection on is an extra beyond the plan (it shows what detection costs when nobody lies).
 
 Usage (from robot_vision/):
-  python run_experiments_ab_v4.py [--runs 20] [--timeout-s 270] [--experiments A1 B3 ...] [--settings off on a b bc abc] [--label x]
+  python run_experiments_ab_v4.py [--runs 20] [--timeout-s 270] [--experiments A1 B3 ...] [--settings off on a b bc abc] [--lie-mode per_gesture] [--label x]
 Writes a new folder <output_root>/experiments_ab_v4_<time>[_label]/ (never overwrites) with sessions/, runs.csv, dialogs.csv, table.md,
 table.json, config_used/ and run.json (git commit, runs, timeout)."""
 
@@ -169,6 +169,8 @@ def main(argv=None) -> None:
     ap.add_argument("--experiments", nargs="+", default=list(EXPERIMENTS), choices=EXPERIMENTS)
     ap.add_argument("--settings", nargs="+", default=["off", "on"], choices=ORDER,
                     help="lie-detection settings to run: off and on (the plan); a, b, bc, ab = one rule or a pair alone (extra)")
+    ap.add_argument("--lie-mode", choices=["per_worker", "per_gesture"], default=None,
+                    help="analysis only: override sets.B.lie_mode of scenarios_ab.json (per_gesture = the earlier model of 16.2 decision 2)")
     ap.add_argument("--label", default="")
     ap.add_argument("--config", default=ex.DEFAULT_CONFIG)
     a = ap.parse_args(argv)
@@ -180,6 +182,8 @@ def main(argv=None) -> None:
     for p in (dio.resolve(sv.AB_CONFIG), cfg_path, dio.resolve("configs/v4/control.json"), dio.resolve("configs/v4/commander.json"),
               dio.resolve("configs/v4/roadmap.json"), dio.resolve("configs/hri_control.json")):
         (out / "config_used" / p.name).write_bytes(p.read_bytes())
+    if a.lie_mode:
+        scen["sets"]["B"]["lie_mode"] = a.lie_mode
     pairs = run_all(out / "sessions", a.runs, a.timeout_s, a.experiments, scen, a.settings)
     runs = ev.load_sessions(pairs, gd.load_config())
     run_rows, dialog_rows = ex.build_tables(runs)
@@ -187,7 +191,7 @@ def main(argv=None) -> None:
     ex.write_csv(out / "dialogs.csv", dialog_rows, cfg["dialogs"], cfg.get("empty", ""))
     table = summarise(run_rows)
     meta = {"runs": a.runs, "timeout_s": a.timeout_s, "first_seed": int(scen["first_seed"]), "experiments": a.experiments,
-            "settings": a.settings, "source": "simulator"}
+            "settings": a.settings, "lie_mode": scen["sets"]["B"].get("lie_mode", "per_gesture"), "source": "simulator"}
     dio.write_json(out / "table.json", {"meta": meta, "rows": table})
     mirror = arrival_mirror_report(run_rows, dialog_rows)
     dio.write_json(out / "arrival_mirror.json", mirror)

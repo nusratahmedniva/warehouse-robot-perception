@@ -517,8 +517,13 @@ class ArmRatioDeclarationTests(unittest.TestCase):
     def test_the_declared_development_looks_are_the_development_looks_of_the_split(self):
         import data_splits_v4 as ds
         looks = ds.load()["looks"]
-        self.assertEqual(sorted(k for k, v in looks.items() if v == "development"), ["sunbox_f1", "sunbox_m1"])
-        self.assertEqual([k for k, v in looks.items() if v == "test"], ["sunbox_f2"])
+        calibrated_on = ["sunbox_f1", "sunbox_m1"]                      # the looks of calibrate_v4.py (2026-11-13), the only ones the value was set on
+        self.assertTrue(all(looks[k] == "development" for k in calibrated_on))
+        self.assertEqual(looks["sunbox_f2"], "test")                      # the test look of that time stays a test look
+        # 2026-11-14 (AUDIT.md 16.12 item 5): Nusrat's experiment looks joined the split after the calibration; none of them was used for it
+        self.assertEqual(sorted(k for k, v in looks.items() if v == "development" and k not in calibrated_on),
+                         ["sunbox_f_dress_red", "sunbox_f_shirt_white", "sunbox_m_shirt_white", "sunbox_m_tshirt_black"])
+        self.assertEqual(sorted(k for k, v in looks.items() if v == "test"), ["sunbox_f2", "sunbox_f_shirt_plaid", "sunbox_m_shirt_plaid"])
 
 
 if __name__ == "__main__":
