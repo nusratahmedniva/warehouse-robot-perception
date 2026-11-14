@@ -272,3 +272,93 @@ experiment configuration's nodes, branches and slots match them and obey every p
   `experiments_ab_step2b_anime_cartoon_20261114.md`, and the roadmap proposal's README as
   `experiments_ab_roadmaps_20261114_025749_README.md` (its map files stay in the output folder). Paths inside them are relative to
   `robot_vision/outputs/` as written.
+
+## 2026-11-14, section 7: the final matrix of the new study (declared before any final config, guard or launcher change; nothing run)
+
+Branch `nusrat/v4-finals-ab` (from main 15f70cf). Unity side only: no file under `robot_vision/`, `docs/` or `external/` is changed, nothing is
+frozen, no final and no development run is made (step 5, the development runs, waits for Anisha's false-STOP fix, AUDIT.md 16.12 item 1).
+**The new study replaces the four v4 finals** `zoom_on`, `zoom_off`, `bystanders`, `zoom_on_repeat`: their Unity files are kept and marked
+superseded, and the Unity guard refuses them from now on (section 7 step 2). Whatever Python needs is listed for Anisha in a file under
+`robot_vision/outputs/` (step 7), never in her files.
+
+**The matrix (9 final settings, each run once).**
+
+| setting | experiment | set (lie p) | map (scenarios_ab.json) | A2 side | goal | layout | workers per asking node |
+|---|---|---|---|---|---|---|---|
+| `A1` | A1 | A (0.0) | `corridor` | - | B | beside | 2 at A |
+| `A2_right` | A2 | A (0.0) | `turn` | right | C (26.25, 0) | beside | 2 at A and at B |
+| `A2_left` | A2 | A (0.0) | `turn_left` | left | C (-13.75, 0) | beside | 2 at A and at B |
+| `A3` | A3 | A (0.0) | v4 `roadmap.json` | - | GoalSequence(2) over E1..E6 | beside | 2, 3 at J1 |
+| `A4` | A4 | A (0.0) | v4 `roadmap.json` | - | GoalSequence(2) over E1..E6 | random | 2, 3 at J1 |
+| `B1` | B1 | B (0.2) | `corridor` | - | B | beside | 2 at A |
+| `B2_right` | B2 | B (0.2) | `turn` | right | C (26.25, 0) | beside | 2 at A and at B |
+| `B3` | B3 | B (0.2) | v4 `roadmap.json` | - | GoalSequence(2) over E1..E6 | beside | 2, 3 at J1 |
+| `B4` | B4 | B (0.2) | v4 `roadmap.json` | - | GoalSequence(2) over E1..E6 | random | 2, 3 at J1 |
+
+- **Names.** The setting name is the experiment, plus `_right` / `_left` for the turn map; the Unity session folder is
+  `trials_final_Task2_<setting>_<time>`; the same name is proposed as Python's `--final-setting` (step 7) **[A]**.
+- **B2 is run with the right turn only** (`B2_right`, paired with `A2_right`, the default side of AUDIT 16.2 decision 1); `A2_left` has no Set B
+  counterpart: it shows whether the turn side matters with truthful workers. Adding `B2_left` (+20 runs, about 50 min) is a decision for
+  **[N]**, to be declared before the freeze.
+- **Fixed numbers, read from Anisha's `configs/v4/final_plan.json` at run time and never copied into a Unity file:** task Task2, final seed **2**,
+  **20** runs per setting, timeout **270 s** (`timeout_s`, the declared v4 value; `scenarios_ab.json` `trial_timeout_s` is the same 270 s), success
+  radius **0.3 m**. Goals with seed 2: A1 B and A2 C in every run; A3, A4, B3, B4: `GoalSequence(2)` over the sorted endpoints = E5 E1 E5 E2 E5 E3
+  E5 E3 E4 E3 E5 E3 E5 E6 E2 E5 E3 E1 E4 E2 (checked equal to Python's `hri_trials.goal_order(2, [E1..E6], 20)` on 2026-11-14). Placements of
+  A4 and B4 and the liars of B1 to B4 come from the session seed 2 (`Rng(seed, run, ...)`), so no final run repeats a development scene.
+- **Looks: test looks only.** Male slots (1 and 3) wear `sunbox_m_shirt_plaid`, female slots (2) `sunbox_f_shirt_plaid` (data_splits.json `test`,
+  Anisha 16.12 item 5). **Clips: test clips only:** POINT `point_mixamo_02`, PROCEED `proceed_ik_03` (an experiment worker shows only these two
+  commands). Each run must pass `DataSplitsV4.GuardRun` with final evaluation (wholly test, no mix, no placeholder). *Declared difference from
+  development:* with one test look per gender, the third worker at J1 (slot 3, male) wears the same look as the first (slot 1) in A3, A4, B3, B4;
+  development rotates two looks per gender, so there two workers of one node never share a look. They are told apart by position only **[A][N]**.
+- **Robot side (Python, Anisha's decision) [A][N]: lie detection ON (second opinion + reject impossible, backtrack off; `scenarios_ab.json`
+  `detection.on`) in all nine settings,** so that A and B differ only in the lies: the control file per map is
+  `configs/v4/experiments/control_lie_on_a1.json` (A1, B1), `control_lie_on_a2_right.json` (A2_right, B2_right), `control_lie_on_a2_left.json`
+  (A2_left), `control_lie_on.json` (A3, A4, B3, B4). The detection-off comparison stays in the simulator (16.13.1). Alternative: B1 to B4 also
+  with detection off as four more settings (`B1_off` ...; +80 runs, about 2.5 h), declared before the freeze.
+- **Unchanged from sections 3 and 4:** maps, slots, the random layout and its 0.25 m margin, the placement rules, activation (8.0 m, at most 6),
+  who answers, the lie draw (per worker per run, consistent, valid branch else compass), truth fields, rings. `experiments_ab_unity.json` stays
+  as it is; its `a2_sides` (`["right"]`) is overridden per setting by the final config (and in development by a new `-experimentSide`).
+- **Unity in final mode (built in steps 2 and 3):** one final config per setting `Avatar/Config/sessions/final_ab_<setting>.json` (experiment,
+  side, looks, clips, the Python control file it must run with); `TrialPlayV4 -finalSetting <setting>` only, `-experiment`, `-experimentSide`,
+  `-experimentLooks` and `-workersConfig` refused with it; the seed, runs, timeout and radius from final_plan.json; `UNITY_FINAL_DONE.json` at the
+  end; a second final of the same setting refused (Unity or Python marker); frozen hashes of the B9 list required (step 4).
+
+**Run count and estimated running time.** 9 settings x 20 runs = **180 runs**. Estimate (scratch script, read-only, from the four Task 2
+development sessions on the v4 map: `trials_development_Task2_20261112_163710`, `_173220`, `_214837`, `_20261114_015118` with their bridge folders):
+39 successful runs, median travelled / total time **0.434 m/s** (asks included); per-run gap between runs 1.3 s; session start (bridge folder to
+Unity `session.json`, Unity opening and model warm-up included) at most 422 s, used for every session. Route length per goal = the median
+travelled in those runs (E1 41.1, E2 57.6, E3 57.6, E4 53.9, E5 70.5, E6 74.0 m), A1 and A2 40 m. Lie detection makes every ask node a second
+dialog; its cost is taken from the simulator (16.13.1, median on / off: A1 1.21, A2 1.37, A3 1.52, A4 1.43, B1 1.21, B2 1.37, B3 1.63, B4 1.54).
+
+| setting | mean run (s) | longest run (s) | runs over 0.9 x 270 s | session (min) |
+|---|---|---|---|---|
+| A1, B1 | 112 | 112 | 0 | 45 each |
+| A2_right, A2_left, B2_right | 126 | 126 | 0 | 50 each |
+| A3 | 214 | 260 | 8 | 79 |
+| A4 | 200 | 243 | 1 | 74 |
+| B3 | 230 | 279 | 8 | 84 |
+| B4 | 216 | 263 | 8 | 80 |
+| **total** | | | | **about 9.2 h** (detection off: 6.8 h) |
+
+Caveats: no experiment run has been completed in Unity yet (the two smoke runs of section 4 aborted early), the Task 2 speed comes from runs with
+one person per node, and the detection factor is the simulator's; failures that abort early shorten a session.
+
+**Finding (not changed; for [A][N] before the freeze): the 270 s timeout is tight with lie detection on.** The timeout rule (final_plan.json
+`timeout_s_source`) was set from Task 2 runs without second opinions. With detection on, the estimate puts the E5 and E6 routes of A3, B3 and B4 at
+243 to 279 s, and 8 of 20 runs of each of these settings at more than 0.9 x 270 s, so timeouts are likely in A3, A4, B3, B4. The timeout is a
+frozen-plan value of Anisha's and is NOT changed here; a timeout is a result (a failure) as declared. If it is to change, it must be declared and
+changed before the freeze.
+
+**Proposed split (the total exceeds 4 h): two sittings on two days, each with the run protocol, every setting its own Unity start.**
+- *Sitting 1 (about 4.2 h):* `A1`, `B1`, `B3`, `A3`.
+- *Sitting 2 (about 5.1 h):* `A2_right`, `B2_right`, `B4`, `A4`, `A2_left`.
+A and B of the same scenario run in the same sitting (same machine state), in alternating order (A first in scenario 1 and 2, B first in 3 and 4).
+Both sittings stay above 4 h; the alternative is three sittings, keeping the pairs: {A1, B1, A2_right, B2_right} 3.2 h, {A3, B3} 2.7 h,
+{A4, B4, A2_left} 3.4 h **[N]**. Splitting changes nothing in a setting: each setting is one session of 20 runs either way.
+
+**Baseline repair (found 2026-11-14 when both suites were run on 15f70cf before step 1; no behaviour of a reported session changes).** Unity Edit
+Mode was 216/221: since Anisha listed the six experiment looks in `data_splits.json` (16.12 item 5), the Task 2 worker plan
+(`TrialRunWorkers.Plan` / `PlanFinal`, `looks` empty = every look of the split) picked `sunbox_f_dress_red` and the plaid looks, which only
+`looks_ab.json` has, and refused every Task 2 session ("not in worker_v4.json"). Fix: an empty `looks` list means every look of the split *that
+the Task 2 template (worker_v4.json) has*: development `sunbox_f1`, `sunbox_m1`, test `sunbox_f2`, exactly as before her change. The test that
+pinned the split's names (`Splits_RealFile_HasTheAgreedNames`) now lists her file as it is.

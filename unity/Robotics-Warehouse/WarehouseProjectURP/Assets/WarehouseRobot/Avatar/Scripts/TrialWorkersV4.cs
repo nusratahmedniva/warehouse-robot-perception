@@ -209,7 +209,9 @@ namespace WarehouseAvatar
         {
             error = null;
             if (mode != DataSplitsV4.Development) { error = $"mode '{mode}': the v4 trial workers run in development mode only (the final-run guard is Phase 4)"; return null; }
-            var looks = cfg.looks != null && cfg.looks.Count > 0 ? new List<string>(cfg.looks) : splits.Names(true, mode);
+            // empty = every look of the split that the Task 2 template has (2026-11-14, experiments_ab.md section 7: data_splits.json also
+            // lists the experiment looks of looks_ab.json, which only the experiment mode spawns)
+            var looks = cfg.looks != null && cfg.looks.Count > 0 ? new List<string>(cfg.looks) : splits.Names(true, mode).FindAll(l => workers.Look(l) != null);
             if (looks.Count == 0) { error = $"data_splits.json has no {mode} look"; return null; }
             foreach (var l in looks)
                 if (workers.Look(l) == null) { error = $"look '{l}' is not in worker_v4.json"; return null; }
@@ -242,7 +244,7 @@ namespace WarehouseAvatar
             if (setting == null) { error = "no final setting"; return null; }
             if (splits.Placeholder) { error = "the look and clip names in configs/v4/data_splits.json are still placeholders"; return null; }
             if (!splits.FinalEvaluationSplits.Contains(setting.clip_split)) { error = $"setting {setting.name}: clip_split '{setting.clip_split}' is not a final-evaluation split"; return null; }
-            var looks = cfg.looks != null && cfg.looks.Count > 0 ? new List<string>(cfg.looks) : splits.Names(true, setting.look_split);
+            var looks = cfg.looks != null && cfg.looks.Count > 0 ? new List<string>(cfg.looks) : splits.Names(true, setting.look_split).FindAll(l => workers.Look(l) != null);
             if (looks.Count == 0) { error = $"data_splits.json has no {setting.look_split} look"; return null; }
             foreach (var l in looks)
             {
