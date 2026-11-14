@@ -1048,3 +1048,31 @@ other looks.*
 - *Observation:* the shoulder zone (0.4 Lu) removes only 1 to 32 vertices per rig (for example 3082 -> 3079 on mixamo_worker), so the
   core p95 is nearly the whole-torso p95. On these rigs the 1 to 2 cm is spread over the torso, not concentrated at the shoulder. The zone
   is not changed after seeing this.
+
+*Results of addendum 7 (2026-11-15; decisions committed 0ec0318, 59a66e5, f796d09, fcdbcc9, b5b6c90; full rerun
+`gesture_geometry_decisions7_20261115_010852` on b5b6c90, clean tree, all 15 looks, 120 screenshots; tables in `reports_v4/`).*
+- **Arm geometry:** 15 of 15 pass.
+- **Skinning: 15 of 15 pass.**
+  - Torso core p95 at most 1.71 cm on any look (sunbox_m1 PROCEED; the calibration run's 1.70 differs by run-to-run noise), under the
+    2.125 cm limit.
+  - Forearm: narrowest band at least 0.72 (Boxo WAIT, 0.716).
+- **Decision 2, Boxo's rigid torso: confirmed.** All 5112 body vertices are bound to `mixamorig:Spine2`. His torso core p95 is 0.00 cm on
+  every command (max 0.53 to 1.13 cm: vertices of other materials dominated by the spine). In the WAIT screenshot the vest stripes are
+  straight and there is no shoulder flap.
+- **Decision 3, Boxo's palm plate:**
+  - STOP passes: plate normal 6.6 deg, plate shape change 1.2 %.
+  - **WAIT fails the plate shape: 35.9 %.** The plate's weights lie on the finger bones (rigid share 0 to 4 %, step 1), so curling the
+    fingers bends the plate. The WAIT screenshot shows the glove crumpled around the curled fingers. Its normal (23.2 deg) is within
+    30 deg. **Hand check 12 of 15**: Boxo fails (WAIT plate), and anime_f_01 and 03 fail (the sleeve artefact of decision 2 of
+    addendum 2).
+- **Decision 4, Boxo's fingers by islands:** index and thumb are separate (114 vertices each, own 100 %, others 0 %). **Middle and ring
+  still move together, reported as real:**
+  - the two finger islands split 34 / 170 (left) and 114 / 90 (right) between the middle and ring chains;
+  - bending middle moves 43 to 62 % of ring's vertices;
+  - so the auto-rigger's middle and ring chains share both finger meshes.
+- **Five-finger looks unchanged:** `hand_shapes_20261115_011330` against `_20261114_223517` is identical on all 14 other looks (Boxo
+  differs; the baseline held v2). The Sunbox pin test and the golden test pass. The rules of decisions 2 to 4 name only Boxo.
+- *Not decided, open for Nusrat:* Boxo's WAIT palm plate. Binding the plate 100 % to the hand bone, as his torso is bound, would keep it
+  rigid. That would be a new decision.
+
+No perception was run.
