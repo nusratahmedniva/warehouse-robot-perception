@@ -391,3 +391,12 @@ experiment looks), `experiments_ab_unity.json` (slots, placement margins, who an
 (section 8), and the nine `sessions/final_ab_<setting>.json`. Removed: the four superseded Task 2 session configs (never run). Not hashed, as
 before: the code (pinned by the commit in `session.json`) and the third-party and git-ignored avatar assets (each session records their appearance
 text). Python's experiment files (`scenarios_ab.json` is frozen already; the `control_lie_*` and `roadmap_a*` files are not yet) are Anisha's.
+
+*Step 5, the launcher (`finals_v4/run_session_v4.ps1`).* `-Experiment A1..B4` with `-Side right|left` for A2 and B2 (required there, refused
+elsewhere); the setting must be one of `final_v4.json` `settings`, and its final config names the server's `--control-config`. Rehearsal
+(`-Rehearsal [-Trials N]`): Unity `-experiment X [-experimentSide S]`, development looks and clips, dev seed, no `--final-setting`. Final: Unity
+`-finalSetting <setting>`, server `--final-setting <setting>`. Refusals as before plus the experiment ones: a Unity Editor running, not on main, a
+dirty tree, `trials.local.json`, the setting already run (Unity's or Python's marker), Python's `final_plan.json` or `FINAL_CONTROL` not knowing the
+setting or naming another control file, `frozen.json` not frozen, then the server's own `preflight_final`. `-Setting zoom_on` etc. is refused as
+superseded. `-DryRun` prints every command and every reason a real run would be refused now. After a valid B11 check it prints the evaluation and
+CSV export commands (Anisha's tools; their final mode for the experiments is pending). `final_procedure_v4.md` has a 2026-11-14 block on top.
