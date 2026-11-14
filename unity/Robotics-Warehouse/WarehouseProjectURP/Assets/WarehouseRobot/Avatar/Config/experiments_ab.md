@@ -457,3 +457,92 @@ Written for Anisha to `robot_vision/outputs/for_anisha_finals_ab_20261114_164233
 `Avatar/Config/reports_v4/`): the decisions before the freeze (lie detection in the finals, the 270 s timeout, B2 sides, the shared J1 look, the
 sittings), the nine `final_plan.json` settings and their test assignment, the `FINAL_CONTROL` entries, the experiment control and map files for the
 freeze, and a final mode of the evaluation and CSV export per experiment. None of her files was changed.
+
+## 2026-11-14, section 10: avatar pipeline fixes before the freeze (declared before any change; nothing run)
+
+Branch `nusrat/v4-finals-ab` (HEAD 085e4ff). Unity side only: nothing under `robot_vision/`, `docs/` or `external/` is changed, nothing is frozen, no
+final and no navigation run is made. The avatar-experiment configs are on the B9 list (section 7 step 4), so these fixes come before the freeze.
+**Integrity rule:** every fix is verified GEOMETRICALLY (bone and joint positions of the rendered pose against the intended pose; the arm-skin probe
+of section 5 shows the meshes follow these bones). **No perception** (YOLO, MediaPipe, `look_check_v4.py`) is run on any avatar-experiment look in
+this work: the avatar experiment measures perception once, after the finals (section 8). Nothing is tuned on a perception result.
+
+**Inputs** (`unity/downloads/characters_v4/`, git-ignored, never committed):
+- `cartoon_boxo_01.fbx` **version 2** (sha256 `00fbf466...`, 366 096 bytes): fingers fanned with gaps of at least 3 cm so Mixamo's auto-rigger
+  separates them, rigged with Mixamo's Standard Skeleton (65). Version 1 (`431e6cb2...`, the imported file of sections 2 and 5) is kept in
+  `unity/downloads/superseded/`. Its generator `unity/tools/avatars/make_cartoon_boxo.py` (v2) is committed with step 3.
+- `anime_f_02_outfit_short.fbx` (`d94b472a...`, 11 192 092 bytes) and `anime_f_03_bangs_parted.fbx` (`a3cf3439...`, 10 025 164 bytes): Nusrat's
+  **controlled variants of anime_f_01**. 02 changes the outfit, sleeves included (short sleeves); hair, face and body as 01. 03 changes only the
+  bangs (parted, both eyes visible); outfit, face and body as 01.
+- *Found, not changed:* `SOURCES.txt` names the third file `anime_f_03_hairback.fbx` ("hair tied back, same outfit"), but the file present is
+  `anime_f_03_bangs_parted.fbx` and the task describes parted bangs. The licence statement is the same (Nusrat's own VRoid character, converted in
+  Blender, not redistributed); `looks_ab.json` uses the file name and the task's description. SOURCES.txt is Nusrat's record and is not edited **[N]**.
+
+**1. Arm scaling.** What is Sunbox's in `WorkerV4.ComputeTargets` today (every target is already an offset from the rig's own shoulder bone, in units
+of its own shoulder-to-wrist length L): PROCEED splits L into upper arm 0.53 L and forearm 0.47 L; the elbow hints of POINT and STOP lie 0.5 L along
+the arm and the WAIT hint ("forearm vertical") 0.5 L below the hand, i.e. an arm with equal segments. *Change:* each rig is measured once at
+`Initialize`, in its rest pose before any animation: upper arm `Lu` (UpperArm to LowerArm bone), forearm `Lf` (LowerArm to Hand), `L = Lu + Lf` (as
+now), shoulder width `W` (between the two upper-arm bones) and shoulder height `H` (upper-arm bones above the worker's root). PROCEED: the elbow at
+`Lu` from the shoulder and the hand at `Lf` from the elbow; POINT and STOP hints at `Lu` along the arm; WAIT hint `Lf` below the hand. The other
+offsets stay fractions of the rig's own L from its own shoulder bone, which already carries W and H; W and H are recorded per look and enter the
+check's body frame. `worker_v4.json` values are not changed.
+*Baseline first:* the geometry check below runs once on the UNCHANGED code (baseline, kept and reported), then on the changed code. If the baseline
+shows a cause this change does not cover (for example the anime forearm fold of section 5, which was read from YOLO's wrist, not from bones), it is
+written here as an addendum before any further change.
+
+**2. Geometric verification (`GestureGeometryCheck`, Play mode).** Stage: a new unsaved scene (grey floor, one directional light, no warehouse), one
+worker template per look, each on its own spot 4 m apart, a stand-in robot 2.0 m in front of it. Looks: every look of `looks_ab.json`
+`avatar_experiment` the worker template can spawn, plus the two anime variants (and Boxo v2 if its hands can be shaped). Per look: every clip of
+POINT, PROCEED, WAIT and STOP in `worker_v4.json`, both arms; POINT at side azimuth 0 and 45 deg (the look check's convention); variation stream
+`SetRun(1, take)`. Measured after the worker's LateUpdate (hand shape, torso turn) on 5 frames spread over the hold, PROCEED on every frame of 2.0 s
+of the swing, from the bones: shoulder S (UpperArm), elbow E (LowerArm), wrist Wr (Hand). *Intended pose* = the worker's own goal of that frame:
+hand target T from shoulder s; intended elbow interior angle = the two-bone angle of `|T - s|` with the rig's `Lu`, `Lf` (180 deg if out of reach);
+intended arm direction = `(T - s)`; PROCEED also the intended elbow E* and forearm direction `(T - E*)`; WAIT forearm direction = up.
+*Measures:* elbow interior angle `angle(S - E, Wr - E)` minus intended; arm direction `angle(Wr - S, T - s)`; forearm direction `angle(Wr - E, intended)`
+(WAIT, PROCEED). **Tolerance (declared now, in a new config `Avatar/Config/gesture_geometry.json`):** elbow angle within **10 deg**, arm direction
+within **5 deg**, forearm direction within **10 deg**, and **no fold**: the elbow interior angle of POINT and STOP at least **120 deg** (POINT's design
+is 144 to 163 deg, `worker_v4.json` limits). A look x command passes when every measured frame of every take passes. **No regression:** every
+Sunbox look and mixamo_worker must pass after the change; the largest shift of a hand target between the old and the new formula is reported per look.
+Output `robot_vision/outputs/gesture_geometry_<time>/` (geometry.json, a per-look table, run_info.json with the commit); the table is copied
+byte-identical to `reports_v4/`. Edit Mode tests: the two-bone angle, the measures and the pass rule on synthetic arms, and the new targets on a
+synthetic rig (the old targets equal for an arm with Lu = 0.53 L).
+
+**3. Boxo v2.** The v1 import folder `Assets/ThirdParty/CharactersV4/cartoon_boxo_01/` (and its `.meta`) is moved, not deleted, to the git-ignored
+`unity/downloads/superseded/cartoon_boxo_01_431e6cb2_import/`, then `Import Characters` runs unchanged (scale, texture, emission and recolour rules
+of sections 2 and 5). Report: each hand's bones (every chain under the Hand bone, by name) and the Humanoid finger mapping; **finger skin probe**
+(new, report only, like the arm-skin probe): per hand, each finger chain's proximal bone is bent 30 deg about the axis across the finger (finger
+direction x palm normal) and every skinned mesh is baked before and after; a vertex *moves* when it moves more than 2 mm; a finger's *region* = the
+rest-pose vertices within 4 cm of its own bone chain (base to the end of its last bone) and nearer to it than to any other chain of that hand. A
+finger is **separate** when at least 80 % of its own region moves and at most 20 % of every other finger's region moves; fewer than 30 vertices in
+its region = inconclusive. Colours: every material with its shader, base colour and base texture (recolour rule unchanged); **error-shader check**:
+a material on `Hidden/InternalErrorShader` or without a URP pass, and the magenta pixels of a neutral render (`LookInventory.MagentaPixels`).
+**If the fingers are still one chain, the work STOPS there and is reported.** If both hands have the index to little bones the worker template needs,
+Boxo joins the Play look check (`look_check_play_ab.json`; its exclusion was "cannot be spawned", section 2 rule) and the geometry check.
+
+**4. Anime variants.** Imported by the same importer, unchanged; arm-skin probe (section 5 rule). **Controlled-variant check** (geometric, report
+only): every mapped Humanoid bone's rest position of each variant against anime_f_01 (same body = all within 1 mm), and the skinned meshes compared by
+name and vertex count (which meshes differ; expected: 02 the clothing, 03 the hair). Added to `looks_ab.json` under kind `anime`
+(`navigation` false, no proposed split, licence from SOURCES.txt) with `variant_of` `anime_f_01` and `variant_changes`, and to `avatar_experiment`
+after anime_f_01 (15 looks). A result is reported as it comes; nothing is adjusted on it.
+
+**5. PROCEED in the Unity look-check recordings (changes section 8 before anything ran).** The Play-mode look check of the avatar experiment
+(`look_check_play_ab.json`) records PROCEED for every look it spawns, in Anisha's format (`configs/v4/look_check.json` `graded_when_present`): the
+same takes as the other commands (2 sequences + 16 singles per distance and arm, the PROCEED variants cycling), sequences of **21 frames** at 10 Hz
+(2.0 s, the reader's `proceed.window_s`) taken during the swing, singles at a random moment of it; names `<look>__PROCEED__<d>__<arm>_<take>`, the arm
+label and the real `time_s` in every header. `look_check_play.json` (the v4 Phase 2 check) is unchanged. The Edit-mode stage shows held poses only;
+a look the worker template cannot spawn gets PROCEED there as a posed swing of 21 frames (`LookPoser`, the proceed_ik_01 swing at 1.5 Hz), built
+only if such a look remains after step 3.
+
+**6. Run-once guard of the avatar experiment (replaces section 8 step 6, "no code guard").** New config `Avatar/Config/avatar_experiment.json`. An
+official run is started with `-avatarExperiment` on `LookCheckMenu.BatchRunExperiment` (part `edit`) or `LookCheckPlayMenu.CommandLineRunAB` (part
+`play`) and is refused unless: `frozen.json` is frozen with every B9 file recorded and unchanged (the rule of `FinalGuardV4`); every final setting of
+`final_v4.json` has its `UNITY_FINAL_DONE.json` (section 8 precondition); no `-lookCheckLooks` subset; and no marker of the same part exists under
+`robot_vision/outputs/`. It writes `AVATAR_EXPERIMENT_STARTED.json` before the first render (so a crashed run also counts as run) and
+`AVATAR_EXPERIMENT_DONE.json` at the end; either marker of a part refuses a second run of that part. Without `-avatarExperiment` the tools stay
+engineering checks and are never the experiment. Edit Mode tests of every refusal.
+
+**7. B9.** `avatar_experiment.json` and `gesture_geometry.json` join `final_v4.json` `freeze_files`; the changed `looks_ab.json`,
+`look_check_play_ab.json` and `worker_v4.json` (if changed) are already on it.
+
+**8. Screenshots for Nusrat's visual check** (not perception input): from the geometry check's neutral camera, NOT the robot cameras' settings:
+3.0 m in front of the worker, 20 deg to its right, 1.3 m high, vertical field of view 35 deg, 1280 x 960 PNG, in the middle of the hold (PROCEED: at
+the top of the swing), every anime look and Boxo, each of POINT, PROCEED, WAIT and STOP, both arms, into `gesture_geometry_<time>/screens/`.
