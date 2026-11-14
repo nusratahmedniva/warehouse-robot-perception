@@ -679,3 +679,23 @@ so there is a screenshot of every look, each command and both arms. Then:
 - the Edit-mode pose geometry, since item 1 applies to it.
 
 Tables are copied byte-identical to `reports_v4/`. No perception is run, and nothing is tuned on these results.
+
+*Results (2026-11-14; items 1 to 7 committed 29507fd to a5c032b, one commit each, every tree tested by Unity; Python 1108 OK on e6c6bfd
+and on the item 6 tree).*
+- **Geometry, Play** (`gesture_geometry_decisions_20261114_210047`, commit a5c032b, clean tree; table in `reports_v4/`): **all 15 looks
+  pass** every command, Boxo included (spawned by the template; upper arm / forearm 0.247 / 0.240 m). POINT elbow at least 150.8 deg; PROCEED
+  forearm error 0.0 deg on every look; STOP elbow error at most 0.9 deg.
+- **anime_f_02's STOP**: 11.2 deg -> 0.9 deg (the out-of-reach take is capped). The cap moved STOP targets by up to 41 mm (sunbox_f_dress_red;
+  the "target shift vs old" column, legacy uncapped). The design's 116 deg STOP elbows remain, and pass against their own design (item 1).
+- **Five-finger looks unchanged** (item 3): the golden test passes, and `hand_shapes_20261114_203658` against `_202913` is identical on all
+  14 five-finger looks (3584 lines). Only Boxo differs: its hands are now shaped.
+- **Pose geometry, Edit mode** (`pose_geometry_20261114_210511`): all 15 looks render within tolerance, with no fold flag.
+- **Alpha clipping** (`import_characters_20261114_204415`): 14 materials per anime look (face, eyes, hair back, body mask, clothing, shoes)
+  and none on Boxo. The 120 screenshots (`gesture_geometry_decisions_20261114_210047/screens/`) show anime_f_02's dress without the black
+  patches.
+- **Boxo's Play recordings, format check** (`look_check_play_ab_debug_20261114_210603`, `-lookCheckQuick cartoon_boxo_01`, not the
+  experiment): 36 recordings, 476 frames, none outside the hold. PROCEED sequences have 21 frames spanning 2.005 to 2.018 s.
+- **Seen in the screenshots, not changed (for Nusrat's visual check):** Boxo's WAIT raises the index finger, but its flat black palm plate is
+  seen edge-on and the thumb stands out to the side.
+
+No perception was run.

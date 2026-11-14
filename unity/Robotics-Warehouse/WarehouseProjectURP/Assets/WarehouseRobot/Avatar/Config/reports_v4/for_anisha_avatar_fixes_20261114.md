@@ -35,3 +35,11 @@ the model reads that look, not a pose error, so nothing on the Unity side was ch
 - **Geometry check:** the no-fold rule now covers POINT only. STOP, PROCEED and WAIT are checked against their own designed elbow angle.
 
 None of these touches a Python file, config or threshold. The look and clip names are unchanged.
+
+## 4. Rerun (geometry only, no perception)
+
+- **Every look** of the avatar experiment (15, Boxo included) is within the declared tolerance for every command
+  (`reports_v4/gesture_geometry_decisions_20261114_210047_table.md`).
+- **The five-finger hands are value-for-value identical** to before (`reports_v4/hand_shapes_20261114_203658_compare.md`).
+- **Boxo's Play recordings follow your format:** PROCEED sequences have 21 frames spanning 2.005 to 2.018 s
+  (`look_check_play_ab_debug_20261114_210603`, a format check only).
