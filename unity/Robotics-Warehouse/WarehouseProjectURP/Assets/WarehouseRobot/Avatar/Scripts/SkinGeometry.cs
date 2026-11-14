@@ -10,6 +10,8 @@ namespace WarehouseAvatar
     {
         public int forearm_bands, forearm_min_band_vertices, torso_percentile, proceed_frames;
         public float forearm_min_ratio, forearm_weight_min, torso_weight_min, torso_max_displacement_m;
+        /// <summary>Addendum 7: the shoulder zone left out of the torso core, as a fraction of the rig's own upper-arm length.</summary>
+        public float torso_core_shoulder_zone_lu;
         public string[] torso_bones;
 
         public List<string> Validate()
@@ -24,6 +26,7 @@ namespace WarehouseAvatar
             if (torso_percentile < 50 || torso_percentile > 100) e.Add("skinning.torso_percentile must be in [50, 100]");
             if (!(torso_max_displacement_m > 0f)) e.Add("skinning.torso_max_displacement_m must be > 0");
             if (proceed_frames < 2) e.Add("skinning.proceed_frames must be >= 2");
+            if (!(torso_core_shoulder_zone_lu > 0f && torso_core_shoulder_zone_lu < 2f)) e.Add("skinning.torso_core_shoulder_zone_lu must be in (0, 2)");
             return e;
         }
     }
@@ -93,6 +96,18 @@ namespace WarehouseAvatar
 
         /// <summary>A point in a bone's frame without the bone's scale (metres preserved).</summary>
         public static Vector3 InBone(Vector3 p, Vector3 bonePosition, Quaternion boneRotation) => Quaternion.Inverse(boneRotation) * (p - bonePosition);
+
+        /// <summary>Addendum 7: true for a point of the torso core, i.e. farther than radius from every shoulder (UpperArm bone) position.</summary>
+        public static bool[] CoreMask(IList<Vector3> pts, IList<Vector3> shoulders, float radius)
+        {
+            var core = new bool[pts.Count];
+            for (int i = 0; i < pts.Count; i++)
+            {
+                core[i] = true;
+                foreach (var s in shoulders) if (Vector3.Distance(pts[i], s) <= radius) { core[i] = false; break; }
+            }
+            return core;
+        }
 
         /// <summary>The p-th percentile (nearest rank) of the values; NaN when empty.</summary>
         public static float Percentile(List<float> values, float p)

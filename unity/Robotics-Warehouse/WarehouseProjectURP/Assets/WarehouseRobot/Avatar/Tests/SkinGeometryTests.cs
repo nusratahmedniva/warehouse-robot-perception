@@ -26,6 +26,16 @@ namespace WarehouseAvatar.Tests
             Assert.AreEqual(95, s.torso_percentile);
             Assert.AreEqual(0.01f, s.torso_max_displacement_m, 1e-6f);
             Assert.AreEqual(5, s.proceed_frames);
+            Assert.AreEqual(0.4f, s.torso_core_shoulder_zone_lu, 1e-6f, "addendum 7: the shoulder zone");
+        }
+
+        [Test]
+        public void CoreMask_LeavesOutTheShoulderZones()
+        {
+            var shoulders = new[] { new Vector3(-0.17f, 1.45f, 0f), new Vector3(0.17f, 1.45f, 0f) };
+            var pts = new[] { new Vector3(0f, 1.2f, 0.1f), new Vector3(0.15f, 1.40f, 0.05f), new Vector3(-0.2f, 1.5f, 0f), new Vector3(0.05f, 1.45f, 0.1f) };
+            var core = SkinGeometry.CoreMask(pts, shoulders, 0.4f * 0.28f);
+            CollectionAssert.AreEqual(new[] { true, false, false, true }, core);
         }
 
         /// <summary>A tube from e to w, radius r(t) along it, 12 points per ring, 21 rings.</summary>

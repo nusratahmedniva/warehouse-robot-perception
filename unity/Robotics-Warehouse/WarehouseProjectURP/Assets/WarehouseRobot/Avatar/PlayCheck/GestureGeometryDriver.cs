@@ -64,6 +64,9 @@ namespace WarehouseRobot.AvatarCheck
             public int skin_frames, skin_frames_failed, skin_forearm_na, forearm_vertices, forearm_bands, torso_vertices;
             public float min_forearm_ratio = 999f, max_torso_percentile_m = -1f, max_torso_max_m = -1f;
             public string skin_first_failure = "";
+            /// <summary>Addendum 7: max_torso_percentile_m and max_torso_max_m are the torso core's; the whole torso's p95 is information.</summary>
+            public int torso_core_vertices;
+            public float max_torso_all_percentile_m = -1f;
         }
 
         [Serializable]
@@ -87,6 +90,8 @@ namespace WarehouseRobot.AvatarCheck
             public int skin_frames, skin_frames_failed, skin_forearm_na, forearm_vertices, torso_vertices;
             public float min_forearm_ratio = 999f, max_torso_percentile_m = -1f, max_torso_max_m = -1f;
             public string skin_failures = "";
+            public int torso_core_vertices;
+            public float max_torso_all_percentile_m = -1f;
         }
 
         [Serializable]
@@ -145,6 +150,7 @@ namespace WarehouseRobot.AvatarCheck
             public int[] RefBands;
             public float[] RefRadii;
             public Vector3[] RefTorso;
+            public bool[] RefTorsoCore;     // addendum 7: outside both shoulder zones at the reference
             public readonly List<float> SkinTimes = new List<float>();
             public int NextSkin;
         }
@@ -675,7 +681,10 @@ namespace WarehouseRobot.AvatarCheck
             var fore = Positions(s, right ? s.ForearmR : s.ForearmL, frame);
             s.RefBands = SkinGeometry.Bands(fore, e, wr, sk.forearm_bands, sk.forearm_min_band_vertices);
             s.RefRadii = SkinGeometry.BandRadii(fore, s.RefBands, sk.forearm_bands, e, wr);
-            s.RefTorso = TorsoLocal(Positions(s, s.Torso, frame), s.Torso).ToArray();
+            var torsoWorld = Positions(s, s.Torso, frame);
+            s.RefTorso = TorsoLocal(torsoWorld, s.Torso).ToArray();
+            var shoulders = new[] { a.GetBoneTransform(HumanBodyBones.LeftUpperArm).position, a.GetBoneTransform(HumanBodyBones.RightUpperArm).position };
+            s.RefTorsoCore = SkinGeometry.CoreMask(torsoWorld, shoulders, sk.torso_core_shoulder_zone_lu * s.Worker.Proportions.upper_m);
         }
 
         /// <summary>Section 12 addendum 5: one frame's skinning checks against the take's reference.</summary>
@@ -690,12 +699,22 @@ namespace WarehouseRobot.AvatarCheck
             float ratio = s.RefBands != null ? SkinGeometry.MinRatio(s.RefRadii, SkinGeometry.BandRadii(fore, s.RefBands, sk.forearm_bands, e, wr)) : float.NaN;
             var torso = TorsoLocal(Positions(s, s.Torso, frame), s.Torso);
             var disp = new List<float>(torso.Count);
-            for (int i = 0; i < torso.Count && s.RefTorso != null && i < s.RefTorso.Length; i++) disp.Add(Vector3.Distance(torso[i], s.RefTorso[i]));
-            float p = SkinGeometry.Percentile(disp, sk.torso_percentile), max = disp.Count > 0 ? disp.Max() : float.NaN;
+            var core = new List<float>(torso.Count);
+            for (int i = 0; i < torso.Count && s.RefTorso != null && i < s.RefTorso.Length; i++)
+            {
+                float d = Vector3.Distance(torso[i], s.RefTorso[i]);
+                disp.Add(d);
+                if (s.RefTorsoCore != null && i < s.RefTorsoCore.Length && s.RefTorsoCore[i]) core.Add(d);
+            }
+            // addendum 7: the rule applies to the torso core; the whole torso is reported as information
+            float pAll = SkinGeometry.Percentile(disp, sk.torso_percentile);
+            float p = SkinGeometry.Percentile(core, sk.torso_percentile), max = core.Count > 0 ? core.Max() : float.NaN;
             rec.skin_frames++;
             rec.forearm_vertices = fore.Count;
             rec.forearm_bands = s.RefBands != null ? s.RefBands.Where(b => b >= 0).Distinct().Count() : 0;
             rec.torso_vertices = torso.Count;
+            rec.torso_core_vertices = core.Count;
+            if (!float.IsNaN(pAll)) rec.max_torso_all_percentile_m = Mathf.Max(rec.max_torso_all_percentile_m, R4(pAll));
             var why = new List<string>();
             if (float.IsNaN(ratio)) { rec.skin_forearm_na++; why.Add("forearm not measurable"); }
             else
@@ -799,6 +818,8 @@ namespace WarehouseRobot.AvatarCheck
                     c.min_forearm_ratio = Mathf.Min(c.min_forearm_ratio, t.min_forearm_ratio);
                     c.max_torso_percentile_m = Mathf.Max(c.max_torso_percentile_m, t.max_torso_percentile_m);
                     c.max_torso_max_m = Mathf.Max(c.max_torso_max_m, t.max_torso_max_m);
+                    c.torso_core_vertices = Math.Max(c.torso_core_vertices, t.torso_core_vertices);
+                    c.max_torso_all_percentile_m = Mathf.Max(c.max_torso_all_percentile_m, t.max_torso_all_percentile_m);
                     if (!t.skin_pass || t.skin_frames == 0)
                     {
                         c.skin_pass = false;
@@ -839,16 +860,19 @@ namespace WarehouseRobot.AvatarCheck
                       $"(>= {sk.forearm_weight_min.ToString("0.0#", Inv)}) in {sk.forearm_bands} bands along elbow to wrist (bands under {sk.forearm_min_band_vertices} vertices skipped); " +
                       $"each band's mean distance from the elbow-to-wrist line over its reference; the narrowest must keep >= {sk.forearm_min_ratio.ToString("0.00", Inv)}. " +
                       $"Torso: vertices bound mainly to {string.Join(", ", sk.torso_bones)} (>= {sk.torso_weight_min.ToString("0.0#", Inv)}), each in its own bone's frame; " +
-                      $"p{sk.torso_percentile} displacement < {(sk.torso_max_displacement_m * 100f).ToString("0.0#", Inv)} cm. Worst values over every measured frame of every take, both arms.\n\n");
-            sb.Append("| look | kind | command | frames | forearm vertices | forearm narrowest band (ratio, min) | torso vertices | torso p" + sk.torso_percentile + " max (cm) | torso max (cm) | pass |\n");
-            sb.Append("|---|---|---|---|---|---|---|---|---|---|\n");
+                      $"the rule (addendum 7) applies to the torso core (outside {sk.torso_core_shoulder_zone_lu.ToString("0.0#", Inv)} Lu of both UpperArm bones): " +
+                      $"core p{sk.torso_percentile} displacement < {(sk.torso_max_displacement_m * 100f).ToString("0.00#", Inv)} cm; the whole torso's p{sk.torso_percentile} is information. " +
+                      "Worst values over every measured frame of every take, both arms.\n\n");
+            sb.Append("| look | kind | command | frames | forearm vertices | forearm narrowest band (ratio, min) | torso vertices (core) | torso core p" + sk.torso_percentile + " max (cm) | torso core max (cm) | whole torso p" + sk.torso_percentile + " (cm, info) | pass |\n");
+            sb.Append("|---|---|---|---|---|---|---|---|---|---|---|\n");
             foreach (var l in f.looks)
             {
                 if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | {l.status} | | | | | | | no |\n"); continue; }
                 foreach (var c in l.commands)
                     sb.Append($"| {l.id} | {l.kind_group} | {c.command} | {c.skin_frames} | {c.forearm_vertices} | {(c.min_forearm_ratio < 900f ? c.min_forearm_ratio.ToString("0.00", Inv) : "n/a")} | " +
-                              $"{c.torso_vertices} | {(c.max_torso_percentile_m >= 0f ? (c.max_torso_percentile_m * 100f).ToString("0.00", Inv) : "n/a")} | " +
-                              $"{(c.max_torso_max_m >= 0f ? (c.max_torso_max_m * 100f).ToString("0.00", Inv) : "n/a")} | {(c.skin_pass ? "yes" : "**no**")} |\n");
+                              $"{c.torso_vertices} ({c.torso_core_vertices}) | {(c.max_torso_percentile_m >= 0f ? (c.max_torso_percentile_m * 100f).ToString("0.00", Inv) : "n/a")} | " +
+                              $"{(c.max_torso_max_m >= 0f ? (c.max_torso_max_m * 100f).ToString("0.00", Inv) : "n/a")} | " +
+                              $"{(c.max_torso_all_percentile_m >= 0f ? (c.max_torso_all_percentile_m * 100f).ToString("0.00", Inv) : "n/a")} | {(c.skin_pass ? "yes" : "**no**")} |\n");
             }
             var fails = f.looks.Where(l => l.status == "ok").SelectMany(l => l.commands.Where(c => !c.skin_pass).Select(c => $"- {l.id} {c.command}: {c.skin_failures}")).ToList();
             if (fails.Count > 0) sb.Append("\nFailures (first failing frame of each failing take):\n\n").Append(string.Join("\n", fails)).Append('\n');
