@@ -2207,3 +2207,27 @@ Read:
 - `tests/test_data_splits_v4.py`: the shipped-config test compares the three earlier looks; new `ExperimentLooksTests`.
 - `tests/test_look_check_v4.py`: the config test knows PROCEED; new `ProceedTests`.
 - `tests/test_lie_detection_v4.py`, `tests/test_export_csv_v4.py`: tests that need exactly two workers at J1 (the tie rule) now ask for two explicitly (`people=2`, which replaces the per-node counts), the look of worker 3 is listed.
+
+### 16.13 Decisions of 2026-11-14, third round (Anisha): the simulator matches Unity, recorded BEFORE the code
+
+Branch `anisha/v4-experiments-ab-3` (from main `879ba9a`, which holds 16.12 merged as PR #31). The Unity runs are the experiment, so the simulator must do what Unity does. The three open points of 16.12 are decided as
+"match Unity". The exact rules were read from Nusrat's code on main, not guessed: `HRI/Scripts/V4/ExperimentPlanAB.cs` (`PlanRun`, `SlotPosition`, `DrawRandom`, `NodeProblem`, `NearerMargin`, `DrawLie`, `TruthfulCommand`, `Goals`),
+`HRI/Scripts/GoalSequence.cs` and `Scenario/Config/experiments_ab_unity.json`. Python only; nothing under `unity/` is touched (read only).
+
+1. **Second `beside` worker as Unity places it.** Unity's slots (`before_m` back along the arrival road, at the start node behind it opposite the start heading; `right_m` to the right of the arrival direction, negative = left),
+   position = node - heading x before_m + right x right_m: junctions (3.0, -2.0), (5.5, +2.0), (6.0, -2.0); start node (3.0, -2.0), (3.0, +4.0), (6.0, -2.0); worker k of a node stands at slot k (slot 0 is the first worker).
+   So Unity's first worker is on the LEFT, 3.0 m back; the simulator's earlier pair (3.0 m back, 2.0 m each side, first on the right) is replaced. This settles Nusrat's "PENDING ANISHA" slots note (`slots_note`): the slots are confirmed. They are copied into
+   `scenarios_ab.json` (`layout.junction_slots`, `layout.start_slots`) and a test pins them equal to Unity's file. As Unity, the simulator also checks the bystander margin of the `beside` layout (`nearer_margin_m` 1.0 m along the last
+   `approach_m` 3.0 m of the arrival road), counts the start node and junctions of the physical v4 map as turning points and its roads as roads for every map, and checks the 3.0 m separation across nodes. The random layout sorts the drawn
+   workers by distance to the node so that slot 0 is the one nearest the node (Unity's `DrawRandom`).
+2. **Goals as Unity draws them.** The goal of run k of a session is the k-th value of `GoalSequence(session seed)` over the map's endpoints sorted by name (SplitMix64; never equal to the previous run's goal), not
+   `random.Random(f"{seed}|goal")`. Python's port of the same generator is `hri_trials.goal_order(seed, endpoints, n)`. `scenarios_ab.json` gets `session_seed` 1 (the development seed); run k (seed `first_seed` + k - 1) uses
+   `goal_order(session_seed, sorted endpoints, runs_per_scenario)[k - 1]`. Fixed goals (A1: B, A2: C) are unchanged.
+3. **A liar shows only a real wrong branch** (Unity `DrawLie`): the wrong directions are the node's branches other than the true command (a node that cannot lead to B has the true command BACK, so every branch of the node is wrong);
+   where there is no other branch (A1's A; A2's A and B; the v4 map's start node A) the fallback is any other of LEFT / FORWARD / RIGHT / BACK, uniformly, which is an impossible direction. `scenarios_ab.json` `sets.B.lie_directions`
+   "valid_branch" ("compass" is the earlier model of 16.2 decision 2, still available for the comparison). Together with the consistent lies of 16.12 item 2 this is what Unity does.
+
+**What the simulator still does differently from Unity** (not decided here; listed so that nobody reads the table as a replica): the random numbers are not Unity's SplitMix64 streams (only the goal order is the same generator), so a given
+(seed, run) has the same goal but not the same placements or liars; Unity also checks that a position is a free grid cell and not inside a collider; Unity's activation window (workers rendered only within 8.0 m, at most 6 active) and its
+rule for who answers a new ask (nearest to the camera axis within 3.5 m) have no counterpart in the simulator (the controller asks the person it approached); the A2 side is fixed to the right turn unless `side="left"`; Unity logs `active`.
+Porting Unity's `Rng(seed, run, index, salt)` to make placements and liars identical per (seed, run) is possible and is not done.
