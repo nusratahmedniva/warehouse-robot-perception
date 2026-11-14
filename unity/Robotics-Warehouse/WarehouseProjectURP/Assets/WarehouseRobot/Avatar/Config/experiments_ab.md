@@ -1037,3 +1037,14 @@ its mesh islands instead of the 4 cm region:
 - If middle and ring still move together, it is reported as real.
 
 **Then** all checks rerun on all 15 looks, with screenshots: geometry, hand, skinning with the calibrated torso core, and Boxo's probes.
+
+*Addendum 8 (2026-11-15): the torso core limit, calibrated on the professionally rigged looks; declared before it is applied to the
+other looks.*
+- **Run:** `gesture_geometry_torso_calibration_20261115_004424` on 0ec0318 (clean tree), with only mixamo_worker and the 10 Sunbox looks.
+- **Worst torso core p95:** **1.70 cm** (sunbox_f_shirt_plaid, POINT, right arm, point_ik_01). The others range from 0.61 to 1.67 cm;
+  mixamo_worker's worst is 0.98 cm.
+- **Limit: 1.70 x 1.25 = 2.125 cm.** `gesture_geometry.json` `skinning.torso_max_displacement_m` becomes **0.02125**, applied from now on
+  to all 15 looks.
+- *Observation:* the shoulder zone (0.4 Lu) removes only 1 to 32 vertices per rig (for example 3082 -> 3079 on mixamo_worker), so the
+  core p95 is nearly the whole-torso p95. On these rigs the 1 to 2 cm is spread over the torso, not concentrated at the shoulder. The zone
+  is not changed after seeing this.

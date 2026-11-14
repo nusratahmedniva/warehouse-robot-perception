@@ -24,7 +24,7 @@ namespace WarehouseAvatar.Tests
             CollectionAssert.AreEqual(new[] { "Hips", "Spine", "Chest", "UpperChest" }, s.torso_bones);
             Assert.AreEqual(0.5f, s.torso_weight_min);
             Assert.AreEqual(95, s.torso_percentile);
-            Assert.AreEqual(0.01f, s.torso_max_displacement_m, 1e-6f);
+            Assert.AreEqual(0.02125f, s.torso_max_displacement_m, 1e-6f, "addendum 8: worst core p95 of the professionally rigged looks x 1.25");
             Assert.AreEqual(5, s.proceed_frames);
             Assert.AreEqual(0.4f, s.torso_core_shoulder_zone_lu, 1e-6f, "addendum 7: the shoulder zone");
         }
