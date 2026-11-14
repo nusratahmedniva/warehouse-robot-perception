@@ -1076,3 +1076,37 @@ other looks.*
   rigid. That would be a new decision.
 
 No perception was run.
+
+*Addendum 9 (2026-11-15): Nusrat's decision, declared before any change. Boxo only; no perception.* Boxo's hands are bound by their
+mesh islands, as his torso is. A new `looks_ab.json` rule, `island_hands` (look `cartoon_boxo_01`, material `glovemat`, weld 0.1 mm), is
+applied by `ExperimentCharacterPostprocessor.OnPostprocessModel` on every import of the model, after the rigid torso.
+
+**Method** (in mesh space; joint positions from the bind poses):
+- **This hand's glove:** the glovemat vertices with at least half of their auto-rigger weight on that hand bone or below it (decided
+  before any weight is changed).
+- **Islands:** from the triangles, with the vertices welded within 0.1 mm.
+- **Palm plate:** the island with the largest box volume, bound **100 % to the hand bone**.
+- **Fingers:** the other islands are grouped into fingers by contact: islands whose bounding boxes touch within 5 mm are one finger,
+  e.g. a finger's cylinder and its tip sphere. The finger groups are matched **one to one** with the hand's four chains (thumb, index,
+  middle, ring) by the smallest total centroid-to-chain distance over all assignments. Nearest-centroid assignment had split middle and
+  ring 34 / 170 in addendum 7's probe.
+- **Finger weights, only along the finger's own chain**, with joints j0 to j3 (proximal, intermediate, distal, end):
+  - each vertex gets a position u along the chain's polyline, in segment units: u = k + s on the segment from joint k to joint k + 1,
+    clamped to [0, 3];
+  - a segment's vertex belongs 100 % to that segment's bone (j0, j1 or j2);
+  - within 0.25 segment of an interior joint (j1, j2), it blends linearly between the two bones meeting there (50 / 50 at the joint);
+  - the part beyond the end joint (the tip sphere) belongs to the distal bone, and the part before j0 to the proximal bone;
+  - **no weight on any other finger, the hand or the arm.**
+- The import report lists the vertices bound per part.
+
+**Verification** (rerun of all checks on all 15 looks, with screenshots):
+- **Palm plate shape: change under 5 % in every command.** The geometry check measures Boxo's plate on every measured frame of POINT,
+  PROCEED, WAIT and STOP. It is reported in `skin_table.md` and is part of the skinning pass for a palm-plate look; STOP and WAIT also keep
+  it in the hand check as before.
+- **Fingers:** bending each finger moves **0 %** of the other fingers' vertices (the island finger probe, every finger of both hands).
+- **Five-finger looks unchanged:** the rule names only Boxo. The `BatchHandShapes` comparison, the Sunbox pin test and the golden test
+  confirm it.
+- **Edit Mode tests:**
+  - the binding on a synthetic hand (plate on the hand bone, fingers only on their own chain, the blend at the joints, no cross-finger
+    weight, one-to-one matching);
+  - the installed Boxo import, when present: every plate vertex on the hand bone, and no finger vertex on another chain.
