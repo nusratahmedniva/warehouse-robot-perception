@@ -46,9 +46,13 @@ def read(repo: Path = REPO) -> dict:
     return json.loads((repo / FROZEN_REL).read_text(encoding="utf-8"))
 
 
-# Files below configs/v4/ that are frozen although the glob below does not reach them (AUDIT.md section 16.10, 2026-11-13): the experiments
-# of the simulator study. experiments/export_csv.json is deliberately NOT here: it only chooses CSV columns, no result depends on it.
-FROZEN_EXTRA = (f"{V4_DIR}/experiments/scenarios_ab.json",)
+# Files below configs/v4/ that are frozen although the glob below does not reach them: the experiments of the study (AUDIT.md 16.10, 2026-11-13:
+# scenarios_ab.json; 16.15, 2026-11-14: the control files and the robot maps a final of experiments A/B runs with). An explicit list, not a glob of
+# experiments/: experiments/export_csv.json only chooses CSV columns and false_stop_analysis.json only configures an analysis tool, no result depends
+# on either, so both stay outside (16.10.1).
+EXPERIMENT_CONTROL = tuple(f"{V4_DIR}/experiments/control_lie_{on}{m}.json" for on in ("on", "off") for m in ("", "_a1", "_a2_right", "_a2_left"))
+EXPERIMENT_MAPS = tuple(f"{V4_DIR}/experiments/roadmap_{m}.json" for m in ("a1", "a2_right", "a2_left"))
+FROZEN_EXTRA = (f"{V4_DIR}/experiments/scenarios_ab.json",) + EXPERIMENT_CONTROL + EXPERIMENT_MAPS
 
 
 def config_files(repo: Path = REPO) -> list[str]:

@@ -63,9 +63,17 @@ from bridge import protocol as P  # noqa: E402
 DEFAULT_CONFIG = "configs/bridge.json"
 V4_CONTROL, V4_COMMANDER, V4_READER = "configs/v4/control.json", "configs/v4/commander.json", "configs/v4/gesture_reader.json"
 V4_PERCEPTION = "configs/v4/perception.json"           # P1 (2026-11-12): the ankle height of the 360 distance
-# P11 (2026-11-12): the control file each final setting must run with (identical except zoom.enabled; a test pins that)
-FINAL_CONTROL = {"zoom_on": "configs/v4/control_zoom_on.json", "zoom_off": "configs/v4/control_zoom_off.json",
-                 "bystanders": "configs/v4/control_zoom_on.json", "zoom_on_repeat": "configs/v4/control_zoom_on.json"}
+# P11 (2026-11-12): the control file each final setting must run with. Since 2026-11-14 (AUDIT.md 16.15) the settings are those of the
+# experiments A/B: the control file carries the map (its "roadmap" key) and the lie-detection switches of the setting; the "_off" settings
+# are Set B with detection off. Tests pin each file to the plan's entry (map, switches).
+_EXP = "configs/v4/experiments/"
+FINAL_CONTROL = {"A1": _EXP + "control_lie_on_a1.json", "B1": _EXP + "control_lie_on_a1.json",
+                 "A2_right": _EXP + "control_lie_on_a2_right.json", "B2_right": _EXP + "control_lie_on_a2_right.json",
+                 "A2_left": _EXP + "control_lie_on_a2_left.json",
+                 "A3": _EXP + "control_lie_on.json", "A4": _EXP + "control_lie_on.json",
+                 "B3": _EXP + "control_lie_on.json", "B4": _EXP + "control_lie_on.json",
+                 "B1_off": _EXP + "control_lie_off_a1.json", "B2_right_off": _EXP + "control_lie_off_a2_right.json",
+                 "B3_off": _EXP + "control_lie_off.json", "B4_off": _EXP + "control_lie_off.json"}
 FRAME_COUNTERS = ("frames_360_sent", "frames_360_dropped", "frames_pan_tilt_sent", "frames_pan_tilt_dropped")
 
 
@@ -523,8 +531,8 @@ def check_final_control(setting: str, control_config: str | Path) -> None:
 
 def preflight_final(cfg: dict, mode: str, setting: str, control_config: str | Path = V4_CONTROL) -> None:
     """Before a v4 final run starts (SystemExit otherwise): protocol 3 in guide mode, the v4 configs frozen with every hash
-    matching, the setting known and not run before, the control file the setting's own (P11) and its zoom switch what the
-    setting says."""
+    matching, the setting known and not run before, the control file the setting's own (P11), and its zoom switch, map and
+    lie-detection switches what the setting says."""
     import final_guard_v4 as fg
     import freeze_v4 as fz
     if cfg["protocol_version"] < 3 or mode != "guide":
@@ -533,10 +541,15 @@ def preflight_final(cfg: dict, mode: str, setting: str, control_config: str | Pa
     fg.check_name(setting)
     fg.ensure_not_done(dio.resolve(cfg["paths"]["output_root"]), setting, "run")
     check_final_control(setting, control_config)
-    want = fg.plan()["settings"][setting].get("zoom")
-    have = dio.read_json(control_config)["zoom"]["enabled"]
+    spec = fg.plan()["settings"][setting]
+    want = spec.get("zoom")
+    control = dio.read_json(control_config)
+    have = control["zoom"]["enabled"]
     if want is not None and have != want:
         raise SystemExit(f"setting {setting!r} needs zoom {'on' if want else 'off'} but {control_config} has zoom.enabled = {have}")
+    bad = fg.control_problems(setting, control)       # 2026-11-14: the map and the lie-detection switches of the setting
+    if bad:
+        raise SystemExit(f"setting {setting!r} refused: " + "; ".join(bad))
 
 
 def make_perception_worker_v4(out: Path, perception_config: str | Path, reader_config: str | Path,
@@ -744,7 +757,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--resource-log", action="store_true",
                     help="log memory, paging, CPU per process and GPU once per second (resources.csv, own process)")
     ap.add_argument("--final-setting", default=None,
-                    help="v4 FINAL run of this setting (zoom_on, zoom_off, bystanders, zoom_on_repeat): needs configs/v4/frozen.json "
+                    help="v4 FINAL run of this setting (A1, A2_right, A2_left, A3, A4, B1, B2_right, B3, B4, B1_off, B2_right_off, B3_off, B4_off; "
+                         "final_plan.json), with its own --control-config (FINAL_CONTROL): needs configs/v4/frozen.json "
                          "frozen with every hash matching; refused if the setting was already run (final_guard_v4.py)")
     ap.add_argument("--control-config", default=V4_CONTROL,
                     help="protocol 3 only: the v4 control file (default configs/v4/control.json). Session options are copies "

@@ -270,10 +270,12 @@ class Runner(unittest.TestCase):
 
 class Isolation(unittest.TestCase):
     def test_inference_code_never_imports_the_exporter_or_the_runner(self):
+        # hri_eval_final_v4.py is evaluation code: since 2026-11-14 (AUDIT.md 16.15) it takes the experiment numbers from the exporter.
+        # The rule is unchanged for every other file (inference code, the controller, the server).
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)
-            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("export_csv_v4.py", "run_experiments_ab_v4.py"):
+            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("export_csv_v4.py", "run_experiments_ab_v4.py", "hri_eval_final_v4.py"):
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

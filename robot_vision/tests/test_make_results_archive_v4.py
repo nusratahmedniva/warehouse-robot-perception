@@ -35,16 +35,16 @@ class World:
         self.out = tmp / "outputs"
         self.out.mkdir()
         self.arch = tmp / "archives"
-        u, b = tf.session(self.out, "final_zoom_on")
+        u, b = tf.session(self.out, "final_A3")
         self.unity, self.bridge = u, b
         gt_cfg = gt_path.load_config(self.repo / "robot_vision/configs/v4/gt_eval.json")
         assert gt_path.session_leak_check(u, gt_cfg)["passed"]          # what the final evaluation does: writes leak_test.json
         if complete:
-            fg.write_done(b, "zoom_on", "run")
-            (b / "FINAL_SETTING.json").write_text(json.dumps({"setting": "zoom_on", "frozen_sha256": fz.sha256_lf(self.repo / fz.FROZEN_REL)}))
-            self.eval = self.out / "hri_eval_final_v4_zoom_on_20261201_090000"
+            fg.write_done(b, "A3", "run")
+            (b / "FINAL_SETTING.json").write_text(json.dumps({"setting": "A3", "frozen_sha256": fz.sha256_lf(self.repo / fz.FROZEN_REL)}))
+            self.eval = self.out / "hri_eval_final_v4_A3_20261201_090000"
             self.eval.mkdir()
-            fg.write_done(self.eval, "zoom_on", "evaluation")
+            fg.write_done(self.eval, "A3", "evaluation")
             (self.eval / "eval.json").write_text("{}")
         du, db = tf.session(self.out, "dev", mode="development", seed=1, spec_kw={
             "commander_look": "sunbox_m1", "clips": {"POINT": "point_mixamo_01", "WAIT": "wait_ik_01",
@@ -54,8 +54,8 @@ class World:
         (self.ana / "analysis.md").write_text("# analysis\n")
         (self.ana / "rq1_comparison.csv").write_text("measure\n")
         self.cfg = {**CFG, "manifest": str(tmp / "manifest.json")}
-        sessions = [{"setting": "zoom_on", "role": "final", "unity": u.name, "bridge": b.name,
-                     "eval": "hri_eval_final_v4_zoom_on_20261201_090000", "analysis": self.ana.name},
+        sessions = [{"setting": "A3", "role": "final", "unity": u.name, "bridge": b.name,
+                     "eval": "hri_eval_final_v4_A3_20261201_090000", "analysis": self.ana.name},
                     {"setting": "dev_run", "role": "development", "unity": du.name, "bridge": db.name}]
         (tmp / "manifest.json").write_text(json.dumps({"sessions": sessions}))
 
@@ -84,7 +84,7 @@ class ArchiveTests(unittest.TestCase):
                     "frozen/hashes.csv", "frozen/robot_vision/configs/v4/frozen.json", "frozen/robot_vision/configs/v4/control.json",
                     "frozen/robot_vision/configs/roadmap.json"):
             self.assertTrue((a / rel).exists(), rel)
-        base = a / "sessions" / "zoom_on" / "final"
+        base = a / "sessions" / "A3" / "final"
         for rel in ("unity/run_001/truth.jsonl", "unity/run_001/run.json", "unity/leak_test/leak_test.json", "unity/leak_test/cam360_on.png",
                     "unity/session.json", "bridge/v4_log.jsonl", "bridge/FINAL_RUN_DONE.json", "eval/FINAL_DONE.json", "analysis/analysis.md"):
             self.assertTrue((base / rel).exists(), rel)
@@ -99,7 +99,7 @@ class ArchiveTests(unittest.TestCase):
         before = ma.stat_snapshot(self.w.out)
         res = self.w.build()
         self.assertEqual(ma.stat_snapshot(self.w.out), before)
-        a = res["archive"] / "sessions" / "zoom_on" / "final" / "unity"
+        a = res["archive"] / "sessions" / "A3" / "final" / "unity"
         for p in self.w.unity.rglob("*"):
             if p.is_file():
                 self.assertEqual((a / p.relative_to(self.w.unity)).read_bytes(), p.read_bytes(), p.name)
@@ -109,7 +109,7 @@ class ArchiveTests(unittest.TestCase):
         (self.w.unity / "avatar.vrm").write_bytes(b"x")
         (self.w.unity / "Mixamo_walk.txt").write_text("x")
         res = self.w.build()
-        a = res["archive"] / "sessions" / "zoom_on" / "final" / "unity"
+        a = res["archive"] / "sessions" / "A3" / "final" / "unity"
         for name in ("weights.pt", "avatar.vrm", "Mixamo_walk.txt"):
             self.assertFalse((a / name).exists(), name)
         self.assertTrue((a / "leak_test" / "cam360_off.png").exists())
@@ -143,7 +143,7 @@ class ArchiveTests(unittest.TestCase):
         self.assertIn("truth.jsonl and run.json in every run folder", {c["check"] for c in self.problems(self.w.build())})
 
     def test_a_run_started_under_another_freeze_is_a_problem(self):
-        (self.w.bridge / "FINAL_SETTING.json").write_text(json.dumps({"setting": "zoom_on", "frozen_sha256": "0" * 64}))
+        (self.w.bridge / "FINAL_SETTING.json").write_text(json.dumps({"setting": "A3", "frozen_sha256": "0" * 64}))
         self.assertIn("run started with this freeze", {c["check"] for c in self.problems(self.w.build())})
 
     def test_a_final_without_its_evaluation_folder_is_a_problem(self):
@@ -158,13 +158,13 @@ class ArchiveTests(unittest.TestCase):
         res = self.w.build()
         away = [c for c in res["checks"] if c["status"] == "not_on_this_machine"]
         self.assertEqual([c["folder"] for c in away], [self.w.ana.name])
-        self.assertFalse((res["archive"] / "sessions" / "zoom_on" / "final" / "analysis").exists())
+        self.assertFalse((res["archive"] / "sessions" / "A3" / "final" / "analysis").exists())
 
     def test_repo_summary_copies_only_the_analysis_tables(self):
         dest = self.w.root / "summary"
         self.w.build(repo_summary=dest)
-        self.assertTrue((dest / "zoom_on" / "final" / "analysis.md").exists())
-        self.assertTrue((dest / "zoom_on" / "final" / "rq1_comparison.csv").exists())
+        self.assertTrue((dest / "A3" / "final" / "analysis.md").exists())
+        self.assertTrue((dest / "A3" / "final" / "rq1_comparison.csv").exists())
         self.assertEqual({p.name for p in dest.rglob("*") if p.is_file()}, {"analysis.md", "rq1_comparison.csv"})
 
     def test_never_overwrites_and_never_writes_inside_the_repository(self):
@@ -179,12 +179,12 @@ class ArchiveTests(unittest.TestCase):
     def test_verify_finds_a_changed_added_or_missing_file(self):
         a = self.w.build(make_zip=False)["archive"]
         self.assertEqual(ma.verify(a), [])
-        f = a / "sessions" / "zoom_on" / "final" / "unity" / "run_001" / "truth.jsonl"
+        f = a / "sessions" / "A3" / "final" / "unity" / "run_001" / "truth.jsonl"
         f.write_text(f.read_text() + " ")
         (a / "extra.txt").write_text("x")
         (a / "AUDIT.md").unlink()
         p = ma.verify(a)
-        self.assertIn("changed: sessions/zoom_on/final/unity/run_001/truth.jsonl", p)
+        self.assertIn("changed: sessions/A3/final/unity/run_001/truth.jsonl", p)
         self.assertIn("not in CHECKSUMS.sha256: extra.txt", p)
         self.assertIn("missing: AUDIT.md", p)
 
@@ -199,11 +199,11 @@ class UnfrozenAndManifestTests(unittest.TestCase):
             self.assertIn("NOT frozen", (res["archive"] / "README.md").read_text())
 
     def test_manifest_validation(self):
-        good = {"sessions": [{"setting": "zoom_on", "role": "final", "unity": "u", "bridge": "b"}]}
+        good = {"sessions": [{"setting": "A3", "role": "final", "unity": "u", "bridge": "b"}]}
         self.assertEqual(mv.validate_manifest(good), [])
-        self.assertTrue(mv.validate_manifest({"sessions": [{"setting": "zoom_on", "role": "gold", "unity": "u", "bridge": "b"}]}))
+        self.assertTrue(mv.validate_manifest({"sessions": [{"setting": "A3", "role": "gold", "unity": "u", "bridge": "b"}]}))
         self.assertTrue(mv.validate_manifest({"sessions": [{"setting": "zoom_sideways", "role": "final", "unity": "u", "bridge": "b"}]}))
-        self.assertTrue(mv.validate_manifest({"sessions": [{"setting": "zoom_on", "role": "final", "unity": "u"}]}))
+        self.assertTrue(mv.validate_manifest({"sessions": [{"setting": "A3", "role": "final", "unity": "u"}]}))
         dup = {"sessions": [good["sessions"][0], good["sessions"][0]]}
         self.assertIn("listed more than once", " ".join(mv.validate_manifest(dup)))
 
