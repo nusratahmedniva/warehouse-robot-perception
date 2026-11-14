@@ -267,12 +267,17 @@ namespace WarehouseAvatar
             bone.rotation = Quaternion.FromToRotation(cur, dir) * bone.rotation;
         }
 
-        /// <summary>Direction the palm faces, from the index and little finger bases (v3 GestureWorker convention).</summary>
+        /// <summary>The outermost finger's proximal bone: the little finger, or the ring finger on a hand without one (experiments_ab.md
+        /// section 11 item 3).</summary>
+        public static Transform OuterFinger(Arm arm) => arm.Fingers[Little][0] != null ? arm.Fingers[Little][0] : arm.Fingers[Ring][0];
+
+        /// <summary>Direction the palm faces, from the index and little finger bases (v3 GestureWorker convention; the ring finger's on a hand
+        /// without a little finger).</summary>
         public static bool PalmNormal(Arm arm, Vector3 fingerDir, out Vector3 normal)
         {
             normal = Vector3.zero;
             var index = arm.Fingers[Index][0];
-            var little = arm.Fingers[Little][0];
+            var little = OuterFinger(arm);
             if (index == null || little == null) return false;
             Vector3 s = little.position - index.position;
             normal = arm.IsRight ? Vector3.Cross(s, fingerDir) : Vector3.Cross(fingerDir, s);

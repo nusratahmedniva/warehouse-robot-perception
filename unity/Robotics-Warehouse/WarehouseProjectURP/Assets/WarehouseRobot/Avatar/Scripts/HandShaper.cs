@@ -33,10 +33,12 @@ namespace WarehouseAvatar
             return a;
         }
 
+        /// <summary>The arm and the index, middle and ring fingers' proximal bones; the little finger is optional (experiments_ab.md section 11
+        /// item 3: a hand without one is shaped with the fingers present, the ring finger then being the outermost).</summary>
         public static bool Complete(LookPoser.Arm a)
         {
             if (a.Upper == null || a.Lower == null || a.Hand == null) return false;
-            for (int f = Index; f <= Little; f++) if (a.Fingers[f][0] == null) return false;
+            for (int f = Index; f <= Ring; f++) if (a.Fingers[f][0] == null) return false;
             return true;
         }
 
@@ -181,12 +183,12 @@ namespace WarehouseAvatar
                     if (a.Fingers[f][j] != null) a.Fingers[f][j].localRotation = Quaternion.Slerp(animated[f][j], a.Fingers[f][j].localRotation, weight);
         }
 
-        /// <summary>Swing the thumb about the palm normal so its tip moves across the palm toward the little finger.</summary>
+        /// <summary>Swing the thumb about the palm normal so its tip moves across the palm toward the little finger (the outermost finger present).</summary>
         static void ThumbAcross(LookPoser.Arm a, Vector3 palm, float deg)
         {
             var root = a.Fingers[Thumb][0];
             var tip = a.Fingers[Thumb][2] != null ? a.Fingers[Thumb][2] : a.Fingers[Thumb][1];
-            var little = a.Fingers[Little][0];
+            var little = LookPoser.OuterFinger(a);
             if (deg <= 0f || root == null || tip == null || little == null) return;
             Vector3 toTip = tip.position - root.position;
             float plus = Vector3.Distance(root.position + Quaternion.AngleAxis(deg, palm) * toTip, little.position);
