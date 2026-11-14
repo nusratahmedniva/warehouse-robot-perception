@@ -87,6 +87,9 @@ namespace WarehouseAvatar.EditorTools
             // experiments_ab.md section 5: -lookCheckLooks <id>[,<id>...] keeps those looks (recorded in run_info.json looks_subset)
             var subset = ExperimentLooks.Subset(Environment.GetCommandLineArgs(), ab.avatar_experiment, out string subsetError);
             if (subsetError != null) throw new ArgumentException(subsetError);
+            // experiments_ab.md section 10 item 6: with -avatarExperiment this is the avatar experiment's edit part, run once after the freeze
+            var official = AvatarExperimentGate.Requested();
+            if (official != null) AvatarExperimentGate.Check(official, AvatarExperimentConfig.Edit, subset != null);
             return Run(cfg =>
             {
                 var looks = new List<LookEntry>();
@@ -96,7 +99,7 @@ namespace WarehouseAvatar.EditorTools
                 cfg.looks = looks.ToArray();
                 cfg.paths.output_prefix = cfg.paths.output_prefix + "_ab";
             }, new Dictionary<string, string> { { "looks_ab.json", abText }, { "worker_v4.json", workerAsset.text } },
-               subset != null ? string.Join(",", subset) : "");
+               subset != null ? string.Join(",", subset) : "", official);
         }
 
         static void Batch(Func<string> action)
@@ -224,7 +227,7 @@ namespace WarehouseAvatar.EditorTools
 
         public static string Run() => Run(null, null);
 
-        static string Run(Action<LookCheckConfig> adjust, Dictionary<string, string> extraConfigs, string looksSubset = "")
+        static string Run(Action<LookCheckConfig> adjust, Dictionary<string, string> extraConfigs, string looksSubset = "", AvatarExperimentConfig official = null)
         {
             var cfgAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(ConfigPath) ?? throw new FileNotFoundException(ConfigPath);
             var cfg = LoadConfig(cfgAsset);
@@ -243,6 +246,8 @@ namespace WarehouseAvatar.EditorTools
             var robotAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(cfg.paths.robot_unity_config);
             WriteNew(Path.Combine(outDir, "config_used", Path.GetFileName(cfg.paths.robot_unity_config)), robotAsset.text);
             if (extraConfigs != null) foreach (var kv in extraConfigs) WriteNew(Path.Combine(outDir, "config_used", kv.Key), kv.Value);
+            string commit = official != null ? Git(repo, "rev-parse HEAD").Trim() : "";
+            if (official != null) AvatarExperimentGate.WriteMarker(official, outDir, false, AvatarExperimentConfig.Edit, commit);   // before the first render
 
             float fov = cfg.recording.vertical_fov_deg;
             var rest = new PoseSpec { Command = LookCheckConfig.None, ElevationDeg = -Mathf.Atan2(1f, cfg.hand.rest_outward) * Mathf.Rad2Deg };
@@ -323,7 +328,10 @@ namespace WarehouseAvatar.EditorTools
             ClearStage(stage);
             WriteNew(Path.Combine(outDir, "recordings.jsonl"), lines.ToString());
             WriteNew(Path.Combine(outDir, "inventory.json"), JsonUtility.ToJson(new InventoryFile { looks = rows.ToArray() }, true));
-            WriteNew(Path.Combine(outDir, "run_info.json"), JsonUtility.ToJson(RunInfo(repo, cfgAsset.text, robotAsset.text, looksSubset), true));
+            var info = RunInfo(repo, cfgAsset.text, robotAsset.text, looksSubset);
+            info.avatar_experiment_part = official != null ? AvatarExperimentConfig.Edit : "";
+            WriteNew(Path.Combine(outDir, "run_info.json"), JsonUtility.ToJson(info, true));
+            if (official != null) AvatarExperimentGate.WriteMarker(official, outDir, true, AvatarExperimentConfig.Edit, commit, "done");
             string rel = Path.GetRelativePath(repo, recDir).Replace('\\', '/');
             return $"{recordings} recordings ({frames} frames) of {rows.Count(r => r.status == "ok")} usable looks ({rows.Count} listed) in {rel}. " +
                    string.Join("; ", rows.Select(r => $"{r.id}: {r.status}")) +
@@ -349,6 +357,8 @@ namespace WarehouseAvatar.EditorTools
             /// <summary>experiments_ab.md section 5: the looks kept by -lookCheckLooks ("" = the whole list).</summary>
             public string looks_subset;
             public bool git_dirty;
+            /// <summary>experiments_ab.md section 10 item 6: "edit" for the avatar experiment's official run, "" for an engineering check.</summary>
+            public string avatar_experiment_part;
         }
 
         static RunInfoRecord RunInfo(string repo, string cfgText, string robotText, string looksSubset)

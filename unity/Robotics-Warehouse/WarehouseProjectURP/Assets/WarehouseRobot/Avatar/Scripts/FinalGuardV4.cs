@@ -192,6 +192,18 @@ namespace WarehouseAvatar
             if (!plan.Settings.Contains(setting)) e.Add($"setting '{setting}' is not in final_plan.json");
             foreach (var key in plan.Blanks) e.Add($"final_plan.json: {key} is blank");
             if (!plan.Blanks.Contains("task") && plan.Task != "Task2") e.Add($"final_plan.json: task is '{plan.Task}', the v4 runner runs Task2");
+            e.AddRange(FreezeProblems(cfg, frozenText, sha256LfOfRepoFile));
+            if (developmentOverride) e.Add("robot_vision/configs/trials.local.json (the development trial count) exists: remove it for a final");
+            string earlier = EarlierFinal(outputRoot, setting, cfg);
+            if (earlier != null) e.Add($"setting '{setting}' was already run as a final: {earlier}. Finals are run once (declare any repetition in AUDIT.md first)");
+            return e;
+        }
+
+        /// <summary>frozen.json must be frozen with every B9 file of <paramref name="cfg"/> present, recorded and unchanged (also the avatar
+        /// experiment's precondition, experiments_ab.md section 10 item 6).</summary>
+        public static List<string> FreezeProblems(FinalConfigV4 cfg, string frozenText, Func<string, string> sha256LfOfRepoFile)
+        {
+            var e = new List<string>();
             if (!Regex.IsMatch(frozenText ?? "", "\"frozen\"\\s*:\\s*true")) e.Add("frozen.json: the v4 configs are not frozen");
             foreach (var path in cfg.freeze_files ?? new List<string>())
             {
@@ -201,10 +213,23 @@ namespace WarehouseAvatar
                 else if (!rec.Success) e.Add($"freeze file {path} is not recorded in frozen.json (B9: Anisha adds the Unity files to the freeze)");
                 else if (!string.Equals(rec.Groups[1].Value, now, StringComparison.OrdinalIgnoreCase)) e.Add($"freeze file {path} changed since the freeze");
             }
-            if (developmentOverride) e.Add("robot_vision/configs/trials.local.json (the development trial count) exists: remove it for a final");
-            string earlier = EarlierFinal(outputRoot, setting, cfg);
-            if (earlier != null) e.Add($"setting '{setting}' was already run as a final: {earlier}. Finals are run once (declare any repetition in AUDIT.md first)");
             return e;
+        }
+
+        /// <summary>Unity's done file of a completed final of this setting in a folder directly under outputRoot ("folder/file"), or null.</summary>
+        public static string UnityFinalDone(string outputRoot, string setting, FinalConfigV4 cfg)
+        {
+            if (string.IsNullOrEmpty(outputRoot) || !Directory.Exists(outputRoot) || string.IsNullOrEmpty(cfg.done_file)) return null;
+            foreach (var d in Directory.GetDirectories(outputRoot))
+            {
+                string p = Path.Combine(d, cfg.done_file);
+                if (!File.Exists(p)) continue;
+                string text;
+                try { text = File.ReadAllText(p); }
+                catch (IOException) { continue; }
+                if (Regex.IsMatch(text, "\"final_setting\"\\s*:\\s*\"" + Regex.Escape(setting) + "\"")) return Path.GetFileName(d) + "/" + cfg.done_file;
+            }
+            return null;
         }
 
         /// <summary>

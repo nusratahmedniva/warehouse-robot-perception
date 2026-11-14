@@ -42,6 +42,10 @@ namespace WarehouseRobot.AvatarCheck
         public LookSource[] extraSources = new LookSource[0];
         public string repoRootRelativeToProject = "../../..";
         public bool runOnStart = true;
+        /// <summary>experiments_ab.md section 10 item 6: set by LookCheckPlayMenu for the avatar experiment's official play part (its guard
+        /// passed in the Editor); the driver then writes the started marker before the first render and the done marker at the end.</summary>
+        public TextAsset avatarExperimentConfig;
+        public string avatarExperimentPart = "";
 
         public string Status { get; private set; } = "idle";
         public string OutputFolder { get; private set; } = "";
@@ -136,6 +140,17 @@ namespace WarehouseRobot.AvatarCheck
             public string status, note;
             /// <summary>experiments_ab.md section 5: the looks kept by -lookCheckLooks ("" = the config's whole list).</summary>
             public string looks_subset;
+            /// <summary>experiments_ab.md section 10 item 6: "play" for the avatar experiment's official run, "" for an engineering check.</summary>
+            public string avatar_experiment_part;
+        }
+
+        AvatarExperimentConfig m_Official;
+        string m_OfficialCommit = "";
+
+        void Marker(bool done, string status = "")
+        {
+            string file = Path.Combine(OutputFolder, done ? m_Official.done_file : m_Official.started_file);
+            WriteNew(file, AvatarExperimentGuard.MarkerJson(done ? "done" : "started", avatarExperimentPart, m_OfficialCommit, Path.GetFileName(OutputFolder), AvatarExperimentGuard.Now(), status));
         }
 
         /// <summary>One camera of a site: the nominal distance it stands for (2.0 or 4.0 m) and its render targets.</summary>
@@ -320,6 +335,14 @@ namespace WarehouseRobot.AvatarCheck
             if (subsetError != null) { Finish("failed: " + subsetError); yield break; }
             if (subset != null) m_Play.looks = subset;
             info.looks_subset = subset != null ? string.Join(",", subset) : "";
+            info.avatar_experiment_part = avatarExperimentPart ?? "";
+            if (!string.IsNullOrEmpty(avatarExperimentPart))
+            {
+                if (avatarExperimentConfig == null || subset != null) { Finish("failed: the avatar experiment's play part needs avatar_experiment.json and the whole look list"); yield break; }
+                m_Official = AvatarExperimentConfig.Parse(avatarExperimentConfig.text);
+                Git(out m_OfficialCommit, out _);
+                Marker(false);                                                // before the first render: a crashed run counts as run
+            }
 
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
@@ -386,6 +409,7 @@ namespace WarehouseRobot.AvatarCheck
             info.status = errors.Count == 0 ? "done" : "done with problems: " + string.Join("; ", errors);
             info.note = "v4 Play-mode look check in WarehouseRobot_v4.unity at the Task 2 worker stands (Phase 2D, look_check_changes.md): an engineering check of the worker template's looks and gestures; not an evaluation.";
             WriteNew(Path.Combine(OutputFolder, "run_info.json"), JsonUtility.ToJson(info, true).Replace("\r\n", "\n") + "\n");
+            if (m_Official != null) Marker(true, info.status);
             Finish((errors.Count == 0 ? "done: " : "failed: ") + $"{m_Records.Count} recordings, {m_Frames} frames in {Path.GetFileName(OutputFolder)}" +
                    (errors.Count > 0 ? " - " + string.Join("; ", errors) : ""));
         }
