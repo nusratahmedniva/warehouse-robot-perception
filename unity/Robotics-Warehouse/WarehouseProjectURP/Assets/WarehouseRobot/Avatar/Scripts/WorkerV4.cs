@@ -10,6 +10,9 @@ namespace WarehouseAvatar
     {
         public string asset;
         public GameObject prefab;
+        /// <summary>Optional (experiments A/B, 2026-11-14): put on every renderer slot of the spawned look (a look's material_override,
+        /// resolved by the Editor launcher, which knows asset paths). Null = keep the look's own materials.</summary>
+        public Material materialOverride;
     }
 
     /// <summary>What a worker is asked to show. Clip "" = drawn from AllowedClips (or every clip of the command).</summary>
@@ -27,6 +30,8 @@ namespace WarehouseAvatar
         public bool IgnoreQuestion;
         /// <summary>&gt; 0: hold the gesture this long instead of the drawn hold_s (declared scenarios only, e.g. STOP while driving).</summary>
         public float HoldS;
+        /// <summary>Experiments A/B (2026-11-14): the direction shown is a lie (truth.jsonl gesture_truthful false while it is performed).</summary>
+        public bool Lie;
     }
 
     /// <summary>
@@ -59,6 +64,9 @@ namespace WarehouseAvatar
         public Transform robotEye;
         [Tooltip("Turn to face the robot once it is noticed")]
         public bool facesRobot = true;
+        /// <summary>Experiments A/B (2026-11-14, experiments_ab.md section 2): looks of looks_ab.json, used when worker_v4.json does not
+        /// define lookId. Set at Play by the scenario before Initialize; never serialized (the template prefab is unchanged).</summary>
+        [NonSerialized] public IList<LookEntry> extraLooks;
 
         public const string ParamTurning = "Turning", ParamMirror = "Mirror", ParamGestureSpeed = "GestureSpeed";
         public const int BaseLayer = 0, GestureLayer = 1;
@@ -71,6 +79,12 @@ namespace WarehouseAvatar
         public GameObject LookInstance { get; private set; }
         public string LookDescription { get; private set; } = "";
         public bool IsCommander { get; set; }
+        /// <summary>Experiments A/B (2026-11-14): write gesture_truthful in every truth row (protocol_v3.md amendment 4). Off = rows as before.</summary>
+        public bool ReportTruthful { get; set; }
+        /// <summary>Experiments A/B: write the extra field active (false while switched off by the activation window). Off = rows as before.</summary>
+        public bool ReportActive { get; set; }
+        /// <summary>The current (or last) gesture shows a wrong direction (GestureRequest.Lie).</summary>
+        public bool CurrentIsLie { get; private set; }
         public bool Noticed { get; private set; }
         public bool Turning { get; private set; }
         public WorkerPhase Phase => m_Scheduler.Phase;
@@ -139,10 +153,11 @@ namespace WarehouseAvatar
             Config = WorkerV4Config.Parse(config.text);
             var errors = Config.Validate();
             if (errors.Count > 0) return Fail("worker_v4.json: " + string.Join("; ", errors));
-            var look = Config.Look(lookId);
-            if (look == null) return Fail($"look '{lookId}' is not in worker_v4.json");
+            var look = ExperimentLooks.Find(Config, extraLooks, lookId);
+            if (look == null) return Fail($"look '{lookId}' is not in worker_v4.json" + (extraLooks != null ? " or looks_ab.json" : ""));
             GameObject prefab = null;
-            foreach (var s in lookSources) if (s != null && s.asset == look.asset) prefab = s.prefab;
+            Material overrideMat = null;
+            foreach (var s in lookSources) if (s != null && s.asset == look.asset) { prefab = s.prefab; overrideMat = s.materialOverride; }
             if (prefab == null) return Fail($"look '{lookId}': {look.asset} is not installed or not assigned (third-party, git-ignored: import it, then rebuild the worker template)");
 
             if (!LoadClips(out string clipError)) return Fail(clipError);
@@ -158,6 +173,16 @@ namespace WarehouseAvatar
                 LookDescription = description;
             }
             else Animator = LookInstance.GetComponentInChildren<Animator>();
+            if (overrideMat != null)
+            {
+                foreach (var r in LookInstance.GetComponentsInChildren<Renderer>(true))
+                {
+                    var mats = new Material[Mathf.Max(1, r.sharedMaterials.Length)];
+                    for (int i = 0; i < mats.Length; i++) mats[i] = overrideMat;
+                    r.sharedMaterials = mats;
+                }
+                LookDescription += (LookDescription.Length > 0 ? " " : "") + $"Material override {overrideMat.name} on every renderer.";
+            }
             if (Animator == null || Animator.avatar == null || !Animator.avatar.isHuman) return Fail($"look '{lookId}' has no Humanoid Animator");
             var avatarFix = HumanAvatarFix.Apply(Animator);     // IK goals land where asked only if the Avatar matches the scene
             if (avatarFix.Count > 0) LookDescription += $" Humanoid Avatar rebuilt to match the scene: {string.Join(", ", avatarFix)}.";
@@ -291,6 +316,7 @@ namespace WarehouseAvatar
             if (!m_Scheduler.Request(GestureTiming.For(spec, entry, p), req.IgnoreQuestion)) { error = "worker is busy"; return false; }
             Current = p;
             CurrentSpec = spec;
+            CurrentIsLie = req.Lie;
             m_Mixamo = spec.IsMixamo;
             m_MixamoEntry = entry;
             CurrentSplit = split;
@@ -573,6 +599,8 @@ namespace WarehouseAvatar
             double ankle = AnkleHeight();
             if (!double.IsNaN(ankle)) { row.HasAnkle = true; row.AnkleHeightM = ankle; }
             if (performing && cmd == WorkerV4Config.Point && robot != null) row.PointAngleDeg = Math.Round(TruthFormat.PointAngle(robot.forward, ShownPointDirection), 2);
+            if (ReportTruthful) { row.HasTruthful = true; row.GestureTruthful = !(performing && CurrentIsLie); }
+            if (ReportActive) { row.HasActive = true; row.Active = gameObject.activeInHierarchy; }
             if (performing)
             {
                 row.HasParams = true;

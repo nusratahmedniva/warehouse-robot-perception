@@ -45,7 +45,10 @@ namespace WarehouseRobot.GroundTruth
         RoadNode openNode;
         string lastState = "", lastRead = "-";
         readonly Dictionary<RobotStatus.Light, Material> mats = new Dictionary<RobotStatus.Light, Material>();
-        Material green, red, grey, instructed;
+        Material green, red, grey, instructed, liarMat, truthfulMat;
+        // experiments A/B (2026-11-14, experiments_ab.md section 3): the ask node, its true command, the answering worker's lie and what it showed
+        Func<string> exNode, exTruth, exShown;
+        Func<int> exLie;
         static Mesh arrowMesh;
 
         public void Begin(GroundTruthLayer layer, RobotRig rig, RobotBridgeClient client, RoadNode goalNode, string questionPrompt,
@@ -71,6 +74,8 @@ namespace WarehouseRobot.GroundTruth
                 grey = GroundTruthLayer.NewMaterial(new Color(0.6f, 0.6f, 0.6f, 0.9f));
                 instructed = GroundTruthLayer.NewMaterial(new Color(0.1f, 0.85f, 1f, 0.95f));
             }
+            exNode = exTruth = exShown = null;
+            exLie = null;
             chunk = null;
             lastSample = lastArrow = Flat(robot.transform.position);
             sinceArrow = 0f;
@@ -82,6 +87,21 @@ namespace WarehouseRobot.GroundTruth
             lastState = "";
             active = true;
             ApplyVisibility();
+        }
+
+        /// <summary>Experiments A/B: markers name the asked worker's node and true command, and get an outer ring in the lie colour (magenta-red)
+        /// or the truthful colour (green) of the worker who answered; call after Begin.</summary>
+        public void SetExperiment(Func<string> node, Func<string> trueCommand, Func<int> lie, Func<string> shown)
+        {
+            exNode = node;
+            exTruth = trueCommand;
+            exLie = lie;
+            exShown = shown;
+            if (liarMat == null)
+            {
+                liarMat = GroundTruthLayer.NewMaterial(new Color(0.95f, 0.1f, 0.55f, 0.9f));
+                truthfulMat = GroundTruthLayer.NewMaterial(new Color(0.1f, 0.8f, 0.25f, 0.9f));
+            }
         }
 
         /// <summary>The trial is over: a dialog still open is closed as aborted; the drawing stays until the next Begin.</summary>
@@ -173,13 +193,27 @@ namespace WarehouseRobot.GroundTruth
             var node = openNode != null ? openNode : askNode?.Invoke();
             string truth = node != null && goal != null ? node.CommandToward(goal).ToString() : "NONE";
             string shown = shownCommand?.Invoke() ?? "?";
+            string nodeName = node != null ? node.name : "?";
+            if (exTruth != null)
+            {
+                nodeName = exNode?.Invoke() ?? "?";
+                truth = exTruth();
+                shown = exShown?.Invoke() ?? "?";
+                int lie = exLie != null ? exLie() : -1;
+                if (lie >= 0)
+                {
+                    var ring = Prim(PrimitiveType.Cylinder, openMarker.transform, new Vector3(0f, 0.01f, 0f), new Vector3(0.75f, 0.004f, 0.75f), lie == 1 ? liarMat : truthfulMat);
+                    ring.name = lie == 1 ? "LieRing" : "TruthfulRing";
+                    if (lie == 1) shown += " LIE";
+                }
+            }
             bool taken = !string.IsNullOrEmpty(accepted) && accepted != "NONE" && accepted != "WAIT";
             var mat = !taken ? grey : accepted == truth ? green : red;
             var disc = openMarker.transform.Find("Disc");
             if (disc != null) GroundTruthLayer.Unshadowed(disc.GetComponent<Renderer>(), mat);
             var tm = openMarker.GetComponentInChildren<TextMesh>();
             if (tm != null)
-                tm.text = $"{(node != null ? node.name : "?")}: read {lastRead}\nbranch {(taken ? accepted : "none")}\nshown {shown} (true {truth})";
+                tm.text = $"{nodeName}: read {lastRead}\nbranch {(taken ? accepted : "none")}\nshown {shown} (true {truth})";
             openMarker = null;
         }
 

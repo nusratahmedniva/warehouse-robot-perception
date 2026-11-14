@@ -36,6 +36,10 @@ namespace WarehouseRobot.AvatarCheck
         public TextAsset lookCheckConfig;
         public TextAsset robotConfig;
         public WorkerV4 workerPrefab;
+        /// <summary>Optional (experiments A/B, 2026-11-14): Avatar/Config/looks_ab.json, for looks worker_v4.json does not define.</summary>
+        public TextAsset extraLooksConfig;
+        /// <summary>Optional: the sources of those looks (prefab and material override), resolved by the Editor menu.</summary>
+        public LookSource[] extraSources = new LookSource[0];
         public string repoRootRelativeToProject = "../../..";
         public bool runOnStart = true;
 
@@ -154,6 +158,7 @@ namespace WarehouseRobot.AvatarCheck
         LookCheckConfig m_Look;
         PanTiltCameraConfig m_Pt;
         WorkerV4Config m_Worker;
+        List<LookEntry> m_Extra;
         readonly List<Task> m_Writes = new List<Task>();
         readonly List<RecordingRecord> m_Records = new List<RecordingRecord>();
         readonly List<WorkerRecord> m_WorkerRecords = new List<WorkerRecord>();
@@ -225,18 +230,19 @@ namespace WarehouseRobot.AvatarCheck
             m_Worker = WorkerV4Config.Parse(workerPrefab.config.text);
             var we = m_Worker.Validate();
             if (we.Count > 0) { error = "worker_v4.json: " + string.Join("; ", we); return false; }
-            var pe = Validate(m_Play, m_Worker, m_Look);
+            m_Extra = extraLooksConfig != null ? new List<LookEntry>(ExperimentLooks.Parse(extraLooksConfig.text).looks) : null;
+            var pe = Validate(m_Play, m_Worker, m_Look, m_Extra);
             if (pe.Count > 0) { error = "look_check_play.json: " + string.Join("; ", pe); return false; }
             if (gameObject.scene.path != m_Play.venue.scene) { error = $"the driver runs in {m_Play.venue.scene}, not in '{gameObject.scene.path}'"; return false; }
             return true;
         }
 
         /// <summary>The play config's own rules (also used by the Edit Mode tests through the JSON).</summary>
-        static List<string> Validate(PlayConfig p, WorkerV4Config w, LookCheckConfig look)
+        static List<string> Validate(PlayConfig p, WorkerV4Config w, LookCheckConfig look, IList<LookEntry> extra = null)
         {
             var e = new List<string>();
             if (p.looks == null || p.looks.Length == 0) e.Add("no looks");
-            else foreach (var l in p.looks) if (w.Look(l) == null) e.Add($"look '{l}' is not in worker_v4.json");
+            else foreach (var l in p.looks) if (ExperimentLooks.Find(w, extra, l) == null) e.Add($"look '{l}' is not in worker_v4.json" + (extra != null ? " or looks_ab.json" : ""));
             foreach (var cmd in WorkerV4Config.Commands)
                 if (w.ClipNames(cmd).Count < 2) e.Add($"worker_v4.json: fewer than 2 variants of {cmd}");
             var v = p.venue;
@@ -280,6 +286,7 @@ namespace WarehouseRobot.AvatarCheck
             WriteNew(Path.Combine(used, "look_check_play.json"), playConfig.text);
             WriteNew(Path.Combine(used, "look_check.json"), lookCheckConfig.text);
             WriteNew(Path.Combine(used, "worker_v4.json"), workerPrefab.config.text);
+            if (extraLooksConfig != null) WriteNew(Path.Combine(used, "looks_ab.json"), extraLooksConfig.text);
             WriteNew(Path.Combine(used, "robot_unity_v4.json"), robotConfig.text);
             var index = Resources.Load<TextAsset>(m_Worker.paths.clip_resources_path + "/" + m_Worker.paths.clip_index_name);
             if (index != null) WriteNew(Path.Combine(used, "clip_index.json"), index.text);
@@ -412,6 +419,13 @@ namespace WarehouseRobot.AvatarCheck
             w.workerId = round * m_Play.venue.junctions.Length + s.Index + 1;
             w.robot = s.Robot;
             w.robotEye = s.Cams[0].Cam.transform;
+            if (m_Extra != null)
+            {
+                w.extraLooks = m_Extra;
+                var sources = new List<LookSource>(w.lookSources);
+                sources.AddRange(extraSources);
+                w.lookSources = sources.ToArray();
+            }
             w.transform.position = s.Stand;
             w.transform.rotation = Quaternion.LookRotation(Quaternion.AngleAxis(m_Play.initial_yaw_offset_deg, Vector3.up) * s.Facing, Vector3.up);
             if (!w.Initialize()) { s.Error = w.Problem; return false; }

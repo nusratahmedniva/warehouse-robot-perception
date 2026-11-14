@@ -20,6 +20,9 @@ namespace WarehouseAvatar.EditorTools
     public static class LookCheckPlayMenu
     {
         const string PlayConfigPath = "Assets/WarehouseRobot/Avatar/Config/look_check_play.json";
+        /// <summary>Experiments A/B (2026-11-14, experiments_ab.md section 2): the same check on every look of the avatar experiment.</summary>
+        const string PlayConfigPathAB = "Assets/WarehouseRobot/Avatar/Config/look_check_play_ab.json";
+        const string ConfigKey = "WarehouseAvatar.LookCheckPlay.Config";
         const string RobotConfigPath = "Assets/WarehouseRobot/Robot/Config/robot_unity_v4.json";
         const string ActiveKey = "WarehouseAvatar.LookCheckPlay.Active";
         const string InjectedKey = "WarehouseAvatar.LookCheckPlay.Injected";
@@ -40,7 +43,14 @@ namespace WarehouseAvatar.EditorTools
         public static void RunMenu()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
-            Start(false, 3600f);
+            Start(false, 3600f, PlayConfigPath);
+        }
+
+        [MenuItem("Tools/Warehouse v4/Experiments/Run Play-Mode Look Check (avatar experiment looks)")]
+        public static void RunMenuAB()
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            Start(false, 3600f * 3f, PlayConfigPathAB);
         }
 
         public static void CommandLineRun()
@@ -49,23 +59,36 @@ namespace WarehouseAvatar.EditorTools
             var args = Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
                 if (args[i] == "-lookCheckTimeout") float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out timeout);
-            Start(true, timeout);
+            Start(true, timeout, PlayConfigPath);
         }
+
+        /// <summary>Command line, experiments A/B: -executeMethod WarehouseAvatar.EditorTools.LookCheckPlayMenu.CommandLineRunAB -lookCheckTimeout S.</summary>
+        public static void CommandLineRunAB()
+        {
+            float timeout = 3600f * 3f;
+            var args = Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+                if (args[i] == "-lookCheckTimeout") float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out timeout);
+            Start(true, timeout, PlayConfigPathAB);
+        }
+
+        static string ActiveConfig() => SessionState.GetString(ConfigKey, PlayConfigPath);
 
         static TextAsset Load(string path) => AssetDatabase.LoadAssetAtPath<TextAsset>(path);
 
         static string VenueScene()
         {
-            var cfg = Load(PlayConfigPath);
+            var cfg = Load(ActiveConfig());
             return cfg != null ? JsonUtility.FromJson<VenueOnly>(cfg.text)?.venue?.scene : null;
         }
 
-        static void Start(bool quit, float timeout)
+        static void Start(bool quit, float timeout, string playConfig)
         {
+            SessionState.SetString(ConfigKey, playConfig);
             string scene = VenueScene();
             if (string.IsNullOrEmpty(scene) || AssetDatabase.LoadAssetAtPath<SceneAsset>(scene) == null)
             {
-                Debug.LogError($"[LookCheckPlay] venue scene '{scene}' of {PlayConfigPath} not found");
+                Debug.LogError($"[LookCheckPlay] venue scene '{scene}' of {ActiveConfig()} not found");
                 if (quit) EditorApplication.Exit(1);
                 return;
             }
@@ -96,11 +119,29 @@ namespace WarehouseAvatar.EditorTools
             var go = new GameObject("LookCheckPlay");
             SceneManager.MoveGameObjectToScene(go, scene);
             var d = go.AddComponent<LookCheckPlayDriver>();
-            d.playConfig = Load(PlayConfigPath);
+            d.playConfig = Load(ActiveConfig());
+            if (ActiveConfig() == PlayConfigPathAB) AddExperimentLooks(d);
             d.lookCheckConfig = Load(LookCheckMenu.ConfigPath);
             d.robotConfig = Load(RobotConfigPath);
             d.workerPrefab = prefab != null ? prefab.GetComponent<WorkerV4>() : null;
             Debug.Log("[LookCheckPlay] driver added to " + scene.path + "; in Play mode: " + d.SceneChanges);
+        }
+
+        /// <summary>looks_ab.json and the prefab (and material override) of each of its looks, resolved here because the driver has no AssetDatabase.</summary>
+        static void AddExperimentLooks(LookCheckPlayDriver d)
+        {
+            d.extraLooksConfig = Load(ExperimentLooks.AssetPath);
+            if (d.extraLooksConfig == null) return;
+            var sources = new System.Collections.Generic.List<LookSource>();
+            foreach (var l in ExperimentLooks.Parse(d.extraLooksConfig.text).looks)
+            {
+                if (l == null || l.kind != LookEntry.KindPrefab || sources.Exists(s => s.asset == l.asset)) continue;
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(l.asset);
+                if (prefab == null) { Debug.LogWarning($"[LookCheckPlay] look {l.id}: {l.asset} is not installed"); continue; }
+                var mat = string.IsNullOrEmpty(l.material_override) ? null : AssetDatabase.LoadAssetAtPath<Material>(l.material_override);
+                sources.Add(new LookSource { asset = l.asset, prefab = prefab, materialOverride = mat });
+            }
+            d.extraSources = sources.ToArray();
         }
 
         static void Poll()

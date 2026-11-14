@@ -1,0 +1,47 @@
+{
+  "note": "EXPERIMENTS A/B AVATAR EXPERIMENT (2026-11-14, Avatar/Config/experiments_ab.md section 2, declared before it ran): identical to look_check_play.json except looks (every look of looks_ab.json avatar_experiment that the worker template can spawn) and output.run_prefix; read by Tools > Warehouse v4 > Experiments > Run Play-Mode Look Check (avatar experiment looks). The note of look_check_play.json follows. v4 Play-mode look check (2026-11-07, Nusrat; venue and takes changed 2026-11-08 in Phase 2D, declared in look_check_changes.md and committed before the rerun): the look check of docs/look_check_v4.md recorded with the worker template (WorkerV4.prefab, worker_v4.json) and the real gesture variants in Play mode, inside WarehouseRobot_v4.unity (its own lighting and surroundings) at the Task 2 worker stands, from the robot's asking positions (real motion, real Unity Time.time in every header). Recording settings (distances, field of view, 11 frames, arms) are those of look_check.json; the camera settings those of robot_unity_v4.json pan_tilt_camera. An engineering check, not an evaluation: nothing is tuned on it. Read only by Tools > Warehouse v4 > Look Check > Run Play-Mode Look Check.",
+  "output": {
+    "root": "robot_vision/outputs",
+    "run_prefix": "look_check_play_ab",
+    "recordings_prefix": "looks_check",
+    "why": "A new folder robot_vision/outputs/look_check_play_<time>/ (git-ignored) holds the run's own files (config_used/, run_info.json, recordings.jsonl, workers.json, truth/); the recordings alone go into its subfolder looks_check_<time>/, the --input of look_check_v4.py (the tool reads every subfolder of its input as a sequence and never reads truth files)."
+  },
+  "looks": ["mixamo_worker", "sunbox_m1", "sunbox_f1", "sunbox_f2", "sunbox_m2", "sunbox_m_shirt_white", "sunbox_m_tshirt_black", "sunbox_m_shirt_plaid", "sunbox_f_shirt_white", "sunbox_f_dress_red", "sunbox_f_shirt_plaid", "anime_f_01"],
+  "looks_excluded": {"cartoon_boxo_01": "2026-11-14, by the declared rule (experiments_ab.md section 2): the worker template cannot spawn it. Its skeleton has one finger chain per hand (mixamorig:LeftHandIndex1-4, RightHandIndex1-4) and no thumb, middle, ring or little bones (Humanoid finger bones 6 of 30, import report import_characters_20261114_022152), so HandShaper refuses it ('lacks arm or finger bones') and no hand shape (WAIT index up, STOP open palm) can be posed on it. Reported with its Edit-mode results only."},
+  "seed": 1,
+  "venue": {
+    "scene": "Assets/Scenes/WarehouseRobot_v4.unity",
+    "junctions": ["J1", "J2"],
+    "approach_bearing_deg": [15.0, 50.0],
+    "distance_tolerance_m": 0.15,
+    "camera_clearance_m": 0.35,
+    "head_height_m": 1.6,
+    "hips_height_m": 0.95,
+    "max_pose_draws": 200,
+    "why": {
+      "scene": "The v4 study scene, loaded unchanged (the menu adds the driver only in Play mode; the driver switches off the trial runner, the bridge client, the v3 placeholder workers and the robot body before they start, so nothing connects to Python and no session folder is written).",
+      "junctions": "The Task 2 junctions; the worker stands at the junction's worker stand (roadmap rule, as TrialRunnerV4): J1 (8.75, 2.50), J2 (-8.75, 2.50). One look per junction at a time (one person per frame); over the rounds every look is recorded at every junction.",
+      "approach_bearing_deg": "Where the robot asks, measured at the worker from the stand's facing direction (toward the arriving robot) to the junction's side: the 8 asks of the v4 development session bridge_guide_20261108_033956 were at 47, 25, 44, 21, 43, 20 deg (J1) and 39, 18 deg (J2); every take draws its bearing uniformly from this band holding all of them.",
+      "distance_tolerance_m": "Each camera's distance is drawn uniformly within its nominal distance (look_check.json recording.distances_m: 2.0 and 4.0) +- this: robot_vision/configs/hri_control.json approach_tolerance_m (a test keeps them equal). The recording names keep the nominal distance, so look_check_v4.py groups them as before; the drawn distance is in recordings.jsonl and the header.",
+      "camera_clearance_m": "A drawn pose is used only if each camera keeps this distance from every collider (the robot is 0.30 m half-wide; the camera on its mast) and sees the head and hips heights above the stand without an obstacle in between; otherwise it is drawn again from the same seeded stream (pose_draws in recordings.jsonl), at most max_pose_draws times."
+    }
+  },
+  "takes": {
+    "sequences_per_group": 2,
+    "singles_per_group": 16,
+    "sequence_point_side_azimuth_deg": [0.0, 45.0],
+    "single_point_side_azimuth_deg": [0.0, 10.0, 20.0, 30.0, 45.0, 60.0],
+    "why": "Per group (look, command, distance, arm): 2 sequences (docs/look_check_v4.md minimum: 11 frames at 10 Hz, held still) and 16 single frames, 38 frames as before, each take an independent performance: its own variation stream (worker seed, run = the worker's take counter) and its own drawn camera pose; one 2 m and one 4 m camera on the same bearing record the same take. Sequence i uses the command's variant i, single k variant k (cycling); sequence i goes to junction i, single k to junction k (modulo the number of junctions). POINT directions in the look check's convention (0 = straight out to the person's own side, in the image plane; 90 = at the camera): sequence 1 sideways (it measures the arm length), sequence 2 at 45 deg toward the front, as docs/look_check_v4.md asks; singles cycle through single_point_side_azimuth_deg. NONE (negative control, the worker standing idle facing the robot): the same 2 sequences and 16 singles per look and distance, each at its own drawn pose."
+  },
+  "settle_after_hold_s": 0.2,
+  "question_after_request_s": 0.3,
+  "pause_between_s": 0.4,
+  "face_wait_max_s": 5.0,
+  "phase_wait_max_s": 15.0,
+  "initial_yaw_offset_deg": 35.0,
+  "why": {
+    "timing": "The worker is asked (Request), the question is shown question_after_request_s later, and the frames are taken while the worker HOLDS the pose (held still: worker_v4.json hold_sway_amplitude_m and hold_body_speed; recordings.jsonl gives the hand and shoulder displacement over each sequence), starting settle_after_hold_s into the hold: 11 frames at 10 Hz (the first Unity frame at or after each 0.1 s step; its Time.time is the header's time_s). A single frame is taken at a random moment of the hold. Before each take the cameras move to the take's pose and the worker turns to face the 2 m camera (the asking robot) when it is more than worker_v4.json turn_start_deg off.",
+    "initial_yaw_offset_deg": "Each new worker starts this far from its stand's facing direction, so it notices the robot and turns to face it before the first take.",
+    "truth_files": "Each worker writes truth/<look>__<junction>.jsonl with the template's truth logger (the worker is the commander from the request until it is back to idle). A demonstration of the run-file format only: not part of the look check's input."
+  }
+}

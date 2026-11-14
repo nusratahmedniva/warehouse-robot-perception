@@ -1,0 +1,19 @@
+{
+  "label": "PROPOSAL for Anisha (not adopted): experiment A2 with a LEFT turn, the mirror image of scenarios_ab.json maps.turn. Nusrat's plan of 2026-11-13 says A2 is A to B to C with a right-angle turn, left or right at the corridor end; Anisha's map has the right turn only (AUDIT.md 16.2 decision 1). Unity uses it only when Scenario/Config/experiments_ab_unity.json a2_sides lists left (default: right only).",
+  "declared": "2026-11-14 by Nusrat (Unity side, Avatar/Config/experiments_ab.md section 3), before any run on it. Equal legs as turn: 20 m north, then 20 m west. Checked on a Unity ground-truth grid (0.40 m widening): A, B and C are free cells; C (-13.75, 0) is 3.78 m from the nearest blocked cell.",
+  "frame": "Unity floor coordinates x, z in m (y up), as configs/v4/roadmap.json. Branch commands are relative to the arrival direction.",
+  "start": "A",
+  "nodes": {
+    "A": {"x": 6.25,   "z": -20.0, "kind": "start", "start_yaw_deg": 0.0},
+    "B": {"x": 6.25,   "z": 0.0,   "kind": "junction", "arrive_from": "A"},
+    "C": {"x": -13.75, "z": 0.0,   "kind": "endpoint"}
+  },
+  "branches": {
+    "A": {"FORWARD": "B"},
+    "B": {"LEFT": "C"}
+  },
+  "worker_stand": {
+    "corner_offset_m": 2.5
+  },
+  "route_lengths_m": {"C": 40.0}
+}
