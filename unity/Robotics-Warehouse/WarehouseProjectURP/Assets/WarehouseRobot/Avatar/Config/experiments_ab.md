@@ -1110,3 +1110,15 @@ applied by `ExperimentCharacterPostprocessor.OnPostprocessModel` on every import
   - the binding on a synthetic hand (plate on the hand bone, fingers only on their own chain, the blend at the joints, no cross-finger
     weight, one-to-one matching);
   - the installed Boxo import, when present: every plate vertex on the hand bone, and no finger vertex on another chain.
+
+*Addendum 10 (2026-11-15, after the first island-bound import `import_characters_20261115_014947`, uncommitted, before any further
+change): a correction of the finger grouping.*
+- **What happened:** the import bound every vertex to exactly one part (0 crossing), but formed only **three** finger groups per hand:
+  ring 114, middle 114, thumb **204** vertices. The thumb and the index finger became one group, so the index finger was bound to the
+  thumb chain and the index chain got nothing.
+- **Cause:** grouping by *bounding-box* contact. v3's shortened thumb lies diagonally near the index base, so its box touched the index
+  finger's box although the meshes do not touch.
+- **Correction:** two islands are one finger when their **closest vertices** lie within `contact_m` (5 mm). A cylinder and its tip
+  sphere overlap, so they still join. Everything else in addendum 9 is unchanged.
+- The audit and the installed-Boxo test now also require **every chain of each hand to receive vertices**. The earlier test only checked
+  that each vertex lies on one chain, which this fault passed.

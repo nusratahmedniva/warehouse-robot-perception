@@ -80,6 +80,8 @@ namespace WarehouseAvatar
         public RigidPartsSpec[] rigid_parts = new RigidPartsSpec[0];
         /// <summary>Addendum 7 decisions 3 and 4: looks whose palm is a box plate (measured as a plate; fingers probed by mesh islands).</summary>
         public PalmPlateSpec[] palm_plates = new PalmPlateSpec[0];
+        /// <summary>Addendum 9: looks whose hands the importer binds by their mesh islands.</summary>
+        public IslandHandsSpec[] island_hands = new IslandHandsSpec[0];
         /// <summary>Every look the experiments use that worker_v4.json does not define.</summary>
         public ExperimentLook[] looks = new ExperimentLook[0];
         /// <summary>The avatar experiment (look check only, no navigation runs): ids of looks_ab.json or worker_v4.json, in order.</summary>
@@ -98,6 +100,7 @@ namespace WarehouseAvatar
             f.avatar_experiment = f.avatar_experiment ?? new string[0];
             f.rigid_parts = f.rigid_parts ?? new RigidPartsSpec[0];
             f.palm_plates = f.palm_plates ?? new PalmPlateSpec[0];
+            f.island_hands = f.island_hands ?? new IslandHandsSpec[0];
             return f;
         }
 

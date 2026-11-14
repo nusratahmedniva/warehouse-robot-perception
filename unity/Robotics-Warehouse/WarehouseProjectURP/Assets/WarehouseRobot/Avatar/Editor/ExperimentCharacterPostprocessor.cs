@@ -27,13 +27,26 @@ namespace WarehouseAvatar.EditorTools
             string cfg = Path.Combine(Application.dataPath, "..", ExperimentLooks.AssetPath);
             if (!File.Exists(cfg)) return;
             string id = Path.GetFileNameWithoutExtension(assetPath);
-            var spec = System.Array.Find(ExperimentLooks.Parse(File.ReadAllText(cfg)).rigid_parts, r => r != null && r.look == id);
-            if (spec == null) return;
+            var looks = ExperimentLooks.Parse(File.ReadAllText(cfg));
+            var spec = System.Array.Find(looks.rigid_parts, r => r != null && r.look == id);
+            var hands = System.Array.Find(looks.island_hands, r => r != null && r.look == id);
+            if (spec == null && hands == null) return;
             foreach (var smr in g.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var names = System.Array.ConvertAll(smr.sharedMaterials, m => m != null ? m.name : "");
-                var done = ExperimentLooks.BindRigid(smr.sharedMesh, smr.bones, names, spec);
-                if (done.Count > 0) Debug.Log($"[ExperimentLooks] {id}: rigid parts bound to {spec.bone}: {string.Join(", ", done)}");
+                if (spec != null)
+                {
+                    var done = ExperimentLooks.BindRigid(smr.sharedMesh, smr.bones, names, spec);
+                    if (done.Count > 0) Debug.Log($"[ExperimentLooks] {id}: rigid parts bound to {spec.bone}: {string.Join(", ", done)}");
+                }
+                if (hands != null)
+                {
+                    // section 12 addendum 9: the hands by their mesh islands (the imported hierarchy is at the bind pose here)
+                    var bound = IslandHands.Bind(smr.sharedMesh, smr.bones, names, hands, smr.transform.worldToLocalMatrix, smr.transform.lossyScale.x);
+                    foreach (var h in bound)
+                        Debug.Log($"[ExperimentLooks] {id}: {h.Hand} bound by islands: plate {h.Plate} on the hand bone, fingers {string.Join(", ", h.Fingers)}" +
+                                  (h.Problem.Length > 0 ? $"; PROBLEM: {h.Problem}" : ""));
+                }
             }
         }
 

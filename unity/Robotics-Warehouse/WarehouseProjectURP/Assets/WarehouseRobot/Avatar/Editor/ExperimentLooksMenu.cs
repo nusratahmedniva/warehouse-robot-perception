@@ -569,6 +569,7 @@ namespace WarehouseAvatar.EditorTools
             public string[] alpha_clipped = new string[0];
             public string[] finger_remap = new string[0];
             public string[] rigid_parts = new string[0];
+            public string[] island_hands = new string[0];
         }
 
         [Serializable] class ImportReport { public string created_local, unity_version, render_pipeline; public List<CharacterReport> characters = new List<CharacterReport>(); }
@@ -688,6 +689,7 @@ namespace WarehouseAvatar.EditorTools
             FixUnitScale(r);
             RemapMixamoFingers(r);
             CountRigidParts(f, r);
+            AuditIslandHands(f, r);
 
             var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
             var avatar = AssetDatabase.LoadAllAssetsAtPath(r.asset).OfType<Avatar>().FirstOrDefault();
@@ -774,6 +776,21 @@ namespace WarehouseAvatar.EditorTools
             }
             r.rigid_parts = list.ToArray();
             r.note += $" Rigid parts (section 12 addendum 7): {string.Join("; ", list)}.";
+        }
+
+        /// <summary>experiments_ab.md section 12 addendum 9: the island-bound hands as imported (IslandHands.Audit): per hand, the glove vertices,
+        /// those entirely on the hand bone, those on one finger chain only, and those crossing parts (must be 0).</summary>
+        static void AuditIslandHands(ExperimentLooksFile f, CharacterReport r)
+        {
+            var spec = f.island_hands.FirstOrDefault(x => x != null && x.look == r.id);
+            if (spec == null) return;
+            var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
+            var list = new List<string>();
+            foreach (var smr in go != null ? go.GetComponentsInChildren<SkinnedMeshRenderer>(true) : new SkinnedMeshRenderer[0])
+                foreach (var a in IslandHands.Audit(smr.sharedMesh, smr.bones, smr.sharedMaterials.Select(m => m != null ? m.name : "").ToArray(), spec))
+                    list.Add($"{a.hand}: {a.vertices} glove vertices, {a.onHand} on the hand bone only, {a.oneChain} on one finger chain only, {a.crossed} crossing parts, {a.chainsUsed} of {a.chains} chains used");
+            r.island_hands = list.ToArray();
+            r.note += $" Island hands (section 12 addendum 9): {string.Join("; ", list)}.";
         }
 
         /// <summary>experiments_ab.md section 12 addendum 6: a Mixamo-rigged model whose Humanoid finger mapping contradicts its bone names

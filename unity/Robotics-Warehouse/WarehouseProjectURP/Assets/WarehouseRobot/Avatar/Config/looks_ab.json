@@ -38,6 +38,17 @@
       "why": "2026-11-15, experiments_ab.md section 12 addendum 7 decisions 3 and 4 (Nusrat, declared before the change): Boxo's palm is a box plate. The geometry check measures it as a plate: the hand's glovemat island with the largest box volume (islands from the triangles, vertices welded within weld_m), its thinnest principal axis = the palm normal (the 30 deg palm-to-camera rule), its sorted extents within max_dimension_change of the rest plate's. The finger probe measures his fingers by their glove islands. The importer imports this model with Read/Write enabled so the plate's triangles are readable at Play."
     }
   ],
+  "island_hands": [
+    {
+      "look": "cartoon_boxo_01",
+      "material": "glovemat",
+      "hands": ["mixamorig:LeftHand", "mixamorig:RightHand"],
+      "weld_m": 0.0001,
+      "contact_m": 0.005,
+      "blend_segments": 0.25,
+      "why": "2026-11-15, experiments_ab.md section 12 addendum 9 (Nusrat, declared before the change): Boxo's hands are bound by their mesh islands on every import (ExperimentCharacterPostprocessor, after rigid_parts): the palm plate island (largest box) 100 % to the hand bone; the other glove islands of that hand grouped into fingers by contact (boxes within contact_m) and matched one to one with the hand's chains; each finger weighted only along its own chain (the segment's bone, a linear blend within blend_segments of an interior joint, the tip on the distal bone); no cross-finger weights. The auto-rigger had spread the plate over the finger bones (it bent 35.9 % in WAIT) and shared the middle and ring meshes between their chains."
+    }
+  ],
   "looks": [
     {
       "id": "sunbox_m_shirt_white", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",

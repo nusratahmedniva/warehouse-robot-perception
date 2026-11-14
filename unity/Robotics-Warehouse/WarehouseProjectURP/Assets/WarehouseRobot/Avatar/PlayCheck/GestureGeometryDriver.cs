@@ -69,6 +69,8 @@ namespace WarehouseRobot.AvatarCheck
             public float max_torso_all_percentile_m = -1f;
             /// <summary>Addendum 7 decision 3: the palm plate's largest relative extent change (-1 = no plate).</summary>
             public float max_plate_change = -1f;
+            /// <summary>Addendum 9: the same over the skinning frames of every command (-1 = no plate).</summary>
+            public float skin_plate_change = -1f;
         }
 
         [Serializable]
@@ -96,6 +98,8 @@ namespace WarehouseRobot.AvatarCheck
             public float max_torso_all_percentile_m = -1f;
             /// <summary>Addendum 7 decision 3: the palm plate's largest relative extent change (-1 = no plate).</summary>
             public float max_plate_change = -1f;
+            /// <summary>Addendum 9: the same over the skinning frames of every command (-1 = no plate).</summary>
+            public float skin_plate_change = -1f;
         }
 
         [Serializable]
@@ -803,6 +807,20 @@ namespace WarehouseRobot.AvatarCheck
                 if (!(p < sk.torso_max_displacement_m)) why.Add("torso deforms");
             }
             else why.Add("torso not measurable");
+            // addendum 9: a palm-plate look's plate keeps its shape in every command
+            var plateSet = s.PlateSpec != null ? (right ? s.PlateR : s.PlateL) : null;
+            if (plateSet != null)
+            {
+                var sh = PalmPlate.Shape(Positions(s, new List<SkinPart> { plateSet }, frame));
+                if (!sh.Valid) why.Add("plate not measurable");
+                else
+                {
+                    float change = PalmPlate.MaxDimensionChange(sh, right ? s.PlateRestR : s.PlateRestL);
+                    rec.max_plate_change = Mathf.Max(rec.max_plate_change, R4(change));
+                    rec.skin_plate_change = Mathf.Max(rec.skin_plate_change, R4(change));
+                    if (!(change <= s.PlateSpec.max_dimension_change)) why.Add("plate shape");
+                }
+            }
             if (why.Count > 0)
             {
                 rec.skin_frames_failed++;
@@ -894,6 +912,7 @@ namespace WarehouseRobot.AvatarCheck
                     c.max_torso_max_m = Mathf.Max(c.max_torso_max_m, t.max_torso_max_m);
                     c.torso_core_vertices = Math.Max(c.torso_core_vertices, t.torso_core_vertices);
                     c.max_torso_all_percentile_m = Mathf.Max(c.max_torso_all_percentile_m, t.max_torso_all_percentile_m);
+                    c.skin_plate_change = Mathf.Max(c.skin_plate_change, t.skin_plate_change);
                     if (!t.skin_pass || t.skin_frames == 0)
                     {
                         c.skin_pass = false;
@@ -937,17 +956,19 @@ namespace WarehouseRobot.AvatarCheck
                       $"Torso: vertices bound mainly to {string.Join(", ", sk.torso_bones)} (>= {sk.torso_weight_min.ToString("0.0#", Inv)}), each in its own bone's frame; " +
                       $"the rule (addendum 7) applies to the torso core (outside {sk.torso_core_shoulder_zone_lu.ToString("0.0#", Inv)} Lu of both UpperArm bones): " +
                       $"core p{sk.torso_percentile} displacement < {(sk.torso_max_displacement_m * 100f).ToString("0.00#", Inv)} cm; the whole torso's p{sk.torso_percentile} is information. " +
+                      "Addendum 9: a palm-plate look's plate must keep its sorted extents within its rule's change in every command (the plate column). " +
                       "Worst values over every measured frame of every take, both arms.\n\n");
-            sb.Append("| look | kind | command | frames | forearm vertices | forearm narrowest band (ratio, min) | torso vertices (core) | torso core p" + sk.torso_percentile + " max (cm) | torso core max (cm) | whole torso p" + sk.torso_percentile + " (cm, info) | pass |\n");
-            sb.Append("|---|---|---|---|---|---|---|---|---|---|---|\n");
+            sb.Append("| look | kind | command | frames | forearm vertices | forearm narrowest band (ratio, min) | torso vertices (core) | torso core p" + sk.torso_percentile + " max (cm) | torso core max (cm) | whole torso p" + sk.torso_percentile + " (cm, info) | plate shape change max | pass |\n");
+            sb.Append("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
             foreach (var l in f.looks)
             {
-                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | {l.status} | | | | | | | no |\n"); continue; }
+                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | {l.status} | | | | | | | | | no |\n"); continue; }
                 foreach (var c in l.commands)
                     sb.Append($"| {l.id} | {l.kind_group} | {c.command} | {c.skin_frames} | {c.forearm_vertices} | {(c.min_forearm_ratio < 900f ? c.min_forearm_ratio.ToString("0.00", Inv) : "n/a")} | " +
                               $"{c.torso_vertices} ({c.torso_core_vertices}) | {(c.max_torso_percentile_m >= 0f ? (c.max_torso_percentile_m * 100f).ToString("0.00", Inv) : "n/a")} | " +
                               $"{(c.max_torso_max_m >= 0f ? (c.max_torso_max_m * 100f).ToString("0.00", Inv) : "n/a")} | " +
-                              $"{(c.max_torso_all_percentile_m >= 0f ? (c.max_torso_all_percentile_m * 100f).ToString("0.00", Inv) : "n/a")} | {(c.skin_pass ? "yes" : "**no**")} |\n");
+                              $"{(c.max_torso_all_percentile_m >= 0f ? (c.max_torso_all_percentile_m * 100f).ToString("0.00", Inv) : "n/a")} | " +
+                              $"{(c.skin_plate_change >= 0f ? (c.skin_plate_change * 100f).ToString("0.0", Inv) + " %" : "-")} | {(c.skin_pass ? "yes" : "**no**")} |\n");
             }
             var fails = f.looks.Where(l => l.status == "ok").SelectMany(l => l.commands.Where(c => !c.skin_pass).Select(c => $"- {l.id} {c.command}: {c.skin_failures}")).ToList();
             if (fails.Count > 0) sb.Append("\nFailures (first failing frame of each failing take):\n\n").Append(string.Join("\n", fails)).Append('\n');
