@@ -753,3 +753,49 @@ runs on the three anime looks only.
 assignment for any palm vertex (all labelled `Body/none`), so the sleeve could not be separated from the skin. The run reproduces the
 first: anime_f_01 and 03 at 90 to 98 deg (141 to 142 vertices), anime_f_02 at 18 to 22 deg (75 to 76 vertices). The sleeve explanation
 remains a suspicion. Nothing was fixed; Nusrat decides (the thumb of five-finger looks, and the anime mesh result).
+
+*Addendum 2 (2026-11-14): Nusrat's decisions, declared before any change.*
+
+**1. The WAIT thumb is tucked per rig, in the hand shaper.** The aim is the same WAIT hand on every look: the avatar experiment compares
+appearance, not posing.
+- `HandShaper.ThumbTuck` runs at `WorkerV4.Initialize`, per arm. It applies the WAIT shape (weight 1) to the bind pose and measures the
+  thumb tip exactly as the check does (`HandGeometry.Frame`, `HandShaper.Tip`). If the tip lies within the goal, **nothing is stored and
+  nothing changes**.
+- Otherwise the thumb is curled across the palm until the tip is within the goal.
+  - First the thumb root swings toward a target point 0.25 Lp in front of the palm centre (on the palm side). The swing is a fraction
+    a of the rotation that aims the root-to-tip direction at the target, and a is the smallest fraction that meets the goal (bisection).
+  - Only if a = 1 does not meet the goal, the two outer thumb joints are also curled toward the palm, by the smallest equal angle up to
+    90 deg that meets the goal.
+- The resulting thumb local rotations are stored and used for every WAIT frame instead of the shape's thumb; the other fingers are as
+  before. They are blended by the IK weight as the rest of the hand.
+- **Goal: 0.95 Lp**, a 5 % margin under the check's declared 1.0 Lp, so blending and pose noise cannot cross the limit. The values go to
+  `worker_v4.json` `hand_shapes.wait` (`thumb_tuck_max_palm_lengths` 0.95, `thumb_tuck_side_l` 0.25); the other shapes keep 0 (off).
+- A rig whose shaped thumb already meets the goal is untouched. The Sunbox looks are at 0.93 to 0.94 Lp, so this is a 1.5 % margin;
+  their identity is proven, not assumed:
+  - a new Edit Mode test pins every installed Sunbox look of `worker_v4.json` (both bases) to golden values computed by the code before
+    the change;
+  - `BatchHandShapes`, which now applies the tuck as the template does, is compared value for value on every look: the 10 Sunbox looks
+    must be identical.
+- The section 11 golden test of the synthetic hand stays as it is.
+
+**2. Anime palm diagnostic (Edit mode).** The rule is unchanged. A new Edit-mode probe, `LookCheckMenu.BatchPalmProbe`, works on every
+avatar-experiment look on the LookCheck stage:
+- **Pose:** each hand is shaped as the template shapes it (STOP and WAIT, tuck included), with the fingers up and the palm toward a
+  camera point 2.0 m in front of the look at 1.2 m height.
+- **Two mesh palm normals**, compared with the camera direction under the same 30 deg rule:
+  - (a) every hand-bound palm vertex, as the Play check;
+  - (b) only the vertices of the skin material: a sub-mesh whose material name contains `SKIN` (VRoid's `Body_00_SKIN`), so sleeve and
+    cuff are excluded.
+- The sub-mesh of each vertex comes from the mesh's index data. The probe reports how it was read and refuses to guess.
+- **Outcomes:**
+  - If (b) passes on anime_f_01 and anime_f_03, the earlier mesh result is recorded as a sleeve artefact of the check.
+  - If (b) fails, the palm orientation is fixed in the pipeline, after a further addendum, and reported.
+
+**3. Boxo, judged by the bones: the proof.** The same probe reports, for Boxo's hands:
+- the share of the glove vertices (material `glovemat`) bound to the Hand bone with weight >= 0.95;
+- the same share within the palm region (wrist to finger bases).
+
+If (nearly) all palm-region glove vertices move rigidly with the hand bone, the mesh plate turns exactly with the bone frame, so the bone
+and mesh orientation are the same.
+
+**Then** the full geometry and hand check runs on all 15 looks, with screenshots. No perception; one commit per decision.
