@@ -120,6 +120,52 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
+        public void ReadAssignment_ReadsTheBinding_AndTheComparisonCatchesSwappedFingers()
+        {
+            var h = new SyntheticBoxHand();
+            try
+            {
+                IslandHands.AlignChains(h.Mesh, h.Bones, new[] { "glovemat" }, Spec(), Matrix4x4.identity, Matrix4x4.identity, 1f, new List<Transform>());
+                IslandHands.Bind(h.Mesh, h.Bones, new[] { "glovemat" }, Spec(), Matrix4x4.identity, 1f);
+                var pinned = IslandHands.ReadAssignment(h.Mesh, h.Bones, new[] { "glovemat" }, Spec(), 1f);
+                Assert.AreEqual(4, pinned.Count);
+                foreach (var name in SyntheticBoxHand.Names)
+                {
+                    var p = pinned.Single(x => x.chain == name);
+                    Assert.AreEqual(h.Finger[name].Count, p.vertices, name);
+                    Assert.AreEqual(h.Finger[name].Min(), p.first_vertex, name);
+                    Assert.AreEqual(h.Finger[name].Max(), p.last_vertex, name);
+                }
+                CollectionAssert.IsEmpty(IslandHands.CompareAssignment(pinned, IslandHands.ReadAssignment(h.Mesh, h.Bones, new[] { "glovemat" }, Spec(), 1f)));
+                // a re-import that swapped index and middle: the comparison names both
+                var bw = h.Mesh.boneWeights;
+                int[] index = h.Chain("Index").Select(t => System.Array.IndexOf(h.Bones, t)).ToArray(), middle = h.Chain("Middle").Select(t => System.Array.IndexOf(h.Bones, t)).ToArray();
+                foreach (int i in h.Finger["Index"]) { bw[i].boneIndex0 = middle[System.Array.IndexOf(index, bw[i].boneIndex0)]; if (bw[i].weight1 > 0f) bw[i].boneIndex1 = middle[System.Array.IndexOf(index, bw[i].boneIndex1)]; }
+                foreach (int i in h.Finger["Middle"]) { bw[i].boneIndex0 = index[System.Array.IndexOf(middle, bw[i].boneIndex0)]; if (bw[i].weight1 > 0f) bw[i].boneIndex1 = index[System.Array.IndexOf(middle, bw[i].boneIndex1)]; }
+                h.Mesh.boneWeights = bw;
+                var diff = IslandHands.CompareAssignment(pinned, IslandHands.ReadAssignment(h.Mesh, h.Bones, new[] { "glovemat" }, Spec(), 1f));
+                Assert.IsTrue(diff.Any(d => d.Contains("Index")) && diff.Any(d => d.Contains("Middle")), string.Join("; ", diff));
+                Assert.IsFalse(diff.Any(d => d.Contains("Thumb") || d.Contains("Ring")), string.Join("; ", diff));
+            }
+            finally { h.Destroy(); }
+        }
+
+        [Test]
+        public void BoxoAssignment_MatchesThePin()
+        {
+            var f = ExperimentLooks.Parse(File.ReadAllText(Path.Combine(Application.dataPath, "..", ExperimentLooks.AssetPath)));
+            var spec = f.island_hands.Single(x => x.look == "cartoon_boxo_01");
+            var go = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ThirdParty/CharactersV4/cartoon_boxo_01/cartoon_boxo_01.fbx");
+            if (go == null) Assert.Ignore("Boxo is not imported (third-party folder, git-ignored)");
+            var now = new List<PinnedFinger>();
+            foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                now.AddRange(IslandHands.ReadAssignment(smr.sharedMesh, smr.bones, smr.sharedMaterials.Select(m => m != null ? m.name : "").ToArray(), spec, smr.transform.lossyScale.x));
+            Assert.AreEqual(8, spec.pinned_assignment.Length, "pinned: four chains of two hands; read now: " + string.Join("; ", now));
+            var diff = IslandHands.CompareAssignment(spec.pinned_assignment, now);
+            CollectionAssert.IsEmpty(diff, "the re-import changed Boxo's finger assignment (addendum 13): " + string.Join("; ", diff));
+        }
+
+        [Test]
         public void Bind_AfterAlignment_PlateOnTheHand_EachFingerOnlyOnItsOwnChain()
         {
             var h = new SyntheticBoxHand();

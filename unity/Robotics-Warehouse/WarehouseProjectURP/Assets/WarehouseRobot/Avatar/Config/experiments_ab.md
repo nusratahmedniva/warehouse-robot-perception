@@ -1258,3 +1258,8 @@ confirmed (be2346f, `import_characters_20261115_022715`) is recorded and guarded
   - the import report states whether the pin matches.
 - The values are filled from the current import, not chosen.
 - Nothing else changes: the importer still applies the rule of addendum 11; the pin only detects a change.
+- *Result (2026-11-15):*
+  - the pin (8 entries: per hand, index, middle and ring 114 vertices each and the thumb 90) was read from the confirmed binding;
+  - a fresh re-import (`import_characters_20261115_025911`) reports "pinned assignment: matches", and
+    `IslandHandsTests.BoxoAssignment_MatchesThePin` passes on it;
+  - the synthetic swap test catches index and middle swapped, and only those.

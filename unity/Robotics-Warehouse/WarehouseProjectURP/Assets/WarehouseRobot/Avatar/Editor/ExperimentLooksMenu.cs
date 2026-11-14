@@ -830,6 +830,13 @@ namespace WarehouseAvatar.EditorTools
             foreach (var smr in go != null ? go.GetComponentsInChildren<SkinnedMeshRenderer>(true) : new SkinnedMeshRenderer[0])
                 foreach (var a in IslandHands.Audit(smr.sharedMesh, smr.bones, smr.sharedMaterials.Select(m => m != null ? m.name : "").ToArray(), spec))
                     list.Add($"{a.hand}: {a.vertices} glove vertices, {a.onHand} on the hand bone only, {a.oneChain} on one finger chain only, {a.crossed} crossing parts, {a.chainsUsed} of {a.chains} chains used");
+            // addendum 13: the assignment the binding holds against the pinned one
+            var now = new List<PinnedFinger>();
+            foreach (var smr in go != null ? go.GetComponentsInChildren<SkinnedMeshRenderer>(true) : new SkinnedMeshRenderer[0])
+                now.AddRange(IslandHands.ReadAssignment(smr.sharedMesh, smr.bones, smr.sharedMaterials.Select(m => m != null ? m.name : "").ToArray(), spec, smr.transform.lossyScale.x));
+            var diff = IslandHands.CompareAssignment(spec.pinned_assignment, now);
+            list.Add(spec.pinned_assignment.Length == 0 ? "pinned assignment: none recorded; now " + string.Join("; ", now)
+                     : diff.Count == 0 ? "pinned assignment: matches" : "pinned assignment DIFFERS: " + string.Join("; ", diff));
             r.island_hands = list.ToArray();
             r.note += $" Island hands (section 12 addendum 9): {string.Join("; ", list)}.";
         }

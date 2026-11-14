@@ -14,6 +14,19 @@ namespace WarehouseAvatar
         public float weld_m, contact_m, blend_segments;
         /// <summary>Addendum 11: move each finger chain's joints onto its finger group's axis before binding.</summary>
         public bool move_joints;
+        /// <summary>Addendum 13: the importer's island-to-chain assignment, pinned (read back from the binding of a confirmed import).</summary>
+        public PinnedFinger[] pinned_assignment = new PinnedFinger[0];
+    }
+
+    /// <summary>Addendum 13: one chain's finger: the hand, the chain (Thumb, Index, Middle, Ring), its vertex count and first and last mesh
+    /// vertex index (vertex order is fixed by the FBX).</summary>
+    [Serializable]
+    public class PinnedFinger
+    {
+        public string hand, chain;
+        public int vertices, first_vertex, last_vertex;
+
+        public override string ToString() => $"{hand} {chain}: {vertices} vertices, {first_vertex} to {last_vertex}";
     }
 
     /// <summary>
@@ -242,6 +255,68 @@ namespace WarehouseAvatar
                 }
             }
             return log;
+        }
+
+        static readonly string[] k_ChainNames = { "Thumb", "Index", "Middle", "Ring" };
+
+        /// <summary>
+        /// Addendum 13: the island-to-chain assignment a binding holds, per hand and named chain: each glove island of the hand except the plate
+        /// belongs to the chain holding most of its vertices' weight; the chain's finger = the union of its islands (count, first and last
+        /// vertex index). scale = world metres per mesh unit (for the weld).
+        /// </summary>
+        public static List<PinnedFinger> ReadAssignment(Mesh mesh, Transform[] bones, string[] materialNames, IslandHandsSpec spec, float scale)
+        {
+            var list = new List<PinnedFinger>();
+            if (mesh == null || bones == null || spec == null) return list;
+            float unit = scale > 1e-9f ? 1f / scale : 1f;
+            var bw = mesh.boneWeights;
+            foreach (var handName in spec.hands)
+            {
+                if (!Glove(mesh, bones, materialNames, spec, handName, unit, out var verts, out var island, out var mine, out int hi)) continue;
+                var chains = Chains(bones[hi]);
+                var chainOfBone = bones.Select(b => chains.FindIndex(c => Array.IndexOf(c, b) >= 0)).ToArray();
+                int plate = PalmPlate.LargestIsland(verts, island, mine);
+                var votes = new Dictionary<int, float[]>();
+                foreach (int i in mine)
+                {
+                    if (island[i] < 0 || island[i] == plate) continue;
+                    if (!votes.TryGetValue(island[i], out var v)) votes[island[i]] = v = new float[chains.Count];
+                    var w = bw[i];
+                    foreach (var (bi, wt) in new[] { (w.boneIndex0, w.weight0), (w.boneIndex1, w.weight1), (w.boneIndex2, w.weight2), (w.boneIndex3, w.weight3) })
+                        if (wt > 0f && chainOfBone[bi] >= 0) v[chainOfBone[bi]] += wt;
+                }
+                var byChain = new Dictionary<int, List<int>>();
+                foreach (var kv in votes)
+                {
+                    int c = Array.IndexOf(kv.Value, kv.Value.Max());
+                    if (kv.Value[c] <= 0f) continue;
+                    if (!byChain.TryGetValue(c, out var l)) byChain[c] = l = new List<int>();
+                    l.AddRange(mine.Where(i => island[i] == kv.Key));
+                }
+                foreach (var kv in byChain.OrderBy(x => x.Key))
+                {
+                    string name = k_ChainNames.FirstOrDefault(n => chains[kv.Key][0].name.Contains(n)) ?? chains[kv.Key][0].name;
+                    list.Add(new PinnedFinger { hand = handName, chain = name, vertices = kv.Value.Count, first_vertex = kv.Value.Min(), last_vertex = kv.Value.Max() });
+                }
+            }
+            return list;
+        }
+
+        /// <summary>Addendum 13: the differences between a pinned and a read assignment (empty = the same).</summary>
+        public static List<string> CompareAssignment(IList<PinnedFinger> pinned, IList<PinnedFinger> now)
+        {
+            var diff = new List<string>();
+            string Key(PinnedFinger p) => p.hand + "|" + p.chain;
+            var a = (pinned ?? new PinnedFinger[0]).ToDictionary(Key);
+            var b = (now ?? new PinnedFinger[0]).ToDictionary(Key);
+            foreach (var kv in a)
+            {
+                if (!b.TryGetValue(kv.Key, out var n)) { diff.Add($"missing now: {kv.Value}"); continue; }
+                if (n.vertices != kv.Value.vertices || n.first_vertex != kv.Value.first_vertex || n.last_vertex != kv.Value.last_vertex)
+                    diff.Add($"pinned {kv.Value}; now {n}");
+            }
+            foreach (var kv in b) if (!a.ContainsKey(kv.Key)) diff.Add($"not pinned: {kv.Value}");
+            return diff;
         }
 
         /// <summary>The weights of a hand's glove after binding: per hand, the glove vertices on this hand, those entirely on the hand bone,

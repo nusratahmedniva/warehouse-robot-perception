@@ -47,6 +47,17 @@
       "contact_m": 0.005,
       "blend_segments": 0.25,
       "move_joints": true,
+      "pinned_assignment": [
+        { "hand": "mixamorig:LeftHand", "chain": "Thumb", "vertices": 90, "first_vertex": 6300, "last_vertex": 6813 },
+        { "hand": "mixamorig:LeftHand", "chain": "Index", "vertices": 114, "first_vertex": 6284, "last_vertex": 6847 },
+        { "hand": "mixamorig:LeftHand", "chain": "Middle", "vertices": 114, "first_vertex": 6268, "last_vertex": 6881 },
+        { "hand": "mixamorig:LeftHand", "chain": "Ring", "vertices": 114, "first_vertex": 6252, "last_vertex": 6915 },
+        { "hand": "mixamorig:RightHand", "chain": "Thumb", "vertices": 90, "first_vertex": 6020, "last_vertex": 6949 },
+        { "hand": "mixamorig:RightHand", "chain": "Index", "vertices": 114, "first_vertex": 6004, "last_vertex": 6983 },
+        { "hand": "mixamorig:RightHand", "chain": "Middle", "vertices": 114, "first_vertex": 5988, "last_vertex": 7017 },
+        { "hand": "mixamorig:RightHand", "chain": "Ring", "vertices": 114, "first_vertex": 5972, "last_vertex": 7051 }
+      ],
+      "pinned_why": "2026-11-15, experiments_ab.md section 12 addendum 13 (Nusrat's decision, declared before the change): the island-to-chain assignment of the import the screenshots confirmed (be2346f, import_characters_20261115_022715), read back from the binding (IslandHands.ReadAssignment): per hand and chain, the finger's vertex count and first and last mesh vertex index (vertex order is fixed by the FBX). IslandHandsTests.BoxoAssignment_MatchesThePin fails if a re-import gives a different assignment; the import report states whether it matches. The anatomical rule of addendum 11 is fragile on Boxo (addendum 12): this pin detects a change, it does not choose.",
       "move_joints_why": "2026-11-15, experiments_ab.md section 12 addendum 11 (Nusrat's option (b), declared before the change): before binding, each finger chain's joints are moved onto its finger group's PCA axis (j0 at the knuckle end nearest the plate, the last joint at the tip, evenly between), the chains assigned by the anatomical rule (thumb = largest deviation from the hand's forward axis; index, middle, ring by order across the palm from the thumb), the bind poses recomputed and the Humanoid avatar rebuilt from the corrected skeleton. The auto-rigger had bunched the chains within +-3.5 cm while the fingers fan to +-15 cm.",
       "why": "2026-11-15, experiments_ab.md section 12 addendum 9 (Nusrat, declared before the change): Boxo's hands are bound by their mesh islands on every import (ExperimentCharacterPostprocessor, after rigid_parts): the palm plate island (largest box) 100 % to the hand bone; the other glove islands of that hand grouped into fingers by contact (boxes within contact_m) and matched one to one with the hand's chains; each finger weighted only along its own chain (the segment's bone, a linear blend within blend_segments of an interior joint, the tip on the distal bone); no cross-finger weights. The auto-rigger had spread the plate over the finger bones (it bent 35.9 % in WAIT) and shared the middle and ring meshes between their chains."
     }
