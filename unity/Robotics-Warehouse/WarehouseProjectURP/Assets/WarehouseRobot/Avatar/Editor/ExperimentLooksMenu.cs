@@ -609,6 +609,8 @@ namespace WarehouseAvatar.EditorTools
             if (imp.animationType != ModelImporterAnimationType.Human) { imp.animationType = ModelImporterAnimationType.Human; changed = true; }
             if (imp.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel) { imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel; changed = true; }
             if (imp.materialImportMode == ModelImporterMaterialImportMode.None) { imp.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription; changed = true; }
+            // section 12 addendum 7 decision 3: a palm-plate look's triangles must be readable at Play (its plate island)
+            if (f.palm_plates.Any(x => x != null && x.look == id) && !imp.isReadable) { imp.isReadable = true; changed = true; r.note += " Read/Write enabled (palm_plates rule)."; }
             if (changed) imp.SaveAndReimport();
 
             // textures and materials next to the model, so they can be recoloured and inspected

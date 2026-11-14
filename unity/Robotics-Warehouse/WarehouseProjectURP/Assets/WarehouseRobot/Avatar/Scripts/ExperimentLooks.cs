@@ -78,6 +78,8 @@ namespace WarehouseAvatar
         public ExperimentLookPaths paths;
         public RecolourSpec[] recolour = new RecolourSpec[0];
         public RigidPartsSpec[] rigid_parts = new RigidPartsSpec[0];
+        /// <summary>Addendum 7 decisions 3 and 4: looks whose palm is a box plate (measured as a plate; fingers probed by mesh islands).</summary>
+        public PalmPlateSpec[] palm_plates = new PalmPlateSpec[0];
         /// <summary>Every look the experiments use that worker_v4.json does not define.</summary>
         public ExperimentLook[] looks = new ExperimentLook[0];
         /// <summary>The avatar experiment (look check only, no navigation runs): ids of looks_ab.json or worker_v4.json, in order.</summary>
@@ -95,6 +97,7 @@ namespace WarehouseAvatar
             f.looks = f.looks ?? new ExperimentLook[0];
             f.avatar_experiment = f.avatar_experiment ?? new string[0];
             f.rigid_parts = f.rigid_parts ?? new RigidPartsSpec[0];
+            f.palm_plates = f.palm_plates ?? new PalmPlateSpec[0];
             return f;
         }
 

@@ -29,6 +29,15 @@
       "why": "2026-11-15, experiments_ab.md section 12 addendum 7 decision 2 (Nusrat, declared before the change): Boxo's body is a rigid box by design, so every vertex of his body, vest, stripes, eyes, pupils, mouth and helmet is bound 100 % to Mixamo's upper spine (mixamorig:Spine2) by the importer (ExperimentCharacterPostprocessor) on every import; arms (limbmat), hands (glovemat) and legs (trousersmat, bootmat) keep the auto-rigger's weights. It removes the shoulder flap and the wavy vest stripe of v3's WAIT (addendum 5 results)."
     }
   ],
+  "palm_plates": [
+    {
+      "look": "cartoon_boxo_01",
+      "material": "glovemat",
+      "max_dimension_change": 0.05,
+      "weld_m": 0.0001,
+      "why": "2026-11-15, experiments_ab.md section 12 addendum 7 decisions 3 and 4 (Nusrat, declared before the change): Boxo's palm is a box plate. The geometry check measures it as a plate: the hand's glovemat island with the largest box volume (islands from the triangles, vertices welded within weld_m), its thinnest principal axis = the palm normal (the 30 deg palm-to-camera rule), its sorted extents within max_dimension_change of the rest plate's. The finger probe measures his fingers by their glove islands. The importer imports this model with Read/Write enabled so the plate's triangles are readable at Play."
+    }
+  ],
   "looks": [
     {
       "id": "sunbox_m_shirt_white", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",

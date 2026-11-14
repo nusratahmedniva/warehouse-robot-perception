@@ -67,6 +67,8 @@ namespace WarehouseRobot.AvatarCheck
             /// <summary>Addendum 7: max_torso_percentile_m and max_torso_max_m are the torso core's; the whole torso's p95 is information.</summary>
             public int torso_core_vertices;
             public float max_torso_all_percentile_m = -1f;
+            /// <summary>Addendum 7 decision 3: the palm plate's largest relative extent change (-1 = no plate).</summary>
+            public float max_plate_change = -1f;
         }
 
         [Serializable]
@@ -92,6 +94,8 @@ namespace WarehouseRobot.AvatarCheck
             public string skin_failures = "";
             public int torso_core_vertices;
             public float max_torso_all_percentile_m = -1f;
+            /// <summary>Addendum 7 decision 3: the palm plate's largest relative extent change (-1 = no plate).</summary>
+            public float max_plate_change = -1f;
         }
 
         [Serializable]
@@ -151,6 +155,10 @@ namespace WarehouseRobot.AvatarCheck
             public float[] RefRadii;
             public Vector3[] RefTorso;
             public bool[] RefTorsoCore;     // addendum 7: outside both shoulder zones at the reference
+            // addendum 7 decision 3: a box palm plate per hand (looks_ab.json palm_plates) and its rest shape
+            public PalmPlateSpec PlateSpec;
+            public SkinPart PlateL, PlateR;
+            public PlateShape PlateRestL, PlateRestR;
             public readonly List<float> SkinTimes = new List<float>();
             public int NextSkin;
         }
@@ -331,6 +339,16 @@ namespace WarehouseRobot.AvatarCheck
             s.ForearmL = DominantSet(w.LookInstance, t => t == lowerL, sk.forearm_weight_min);
             s.ForearmR = DominantSet(w.LookInstance, t => t == lowerR, sk.forearm_weight_min);
             s.Torso = DominantSet(w.LookInstance, torsoBones.Contains, sk.torso_weight_min);
+            s.PlateSpec = m_Looks.palm_plates.FirstOrDefault(x => x != null && x.look == look);
+            if (s.PlateSpec != null)
+            {
+                s.PlateL = PlatePart(w.LookInstance, s.ArmL.Hand, s.PlateSpec);
+                s.PlateR = PlatePart(w.LookInstance, s.ArmR.Hand, s.PlateSpec);
+                var frame = new Dictionary<SkinnedMeshRenderer, Vector3[]>();   // the plate as spawned, before the first animated frame
+                if (s.PlateL != null) s.PlateRestL = PalmPlate.Shape(Positions(s, new List<SkinPart> { s.PlateL }, frame));
+                if (s.PlateR != null) s.PlateRestR = PalmPlate.Shape(Positions(s, new List<SkinPart> { s.PlateR }, frame));
+                s.Record.description += $" Palm plate (addendum 7): left {(s.PlateL != null ? s.PlateL.Idx.Length : 0)}, right {(s.PlateR != null ? s.PlateR.Idx.Length : 0)} vertices.";
+            }
             foreach (var smr in s.PalmL.Concat(s.PalmR).Select(kv => kv.Key).Distinct())
             {
                 var mesh = smr.sharedMesh;
@@ -578,7 +596,29 @@ namespace WarehouseRobot.AvatarCheck
             }
             var th = arm.Fingers[HandShaper.Thumb];
             bool hasTip = th[1] != null && th[2] != null;
-            var r = HandGeometry.Evaluate(rec.command, f, region, s.Robot.position, hasTip, hasTip ? HandShaper.Tip(arm, HandShaper.Thumb) : Vector3.zero, m_Cfg.tolerance);
+            var plateSet = s.PlateSpec != null ? (right ? s.PlateR : s.PlateL) : null;
+            var r = HandGeometry.Evaluate(rec.command, f, plateSet != null ? null : region, s.Robot.position, hasTip, hasTip ? HandShaper.Tip(arm, HandShaper.Thumb) : Vector3.zero, m_Cfg.tolerance);
+            if (plateSet != null)
+            {
+                // addendum 7 decision 3: the plate's thinnest principal axis is the palm normal; the plate keeps its shape
+                var sh = PalmPlate.Shape(Positions(s, new List<SkinPart> { plateSet }, new Dictionary<SkinnedMeshRenderer, Vector3[]>()));
+                var why = new List<string>(string.IsNullOrEmpty(r.Why) ? new string[0] : r.Why.Split(new[] { ", " }, StringSplitOptions.None));
+                if (sh.Valid && f.Valid)
+                {
+                    Vector3 n = Vector3.Dot(sh.Thin, f.Normal) < 0f ? -sh.Thin : sh.Thin;
+                    r.MeshDetermined = true;
+                    r.MeshAngleDeg = Vector3.Angle(n, s.Robot.position - sh.Centre);
+                    r.MeshVertices = plateSet.Idx.Length;
+                    r.MeshFlatness = sh.MidExtent > 0f ? sh.ThinExtent / sh.MidExtent : -1f;
+                    float change = PalmPlate.MaxDimensionChange(sh, right ? s.PlateRestR : s.PlateRestL);
+                    rec.max_plate_change = Mathf.Max(rec.max_plate_change, R4(change));
+                    if (!(r.MeshAngleDeg <= m_Cfg.tolerance.palm_facing_deg)) why.Add("palm (plate)");
+                    if (!(change <= s.PlateSpec.max_dimension_change)) why.Add("plate shape");
+                }
+                else why.Add("plate not measurable");
+                r.Pass = why.Count == 0;
+                r.Why = string.Join(", ", why);
+            }
             rec.hand_checked = true;
             rec.hand_frames++;
             if (r.BoneAngleDeg >= 0f) rec.max_palm_bone_deg = Mathf.Max(rec.max_palm_bone_deg, R2(r.BoneAngleDeg));
@@ -637,6 +677,40 @@ namespace WarehouseRobot.AvatarCheck
                 if (idx.Count > 0) list.Add(new SkinPart { Smr = smr, Idx = idx.ToArray(), Bone = bone.ToArray() });
             }
             return list;
+        }
+
+        /// <summary>Addendum 7 decision 3: the hand's palm plate, i.e. among the vertices of the spec's material whose weight lies mostly (>= 0.5)
+        /// on this hand bone or below it, the mesh island with the largest box volume. Null when the mesh's triangles cannot be read.</summary>
+        static SkinPart PlatePart(GameObject look, Transform hand, PalmPlateSpec spec)
+        {
+            if (look == null || hand == null) return null;
+            foreach (var smr in look.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = smr.sharedMesh;
+                var bones = smr.bones;
+                if (mesh == null || bones == null || !mesh.isReadable) continue;
+                var mats = smr.sharedMaterials;
+                var tris = new List<int>();
+                var gloveVerts = new HashSet<int>();
+                for (int sub = 0; sub < mesh.subMeshCount && sub < mats.Length; sub++)
+                {
+                    if (mats[sub] == null || mats[sub].name.Replace(" (Instance)", "") != spec.material) continue;
+                    var idx = mesh.GetIndices(sub);
+                    tris.AddRange(idx);
+                    foreach (int i in idx) gloveVerts.Add(i);
+                }
+                if (tris.Count == 0) continue;
+                var tree = bones.Select(b => b != null && (b == hand || b.IsChildOf(hand))).ToArray();
+                var bw = mesh.boneWeights;
+                var mine = gloveVerts.Where(i => i < bw.Length && (tree[bw[i].boneIndex0] ? bw[i].weight0 : 0f) + (tree[bw[i].boneIndex1] ? bw[i].weight1 : 0f)
+                                                                 + (tree[bw[i].boneIndex2] ? bw[i].weight2 : 0f) + (tree[bw[i].boneIndex3] ? bw[i].weight3 : 0f) >= 0.5f).ToList();
+                var verts = mesh.vertices;
+                var island = PalmPlate.Islands(verts, tris, spec.weld_m);
+                int plate = PalmPlate.LargestIsland(verts, island, mine);
+                if (plate < 0) continue;
+                return new SkinPart { Smr = smr, Idx = mine.Where(i => island[i] == plate).OrderBy(i => i).ToArray(), Bone = new Transform[0] };
+            }
+            return null;
         }
 
         /// <summary>The world positions of a skinning set's vertices now (each renderer baked once per call through the site's cache).</summary>
@@ -840,6 +914,7 @@ namespace WarehouseRobot.AvatarCheck
                     c.max_palm_mesh_deg = Mathf.Max(c.max_palm_mesh_deg, t.max_palm_mesh_deg);
                     c.max_palm_mesh_flatness = Mathf.Max(c.max_palm_mesh_flatness, t.max_palm_mesh_flatness);
                     c.max_thumb_palm_lengths = Mathf.Max(c.max_thumb_palm_lengths, t.max_thumb_palm_lengths);
+                    c.max_plate_change = Mathf.Max(c.max_plate_change, t.max_plate_change);
                     c.min_thumb_side = Mathf.Min(c.min_thumb_side, t.min_thumb_side);
                     c.min_thumb_across = Mathf.Min(c.min_thumb_across, t.min_thumb_across);
                     c.max_thumb_across = Mathf.Max(c.max_thumb_across, t.max_thumb_across);
@@ -889,19 +964,22 @@ namespace WarehouseRobot.AvatarCheck
                       $"between wrist and finger bases; n/a below {tol.palm_mesh_min_vertices} vertices or above flatness {tol.palm_mesh_flatness_max.ToString("0.0#", Inv)}). " +
                       $"WAIT thumb tucked: tip within {tol.thumb_tip_max_palm_lengths.ToString("0.0#", Inv)} palm lengths (Lp) of the palm centre and at least " +
                       $"{tol.thumb_palm_side_min.ToString("0.0#", Inv)} Lp on the palm side; 'across' is reported only (0 at the index base, 1 at the outermost base). " +
+                      "Addendum 7: for a look with a palm_plates rule (Boxo) the mesh columns are the palm plate's (thinnest principal axis; its vertices; thin / middle extent) " +
+                      "and the plate's sorted extents must stay within the rule's change of the rest plate's. " +
                       "Worst values over every measured hold frame of every take, both arms.\n\n");
-            sb.Append("| look | kind | command | frames | palm vs camera, bones max (deg) | mesh max (deg) | mesh n/a frames | palm vertices min | flatness max | thumb tip max (Lp) | thumb palm side min (Lp) | thumb across | pass |\n");
-            sb.Append("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+            sb.Append("| look | kind | command | frames | palm vs camera, bones max (deg) | mesh max (deg) | mesh n/a frames | palm vertices min | flatness max | thumb tip max (Lp) | thumb palm side min (Lp) | thumb across | plate shape change max | pass |\n");
+            sb.Append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
             foreach (var l in f.looks)
             {
-                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | {l.status} | | | | | | | | | | no |\n"); continue; }
+                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | {l.status} | | | | | | | | | | | no |\n"); continue; }
                 foreach (var c in l.commands.Where(x => x.hand_checked))
                 {
                     bool wait = c.command == WorkerV4Config.Wait;
                     sb.Append($"| {l.id} | {l.kind_group} | {c.command} | {c.hand_frames} | {F(c.max_palm_bone_deg)} | {(c.max_palm_mesh_deg >= 0f ? F(c.max_palm_mesh_deg) : "n/a")} | " +
                               $"{(c.hand_frames_mesh_na == 0 ? "0" : $"**{c.hand_frames_mesh_na}**")} | {c.min_palm_vertices} | {(c.max_palm_mesh_flatness >= 0f ? c.max_palm_mesh_flatness.ToString("0.000", Inv) : "-")} | " +
                               $"{(wait && c.max_thumb_palm_lengths >= 0f ? c.max_thumb_palm_lengths.ToString("0.00", Inv) : "-")} | {(wait && c.min_thumb_side < 900f ? c.min_thumb_side.ToString("0.00", Inv) : "-")} | " +
-                              $"{(wait && c.min_thumb_across < 900f ? $"{c.min_thumb_across.ToString("0.00", Inv)} to {c.max_thumb_across.ToString("0.00", Inv)}" : "-")} | {(c.hand_pass ? "yes" : "**no**")} |\n");
+                              $"{(wait && c.min_thumb_across < 900f ? $"{c.min_thumb_across.ToString("0.00", Inv)} to {c.max_thumb_across.ToString("0.00", Inv)}" : "-")} | " +
+                              $"{(c.max_plate_change >= 0f ? (c.max_plate_change * 100f).ToString("0.0", Inv) + " %" : "-")} | {(c.hand_pass ? "yes" : "**no**")} |\n");
                 }
             }
             var fails = f.looks.Where(l => l.status == "ok").SelectMany(l => l.commands.Where(c => c.hand_checked && !c.hand_pass).Select(c => $"- {l.id} {c.command}: {c.hand_failures}")).ToList();
