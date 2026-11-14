@@ -51,6 +51,12 @@ namespace WarehouseRobot.AvatarCheck
             public float max_target_shift_m, max_hint_shift_m;
             public bool pass, render_pass = true;
             public string first_failure = "";
+            // section 12: palm orientation and the WAIT thumb (STOP and WAIT takes); -1 = not measured
+            public bool hand_checked, hand_pass = true;
+            public int hand_frames, hand_frames_failed, hand_frames_mesh_na, min_palm_vertices = -1;
+            public float max_palm_bone_deg = -1f, max_palm_mesh_deg = -1f, max_palm_mesh_flatness = -1f, max_thumb_palm_lengths = -1f;
+            public float min_thumb_side = 999f, min_thumb_across = 999f, max_thumb_across = -999f;
+            public string hand_first_failure = "";
         }
 
         [Serializable]
@@ -63,6 +69,12 @@ namespace WarehouseRobot.AvatarCheck
             public float max_elbow_error_deg, max_arm_direction_error_deg, max_forearm_error_deg = -1f, min_elbow_deg = 999f;
             public float min_intended_elbow_deg = 999f, max_intended_elbow_deg, max_target_shift_m, max_hint_shift_m;
             public string failures = "";
+            // section 12
+            public bool hand_checked, hand_pass = true;
+            public int hand_frames, hand_frames_failed, hand_frames_mesh_na, min_palm_vertices = -1;
+            public float max_palm_bone_deg = -1f, max_palm_mesh_deg = -1f, max_palm_mesh_flatness = -1f, max_thumb_palm_lengths = -1f;
+            public float min_thumb_side = 999f, min_thumb_across = 999f, max_thumb_across = -999f;
+            public string hand_failures = "";
         }
 
         [Serializable]
@@ -71,6 +83,9 @@ namespace WarehouseRobot.AvatarCheck
             public string id, kind_group, status, problem = "", description = "";
             public float upper_arm_m, forearm_m, arm_m, upper_share, shoulder_width_m, shoulder_height_m, arm_to_shoulder_ratio, height_m;
             public bool pass;
+            /// <summary>Section 12: every STOP and WAIT take passes the hand check (palm toward the robot camera; WAIT thumb tucked).</summary>
+            public bool hand_pass;
+            public int palm_vertices_left, palm_vertices_right;
             public List<CommandRecord> commands = new List<CommandRecord>();
             public List<TakeRecord> takes = new List<TakeRecord>();
             public List<string> screens = new List<string>();
@@ -105,6 +120,10 @@ namespace WarehouseRobot.AvatarCheck
             public int NextSample;
             public float ScreenAt = -1f;
             public string ScreenName;
+            // section 12: the hands as the template builds them, and each hand's palm vertices (renderer, vertex indices)
+            public LookPoser.Arm ArmL, ArmR;
+            public List<KeyValuePair<SkinnedMeshRenderer, int[]>> PalmL, PalmR;
+            public readonly Dictionary<SkinnedMeshRenderer, Mesh> Baked = new Dictionary<SkinnedMeshRenderer, Mesh>();
         }
 
         GestureGeometryConfig m_Cfg;
@@ -173,6 +192,7 @@ namespace WarehouseRobot.AvatarCheck
             foreach (var s in m_Sites) { Summarise(s.Record); file.looks.Add(s.Record); }
             WriteNew(Path.Combine(OutputFolder, "geometry.json"), JsonUtility.ToJson(file, true).Replace("\r\n", "\n") + "\n");
             WriteNew(Path.Combine(OutputFolder, "table.md"), Table(file));
+            WriteNew(Path.Combine(OutputFolder, "hand_table.md"), HandTable(file, m_Cfg.tolerance));
             Git(out info.git_commit, out info.git_branch);
             info.finished_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv);
             info.unity_version = Application.unityVersion;
@@ -185,7 +205,8 @@ namespace WarehouseRobot.AvatarCheck
             info.status = "done";
             info.note = "Geometric check of the worker template's gestures (experiments_ab.md section 10): rendered bones against the worker's own goal; no perception model run. An engineering check.";
             WriteNew(Path.Combine(OutputFolder, "run_info.json"), JsonUtility.ToJson(info, true).Replace("\r\n", "\n") + "\n");
-            Finish($"done: {file.looks.Count} looks ({file.looks.Count(l => l.status == "ok" && l.pass)} pass, {failed} fail, {absent} not spawned) in {Path.GetFileName(OutputFolder)}");
+            Finish($"done: {file.looks.Count} looks ({file.looks.Count(l => l.status == "ok" && l.pass)} pass, {failed} fail, {absent} not spawned; " +
+                   $"hand check {file.looks.Count(l => l.hand_pass)} pass: {string.Join(", ", file.looks.Where(l => l.status == "ok" && !l.hand_pass).Select(l => l.id).DefaultIfEmpty("no failure"))}) in {Path.GetFileName(OutputFolder)}");
         }
 
         void Finish(string status)
@@ -258,6 +279,13 @@ namespace WarehouseRobot.AvatarCheck
             }
             s.Worker = w;
             s.Record.description = w.LookDescription;
+            var bones = new AnimatorBones(w.Animator);
+            s.ArmL = HandShaper.BuildArm(bones, false);
+            s.ArmR = HandShaper.BuildArm(bones, true);
+            s.PalmL = PalmVertices(w.LookInstance, s.ArmL.Hand, m_Cfg.tolerance.palm_hand_weight_min);
+            s.PalmR = PalmVertices(w.LookInstance, s.ArmR.Hand, m_Cfg.tolerance.palm_hand_weight_min);
+            s.Record.palm_vertices_left = s.PalmL.Sum(kv => kv.Value.Length);
+            s.Record.palm_vertices_right = s.PalmR.Sum(kv => kv.Value.Length);
             if (s.Screens)
             {
                 var sc = m_Cfg.screens;
@@ -433,6 +461,86 @@ namespace WarehouseRobot.AvatarCheck
                     rec.first_failure = $"{r.Why}: elbow {F(r.ElbowDeg)} vs {F(r.IntendedElbowDeg)} deg, arm direction {F(r.ArmDirectionErrorDeg)} deg" +
                                         (r.ForearmErrorDeg >= 0f ? $", forearm {F(r.ForearmErrorDeg)} deg" : "");
             }
+            var pc = m_Cfg.tolerance.palm_commands;
+            if (pc != null && Array.IndexOf(pc, rec.command) >= 0) MeasureHand(s, rec, right);
+        }
+
+        /// <summary>Section 12: the gesturing hand's palm normal (bones; skinned mesh) against the robot camera, and the WAIT thumb.</summary>
+        void MeasureHand(Site s, TakeRecord rec, bool right)
+        {
+            var arm = right ? s.ArmR : s.ArmL;
+            var set = right ? s.PalmR : s.PalmL;
+            var f = HandGeometry.Frame(arm);
+            var verts = new List<Vector3>();
+            if (f.Valid)
+                foreach (var kv in set)
+                {
+                    var smr = kv.Key;
+                    if (smr == null) continue;
+                    if (!s.Baked.TryGetValue(smr, out var mesh)) s.Baked[smr] = mesh = new Mesh();
+                    smr.BakeMesh(mesh, true);   // renderer space, the renderer's scale applied
+                    var v = mesh.vertices;
+                    var m = Matrix4x4.TRS(smr.transform.position, smr.transform.rotation, Vector3.one);
+                    foreach (int i in kv.Value) if (i < v.Length) verts.Add(m.MultiplyPoint3x4(v[i]));
+                }
+            var region = HandGeometry.PalmRegion(verts, f);
+            var th = arm.Fingers[HandShaper.Thumb];
+            bool hasTip = th[1] != null && th[2] != null;
+            var r = HandGeometry.Evaluate(rec.command, f, region, s.Robot.position, hasTip, hasTip ? HandShaper.Tip(arm, HandShaper.Thumb) : Vector3.zero, m_Cfg.tolerance);
+            rec.hand_checked = true;
+            rec.hand_frames++;
+            if (r.BoneAngleDeg >= 0f) rec.max_palm_bone_deg = Mathf.Max(rec.max_palm_bone_deg, R2(r.BoneAngleDeg));
+            rec.min_palm_vertices = rec.min_palm_vertices < 0 ? r.MeshVertices : Math.Min(rec.min_palm_vertices, r.MeshVertices);
+            if (r.MeshFlatness >= 0f) rec.max_palm_mesh_flatness = Mathf.Max(rec.max_palm_mesh_flatness, R4(r.MeshFlatness));
+            if (r.MeshDetermined) rec.max_palm_mesh_deg = Mathf.Max(rec.max_palm_mesh_deg, R2(r.MeshAngleDeg));
+            else rec.hand_frames_mesh_na++;
+            if (r.ThumbMeasured)
+            {
+                rec.max_thumb_palm_lengths = Mathf.Max(rec.max_thumb_palm_lengths, R4(r.ThumbPalmLengths));
+                rec.min_thumb_side = Mathf.Min(rec.min_thumb_side, R4(r.ThumbSide));
+                if (!float.IsNaN(r.ThumbAcross))
+                {
+                    rec.min_thumb_across = Mathf.Min(rec.min_thumb_across, R4(r.ThumbAcross));
+                    rec.max_thumb_across = Mathf.Max(rec.max_thumb_across, R4(r.ThumbAcross));
+                }
+            }
+            if (!r.Pass)
+            {
+                rec.hand_frames_failed++;
+                rec.hand_pass = false;
+                if (rec.hand_first_failure.Length == 0)
+                    rec.hand_first_failure = $"{r.Why}: palm bones {F(r.BoneAngleDeg)} deg, mesh {(r.MeshDetermined ? F(r.MeshAngleDeg) + " deg" : "n/a")}" +
+                                             (r.ThumbMeasured ? $", thumb {r.ThumbPalmLengths.ToString("0.00", Inv)} Lp, side {r.ThumbSide.ToString("0.00", Inv)} Lp" : "");
+            }
+        }
+
+        /// <summary>The vertices of every skinned mesh of the look whose largest bone weight is on this hand bone and at least minWeight.</summary>
+        static List<KeyValuePair<SkinnedMeshRenderer, int[]>> PalmVertices(GameObject look, Transform hand, float minWeight)
+        {
+            var list = new List<KeyValuePair<SkinnedMeshRenderer, int[]>>();
+            if (look == null || hand == null) return list;
+            foreach (var smr in look.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = smr.sharedMesh;
+                var bones = smr.bones;
+                if (mesh == null || bones == null) continue;
+                int hi = Array.IndexOf(bones, hand);
+                if (hi < 0) continue;
+                var bw = mesh.boneWeights;
+                var idx = new List<int>();
+                for (int i = 0; i < bw.Length; i++)
+                {
+                    var b = bw[i];
+                    int best = b.boneIndex0;
+                    float w = b.weight0;
+                    if (b.weight1 > w) { best = b.boneIndex1; w = b.weight1; }
+                    if (b.weight2 > w) { best = b.boneIndex2; w = b.weight2; }
+                    if (b.weight3 > w) { best = b.boneIndex3; w = b.weight3; }
+                    if (best == hi && w >= minWeight) idx.Add(i);
+                }
+                if (idx.Count > 0) list.Add(new KeyValuePair<SkinnedMeshRenderer, int[]>(smr, idx.ToArray()));
+            }
+            return list;
         }
 
         void Screenshot(Site s)
@@ -477,10 +585,59 @@ namespace WarehouseRobot.AvatarCheck
                     c.max_intended_elbow_deg = Mathf.Max(c.max_intended_elbow_deg, t.max_intended_elbow_deg);
                     c.max_target_shift_m = Mathf.Max(c.max_target_shift_m, t.max_target_shift_m);
                     c.max_hint_shift_m = Mathf.Max(c.max_hint_shift_m, t.max_hint_shift_m);
+                    if (!t.hand_checked) continue;
+                    c.hand_checked = true;
+                    c.hand_frames += t.hand_frames;
+                    c.hand_frames_failed += t.hand_frames_failed;
+                    c.hand_frames_mesh_na += t.hand_frames_mesh_na;
+                    if (!t.hand_pass || t.hand_frames == 0)
+                    {
+                        c.hand_pass = false;
+                        c.hand_failures += (c.hand_failures.Length > 0 ? "; " : "") + $"{t.arm} {t.clip}: " + (t.hand_frames == 0 ? "no frame measured" : t.hand_first_failure);
+                    }
+                    c.min_palm_vertices = c.min_palm_vertices < 0 ? t.min_palm_vertices : Math.Min(c.min_palm_vertices, t.min_palm_vertices);
+                    c.max_palm_bone_deg = Mathf.Max(c.max_palm_bone_deg, t.max_palm_bone_deg);
+                    c.max_palm_mesh_deg = Mathf.Max(c.max_palm_mesh_deg, t.max_palm_mesh_deg);
+                    c.max_palm_mesh_flatness = Mathf.Max(c.max_palm_mesh_flatness, t.max_palm_mesh_flatness);
+                    c.max_thumb_palm_lengths = Mathf.Max(c.max_thumb_palm_lengths, t.max_thumb_palm_lengths);
+                    c.min_thumb_side = Mathf.Min(c.min_thumb_side, t.min_thumb_side);
+                    c.min_thumb_across = Mathf.Min(c.min_thumb_across, t.min_thumb_across);
+                    c.max_thumb_across = Mathf.Max(c.max_thumb_across, t.max_thumb_across);
                 }
                 l.commands.Add(c);
                 if (!c.pass) l.pass = false;
             }
+            l.hand_pass = l.status == "ok" && l.commands.Any(c => c.hand_checked) && l.commands.Where(c => c.hand_checked).All(c => c.hand_pass);
+        }
+
+        /// <summary>Section 12: the hand check per look and command (palm toward the robot camera; WAIT thumb tucked).</summary>
+        static string HandTable(GeometryFile f, GeometryTolerance tol)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"# Hand check: palm orientation and the WAIT thumb ({(f.label.Length > 0 ? f.label + ", " : "")}{f.created_local})\n\n");
+            sb.Append($"experiments_ab.md section 12. Palm normal within {F(tol.palm_facing_deg)} deg of the robot camera (the stand-in robot's eye), from the bones " +
+                      $"(LookPoser.PalmNormal) and from the skinned mesh (plane fit of the vertices bound mainly to the Hand bone, weight >= {tol.palm_hand_weight_min.ToString("0.0#", Inv)}, " +
+                      $"between wrist and finger bases; n/a below {tol.palm_mesh_min_vertices} vertices or above flatness {tol.palm_mesh_flatness_max.ToString("0.0#", Inv)}). " +
+                      $"WAIT thumb tucked: tip within {tol.thumb_tip_max_palm_lengths.ToString("0.0#", Inv)} palm lengths (Lp) of the palm centre and at least " +
+                      $"{tol.thumb_palm_side_min.ToString("0.0#", Inv)} Lp on the palm side; 'across' is reported only (0 at the index base, 1 at the outermost base). " +
+                      "Worst values over every measured hold frame of every take, both arms.\n\n");
+            sb.Append("| look | kind | command | frames | palm vs camera, bones max (deg) | mesh max (deg) | mesh n/a frames | palm vertices min | flatness max | thumb tip max (Lp) | thumb palm side min (Lp) | thumb across | pass |\n");
+            sb.Append("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+            foreach (var l in f.looks)
+            {
+                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | {l.status} | | | | | | | | | | no |\n"); continue; }
+                foreach (var c in l.commands.Where(x => x.hand_checked))
+                {
+                    bool wait = c.command == WorkerV4Config.Wait;
+                    sb.Append($"| {l.id} | {l.kind_group} | {c.command} | {c.hand_frames} | {F(c.max_palm_bone_deg)} | {(c.max_palm_mesh_deg >= 0f ? F(c.max_palm_mesh_deg) : "n/a")} | " +
+                              $"{(c.hand_frames_mesh_na == 0 ? "0" : $"**{c.hand_frames_mesh_na}**")} | {c.min_palm_vertices} | {(c.max_palm_mesh_flatness >= 0f ? c.max_palm_mesh_flatness.ToString("0.000", Inv) : "-")} | " +
+                              $"{(wait && c.max_thumb_palm_lengths >= 0f ? c.max_thumb_palm_lengths.ToString("0.00", Inv) : "-")} | {(wait && c.min_thumb_side < 900f ? c.min_thumb_side.ToString("0.00", Inv) : "-")} | " +
+                              $"{(wait && c.min_thumb_across < 900f ? $"{c.min_thumb_across.ToString("0.00", Inv)} to {c.max_thumb_across.ToString("0.00", Inv)}" : "-")} | {(c.hand_pass ? "yes" : "**no**")} |\n");
+                }
+            }
+            var fails = f.looks.Where(l => l.status == "ok").SelectMany(l => l.commands.Where(c => c.hand_checked && !c.hand_pass).Select(c => $"- {l.id} {c.command}: {c.hand_failures}")).ToList();
+            if (fails.Count > 0) sb.Append("\nFailures (first failing frame of each failing take):\n\n").Append(string.Join("\n", fails)).Append('\n');
+            return sb.ToString();
         }
 
         static string Table(GeometryFile f)

@@ -190,6 +190,13 @@ namespace WarehouseAvatar
                 if (!(t.elbow_angle_deg > 0f) || !(t.arm_direction_deg > 0f) || !(t.forearm_direction_deg > 0f)) e.Add("tolerance: every angle must be > 0");
                 if (!(t.no_fold_min_elbow_deg > 0f && t.no_fold_min_elbow_deg < 180f)) e.Add("tolerance.no_fold_min_elbow_deg must be in (0, 180)");
                 if (t.no_fold_commands == null || t.no_fold_commands.Length == 0) e.Add("tolerance.no_fold_commands missing");
+                if (!(t.palm_facing_deg > 0f && t.palm_facing_deg < 90f)) e.Add("tolerance.palm_facing_deg must be in (0, 90)");
+                if (t.palm_commands == null || t.palm_commands.Length == 0) e.Add("tolerance.palm_commands missing");
+                if (!(t.thumb_tip_max_palm_lengths > 0f)) e.Add("tolerance.thumb_tip_max_palm_lengths must be > 0");
+                if (float.IsNaN(t.thumb_palm_side_min)) e.Add("tolerance.thumb_palm_side_min missing");
+                if (t.palm_mesh_min_vertices < 3) e.Add("tolerance.palm_mesh_min_vertices must be >= 3");
+                if (!(t.palm_mesh_flatness_max > 0f && t.palm_mesh_flatness_max <= 1f)) e.Add("tolerance.palm_mesh_flatness_max must be in (0, 1]");
+                if (!(t.palm_hand_weight_min > 0f && t.palm_hand_weight_min <= 1f)) e.Add("tolerance.palm_hand_weight_min must be in (0, 1]");
             }
             var s = stage;
             if (s == null) e.Add("stage missing");
@@ -211,6 +218,10 @@ namespace WarehouseAvatar
     {
         public float elbow_angle_deg, arm_direction_deg, forearm_direction_deg, no_fold_min_elbow_deg;
         public string[] no_fold_commands;
+        // experiments_ab.md section 12: palm orientation and the WAIT thumb (HandGeometry)
+        public float palm_facing_deg, thumb_tip_max_palm_lengths, thumb_palm_side_min, palm_mesh_flatness_max, palm_hand_weight_min;
+        public int palm_mesh_min_vertices;
+        public string[] palm_commands;
     }
 
     [Serializable]

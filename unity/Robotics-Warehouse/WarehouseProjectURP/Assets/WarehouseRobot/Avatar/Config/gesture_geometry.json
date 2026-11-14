@@ -6,6 +6,14 @@
     "forearm_direction_deg": 10.0,
     "no_fold_min_elbow_deg": 120.0,
     "no_fold_commands": ["POINT"],
+    "palm_facing_deg": 30.0,
+    "palm_commands": ["STOP", "WAIT"],
+    "thumb_tip_max_palm_lengths": 1.0,
+    "thumb_palm_side_min": 0.0,
+    "palm_mesh_min_vertices": 30,
+    "palm_mesh_flatness_max": 0.5,
+    "palm_hand_weight_min": 0.5,
+    "palm_why": "2026-11-14, experiments_ab.md section 12 (Nusrat's check before the merge, declared before it was built or measured): on every measured hold frame of STOP and WAIT, the palm normal from the bones (LookPoser.PalmNormal) and from the skinned mesh (plane fit of the vertices mainly bound to the Hand bone, weight >= palm_hand_weight_min, between the wrist and the finger bases; undetermined below palm_mesh_min_vertices or above palm_mesh_flatness_max = smallest / middle variance, reported as mesh n/a) must point within palm_facing_deg of the robot camera (the stand-in robot's eye); WAIT's thumb tip must lie within thumb_tip_max_palm_lengths palm lengths of the palm centre and at least thumb_palm_side_min palm lengths on the palm side. Reported per look in hand_table.md; the arm check and its pass are unchanged.",
     "why": "Declared in experiments_ab.md section 10 before any measurement. elbow_angle_deg: the rendered elbow's interior angle (shoulder-elbow-wrist) against the two-bone angle of the goal's shoulder-to-target distance with the rig's own upper arm and forearm. arm_direction_deg: shoulder-to-wrist against shoulder-to-target. forearm_direction_deg: elbow-to-wrist against vertical (WAIT) or against intended elbow-to-target (PROCEED). no_fold_min_elbow_deg: a straight-arm command (POINT 144 to 163 deg by design, worker_v4.json limits) whose elbow closes below 120 deg has folded. A look x command passes when every measured frame of every take passes all of them. 2026-11-14, section 11 item 1 (Nusrat's check correction, declared before the change): no_fold_commands POINT only, the one extended gesture; STOP (stop_reach 0.85 to 0.97 L: 116 to 152 deg by design), PROCEED (bent, 38 to 125 deg over the swing) and WAIT are checked against their own design elbow angle by elbow_angle_deg. Before: POINT and STOP."
   },
   "stage": {
