@@ -1242,3 +1242,19 @@ differently: its "thumb" is a long finger, and the real 90-vertex thumb becomes 
 - **Screenshots:** no finger swings outside its knuckles (stop rule not triggered).
 
 No perception was run.
+
+*Addendum 13 (2026-11-15): Nusrat's decision, declared before any change. Boxo only; no perception.* **The importer's
+island-to-chain assignment is pinned.** Addendum 12 showed that the anatomical rule is fragile on Boxo, so the assignment the screenshots
+confirmed (be2346f, `import_characters_20261115_022715`) is recorded and guarded.
+- **What is recorded** (`looks_ab.json` `island_hands[cartoon_boxo_01].pinned_assignment`): per hand and chain (Thumb, Index, Middle,
+  Ring), the finger the binding gives that chain. It is read back from the imported mesh's weights (`IslandHands.ReadAssignment`):
+  each glove island of the hand except the plate belongs to the chain holding most of its weight. Each entry records the number of
+  vertices and the first and last mesh vertex index. Vertex order is fixed by the FBX, so these identify the finger's islands across
+  re-imports of the same file.
+- **Guard:**
+  - an Edit Mode test on the installed Boxo **fails if a re-import gives a different assignment** (any entry differs, is missing or is
+    extra);
+  - a synthetic test shows that the comparison catches two swapped fingers;
+  - the import report states whether the pin matches.
+- The values are filled from the current import, not chosen.
+- Nothing else changes: the importer still applies the rule of addendum 11; the pin only detects a change.
