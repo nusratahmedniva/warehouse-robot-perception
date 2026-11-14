@@ -552,6 +552,7 @@ namespace WarehouseAvatar.EditorTools
             public string[] colourless_unmatched = new string[0];
             public string[] alpha_clipped = new string[0];
             public string[] finger_remap = new string[0];
+            public string[] rigid_parts = new string[0];
         }
 
         [Serializable] class ImportReport { public string created_local, unity_version, render_pipeline; public List<CharacterReport> characters = new List<CharacterReport>(); }
@@ -668,6 +669,7 @@ namespace WarehouseAvatar.EditorTools
             if (spec != null) Recolour(spec, matDir, r);
             FixUnitScale(r);
             RemapMixamoFingers(r);
+            CountRigidParts(f, r);
 
             var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
             var avatar = AssetDatabase.LoadAllAssetsAtPath(r.asset).OfType<Avatar>().FirstOrDefault();
@@ -726,6 +728,34 @@ namespace WarehouseAvatar.EditorTools
             }
             if (clipped.Count > 0) AssetDatabase.SaveAssets();
             return clipped.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        }
+
+        /// <summary>experiments_ab.md section 12 addendum 7 decision 2: report, per material of a rigid_parts rule, how many of its vertices the
+        /// imported mesh binds 100 % to the rule's bone (the binding itself is done by ExperimentCharacterPostprocessor on every import).</summary>
+        static void CountRigidParts(ExperimentLooksFile f, CharacterReport r)
+        {
+            var spec = f.rigid_parts.FirstOrDefault(x => x != null && x.look == r.id);
+            if (spec == null) return;
+            var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
+            var list = new List<string>();
+            foreach (var smr in go != null ? go.GetComponentsInChildren<SkinnedMeshRenderer>(true) : new SkinnedMeshRenderer[0])
+            {
+                var mesh = smr.sharedMesh;
+                int bi = Array.FindIndex(smr.bones, b => b != null && b.name == spec.bone);
+                if (mesh == null || bi < 0) { list.Add($"{smr.name}: bone {spec.bone} not found"); continue; }
+                var bw = mesh.boneWeights;
+                var mats = smr.sharedMaterials;
+                for (int sub = 0; sub < mesh.subMeshCount && sub < mats.Length; sub++)
+                {
+                    string name = mats[sub] != null ? mats[sub].name : "";
+                    if (Array.IndexOf(spec.materials, name) < 0) continue;
+                    var idx = new HashSet<int>(mesh.GetIndices(sub));
+                    int rigid = idx.Count(i => i < bw.Length && bw[i].boneIndex0 == bi && bw[i].weight0 >= 0.9999f);
+                    list.Add($"{name}: {rigid}/{idx.Count} vertices 100 % on {spec.bone}");
+                }
+            }
+            r.rigid_parts = list.ToArray();
+            r.note += $" Rigid parts (section 12 addendum 7): {string.Join("; ", list)}.";
         }
 
         /// <summary>experiments_ab.md section 12 addendum 6: a Mixamo-rigged model whose Humanoid finger mapping contradicts its bone names

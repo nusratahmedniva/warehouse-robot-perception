@@ -19,6 +19,24 @@ namespace WarehouseAvatar.EditorTools
 
         public override int GetPostprocessOrder() => 100;
 
+        /// <summary>experiments_ab.md section 12 addendum 7 decision 2: looks_ab.json rigid_parts, applied on every import of that model (never
+        /// by hand): the named materials' vertices bound 100 % to one bone.</summary>
+        void OnPostprocessModel(GameObject g)
+        {
+            if (!assetPath.StartsWith(Folder, System.StringComparison.Ordinal)) return;
+            string cfg = Path.Combine(Application.dataPath, "..", ExperimentLooks.AssetPath);
+            if (!File.Exists(cfg)) return;
+            string id = Path.GetFileNameWithoutExtension(assetPath);
+            var spec = System.Array.Find(ExperimentLooks.Parse(File.ReadAllText(cfg)).rigid_parts, r => r != null && r.look == id);
+            if (spec == null) return;
+            foreach (var smr in g.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var names = System.Array.ConvertAll(smr.sharedMaterials, m => m != null ? m.name : "");
+                var done = ExperimentLooks.BindRigid(smr.sharedMesh, smr.bones, names, spec);
+                if (done.Count > 0) Debug.Log($"[ExperimentLooks] {id}: rigid parts bound to {spec.bone}: {string.Join(", ", done)}");
+            }
+        }
+
         void OnPreprocessMaterialDescription(MaterialDescription description, Material material, AnimationClip[] clips)
         {
             if (!assetPath.StartsWith(Folder, System.StringComparison.Ordinal)) return;

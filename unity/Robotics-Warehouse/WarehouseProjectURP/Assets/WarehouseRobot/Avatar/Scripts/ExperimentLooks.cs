@@ -62,12 +62,22 @@ namespace WarehouseAvatar
         public RecolourRule[] rules = new RecolourRule[0];
     }
 
+    /// <summary>experiments_ab.md section 12 addendum 7 decision 2: the vertices of these materials are bound 100 % to one bone at import
+    /// (ExperimentCharacterPostprocessor): a part that is rigid by design (Boxo's box body).</summary>
+    [Serializable]
+    public class RigidPartsSpec
+    {
+        public string look, bone;
+        public string[] materials = new string[0];
+    }
+
     [Serializable]
     public class ExperimentLooksFile
     {
         public string note;
         public ExperimentLookPaths paths;
         public RecolourSpec[] recolour = new RecolourSpec[0];
+        public RigidPartsSpec[] rigid_parts = new RigidPartsSpec[0];
         /// <summary>Every look the experiments use that worker_v4.json does not define.</summary>
         public ExperimentLook[] looks = new ExperimentLook[0];
         /// <summary>The avatar experiment (look check only, no navigation runs): ids of looks_ab.json or worker_v4.json, in order.</summary>
@@ -84,7 +94,30 @@ namespace WarehouseAvatar
             if (f == null) throw new InvalidOperationException("looks_ab.json: not a JSON object");
             f.looks = f.looks ?? new ExperimentLook[0];
             f.avatar_experiment = f.avatar_experiment ?? new string[0];
+            f.rigid_parts = f.rigid_parts ?? new RigidPartsSpec[0];
             return f;
+        }
+
+        /// <summary>Addendum 7 decision 2: bind every vertex of the named materials' sub-meshes 100 % to the bone; returns the vertices rebound
+        /// per material ("bodymat 1234"). Vertices of other materials keep their weights. Empty when the bone is not among the renderer's bones.</summary>
+        public static List<string> BindRigid(Mesh mesh, Transform[] bones, string[] materialNames, RigidPartsSpec spec)
+        {
+            var done = new List<string>();
+            if (mesh == null || bones == null || spec == null) return done;
+            int bi = Array.FindIndex(bones, b => b != null && b.name == spec.bone);
+            if (bi < 0) return done;
+            var bw = mesh.boneWeights;
+            if (bw.Length != mesh.vertexCount) return done;
+            for (int sub = 0; sub < mesh.subMeshCount && sub < materialNames.Length; sub++)
+            {
+                string name = (materialNames[sub] ?? "").Replace(" (Instance)", "");
+                if (Array.IndexOf(spec.materials, name) < 0) continue;
+                var seen = new HashSet<int>(mesh.GetIndices(sub));
+                foreach (int i in seen) bw[i] = new BoneWeight { boneIndex0 = bi, weight0 = 1f };
+                done.Add($"{name} {seen.Count}");
+            }
+            if (done.Count > 0) mesh.boneWeights = bw;
+            return done;
         }
 
         /// <summary>The file's rules. <paramref name="baseLooks"/> = worker_v4.json's looks: an id may not be defined in both.</summary>
