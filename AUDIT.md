@@ -2290,3 +2290,89 @@ longer assume the route of one geometry (the arrival-mirror test asserts that th
 compares with `hri_trials.goal_order(1, ...)`; the decisions-log test allows `second_view` events. `tests/test_export_csv_v4.py`: the distance sanity bound 4.0 m became 5.0 m (the second worker stands up to 6 m back). New:
 `MatchesUnity` (slots and margins pinned to Unity's `experiments_ab_unity.json`, slot positions, the bystander rule, the physical map, cross-node separation, Unity's node order, the goal sequence, the wrong directions, a liar
 never showing BACK or a wall at a junction, the compass fallback where there is no other branch).
+
+
+### 16.14 The false STOP of the live reader (item 1 of 2026-11-14; analysis only, NO reader value changed)
+
+Data: `~/Downloads/anisha_gesture_logs_20261114_143539.zip`, SHA-256 `a39cb42906c12e7a5fbfbee77c78d5deedcd082dc1a01f1e3ceb659808cfbe34` (equal to the one given), read in place with `zipfile`, never extracted or copied. It holds R1 (bridge `bridge_guide_20261112_163011`, Unity
+`trials_development_Task2_20261112_163710`, 20 runs, 21441 pan-tilt frames) and the 13 Nov video session (`bridge_guide_20261113_193706`, `trials_development_Task2_20261113_194012`, 3 runs, 2684 frames). Looks
+`sunbox_f1`, `sunbox_m1`; clips `point_mixamo_01`, `point_ik_01`, `proceed_ik_01`, `proceed_ik_02`: **development only**, the split guard passed for all 23 runs. **The zip holds no STOP and no WAIT gesture** (truth: NONE, POINT, PROCEED), so STOP readings
+on a true STOP cannot be shown from it. Tool: `analyse_false_stop_v4.py` (evaluation code), settings `configs/v4/experiments/false_stop_analysis.json`, tests `tests/test_false_stop_v4.py` (15); the full output (`report.json`, `report.md`) is in
+`robot_vision/outputs/false_stop_analysis_v4_20261114_171401/` (git-ignored). The tool replays the live reader (`hri_perception_v4.PersonsPipeline`, current `gesture_reader.json`: only the POINT arm ratio differs from the recording commits) on the logged pan-tilt frames and applies the
+candidate cues in the script only (it wraps two functions of `gesture_motion` for the duration of one replay and restores them).
+
+**What the live robot did.** Stop episodes of `decisions.csv` (runs of rows stopped by STOP, closer than 0.35 s), by what the workers were showing: R1 126 episodes (PROCEED 76 reading + 30 executing + 5 navigating + 1 approaching, POINT 10 + 1,
+**nothing shown 3**), the video session 10 (PROCEED 8 + 1, POINT 1). Nusrat's counts (196 stops, 16 stops) do not match my episode counts; I count runs of rows closer than 0.35 s, her rule is not stated in the README. The replay reproduces the logged STOPs
+(R1: 705 STOP rows of `decisions.csv` against 489 replayed STOP frames, 4 rows without a replayed STOP just before them; video session 109 against 77, none missing).
+
+**(a) The 3 stops with no gesture shown** (all R1, state navigate at 0.8 m/s: trial 4 at t = 406.23 s and 452.34 s, trial 14 at t = 1720.02 s). The person is the same in all three: worker 1 (`sunbox_m1`, true command NONE, phase idle) standing about 7 m to the
+right of the robot's heading (bearing 20 to 23 degrees; the pan-tilt camera is not aimed at anybody, pan 0). **His right hand hangs at his side**: the wrist is 0.08 to 0.13 torso lengths BELOW the hip, the arm is not raised, and the hand intermittently
+passes the open-hand geometry **by a hair**: finger ratios 1.59 to 2.3 against the limit 1.6, spread at the wrist 21 to 23 degrees against the limit 20, MediaPipe gives no label (and does not need to: not required since 2026-11-08). Two such frames within
+the 0.3 s STOP window give a stop share of 1.0 (the rule needs at least 2 samples and 70 %), and STOP of anybody the pan-tilt camera sees stops the robot while it is driving (the v3 safety rule). Two of the three reproduce exactly in the replay;
+for the third the replay has the same hand and the same frame-level cue (stop share 0.5 against at least 0.7 live), a boundary effect I cannot resolve from the log. **The cause is that STOP needs no raised arm, no palm direction and no stillness: any linked hand
+that is open by the finger geometry counts, however far away the person is and whatever the arm is doing.**
+
+**The cause of the PROCEED stops** (confirming Nusrat's suspicion): on the frames where the reader's open-hand geometry passes while PROCEED is shown, the spread measured at the wrist is 34.8 / 41.5 / 71.6 degrees (p10 / median / p90) against the limit 20,
+the four fingers are extended, and nothing else is asked. The avatar's flat hand with fingers together (`worker_v4.json` `hand_shapes.proceed`, spread 0, "can never read as STOP") passes because the reader's spread is the angle at the WRIST between the index tip and
+the pinky tip, which already contains the width of the knuckle line. Of the 1001 person-frames on which a worker shows PROCEED, the reader reads STOP on 493 (49 %), in 98 episodes;
+on POINT 48 frames (11 episodes), on nothing shown 3 frames (2 episodes, the hanging hand above).
+
+**(c) The candidate cues** (person-frames, a worker matched by bearing within 10 degrees; the category is what that worker shows: PROCEED, POINT, nothing; stop frames / frames and stop episodes). "Combined" uses display values (palm >= 0.1, spread >= 1.3,
+static = the reader's own `moving` flag), not proposals; the grids show how each cue behaves.
+
+| variant | on PROCEED | on POINT | on nothing shown | on unmatched people |
+|---|---|---|---|---|
+| before (the live reader) | 493/1001 = 0.492; 98 ep. | 48/1646 = 0.029; 11 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| palm facing >= 0 | 190/1001 = 0.190; 62 ep. | 48/1646 = 0.029; 11 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| palm facing >= 0.1 | 187/1001 = 0.187; 60 ep. | 48/1646 = 0.029; 11 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| palm facing >= 0.2 | 183/1001 = 0.183; 60 ep. | 48/1646 = 0.029; 11 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| palm facing >= 0.3 | 183/1001 = 0.183; 60 ep. | 48/1646 = 0.029; 11 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| fingertip spread >= 1.1 | 482/1001 = 0.481; 100 ep. | 31/1646 = 0.019; 10 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| fingertip spread >= 1.2 | 479/1001 = 0.478; 101 ep. | 2/1646 = 0.001; 2 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| fingertip spread >= 1.3 | 420/1001 = 0.420; 101 ep. | 1/1646 = 0.001; 1 ep. | 2/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| fingertip spread >= 1.4 | 217/1001 = 0.217; 82 ep. | 1/1646 = 0.001; 1 ep. | 2/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| fingertip spread >= 1.5 | 41/1001 = 0.041; 29 ep. | 1/1646 = 0.001; 1 ep. | 1/7727 = 0.000; 1 ep. | 0/56 = 0.000; 0 ep. |
+| static: arm_moving | 10/1001 = 0.010; 7 ep. | 48/1646 = 0.029; 11 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| static: speed_stop_window | 45/1001 = 0.045; 37 ep. | 41/1646 = 0.025; 10 ep. | 1/7727 = 0.000; 1 ep. | 0/56 = 0.000; 0 ep. |
+| palm >= 0.1 + static (arm_moving) | 1/1001 = 0.001; 1 ep. | 48/1646 = 0.029; 11 ep. | 3/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| palm >= 0.1 + spread >= 1.3 | 163/1001 = 0.163; 55 ep. | 1/1646 = 0.001; 1 ep. | 2/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| spread >= 1.3 + static (arm_moving) | 9/1001 = 0.009; 6 ep. | 1/1646 = 0.001; 1 ep. | 2/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| all three (palm >= 0.1, spread >= 1.3, static arm_moving) | 1/1001 = 0.001; 1 ep. | 1/1646 = 0.001; 1 ep. | 2/7727 = 0.000; 2 ep. | 0/56 = 0.000; 0 ep. |
+| EXTRA: arm raised (the reader's flag) alone | 90/1001 = 0.090; 50 ep. | 0/1646 = 0.000; 0 ep. | 0/7727 = 0.000; 0 ep. | 0/56 = 0.000; 0 ep. |
+| EXTRA: all three + arm raised | 0/1001 = 0.000; 0 ep. | 0/1646 = 0.000; 0 ep. | 0/7727 = 0.000; 0 ep. | 0/56 = 0.000; 0 ep. |
+
+Cue values on the frames where the open-hand geometry passes:
+
+| shown | open-hand frames | palm facing (p10 / median / p90) | fingertip spread | spread at the wrist (deg) | wrist speed (torso/s) | arm raised |
+|---|---|---|---|---|---|---|
+| PROCEED | 647 | -0.943 / 0.552 / 0.969 | 1.321 / 1.44 / 1.67 | 34.8 / 41.5 / 71.62 | 0.493 / 1.729 / 3.068 | 0.0 |
+| POINT | 80 | 0.475 / 0.571 / 0.648 | 1.081 / 1.149 / 1.69 | 20.19 / 21.3 / 23.58 | 0.006 / 0.057 / 2.015 | 0.0 |
+| nothing | 47 | -0.573 / 0.408 / 0.708 | 1.122 / 1.68 / 2.216 | 20.42 / 22.7 / 38.32 | 0.322 / 0.571 / 1.509 | 0.0 |
+| unmatched | 0 | - | - | - | - | - |
+
+Palm facing by the person's own hand:
+
+| shown | right hand | left hand |
+|---|---|---|
+| PROCEED | n=321: -0.739 / 0.787 / 0.984 | n=326: -0.97 / -0.786 / 0.856 |
+| POINT | n=73: 0.484 / 0.57 / 0.616 | n=7: 0.463 / 0.733 / 0.964 |
+| nothing | n=34: -0.137 / 0.422 / 0.69 | n=13: -0.792 / 0.371 / 0.705 |
+| unmatched | - | - |
+
+**What it shows, and what it does not** (nothing is applied; every value below is a question for you):
+1. **Static (the STOP hand does not swing) is the cue that works on PROCEED**: 98 episodes -> 7 with the reader's own `moving` flag (wrist path of the last 1.0 s of at least `motion_path_min` 0.4 torso lengths; no new number). It does not touch POINT (11 episodes) or the hanging
+   hand (2). **Its cost is latency on a true STOP**: a raised arm counts as moving for up to the window (1.0 s), so a STOP shown by raising the arm is read only when the wrist has been nearly still; I cannot measure that on this data. The short variant
+   (mean wrist speed over the 0.3 s STOP window at most `still_speed_max` 0.4 torso lengths/s) keeps the latency at the STOP window but removes much less: 98 -> 37 episodes.
+2. **Fingertip spread removes the POINT stops** (11 episodes -> 2 at >= 1.2, 1 at >= 1.3) and almost nothing on PROCEED (101 episodes at >= 1.2 and 1.3: the avatar's PROCEED hand is not tight). At >= 1.4 it halves PROCEED (82 episodes) but this is where a real
+   open palm may also fall: no true STOP is in the data to say.
+3. **The palm cue cannot be trusted on this data.** By its sign convention (derived for a person facing the camera: the thumb side of a right hand with the palm toward the camera is at the image right) it removes 61 % of the PROCEED stop frames (493 -> 190), but
+   the values are bimodal (p10 -0.94, p90 +0.97 for PROCEED) and mirrored between the hands: PROCEED right hands +0.79, left hands -0.79 (median), i.e. the RAW image winding of the landmarks is the same for both hands, which a mirror-symmetric pair of hands
+   showing the same face cannot give. The side labels are right (the right shoulder is left of the left shoulder in the image in 99 % of the frames, and the reader's arm equals the truth arm), so either the two hands show opposite faces or MediaPipe's
+   landmark order does not distinguish palm from back on these hands. The cue "works" on PROCEED only because the worker swings his LEFT arm in 53 of 67 reads. Without STOP recordings its sign cannot be validated; I do not recommend it.
+4. **The hanging-hand stops are removed only by a requirement none of the three cues provides: a raised arm** (the reader's own flag). I added it as an EXTRA, not one of your three: with it the 2 episodes of "nothing shown" and the 11 of POINT disappear and PROCEED drops
+   to 50 episodes; **all three cues + raised: 0 stop frames in every category**. It reverses part of the decision of 2026-11-08 (STOP needs no arm keypoints) and its cost on a true STOP (an open hand held low, an arm that YOLO misses) is unknown.
+5. **What is missing: true STOP.** To judge any cue I need what it does to a true STOP: STOP recordings of the development looks and development clips (with the logs of this zip's kind: `model_outputs.jsonl`, `truth.jsonl`), for example 20 STOPs at 2 m from each of `sunbox_m1`, `sunbox_f1`, both arms, raised
+   from the hip and held, plus the same session driving past a standing worker (to see the hanging hand again). I cannot show STOP before and after from the zip.
+
+**Decision needed before any value changes:** (i) which cues to apply (my reading: static for PROCEED, fingertip spread for POINT, raised for the hanging hand, palm not at all) and in what form (arm_moving or the short window); (ii) whether to reverse the
+2026-11-08 decision that STOP needs no raised arm; (iii) whether Nusrat records the STOP data of item 5 first. Nothing in `configs/v4/gesture_reader.json` or `gesture_motion.py` was changed.
