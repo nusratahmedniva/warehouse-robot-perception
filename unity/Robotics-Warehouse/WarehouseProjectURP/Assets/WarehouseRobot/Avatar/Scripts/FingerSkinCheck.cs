@@ -124,9 +124,8 @@ namespace WarehouseAvatar
         /// <summary>Diagnostic lines of the last island measurement (report only): island centroids and chain joints in the hand's frame.</summary>
         public static readonly List<string> IslandDiagnostic = new List<string>();
 
-        /// <summary>Addendum 11 (decision 4): each vertex's finger by the same island analysis the importer uses (IslandHands.Analyse: the
-        /// anatomical rule, no distance matching); vertex order as BakeAll's. A hand the analysis refuses leaves every vertex unowned and adds
-        /// a line to IslandDiagnostic.</summary>
+        /// <summary>Addenda 11 and 12 (decision 4): each vertex's finger by the importer's island-to-chain assignment, read from the binding
+        /// (each island, not the plate, belongs to the chain holding most of its weight); vertex order as BakeAll's.</summary>
         static int[] IslandOwners(Transform hand, IList<SkinnedMeshRenderer> meshes, List<Transform[]> chains, List<Vector3> rest, PalmPlateSpec spec, float contact)
         {
             var owner = new int[rest.Count];
@@ -165,19 +164,28 @@ namespace WarehouseAvatar
                         }
                         mine.Sort();
                         var island = PalmPlate.Islands(local, tris, spec.weld_m);
-                        var a = IslandHands.Analyse(local, island, mine, hand.position, IslandHands.Chains(hand), contact);
-                        if (!a.Ok) IslandDiagnostic.Add($"{hand.name}: analysis refused: {a.Problem}");
-                        else
-                            for (int g = 0; g < a.Groups.Count; g++)
-                            {
-                                var ch = a.Chains[a.ChainOf[g]];
-                                int f = chains.FindIndex(c => c[0] == ch[0]);
-                                foreach (int i in mine) if (island[i] >= 0 && a.Groups[g].Contains(island[i])) owner[offset + i] = f;
-                                Vector3 k = hand.InverseTransformPoint(a.Knuckle[g]), tp = hand.InverseTransformPoint(a.Tip[g]);
-                                IslandDiagnostic.Add($"{hand.name} group {g} -> {ch[0].name.Replace("mixamorig:", "")}: knuckle hand-local ({k.x:0.000}, {k.y:0.000}, {k.z:0.000}), " +
-                                                     $"tip ({tp.x:0.000}, {tp.y:0.000}, {tp.z:0.000}); joints " +
-                                                     string.Join(" ", ch.Select(j => { var p = hand.InverseTransformPoint(j.position); return $"({p.x:0.000}, {p.y:0.000}, {p.z:0.000})"; })));
-                            }
+                        int plate = PalmPlate.LargestIsland(local, island, mine);
+                        // addendum 12: the importer's assignment, read from the binding: each island (not the plate) belongs to the chain that
+                        // holds most of its vertices' weight; the anatomical rule is not re-run here
+                        var chainOfBone = new int[bones.Length];
+                        for (int bi = 0; bi < bones.Length; bi++) chainOfBone[bi] = chains.FindIndex(c => System.Array.IndexOf(c, bones[bi]) >= 0);
+                        var votes = new Dictionary<int, float[]>();
+                        foreach (int i in mine)
+                        {
+                            if (island[i] < 0 || island[i] == plate) continue;
+                            if (!votes.TryGetValue(island[i], out var v)) votes[island[i]] = v = new float[chains.Count];
+                            var w = bw[i];
+                            foreach (var (bi, wt) in new[] { (w.boneIndex0, w.weight0), (w.boneIndex1, w.weight1), (w.boneIndex2, w.weight2), (w.boneIndex3, w.weight3) })
+                                if (wt > 0f && chainOfBone[bi] >= 0) v[chainOfBone[bi]] += wt;
+                        }
+                        foreach (var kv in votes)
+                        {
+                            int f = System.Array.IndexOf(kv.Value, kv.Value.Max());
+                            if (kv.Value[f] <= 0f) continue;
+                            foreach (int i in mine) if (island[i] == kv.Key) owner[offset + i] = f;
+                            IslandDiagnostic.Add($"{hand.name} island {kv.Key} -> {chains[f][0].name.Replace("mixamorig:", "")} (by its weights); joints hand-local " +
+                                                 string.Join(" ", chains[f].Select(j => { var p = hand.InverseTransformPoint(j.position); return $"({p.x:0.000}, {p.y:0.000}, {p.z:0.000})"; })));
+                        }
                     }
                 }
                 offset += n;

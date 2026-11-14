@@ -1196,3 +1196,49 @@ in `ExperimentCharacterPostprocessor` on every import of the model, in this orde
 
 **Stop rule (Nusrat's):** if the screenshots still show fingers swinging outside their knuckles, the work STOPS, Boxo reverts to option
 (a) (the auto-rigger's weights and joints), and his hand is documented as it is.
+
+*Addendum 12 (2026-11-15, after the aligned import `import_characters_20261115_022715` (be2346f), the rerun
+`gesture_geometry_aligned_chains_20261115_022831` and the probe `probe_fingers_20261115_022815`; before any further change).*
+
+**Stop rule: not triggered.** The screenshots show each finger attached at the plate's edge and bending at its own knuckles:
+- STOP: the plate face-on, three fingers straight up, the thumb at the side;
+- POINT: the index straight, the others curled into the plate;
+- WAIT: the index up, the others curled;
+- the idle hand's fingers hang from the plate.
+
+Option (b) stays.
+
+**A correction of my item 4.** The probe re-ran the anatomical rule on the bound model instead of reusing the importer's assignment, and
+the two disagree on the same geometry. The probe's dump shows every chain's joints exactly on a group's axis, but labels the groups
+differently: its "thumb" is a long finger, and the real 90-vertex thumb becomes "ring". So bending each chain moves "another" finger.
+- *Cause:* the rule's forward axis runs from the hand bone to the plate's centre, and the plate counts only "this hand's" vertices.
+  - In the importer these are chosen by the auto-rigger's weights, which put part of the plate elsewhere.
+  - In the probe, after binding, the whole plate counts.
+  - The plate centre shifts, the forward axis tilts, and a long finger out-deviates the thumb.
+- **So the rule as declared is fragile on Boxo. It gave the anatomically right thumb in the importer only with the auto-rigger's
+  partial plate.** The screenshots confirm that the importer's assignment is right: the finger next to the short diagonal thumb is the
+  one that points.
+- *Correction (item 4 as decided: "the SAME assignment"):* the probe reads the importer's assignment from the binding itself. Each glove
+  island of the hand, other than the plate, is owned by the chain that holds most of its vertices' weight. The rule is not re-run.
+- The fragility is reported for Nusrat; the importer's rule is not changed after seeing this.
+
+*Results of addenda 11 and 12 (2026-11-15).*
+- **Import** (`import_characters_20261115_022715`, be2346f):
+  - 32 finger joints moved onto their fingers' axes, by up to 8.4 cm;
+  - the Humanoid avatar was rebuilt from the corrected skeleton (32 entries, human, valid);
+  - per hand, the plate's 216 vertices are on the hand bone; index, middle and ring get 114 each and the thumb 90, on their own chains;
+    0 cross parts.
+- **Joints inside their own finger:** the installed-Boxo test passes (every j0 to j2 inside its own finger group's box, 1 mm).
+- **Fingers** (`probe_fingers_20261115_023523`, the importer's assignment): **every finger of both hands is separate.** Bending it moves
+  95.6 to 96.5 % of its own vertices and **0.000 % of every other finger's.**
+- **Palm plate shape: 0.0 % change in every command** (POINT, PROCEED, WAIT, STOP). The plate's normal is 9.2 deg (STOP) and 14.2 deg
+  (WAIT), and the WAIT thumb is at 0.95 Lp.
+- **Full rerun** (`gesture_geometry_aligned_chains_20261115_022831`, be2346f, all 15 looks, 120 screenshots):
+  - arm geometry 15 of 15;
+  - **hand check 13 of 15** (only anime_f_01 and 03, the sleeve artefact);
+  - skinning 15 of 15 (torso core p95 at most 1.70 cm under 2.125 cm; forearm at least 0.72, Boxo WAIT).
+- **Five-finger looks unchanged:** `hand_shapes_20261115_023246` against `_015702` is identical on the 14 other looks; only Boxo changed
+  (his joints moved). The Sunbox pin test and the golden test pass.
+- **Screenshots:** no finger swings outside its knuckles (stop rule not triggered).
+
+No perception was run.
