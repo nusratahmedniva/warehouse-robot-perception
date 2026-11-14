@@ -94,6 +94,8 @@ namespace WarehouseAvatar
         /// <summary>The horizontal direction the POINT actually shows (after the body-azimuth limit), world space.</summary>
         public Vector3 ShownPointDirection { get; private set; }
         public float ArmLength { get; private set; }
+        /// <summary>The rig's own upper arm, forearm, shoulder width and height, measured at Initialize (experiments_ab.md section 10).</summary>
+        public ArmProportions Proportions { get; private set; }
         public bool QuestionVisible => m_Scheduler.QuestionVisible;
         /// <summary>A gesture is queued or under way (not idle): the worker can neither be moved nor asked again.</summary>
         public bool Busy => m_Scheduler.Phase != WorkerPhase.Idle || m_Scheduler.Pending;
@@ -197,6 +199,7 @@ namespace WarehouseAvatar
             m_BindLeft = HandShaper.Capture(m_Left);        // the prefab's bind pose: straight fingers
             m_BindRight = HandShaper.Capture(m_Right);
             ArmLength = 0.5f * (HandShaper.ArmLength(m_Left) + HandShaper.ArmLength(m_Right));
+            Proportions = ArmProportions.Measure(m_Left, m_Right, transform);   // experiments_ab.md section 10: the rig's own proportions
             var spine = new List<Transform>();
             foreach (var b in new[] { HumanBodyBones.Spine, HumanBodyBones.Chest, HumanBodyBones.UpperChest })
                 if (bones.Get(b) != null) spine.Add(bones.Get(b));
@@ -436,7 +439,8 @@ namespace WarehouseAvatar
             Animator.SetLayerWeight(GestureLayer, m_LayerWeight);
         }
 
-        /// <summary>IK target and elbow hint of the gesturing hand (world), from the current shoulder and body frame.</summary>
+        /// <summary>IK target and elbow hint of the gesturing hand (world), from the current shoulder and body frame
+        /// (GestureTargets.Compute, with the lengths of <see cref="Split"/>).</summary>
         void ComputeTargets(float t)
         {
             if (!WorkerPhases.Performing(m_Scheduler.Phase)) return;
@@ -446,64 +450,36 @@ namespace WarehouseAvatar
             Vector3 side = arm.IsRight ? right : -right, up = Vector3.up, s = m_Twisted ? m_AnimShoulder : arm.Upper.position;
             float L = ArmLength, k = Current.size;
             var spec = CurrentSpec;
-            var lim = Config.limits;
-            switch (spec.command)
+            // PROCEED (upgrade_design.md section 2): the forearm swings forward and up between swing_low_deg and swing_high_deg (the size
+            // draw scales the top) at swing_hz while held; raising and returning bring it to the bottom of the swing (the IK weight blends it)
+            float lo = spec.swing_low_deg, hi = lo + (spec.swing_high_deg - spec.swing_low_deg) * k;
+            float phi = lo;
+            if (spec.command == WorkerV4Config.Proceed && m_Scheduler.Phase == WorkerPhase.Holding)
+                phi = lo + (hi - lo) * 0.5f * (1f - Mathf.Cos(2f * Mathf.PI * Current.swing_hz * m_Scheduler.Elapsed(t)));
+            float push = 0f;
+            if (spec.command == WorkerV4Config.Stop && spec.push_l > 0f)
             {
-                case WorkerV4Config.Point:
-                {
-                    float el = Current.point_elevation_deg * k;
-                    Vector3 d = (Mathf.Cos(el * Mathf.Deg2Rad) * m_PointDir.normalized + Mathf.Sin(el * Mathf.Deg2Rad) * up).normalized;
-                    float reach = Mathf.Clamp(spec.reach, lim.point_reach[0], lim.point_reach[1]);
-                    m_Target = s + d * (L * reach);
-                    m_Hint = s + d * (0.5f * L) - up * (spec.elbow_down_l * L);
-                    ShownPointDirection = m_PointDir;
-                    break;
-                }
-                case WorkerV4Config.Proceed:
-                {
-                    // PROCEED (upgrade_design.md section 2): the elbow bent below the shoulder, the forearm swinging forward and
-                    // up between swing_low_deg and swing_high_deg (the size draw scales the top) at swing_hz while held;
-                    // raising and returning bring the forearm to the bottom of the swing (the IK weight blends it in and out).
-                    float Lu = 0.53f * L, Lf = 0.47f * L;            // upper arm and forearm shares of the shoulder-to-wrist length
-                    float au = spec.upper_forward_deg * Mathf.Deg2Rad;
-                    Vector3 elbow = s + Lu * (Mathf.Cos(au) * -up + Mathf.Sin(au) * fwd) + side * (0.08f * L);
-                    float lo = spec.swing_low_deg, hi = lo + (spec.swing_high_deg - spec.swing_low_deg) * k;
-                    float phi = lo;
-                    if (m_Scheduler.Phase == WorkerPhase.Holding)
-                        phi = lo + (hi - lo) * 0.5f * (1f - Mathf.Cos(2f * Mathf.PI * Current.swing_hz * m_Scheduler.Elapsed(t)));
-                    float pr = phi * Mathf.Deg2Rad;
-                    m_Target = elbow + (Mathf.Cos(pr) * fwd + Mathf.Sin(pr) * up) * Lf;
-                    m_Hint = elbow + side * (0.1f * L) - up * (0.02f * L);
-                    break;
-                }
-                case WorkerV4Config.Wait:
-                {
-                    float upL = Mathf.Max(spec.hand_up_l * k, lim.wait_min_up_l);
-                    m_Target = s + L * (side * (spec.hand_side_l * k) + fwd * (spec.hand_forward_l * k) + up * upL);
-                    m_Hint = m_Target - up * (0.5f * L) + side * (spec.elbow_down_l * L);   // forearm vertical, elbow out
-                    break;
-                }
-                default:
-                {
-                    float az = spec.azimuth_out_deg * Mathf.Deg2Rad, el = spec.elevation_deg * Mathf.Deg2Rad;
-                    Vector3 h = Mathf.Cos(az) * fwd + Mathf.Sin(az) * side;
-                    Vector3 d = (Mathf.Cos(el) * h + Mathf.Sin(el) * up).normalized;
-                    float reach = Mathf.Clamp(spec.reach * k, lim.stop_reach[0], lim.stop_reach[1]);
-                    float push = 0f;
-                    if (spec.push_l > 0f)
-                    {
-                        // the last 35 per cent of the raise pushes the palm toward the robot; it stays there
-                        float u = m_Scheduler.Phase == WorkerPhase.Gesturing ? Mathf.Clamp01((m_Scheduler.Progress(t) - 0.65f) / 0.35f) : 1f;
-                        push = spec.push_l * k * GestureVariation.Ease(WorkerV4Config.EaseSmooth, u) * L;
-                    }
-                    m_Target = s + d * (L * reach) + fwd * push;
-                    m_Hint = s + d * (0.5f * L) - up * (spec.elbow_down_l * L) + side * (0.05f * L);
-                    break;
-                }
+                // the last 35 per cent of the raise pushes the palm toward the robot; it stays there
+                float u = m_Scheduler.Phase == WorkerPhase.Gesturing ? Mathf.Clamp01((m_Scheduler.Progress(t) - 0.65f) / 0.35f) : 1f;
+                push = spec.push_l * k * GestureVariation.Ease(WorkerV4Config.EaseSmooth, u) * L;
             }
+            var goal = GestureTargets.Compute(spec, Config.limits, Split, s, side, fwd, m_PointDir, k, Current.point_elevation_deg, phi, push);
+            LegacyGoal = GestureTargets.Compute(spec, Config.limits, ArmSplit.Legacy(L), s, side, fwd, m_PointDir, k, Current.point_elevation_deg, phi, push);
+            if (spec.command == WorkerV4Config.Point) ShownPointDirection = m_PointDir;
             var sway = GestureVariation.Sway(Current, t, m_IkWeight);      // the hold's own amplitude while held
-            m_Target += side * sway.x + up * sway.y + fwd * sway.z;
+            goal.Target += side * sway.x + up * sway.y + fwd * sway.z;
+            Goal = goal;
+            m_Target = goal.Target;
+            m_Hint = goal.Hint;
         }
+
+        /// <summary>The lengths the targets use (experiments_ab.md section 10): the rig's own upper arm and forearm, not Sunbox's split.</summary>
+        ArmSplit Split => ArmSplit.Rig(Proportions);
+
+        /// <summary>Diagnostics (the geometric check, experiments_ab.md section 10): this frame's goal of the gesturing arm (sway included),
+        /// and the goal of the split used before section 10 (Sunbox's, sway left out).</summary>
+        public GestureGoal Goal { get; private set; }
+        public GestureGoal LegacyGoal { get; private set; }
 
         /// <summary>Called by WorkerIkRelay from OnAnimatorIK of the look's Animator.</summary>
         internal void OnIK(int layer)

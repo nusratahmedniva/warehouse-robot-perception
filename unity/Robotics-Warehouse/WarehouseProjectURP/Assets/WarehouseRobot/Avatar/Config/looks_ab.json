@@ -110,10 +110,28 @@
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     },
     {
+      "id": "anime_f_02_outfit_short", "family": "vroid", "role": "candidate", "kind": "prefab", "kind_group": "anime",
+      "gender": "female", "person": "anime", "costume": "outfit_short", "navigation": false, "proposed_split": "",
+      "variant_of": "anime_f_01", "variant_changes": "the outfit, sleeves included: a different outfit with short sleeves (forearms and hands uncovered); hair, face and body as anime_f_01",
+      "source": "Nusrat's controlled variant of anime_f_01 made in VRoid Studio (unity/downloads/characters_v4/anime_f_02_outfit_short.fbx, sha256 d94b472a..., git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters; experiments_ab.md section 10)",
+      "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, 2026-11-14: controlled variant of anime_f_01 made by Nusrat Ahmed Niva in VRoid Studio, converted in Blender, not redistributed); VRoid Studio Guidelines as anime_f_01 (experiments_ab.md section 6); never redistributed, git-ignored",
+      "asset": "Assets/ThirdParty/CharactersV4/anime_f_02_outfit_short/anime_f_02_outfit_short.fbx", "material_override": "",
+      "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
+    },
+    {
+      "id": "anime_f_03_bangs_parted", "family": "vroid", "role": "candidate", "kind": "prefab", "kind_group": "anime",
+      "gender": "female", "person": "anime", "costume": "default", "navigation": false, "proposed_split": "",
+      "variant_of": "anime_f_01", "variant_changes": "only the bangs: parted so both eyes are visible; outfit, face and body as anime_f_01",
+      "source": "Nusrat's controlled variant of anime_f_01 made in VRoid Studio (unity/downloads/characters_v4/anime_f_03_bangs_parted.fbx, sha256 a3cf3439..., git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters; experiments_ab.md section 10)",
+      "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, 2026-11-14: controlled variant of anime_f_01 made by Nusrat Ahmed Niva in VRoid Studio, converted in Blender, not redistributed; SOURCES.txt names this file anime_f_03_hairback.fbx, 'hair tied back', experiments_ab.md section 10); VRoid Studio Guidelines as anime_f_01; never redistributed, git-ignored",
+      "asset": "Assets/ThirdParty/CharactersV4/anime_f_03_bangs_parted/anime_f_03_bangs_parted.fbx", "material_override": "",
+      "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
+    },
+    {
       "id": "cartoon_boxo_01", "family": "cartoon", "role": "candidate", "kind": "prefab", "kind_group": "cartoon_non_human",
       "gender": "none", "person": "boxo", "costume": "default", "navigation": false, "proposed_split": "",
-      "source": "Nusrat's own procedurally generated character, thumb + 3 fingers (unity/downloads/characters_v4/cartoon_boxo_01.fbx, git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters)",
-      "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, re-checked 2026-11-14): generated procedurally (make_cartoon_boxo.py, not in the repo) and rigged with Mixamo's auto-rigger; Adobe's Mixamo FAQ: the user keeps the rights to their own creations, royalty-free use in personal, commercial and non-profit projects, no ML training on Mixamo content (none here); never redistributed, git-ignored (experiments_ab.md section 6)",
+      "source": "Nusrat's own procedurally generated character, thumb + 3 fingers; VERSION 2 since 2026-11-14 (fingers fanned apart, sha256 00fbf466..., experiments_ab.md section 10; v1 431e6cb2... in unity/downloads/superseded/) (unity/downloads/characters_v4/cartoon_boxo_01.fbx, git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters)",
+      "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, re-checked 2026-11-14): generated procedurally (unity/tools/avatars/make_cartoon_boxo.py, v2) and rigged with Mixamo's auto-rigger; Adobe's Mixamo FAQ: the user keeps the rights to their own creations, royalty-free use in personal, commercial and non-profit projects, no ML training on Mixamo content (none here); never redistributed, git-ignored (experiments_ab.md section 6)",
       "asset": "Assets/ThirdParty/CharactersV4/cartoon_boxo_01/cartoon_boxo_01.fbx", "material_override": "",
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     }
@@ -123,7 +141,7 @@
     "sunbox_m1", "sunbox_f1", "sunbox_f2", "sunbox_m2",
     "sunbox_m_shirt_white", "sunbox_m_tshirt_black", "sunbox_m_shirt_plaid",
     "sunbox_f_shirt_white", "sunbox_f_dress_red", "sunbox_f_shirt_plaid",
-    "anime_f_01",
+    "anime_f_01", "anime_f_02_outfit_short", "anime_f_03_bangs_parted",
     "cartoon_boxo_01"
   ]
 }

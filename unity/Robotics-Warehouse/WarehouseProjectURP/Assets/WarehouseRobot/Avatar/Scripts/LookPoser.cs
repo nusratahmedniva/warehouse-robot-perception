@@ -13,11 +13,14 @@ namespace WarehouseAvatar
         public float ElevationDeg;      // above (+) or below (-) horizontal
         public bool ForearmUp;          // the direction is the upper arm's; the forearm is vertical
         public float SpreadDeg;         // STOP: fingers fanned away from the middle finger, per finger
+        public float UpperForwardDeg;   // PROCEED: the upper arm this far forward of straight down (elbow 0.08 L out)
+        public float ForearmDeg;        // PROCEED: the forearm this far above horizontal, toward the front
 
-        public static PoseSpec From(string command, string arm, LookVariant v) => new PoseSpec
+        /// <summary>The pose of variant v; PROCEED at its swing's time t (seconds; a single frame uses t 0).</summary>
+        public static PoseSpec From(string command, string arm, LookVariant v, double t = 0.0) => new PoseSpec
         {
             Command = command, RightArm = arm == "right", AzimuthFrontDeg = v.azimuth_front_deg, ElevationDeg = v.elevation_deg,
-            ForearmUp = v.forearm_up, SpreadDeg = v.spread_deg,
+            ForearmUp = v.forearm_up, SpreadDeg = v.spread_deg, UpperForwardDeg = v.upper_forward_deg, ForearmDeg = v.ForearmDeg(t),
         };
     }
 
@@ -70,7 +73,10 @@ namespace WarehouseAvatar
             public Transform[][] Fingers;   // [finger][joint], thumb first; entries may be null
         }
 
-        enum HandShape { Relaxed, Pointing, IndexUp, OpenPalm }
+        enum HandShape { Relaxed, Pointing, IndexUp, OpenPalm, Flat }
+
+        /// <summary>PROCEED's flat hand (worker_v4.json hand_shapes.proceed): every joint bent this little toward the palm.</summary>
+        const float FlatCurlDeg = 5f;
 
         readonly LookCheckHand m_Hand;
         readonly List<Transform> m_Bones = new List<Transform>();
@@ -180,15 +186,37 @@ namespace WarehouseAvatar
             Arm g = p.RightArm ? Right : Left, other = p.RightArm ? Left : Right;
             var rest = Rest(other.IsRight);
             PoseArm(other, rest, rest, HandShape.Relaxed, 0f, forward);
-            var dir = Direction(p.RightArm, p.AzimuthFrontDeg, p.ElevationDeg);
-            var fore = p.ForearmUp ? Vector3.up : dir;
+            Intended(p, out var dir, out var fore);
             switch (p.Command)
             {
                 case LookCheckConfig.Point: PoseArm(g, dir, fore, HandShape.Pointing, 0f, forward); break;
-                case LookCheckConfig.Wait: PoseArm(g, dir, Vector3.up, HandShape.IndexUp, 0f, forward); break;
+                case LookCheckConfig.Wait: PoseArm(g, dir, fore, HandShape.IndexUp, 0f, forward); break;
                 case LookCheckConfig.Stop: PoseArm(g, dir, fore, HandShape.OpenPalm, p.SpreadDeg, forward); break;
+                case LookCheckConfig.Proceed: PoseArm(g, dir, fore, HandShape.Flat, 0f, forward); break;
                 default: throw new ArgumentException($"unknown command '{p.Command}'");
             }
+        }
+
+        /// <summary>
+        /// The intended directions of the gesturing arm of pose p (experiments_ab.md section 10: the Edit-mode geometry): upper arm (shoulder to
+        /// elbow) and forearm (elbow to wrist). PROCEED (addendum 1): the upper arm straight down turned UpperForwardDeg toward the front with
+        /// the elbow 0.08 L out to the side (the worker's PROCEED), the forearm ForearmDeg above horizontal toward the front.
+        /// </summary>
+        public void Intended(PoseSpec p, out Vector3 upper, out Vector3 fore)
+        {
+            if (p.Command == LookCheckConfig.Proceed)
+            {
+                BodyFrame(out var r, out var f);
+                Arm g = p.RightArm ? Right : Left;
+                Vector3 side = p.RightArm ? r : -r;
+                float lu = Vector3.Distance(g.Upper.position, g.Lower.position), L = lu + Vector3.Distance(g.Lower.position, g.Hand.position);
+                float au = p.UpperForwardDeg * Mathf.Deg2Rad, ph = p.ForearmDeg * Mathf.Deg2Rad;
+                upper = (lu * (Mathf.Cos(au) * Vector3.down + Mathf.Sin(au) * f) + side * (0.08f * L)).normalized;
+                fore = (Mathf.Cos(ph) * f + Mathf.Sin(ph) * Vector3.up).normalized;
+                return;
+            }
+            upper = Direction(p.RightArm, p.AzimuthFrontDeg, p.ElevationDeg);
+            fore = p.Command == LookCheckConfig.Wait || p.ForearmUp ? Vector3.up : upper;
         }
 
         void PoseArm(Arm arm, Vector3 upperDir, Vector3 foreDir, HandShape shape, float spreadDeg, Vector3 forward)
@@ -208,6 +236,17 @@ namespace WarehouseAvatar
                     AlignPalm(arm, Vector3.up, forward);
                     Curl(arm, m_Hand.fist_curl_deg, m_Hand.fist_thumb_curl_deg, Index);
                     break;
+                case HandShape.Flat:
+                {
+                    // PROCEED (the worker's shape): fingers along the forearm and together, the palm toward the body
+                    if (middle != null) Aim(arm.Hand, middle.position, foreDir);
+                    BodyFrame(out var bodyRight, out _);
+                    Vector3 palm = Vector3.Cross(foreDir, bodyRight);
+                    if (palm.sqrMagnitude < 1e-6f) palm = Vector3.up;
+                    AlignPalm(arm, foreDir, palm.normalized);
+                    Curl(arm, FlatCurlDeg, FlatCurlDeg, -1);
+                    break;
+                }
                 default:
                     if (middle != null) Aim(arm.Hand, middle.position, foreDir);       // straight wrist
                     BodyFrame(out var r, out _);

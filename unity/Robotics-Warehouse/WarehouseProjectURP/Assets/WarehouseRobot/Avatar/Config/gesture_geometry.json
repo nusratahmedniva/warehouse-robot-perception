@@ -1,0 +1,44 @@
+{
+  "note": "Geometric check of the worker template's gestures (Avatar/Config/experiments_ab.md section 10, declared 2026-11-14 before any change or measurement; Nusrat). Read by Tools > Warehouse v4 > Experiments > Run Gesture Geometry Check (GestureGeometryDriver, Play mode). Every look of looks_ab.json avatar_experiment the worker template can spawn performs every clip of POINT, PROCEED, WAIT and STOP in worker_v4.json with both arms on a neutral stage; the rendered joints (UpperArm, LowerArm, Hand bones after the worker's LateUpdate) are compared with the worker's own goal of that frame. No perception model is run: an engineering check of the pose, not of what a camera reads.",
+  "tolerance": {
+    "elbow_angle_deg": 10.0,
+    "arm_direction_deg": 5.0,
+    "forearm_direction_deg": 10.0,
+    "no_fold_min_elbow_deg": 120.0,
+    "no_fold_commands": ["POINT", "STOP"],
+    "why": "Declared in experiments_ab.md section 10 before any measurement. elbow_angle_deg: the rendered elbow's interior angle (shoulder-elbow-wrist) against the two-bone angle of the goal's shoulder-to-target distance with the rig's own upper arm and forearm. arm_direction_deg: shoulder-to-wrist against shoulder-to-target. forearm_direction_deg: elbow-to-wrist against vertical (WAIT) or against intended elbow-to-target (PROCEED). no_fold_min_elbow_deg: a straight-arm command (POINT 144 to 163 deg by design, worker_v4.json limits; STOP extended) whose elbow closes below 120 deg has folded. A look x command passes when every measured frame of every take passes all of them."
+  },
+  "stage": {
+    "seed": 1,
+    "spacing_m": 5.0,
+    "robot_distance_m": 2.0,
+    "settle_after_hold_s": 0.2,
+    "question_after_request_s": 0.3,
+    "pause_between_s": 0.4,
+    "phase_wait_max_s": 15.0,
+    "hold_frames": 5,
+    "proceed_window_s": 2.0,
+    "point_side_azimuth_deg": [0.0, 45.0],
+    "floor_grey": 0.55,
+    "backdrop_grey": 0.78,
+    "ambient_grey": 0.5,
+    "light_intensity": 1.1,
+    "light_euler_deg": [50.0, -30.0, 0.0],
+    "why": "A new unsaved scene: a grey floor, one directional light, flat ambient, no warehouse. One worker per look on its own spot spacing_m apart along x, a stand-in robot robot_distance_m in front (the asking distance), so each worker turns to face it. Variation stream SetRun(seed, take). hold_frames frames spread over the hold from settle_after_hold_s; PROCEED: every frame of proceed_window_s of the swing (the reader's window, gesture_reader.json proceed.window_s). POINT at the look check's side azimuths (0 = straight out to the person's own side, 45 = toward the front)."
+  },
+  "screens": {
+    "kind_groups": ["anime", "cartoon_non_human"],
+    "distance_m": 3.0,
+    "azimuth_right_deg": 20.0,
+    "height_m": 1.3,
+    "vertical_fov_deg": 35.0,
+    "aim_height_of_body": 0.6,
+    "width_px": 1280,
+    "height_px": 960,
+    "why": "Screenshots for Nusrat's visual check (section 10 item 8), NOT the robot cameras' settings and not perception input: a neutral camera distance_m in front of the worker, azimuth_right_deg toward its right, at height_m, aimed at aim_height_of_body x the look's height; one PNG per look of these kind groups (looks_ab.json kind_group), command and arm, in the middle of the hold (PROCEED: at the top of the swing)."
+  },
+  "output": {
+    "root": "robot_vision/outputs",
+    "run_prefix": "gesture_geometry"
+  }
+}

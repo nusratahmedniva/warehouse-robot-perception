@@ -42,6 +42,10 @@ namespace WarehouseRobot.AvatarCheck
         public LookSource[] extraSources = new LookSource[0];
         public string repoRootRelativeToProject = "../../..";
         public bool runOnStart = true;
+        /// <summary>experiments_ab.md section 10 item 6: set by LookCheckPlayMenu for the avatar experiment's official play part (its guard
+        /// passed in the Editor); the driver then writes the started marker before the first render and the done marker at the end.</summary>
+        public TextAsset avatarExperimentConfig;
+        public string avatarExperimentPart = "";
 
         public string Status { get; private set; } = "idle";
         public string OutputFolder { get; private set; } = "";
@@ -62,9 +66,25 @@ namespace WarehouseRobot.AvatarCheck
             public PlayTakes takes;
             public float settle_after_hold_s, question_after_request_s, pause_between_s;
             public float face_wait_max_s, phase_wait_max_s, initial_yaw_offset_deg;
+            /// <summary>Optional (experiments_ab.md section 10 item 5): also record PROCEED; absent = POINT, WAIT, STOP as before.</summary>
+            public PlayProceed proceed;
         }
 
         [Serializable] public class PlayOutput { public string root, run_prefix, recordings_prefix; }
+
+        /// <summary>PROCEED in the Play look check: recorded like the other commands, its sequences sequence_frames long (the reader's 2.0 s
+        /// window at 10 Hz) and taken while the forearm swings.</summary>
+        [Serializable] public class PlayProceed { public bool record; public int sequence_frames; }
+
+        /// <summary>The commands a run records: worker_v4.json's look-check commands, plus PROCEED when the play config asks for it.</summary>
+        public static List<string> RecordedCommands(PlayConfig p)
+        {
+            var list = new List<string>(WorkerV4Config.Commands);
+            if (p.proceed != null && p.proceed.record) list.Add(WorkerV4Config.Proceed);
+            return list;
+        }
+
+        int SequenceFrames(string cmd) => cmd == WorkerV4Config.Proceed ? m_Play.proceed.sequence_frames : m_Look.recording.sequence_frames;
 
         [Serializable]
         public class PlayVenue
@@ -120,6 +140,17 @@ namespace WarehouseRobot.AvatarCheck
             public string status, note;
             /// <summary>experiments_ab.md section 5: the looks kept by -lookCheckLooks ("" = the config's whole list).</summary>
             public string looks_subset;
+            /// <summary>experiments_ab.md section 10 item 6: "play" for the avatar experiment's official run, "" for an engineering check.</summary>
+            public string avatar_experiment_part;
+        }
+
+        AvatarExperimentConfig m_Official;
+        string m_OfficialCommit = "";
+
+        void Marker(bool done, string status = "")
+        {
+            string file = Path.Combine(OutputFolder, done ? m_Official.done_file : m_Official.started_file);
+            WriteNew(file, AvatarExperimentGuard.MarkerJson(done ? "done" : "started", avatarExperimentPart, m_OfficialCommit, Path.GetFileName(OutputFolder), AvatarExperimentGuard.Now(), status));
         }
 
         /// <summary>One camera of a site: the nominal distance it stands for (2.0 or 4.0 m) and its render targets.</summary>
@@ -245,8 +276,14 @@ namespace WarehouseRobot.AvatarCheck
             var e = new List<string>();
             if (p.looks == null || p.looks.Length == 0) e.Add("no looks");
             else foreach (var l in p.looks) if (ExperimentLooks.Find(w, extra, l) == null) e.Add($"look '{l}' is not in worker_v4.json" + (extra != null ? " or looks_ab.json" : ""));
-            foreach (var cmd in WorkerV4Config.Commands)
+            foreach (var cmd in RecordedCommands(p))
                 if (w.ClipNames(cmd).Count < 2) e.Add($"worker_v4.json: fewer than 2 variants of {cmd}");
+            if (p.proceed != null && p.proceed.record)
+            {
+                if (p.proceed.sequence_frames < 21 || p.proceed.sequence_frames > 40) e.Add("proceed.sequence_frames: the reader's 2.0 s window at 10 Hz (21 to 40)");
+                else if (!(w.variation.hold_s[0] > p.settle_after_hold_s + (p.proceed.sequence_frames - 1) * 0.1f + 0.3f))
+                    e.Add("worker_v4.json hold_s is too short for a full PROCEED sequence inside the swing");
+            }
             var v = p.venue;
             if (v == null || string.IsNullOrEmpty(v.scene)) { e.Add("venue.scene missing"); return e; }
             if (v.junctions == null || v.junctions.Length == 0) e.Add("venue.junctions missing");
@@ -298,6 +335,14 @@ namespace WarehouseRobot.AvatarCheck
             if (subsetError != null) { Finish("failed: " + subsetError); yield break; }
             if (subset != null) m_Play.looks = subset;
             info.looks_subset = subset != null ? string.Join(",", subset) : "";
+            info.avatar_experiment_part = avatarExperimentPart ?? "";
+            if (!string.IsNullOrEmpty(avatarExperimentPart))
+            {
+                if (avatarExperimentConfig == null || subset != null) { Finish("failed: the avatar experiment's play part needs avatar_experiment.json and the whole look list"); yield break; }
+                m_Official = AvatarExperimentConfig.Parse(avatarExperimentConfig.text);
+                Git(out m_OfficialCommit, out _);
+                Marker(false);                                                // before the first render: a crashed run counts as run
+            }
 
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
@@ -364,6 +409,7 @@ namespace WarehouseRobot.AvatarCheck
             info.status = errors.Count == 0 ? "done" : "done with problems: " + string.Join("; ", errors);
             info.note = "v4 Play-mode look check in WarehouseRobot_v4.unity at the Task 2 worker stands (Phase 2D, look_check_changes.md): an engineering check of the worker template's looks and gestures; not an evaluation.";
             WriteNew(Path.Combine(OutputFolder, "run_info.json"), JsonUtility.ToJson(info, true).Replace("\r\n", "\n") + "\n");
+            if (m_Official != null) Marker(true, info.status);
             Finish((errors.Count == 0 ? "done: " : "failed: ") + $"{m_Records.Count} recordings, {m_Frames} frames in {Path.GetFileName(OutputFolder)}" +
                    (errors.Count > 0 ? " - " + string.Join("; ", errors) : ""));
         }
@@ -516,7 +562,7 @@ namespace WarehouseRobot.AvatarCheck
                 yield return WaitFacing(s);
                 yield return CaptureIdle(s, take);
             }
-            foreach (var cmd in WorkerV4Config.Commands)
+            foreach (var cmd in RecordedCommands(m_Play))
             {
                 var clips = m_Worker.ClipNames(cmd);
                 foreach (var arm in m_Look.recording.arms)
@@ -602,7 +648,7 @@ namespace WarehouseRobot.AvatarCheck
             if (w.Phase != WorkerPhase.Holding) { s.Error = $"{cmd} {arm} {name}: the worker never reached its hold"; yield break; }
             float holdStart = Time.time;
             int ikBefore = w.HandIkCalls;
-            int frames = seq ? m_Look.recording.sequence_frames : 1;
+            int frames = seq ? SequenceFrames(cmd) : 1;
             var recs = NewRecords(s, cmd, arm, clip, name, take, frames);
             var p = w.Current;
             foreach (var rec in recs)
@@ -622,11 +668,15 @@ namespace WarehouseRobot.AvatarCheck
             else
             {
                 float t0 = holdStart + m_Play.settle_after_hold_s;
+                bool proceed = cmd == WorkerV4Config.Proceed;
                 for (int i = 0; i < frames; i++)
                 {
-                    while (Time.time < t0 + i * 0.1f) yield return null;
+                    // PROCEED: frames 1.. are timed from frame 0's real time (+1 ms), so the sequence spans at least the reader's
+                    // window (look_check_v4.py refuses a PROCEED sequence shorter than proceed.window_s; a late frame 0 gave 1.99 s)
+                    while (Time.time < t0 + i * 0.1f + (proceed && i > 0 ? 0.001f : 0f)) yield return null;
                     yield return new WaitForEndOfFrame();
                     for (int c = 0; c < recs.Count; c++) Capture(s, s.Cams[c], recs[c], true, i, arm);
+                    if (proceed && i == 0) t0 = Time.time;
                 }
             }
             foreach (var rec in recs)

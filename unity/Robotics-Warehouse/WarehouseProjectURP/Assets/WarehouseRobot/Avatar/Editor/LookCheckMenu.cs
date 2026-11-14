@@ -37,7 +37,7 @@ namespace WarehouseAvatar.EditorTools
     /// BatchRun (exit code 0 = done).
     /// Third-party code (Sunbox) is reached by reflection only, so this compiles on a machine without the pack.
     /// </summary>
-    public static class LookCheckMenu
+    public static partial class LookCheckMenu
     {
         public const string ScenePath = "Assets/WarehouseRobot/Avatar/LookCheck.unity";
         public const string ConfigPath = "Assets/WarehouseRobot/Avatar/Config/look_check.json";
@@ -87,6 +87,9 @@ namespace WarehouseAvatar.EditorTools
             // experiments_ab.md section 5: -lookCheckLooks <id>[,<id>...] keeps those looks (recorded in run_info.json looks_subset)
             var subset = ExperimentLooks.Subset(Environment.GetCommandLineArgs(), ab.avatar_experiment, out string subsetError);
             if (subsetError != null) throw new ArgumentException(subsetError);
+            // experiments_ab.md section 10 item 6: with -avatarExperiment this is the avatar experiment's edit part, run once after the freeze
+            var official = AvatarExperimentGate.Requested();
+            if (official != null) AvatarExperimentGate.Check(official, AvatarExperimentConfig.Edit, subset != null);
             return Run(cfg =>
             {
                 var looks = new List<LookEntry>();
@@ -96,7 +99,7 @@ namespace WarehouseAvatar.EditorTools
                 cfg.looks = looks.ToArray();
                 cfg.paths.output_prefix = cfg.paths.output_prefix + "_ab";
             }, new Dictionary<string, string> { { "looks_ab.json", abText }, { "worker_v4.json", workerAsset.text } },
-               subset != null ? string.Join(",", subset) : "");
+               subset != null ? string.Join(",", subset) : "", official);
         }
 
         static void Batch(Func<string> action)
@@ -224,7 +227,7 @@ namespace WarehouseAvatar.EditorTools
 
         public static string Run() => Run(null, null);
 
-        static string Run(Action<LookCheckConfig> adjust, Dictionary<string, string> extraConfigs, string looksSubset = "")
+        static string Run(Action<LookCheckConfig> adjust, Dictionary<string, string> extraConfigs, string looksSubset = "", AvatarExperimentConfig official = null)
         {
             var cfgAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(ConfigPath) ?? throw new FileNotFoundException(ConfigPath);
             var cfg = LoadConfig(cfgAsset);
@@ -243,6 +246,8 @@ namespace WarehouseAvatar.EditorTools
             var robotAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(cfg.paths.robot_unity_config);
             WriteNew(Path.Combine(outDir, "config_used", Path.GetFileName(cfg.paths.robot_unity_config)), robotAsset.text);
             if (extraConfigs != null) foreach (var kv in extraConfigs) WriteNew(Path.Combine(outDir, "config_used", kv.Key), kv.Value);
+            string commit = official != null ? Git(repo, "rev-parse HEAD").Trim() : "";
+            if (official != null) AvatarExperimentGate.WriteMarker(official, outDir, false, AvatarExperimentConfig.Edit, commit);   // before the first render
 
             float fov = cfg.recording.vertical_fov_deg;
             var rest = new PoseSpec { Command = LookCheckConfig.None, ElevationDeg = -Mathf.Atan2(1f, cfg.hand.rest_outward) * Mathf.Rad2Deg };
@@ -273,12 +278,14 @@ namespace WarehouseAvatar.EditorTools
                         foreach (string arm in c.arm_labelled ? cfg.recording.arms : new[] { "" })
                             foreach (var v in c.variants)
                             {
+                                bool proceed = c.command == LookCheckConfig.Proceed;
+                                double Phase(int i) => proceed ? PoseSpec.From(c.command, arm, v, i / 10.0).ForearmDeg : double.NaN;
                                 spawned.Poser.Apply(PoseSpec.From(c.command, arm, v));
                                 var px = Render(stage.checkCamera, pt.width_px, pt.height_px, out byte[] png);
                                 int magenta = LookInventory.MagentaPixels(px, cfg.render.magenta_tolerance);
                                 maxMagenta = Mathf.Max(maxMagenta, magenta);
                                 string name = LookCheckConfig.RecordingName(look.id, c.command, d, arm, v.take);
-                                int n = v.sequence ? cfg.recording.sequence_frames : 1;
+                                int n = v.sequence ? (proceed ? cfg.recording.proceed_sequence_frames : cfg.recording.sequence_frames) : 1;
                                 if (v.sequence)
                                 {
                                     string seqDir = Path.Combine(recDir, name);
@@ -286,15 +293,23 @@ namespace WarehouseAvatar.EditorTools
                                     Directory.CreateDirectory(seqDir);
                                     for (int i = 0; i < n; i++)          // a held pose: the same render for every frame of the second
                                     {
+                                        if (proceed && i > 0)
+                                        {
+                                            // PROCEED (experiments_ab.md section 10 addendum 1): a posed swing, every frame rendered at its time i / 10 s
+                                            spawned.Poser.Apply(PoseSpec.From(c.command, arm, v, i / 10.0));
+                                            px = Render(stage.checkCamera, pt.width_px, pt.height_px, out png);
+                                            magenta = Mathf.Max(magenta, LookInventory.MagentaPixels(px, cfg.render.magenta_tolerance));
+                                            maxMagenta = Mathf.Max(maxMagenta, magenta);
+                                        }
                                         string stem = Path.Combine(seqDir, LookCheckConfig.FrameStem(i));
                                         WriteNew(stem + ".png", png);
-                                        WriteNew(stem + ".json", LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, i, arm, v));
+                                        WriteNew(stem + ".json", LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, i, arm, v, Phase(i)));
                                     }
                                 }
                                 else
                                 {
                                     WriteNew(Path.Combine(recDir, name + ".png"), png);
-                                    WriteNew(Path.Combine(recDir, name + ".json"), LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, 0, arm, v));
+                                    WriteNew(Path.Combine(recDir, name + ".json"), LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, 0, arm, v, Phase(0)));
                                 }
                                 lines.Append(JsonUtility.ToJson(new RecordingRecord
                                 {
@@ -313,7 +328,10 @@ namespace WarehouseAvatar.EditorTools
             ClearStage(stage);
             WriteNew(Path.Combine(outDir, "recordings.jsonl"), lines.ToString());
             WriteNew(Path.Combine(outDir, "inventory.json"), JsonUtility.ToJson(new InventoryFile { looks = rows.ToArray() }, true));
-            WriteNew(Path.Combine(outDir, "run_info.json"), JsonUtility.ToJson(RunInfo(repo, cfgAsset.text, robotAsset.text, looksSubset), true));
+            var info = RunInfo(repo, cfgAsset.text, robotAsset.text, looksSubset);
+            info.avatar_experiment_part = official != null ? AvatarExperimentConfig.Edit : "";
+            WriteNew(Path.Combine(outDir, "run_info.json"), JsonUtility.ToJson(info, true));
+            if (official != null) AvatarExperimentGate.WriteMarker(official, outDir, true, AvatarExperimentConfig.Edit, commit, "done");
             string rel = Path.GetRelativePath(repo, recDir).Replace('\\', '/');
             return $"{recordings} recordings ({frames} frames) of {rows.Count(r => r.status == "ok")} usable looks ({rows.Count} listed) in {rel}. " +
                    string.Join("; ", rows.Select(r => $"{r.id}: {r.status}")) +
@@ -339,6 +357,8 @@ namespace WarehouseAvatar.EditorTools
             /// <summary>experiments_ab.md section 5: the looks kept by -lookCheckLooks ("" = the whole list).</summary>
             public string looks_subset;
             public bool git_dirty;
+            /// <summary>experiments_ab.md section 10 item 6: "edit" for the avatar experiment's official run, "" for an engineering check.</summary>
+            public string avatar_experiment_part;
         }
 
         static RunInfoRecord RunInfo(string repo, string cfgText, string robotText, string looksSubset)
