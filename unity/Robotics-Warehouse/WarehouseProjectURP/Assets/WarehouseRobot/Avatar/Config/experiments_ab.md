@@ -854,3 +854,18 @@ again; the first run is kept.
 - The Play screenshots show both STOP plates face-on, a visual check only.
 - So Boxo's palm is judged by the bones (2.0 deg) and, for WAIT, also by the plate mesh; for STOP the mesh cannot be measured under the
   declared minimum. Nothing is changed for this; it is Nusrat's call.
+
+*Results (2026-11-14, decisions 1 to 3 committed 97c84da, b0eacb3, a1981fc; rerun `gesture_geometry_hand_final_20261114_225633` on
+a1981fc, clean tree, all 15 looks, 120 screenshots; tables in `reports_v4/`).*
+- **Arm geometry:** all 15 looks pass, as before.
+- **Hand check:** 12 of 15 pass.
+  - **WAIT thumb:** mixamo_worker 1.27 -> 0.95 Lp, anime_f_01/02/03 1.57 -> 0.95 Lp, all on the palm side (0.71 to 0.86 Lp). The Sunbox
+    looks are unchanged at 0.93 to 0.94 Lp.
+  - **Palm by the bones:** at most 16.5 deg on every look.
+- **anime_f_01 and anime_f_03 still fail the mesh part** (89 to 95 deg). By decision 2 this is recorded as the sleeve artefact of the
+  check (skin-only palm at 10.2 to 12.6 deg in the probe); the rule is unchanged, so the table still says "no".
+- **cartoon_boxo_01 fails the WAIT thumb:** 1.08 Lp, and -0.07 Lp, i.e. just behind the palm plane. The tuck's best at the full 90 deg
+  curl (addendum 3) is reported, not tuned further. Its STOP passes by the bones; the mesh is n/a.
+- **Screenshots (visual only):** mixamo_worker's WAIT thumb no longer sticks out; Boxo's thumb lies bunched with its curled fingers.
+
+No perception was run.
