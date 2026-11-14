@@ -257,5 +257,133 @@ namespace WarehouseAvatar.Tests
                 }
             }
         }
+
+        // ---------------------------------------------------------------- the final-run guard (step 3, experiments_ab.md section 7)
+
+        sealed class Outputs : IDisposable
+        {
+            public readonly string Root = Path.Combine(Path.GetTempPath(), "final_guard_ab_" + Guid.NewGuid().ToString("N"));
+            public Outputs() { Directory.CreateDirectory(Root); }
+            public void Marker(string folder, string file, string text)
+            {
+                Directory.CreateDirectory(Path.Combine(Root, folder));
+                File.WriteAllText(Path.Combine(Root, folder, file), text);
+            }
+            public void Dispose() { if (Directory.Exists(Root)) Directory.Delete(Root, true); }
+        }
+
+        const string Zero = "0000000000000000000000000000000000000000000000000000000000000000";
+        static readonly string[] Frozen = { "unity/final_ab_A1.json", "unity/scene.unity" };
+
+        /// <summary>The experiment settings with a two-file freeze list and the Task 2 settings superseded (a synthetic final_v4.json).</summary>
+        static FinalConfigV4 Small() => FinalConfigV4.Parse(
+            "{\"final_plan\": \"p.json\", \"frozen\": \"f.json\", \"done_file\": \"UNITY_FINAL_DONE.json\", \"python_run_marker\": \"FINAL_RUN_DONE.json\", " +
+            "\"settings\": [" + string.Join(", ", Names.Select(n => $"{{\"name\": \"{n}\", \"workers_config\": \"w.json\", \"experiment_config\": \"final_ab_{n}.json\", \"look_split\": \"test\", \"clip_split\": \"test\"}}")) + "], " +
+            "\"superseded_settings\": [{\"name\": \"zoom_on\", \"workers_config\": \"z.json\", \"look_split\": \"test\", \"clip_split\": \"test\"}], " +
+            "\"freeze_files\": [\"" + string.Join("\", \"", Frozen) + "\"]}");
+
+        /// <summary>A filled final_plan.json that lists the nine experiment settings (what Anisha's file will hold).</summary>
+        static readonly string PlanAB = "{\"task\": \"Task2\", \"final_seed\": 2, \"runs_per_setting\": 20, \"timeout_s\": 270, \"success_radius_m\": 0.3, " +
+            "\"settings\": {" + string.Join(", ", Names.Select(n => $"\"{n}\": {{\"zoom\": null, \"bystanders\": null}}")) + "}, " +
+            "\"test_assignment\": {\"A1\": \"x\"}, \"unity_files_and_guard\": \"listed\", \"acceptance_criteria\": [\"a\"]}";
+
+        static string FrozenText(bool frozen, Func<string, string> sha) =>
+            "{\"frozen\": " + (frozen ? "true" : "false") + ", \"unity_files\": {" + string.Join(", ", Frozen.Select(f => $"\"{f}\": \"{sha(f)}\"")) + "}}";
+
+        static string Sha(string path) => path == "unity/final_ab_A1.json" ? FinalGuardV4.Sha256Lf(System.Text.Encoding.UTF8.GetBytes("{\"experiment\": \"A1\"}\n"))
+                                                                         : FinalGuardV4.Sha256Lf(System.Text.Encoding.UTF8.GetBytes("scene\n"));
+
+        static string Why(FinalConfigV4 cfg, string setting, string plan, string frozen, Func<string, string> sha, string outputs) =>
+            string.Join(" | ", FinalGuardV4.Problems(cfg, setting, plan, frozen, sha, outputs, false));
+
+        [Test]
+        public void Guard_EveryExperimentSetting_AllowedWhenFrozenListedAndNotRunBefore()
+        {
+            using (var o = new Outputs())
+                foreach (var n in Names)
+                    Assert.AreEqual("", Why(Small(), n, PlanAB, FrozenText(true, Sha), Sha, o.Root), n);
+        }
+
+        [Test]
+        public void Guard_EachExperimentOnce_ASecondRunIsRefused_OtherSettingsUnaffected()
+        {
+            using (var o = new Outputs())
+            {
+                var cfg = Small();
+                string frozen = FrozenText(true, Sha);
+                o.Marker("trials_final_Task2_A2_right_20261201_100000", "UNITY_FINAL_DONE.json", FinalGuardV4.DoneJson("A2_right", 20, 17, "abc", "x", "t"));
+                StringAssert.Contains("already run as a final: trials_final_Task2_A2_right_20261201_100000/UNITY_FINAL_DONE.json", Why(cfg, "A2_right", PlanAB, frozen, Sha, o.Root));
+                foreach (var other in new[] { "A2_left", "B2_right", "A1" })
+                    Assert.AreEqual("", Why(cfg, other, PlanAB, frozen, Sha, o.Root), other + ": another setting's marker");
+                o.Marker("bridge_guide_20261201_090000", "FINAL_RUN_DONE.json", "{\"setting\": \"B3\", \"kind\": \"run\"}");
+                StringAssert.Contains("bridge_guide_20261201_090000/FINAL_RUN_DONE.json", Why(cfg, "B3", PlanAB, frozen, Sha, o.Root));
+                Assert.AreEqual("", Why(cfg, "B4", PlanAB, frozen, Sha, o.Root), "B4 after B3");
+                Assert.AreEqual("", Why(cfg, "A3", PlanAB, frozen, Sha, o.Root), "A3 after B3");
+                // a marker of a superseded Task 2 setting blocks nothing of the new study
+                o.Marker("trials_final_Task2_zoom_on_20261201_080000", "UNITY_FINAL_DONE.json", FinalGuardV4.DoneJson("zoom_on", 20, 20, "abc", "x", "t"));
+                Assert.AreEqual("", Why(cfg, "A1", PlanAB, frozen, Sha, o.Root));
+            }
+        }
+
+        [Test]
+        public void Guard_FrozenHashesRequired_ForTheExperiments()
+        {
+            using (var o = new Outputs())
+            {
+                var cfg = Small();
+                foreach (var n in Names)
+                    StringAssert.Contains("not frozen", Why(cfg, n, PlanAB, FrozenText(false, Sha), Sha, o.Root), n);
+                string frozen = FrozenText(true, Sha);
+                Func<string, string> edited = p => p == "unity/final_ab_A1.json" ? FinalGuardV4.Sha256Lf(System.Text.Encoding.UTF8.GetBytes("{\"experiment\": \"A1\", \"a2_side\": \"left\"}\n")) : Sha(p);
+                StringAssert.Contains("unity/final_ab_A1.json changed since the freeze", Why(cfg, "A1", PlanAB, frozen, edited, o.Root));
+                StringAssert.Contains("unity/final_ab_A1.json changed since the freeze", Why(cfg, "B4", PlanAB, frozen, edited, o.Root), "any listed file blocks every final");
+                StringAssert.Contains("unity/scene.unity is missing", Why(cfg, "A3", PlanAB, frozen, p => p == "unity/scene.unity" ? null : Sha(p), o.Root));
+                StringAssert.Contains("is not recorded in frozen.json", Why(cfg, "A4", PlanAB, frozen.Replace("unity/scene.unity", "unity/other.unity"), Sha, o.Root));
+            }
+        }
+
+        [Test]
+        public void Guard_SupersededAndUnknownSettingsAreRefused_AndThePythonPlanMustListTheSetting()
+        {
+            using (var o = new Outputs())
+            {
+                string frozen = FrozenText(true, Sha);
+                StringAssert.Contains("'zoom_on' is superseded", Why(Small(), "zoom_on", PlanAB, frozen, Sha, o.Root));
+                StringAssert.Contains("'B2_left' is not in final_v4.json", Why(Small(), "B2_left", PlanAB, frozen, Sha, o.Root));
+                StringAssert.Contains("'A2' is not in final_v4.json", Why(Small(), "A2", PlanAB, frozen, Sha, o.Root));
+                StringAssert.Contains("'A4' is not in final_plan.json", Why(Small(), "A4", PlanAB.Replace("\"A4\": {", "\"A9\": {"), frozen, Sha, o.Root));
+            }
+            // the real files: the Task 2 settings are superseded; every experiment the Python plan does not list yet is refused for it
+            var f = Final();
+            string realFrozen = Repo(f.frozen), realPlan = Repo(f.final_plan);
+            Func<string, string> realSha = p => File.Exists(Path.Combine(RepoRoot, p)) ? FinalGuardV4.Sha256Lf(File.ReadAllBytes(Path.Combine(RepoRoot, p))) : null;
+            string none = Path.Combine(Path.GetTempPath(), "final_guard_ab_no_outputs");
+            foreach (var s in f.superseded_settings)
+                StringAssert.Contains("is superseded", Why(f, s.name, realPlan, realFrozen, realSha, none), s.name);
+            var planned = FinalPlanV4.Parse(realPlan).Settings;
+            foreach (var n in Names.Where(n => !planned.Contains(n)))
+                StringAssert.Contains($"'{n}' is not in final_plan.json", Why(f, n, realPlan, realFrozen, realSha, none), n);
+        }
+
+        [Test]
+        public void Config_RefusesASettingThatIsAlsoSuperseded()
+        {
+            var f = Small();
+            f.superseded_settings.Add(new FinalSettingV4 { name = "A1", workers_config = "w.json", look_split = "test", clip_split = "test" });
+            StringAssert.Contains("'A1' is also listed as superseded", string.Join(" | ", f.Validate()));
+        }
+
+        [Test]
+        public void DoneFile_OfAnExperiment_IsFoundOnlyForItsOwnSetting()
+        {
+            using (var o = new Outputs())
+            {
+                o.Marker("trials_final_Task2_A2_left_20261201_100000", "UNITY_FINAL_DONE.json", FinalGuardV4.DoneJson("A2_left", 20, 20, "abc", "trials_final_Task2_A2_left_20261201_100000", "t"));
+                Assert.AreEqual("trials_final_Task2_A2_left_20261201_100000/UNITY_FINAL_DONE.json", FinalGuardV4.EarlierFinal(o.Root, "A2_left", Small()));
+                Assert.IsNull(FinalGuardV4.EarlierFinal(o.Root, "A2_right", Small()));
+                Assert.IsNull(FinalGuardV4.EarlierFinal(o.Root, "A2", Small()));
+                StringAssert.DoesNotContain("\"setting\"", FinalGuardV4.DoneJson("A2_left", 20, 20, "abc", "x", "t"));
+            }
+        }
     }
 }

@@ -374,3 +374,11 @@ clips. `TrialRunnerV4` in a final of an experiment setting: experiment and side 
 `TrialPlayV4 -experimentSide right|left` (the A2 / B2 side for that session; refused on any other map). The freeze list is unchanged until step 4.
 Edit Mode test (`FinalExperimentsABTests`) plans the 20 seed-2 runs of every setting with its final looks (placement rules met everywhere; the
 in-scene free-cell and collider check runs only at Play).
+
+*Step 3, the final-run guard for the experiment names.* `FinalGuardV4.Problems` (unchanged rules, now with the experiment settings): a setting
+must be in `final_v4.json` `settings` and in Python's `final_plan.json` `settings`; a superseded name is refused as superseded; `frozen.json` must
+be frozen with every B9 file present, recorded and unchanged; no development override; **each setting once**: a Unity `UNITY_FINAL_DONE.json`
+(`final_setting`) or a Python `FINAL_RUN_DONE.json` (`setting`) of the same name anywhere under the output root refuses it, and a marker of another
+setting (also `A2_right` vs `A2_left`, or a superseded Task 2 setting) refuses nothing else. A config listing a name both as a setting and as
+superseded is invalid. Tests: `FinalExperimentsABTests` (guard section). Today every experiment final is refused (not frozen; not in
+`final_plan.json`).
