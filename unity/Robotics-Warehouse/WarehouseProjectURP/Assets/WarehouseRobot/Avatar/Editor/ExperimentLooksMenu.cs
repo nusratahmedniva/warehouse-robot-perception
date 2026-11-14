@@ -550,6 +550,7 @@ namespace WarehouseAvatar.EditorTools
             public string[] materials = new string[0];
             public string[] recoloured = new string[0];
             public string[] colourless_unmatched = new string[0];
+            public string[] alpha_clipped = new string[0];
         }
 
         [Serializable] class ImportReport { public string created_local, unity_version, render_pipeline; public List<CharacterReport> characters = new List<CharacterReport>(); }
@@ -659,6 +660,8 @@ namespace WarehouseAvatar.EditorTools
                 unlit++;
             }
             if (unlit > 0) { AssetDatabase.SaveAssets(); r.note += $" Emission switched off on {unlit} materials (pure white, no emission map)."; }
+            r.alpha_clipped = ClipCutouts(matDir);
+            if (r.alpha_clipped.Length > 0) r.note += $" Alpha clipping on {r.alpha_clipped.Length} materials (base texture with a cut-out mask).";
 
             var spec = f.recolour?.FirstOrDefault(x => x != null && x.look == id);
             if (spec != null) Recolour(spec, matDir, r);
@@ -692,6 +695,35 @@ namespace WarehouseAvatar.EditorTools
             r.status = !r.humanoid ? "not_humanoid" : !r.avatar_valid ? "avatar_invalid" : "ok";
             r.note = r.note.Trim();
             return r;
+        }
+
+        /// <summary>experiments_ab.md section 11 item 4: every material of the model whose base texture carries a cut-out mask (CutoutMaterials)
+        /// gets alpha clipping. The texture is read from its file (the importer's copy need not be readable). Idempotent. Returns one entry per
+        /// clipped material with its clear fraction.</summary>
+        static string[] ClipCutouts(string matDir)
+        {
+            var clipped = new List<string>();
+            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { matDir }))
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                if (m == null || !m.HasProperty("_BaseMap")) continue;
+                var tex = m.GetTexture("_BaseMap");
+                string texPath = tex != null ? AssetDatabase.GetAssetPath(tex) : "";
+                string ext = Path.GetExtension(texPath).ToLowerInvariant();
+                if (ext != ".png" && ext != ".jpg" && ext != ".jpeg") continue;
+                var t = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                try
+                {
+                    if (!t.LoadImage(File.ReadAllBytes(Path.Combine(Application.dataPath, "..", texPath)))) continue;
+                    float clear = CutoutMaterials.ClearFraction(t.GetPixels32());
+                    if (clear < CutoutMaterials.MinClearFraction || !CutoutMaterials.ApplyAlphaClip(m)) continue;
+                    EditorUtility.SetDirty(m);
+                    clipped.Add($"{m.name}: {Path.GetFileName(texPath)} {(100f * clear).ToString("0.0", Inv)} % of texels below alpha {CutoutMaterials.Cutoff.ToString("0.0", Inv)}");
+                }
+                finally { Object.DestroyImmediate(t); }
+            }
+            if (clipped.Count > 0) AssetDatabase.SaveAssets();
+            return clipped.OrderBy(x => x, StringComparer.Ordinal).ToArray();
         }
 
         /// <summary>experiments_ab.md section 2, unit scale: a Humanoid model whose head-to-foot bone height lies outside [0.5, 2.5] m
