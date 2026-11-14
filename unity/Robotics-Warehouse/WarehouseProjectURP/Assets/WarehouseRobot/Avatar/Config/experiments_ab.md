@@ -965,3 +965,29 @@ Then step 1's probes run again on the corrected import. *Also found, rule unchan
   - Hand-bone weight >= 0.95: 0 to 3.8 % of palm-region vertices.
 - `looks_ab.json` names v3. The edit-mode `LookPoser` still reports "shapes False" (it requires a little finger); the worker template
   does not.
+
+*Steps 3 and 4 results (2026-11-15; `gesture_geometry_boxo_v3_20261115_000535` on 25fb6fe, clean tree, all 15 looks, 120 screenshots;
+tables in `reports_v4/`).*
+- **Arm geometry:** 15 of 15 pass.
+- **Hand check: 13 of 15**, now including Boxo.
+  - Boxo's tucked WAIT thumb is at **0.95 Lp** (palm side 0.55 Lp), so the thumb opposition of step 3 is not needed and is not built.
+  - Boxo's palm by the bones is at 5.6 to 9.8 deg. His mesh palm is still n/a: 59 to 64 vertices, but flatness 0.66 > 0.5.
+  - anime_f_01 and 03 fail only the mesh part (the sleeve artefact of decision 2).
+- **Forearm volume: passes on every look.** The narrowest band keeps 0.82 to 0.97 on the five-finger looks and **0.72 to 0.91 on Boxo v3**
+  (WAIT 0.72, POINT 0.73, close to the 0.70 limit). In the screenshot Boxo's WAIT forearm keeps its shape and the hand stays attached.
+- **Torso rigidity: the declared limit (p95 < 1.0 cm) fails on 14 of 15 looks, five-finger looks included.** Only anime_f_02 passes.
+
+  | looks | torso p95 (cm) | torso max (cm) |
+  |---|---|---|
+  | mixamo_worker | 0.71 to 1.02 (fails on POINT) | |
+  | Sunbox | 0.63 to 1.71 | 1.35 to 6.75 |
+  | anime_f_01, 03 | 0.98 to 1.80 | |
+  | cartoon_boxo_01 v3 | 0.80 to 1.55 | 3.07 to **11.43** (WAIT) |
+
+  The unchanged five-finger rigs deform their upper chest and shoulder vertices by 1 to 2 cm (p95) when an arm moves, so the limit is
+  stricter than every rig. **This is reported, not tuned (Nusrat decides).**
+  - Boxo's p95 is within the five-finger range, but his WAIT maximum of 11.4 cm is the largest of all. In the WAIT screenshot the upper
+    vest stripe is wavy and a flap of the body pulls out at the raised arm's shoulder.
+  - His POINT stripes are straight.
+
+No perception was run.
