@@ -28,6 +28,10 @@ namespace WarehouseAvatar
         public string proposed_split;
         /// <summary>The licence status as checked (e.g. "Unity Asset Store EULA", "not verified: SOURCES.txt missing").</summary>
         public string licence;
+        /// <summary>A controlled variant (experiments_ab.md section 10): the look it varies ("" = not a variant), of the same kind_group.</summary>
+        public string variant_of;
+        /// <summary>What the variant changes against variant_of (and only that).</summary>
+        public string variant_changes;
     }
 
     [Serializable]
@@ -111,6 +115,14 @@ namespace WarehouseAvatar
                     if (l.id != expected) e.Add($"looks '{l.id}': the name must encode person, gender and costume ('{expected}')");
                 }
                 else if (!string.IsNullOrEmpty(l.proposed_split)) e.Add($"looks '{l.id}': proposed_split is for navigation looks only");
+                if (!string.IsNullOrEmpty(l.variant_of))
+                {
+                    var of = Array.Find(f.looks, x => x != null && x.id == l.variant_of);
+                    if (of == null) e.Add($"looks '{l.id}': variant_of '{l.variant_of}' is not a look of looks_ab.json");
+                    else if (of.kind_group != l.kind_group) e.Add($"looks '{l.id}': a variant keeps the kind_group of '{l.variant_of}'");
+                    if (string.IsNullOrEmpty(l.variant_changes)) e.Add($"looks '{l.id}': a variant says what it changes (variant_changes)");
+                    if (l.navigation) e.Add($"looks '{l.id}': a controlled variant is for the avatar experiment only");
+                }
             }
             var exp = new HashSet<string>(StringComparer.Ordinal);
             foreach (var id in f.avatar_experiment)

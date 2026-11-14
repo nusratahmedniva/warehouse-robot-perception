@@ -37,6 +37,31 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
+        public void AnimeVariants_AreControlledVariantsOfAnimeF01_InTheAvatarExperimentOnly()
+        {
+            var f = ExperimentLooks.Parse(Project(ExperimentLooks.AssetPath));
+            foreach (var id in new[] { "anime_f_02_outfit_short", "anime_f_03_bangs_parted" })
+            {
+                var l = f.looks.Single(x => x.id == id);
+                Assert.AreEqual("anime_f_01", l.variant_of, id);
+                Assert.AreEqual(ExperimentLook.Anime, l.kind_group, id);
+                Assert.IsFalse(l.navigation, id);
+                Assert.IsNotEmpty(l.variant_changes, id);
+                StringAssert.StartsWith(f.paths.import_folder + "/" + id + "/", l.asset);
+                CollectionAssert.Contains(f.avatar_experiment, id);
+            }
+            StringAssert.Contains("sleeves", f.looks.Single(x => x.id == "anime_f_02_outfit_short").variant_changes);
+            StringAssert.StartsWith("only the bangs", f.looks.Single(x => x.id == "anime_f_03_bangs_parted").variant_changes);
+            var worker = WorkerV4Config.Parse(Project("Assets/WarehouseRobot/Avatar/Config/worker_v4.json"));
+            var bad = ExperimentLooks.Parse(Project(ExperimentLooks.AssetPath));
+            bad.looks.Single(x => x.id == "anime_f_03_bangs_parted").variant_of = "cartoon_boxo_01";
+            bad.looks.Single(x => x.id == "anime_f_02_outfit_short").variant_changes = "";
+            var e = ExperimentLooks.Validate(bad, worker.looks);
+            Assert.IsTrue(e.Any(x => x.Contains("keeps the kind_group")), string.Join("; ", e));
+            Assert.IsTrue(e.Any(x => x.Contains("variant_changes")), string.Join("; ", e));
+        }
+
+        [Test]
         public void LookCheckPlayAB_DiffersFromTheDeclaredPlayConfigOnlyInLooksAndPrefix()
         {
             string a = Project("Assets/WarehouseRobot/Avatar/Config/look_check_play.json"), b = Project("Assets/WarehouseRobot/Avatar/Config/look_check_play_ab.json");

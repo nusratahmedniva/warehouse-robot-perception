@@ -382,6 +382,108 @@ namespace WarehouseAvatar.EditorTools
                    $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/fingers.json";
         }
 
+        /// <summary>Command line: -executeMethod WarehouseAvatar.EditorTools.ExperimentLooksMenu.BatchProbeVariants: every controlled variant of
+        /// looks_ab.json (variant_of) against its base look (experiments_ab.md section 10): the rest position of every mapped Humanoid bone
+        /// (same body = all within 1 mm) and the skinned meshes by name and vertex count. Report only.</summary>
+        public static void BatchProbeVariants()
+        {
+            try
+            {
+                Debug.Log("[ExperimentLooks] " + ProbeVariants());
+                EditorApplication.Exit(0);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[ExperimentLooks] FAILED: " + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        public const float SameBodyM = 0.001f;
+
+        [Serializable]
+        class VariantReport
+        {
+            public string id, variant_of, variant_changes, asset_sha256, base_sha256, verdict_body, note = "";
+            public int bones_compared;
+            public float max_bone_offset_m = -1f;
+            public string max_bone = "";
+            /// <summary>Every mapped bone beyond the limit: Humanoid name, the variant's transform name, offset in mm.</summary>
+            public string[] bones_over_limit = new string[0];
+            public string[] meshes_same = new string[0], meshes_changed = new string[0], meshes_only_in_variant = new string[0], meshes_only_in_base = new string[0];
+            public string[] materials_only_in_variant = new string[0], materials_only_in_base = new string[0];
+        }
+
+        [Serializable] class VariantFile { public string created_local, rule; public List<VariantReport> variants = new List<VariantReport>(); }
+
+        public static string ProbeVariants()
+        {
+            var f = Load(out _);
+            var file = new VariantFile
+            {
+                created_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv),
+                rule = $"experiments_ab.md section 10: same body when every mapped Humanoid bone's rest position (relative to the model root) lies within {(SameBodyM * 1000f).ToString("0", Inv)} mm of the base look's; skinned meshes compared by name and vertex count",
+            };
+            foreach (var v in f.looks.Where(l => l != null && !string.IsNullOrEmpty(l.variant_of)))
+            {
+                var b = f.looks.First(x => x.id == v.variant_of);
+                var r = new VariantReport { id = v.id, variant_of = v.variant_of, variant_changes = v.variant_changes };
+                file.variants.Add(r);
+                var goV = AssetDatabase.LoadAssetAtPath<GameObject>(v.asset);
+                var goB = AssetDatabase.LoadAssetAtPath<GameObject>(b.asset);
+                if (goV == null || goB == null) { r.note = (goV == null ? v.asset : b.asset) + " not installed"; continue; }
+                r.asset_sha256 = Sha256(File.ReadAllBytes(Path.Combine(Application.dataPath, "..", v.asset)));
+                r.base_sha256 = Sha256(File.ReadAllBytes(Path.Combine(Application.dataPath, "..", b.asset)));
+                var iv = (GameObject)Object.Instantiate(goV);
+                var ib = (GameObject)Object.Instantiate(goB);
+                try
+                {
+                    foreach (var i in new[] { iv, ib }) i.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                    var av = iv.GetComponentInChildren<Animator>();
+                    var ab = ib.GetComponentInChildren<Animator>();
+                    if (av == null || ab == null || !av.isHuman || !ab.isHuman) { r.note = "no Humanoid Animator"; continue; }
+                    var over = new List<string>();
+                    for (var hb = HumanBodyBones.Hips; hb < HumanBodyBones.LastBone; hb++)
+                    {
+                        Transform tv = av.GetBoneTransform(hb), tb = ab.GetBoneTransform(hb);
+                        if (tv == null || tb == null) continue;
+                        r.bones_compared++;
+                        float d = Vector3.Distance(tv.position, tb.position);
+                        if (d > r.max_bone_offset_m) { r.max_bone_offset_m = d; r.max_bone = hb.ToString(); }
+                        if (d > SameBodyM) over.Add($"{hb} ({tv.name}{(tv.name != tb.name ? " vs " + tb.name : "")}) {(d * 1000f).ToString("0.00", Inv)} mm");
+                    }
+                    r.bones_over_limit = over.ToArray();
+                    r.verdict_body = r.bones_compared == 0 ? "inconclusive" : r.max_bone_offset_m <= SameBodyM ? "same_body" : "different_body";
+                    Dictionary<string, int> Meshes(GameObject g) => g.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                        .GroupBy(s => s.name).ToDictionary(x => x.Key, x => x.Sum(s => s.sharedMesh != null ? s.sharedMesh.vertexCount : 0));
+                    HashSet<string> Mats(GameObject g) => new HashSet<string>(g.GetComponentsInChildren<Renderer>(true).SelectMany(x => x.sharedMaterials)
+                        .Where(m => m != null).Select(m => m.name.Replace(" (Instance)", "")));
+                    var mv = Meshes(iv);
+                    var mb = Meshes(ib);
+                    r.meshes_same = mv.Keys.Where(k => mb.ContainsKey(k) && mb[k] == mv[k]).OrderBy(k => k).Select(k => $"{k} ({mv[k]} vertices)").ToArray();
+                    r.meshes_changed = mv.Keys.Where(k => mb.ContainsKey(k) && mb[k] != mv[k]).OrderBy(k => k).Select(k => $"{k} ({mb[k]} -> {mv[k]} vertices)").ToArray();
+                    r.meshes_only_in_variant = mv.Keys.Where(k => !mb.ContainsKey(k)).OrderBy(k => k).Select(k => $"{k} ({mv[k]} vertices)").ToArray();
+                    r.meshes_only_in_base = mb.Keys.Where(k => !mv.ContainsKey(k)).OrderBy(k => k).Select(k => $"{k} ({mb[k]} vertices)").ToArray();
+                    var tv2 = Mats(iv);
+                    var tb2 = Mats(ib);
+                    r.materials_only_in_variant = tv2.Except(tb2).OrderBy(x => x).ToArray();
+                    r.materials_only_in_base = tb2.Except(tv2).OrderBy(x => x).ToArray();
+                }
+                finally
+                {
+                    Object.DestroyImmediate(iv);
+                    Object.DestroyImmediate(ib);
+                }
+            }
+            var repo = RepoRoot(f);
+            string outDir = NewFolder(Path.Combine(repo, f.paths.output_root), "probe_variants");
+            File.WriteAllText(Path.Combine(outDir, "variants.json"), JsonUtility.ToJson(file, true).Replace("\r\n", "\n") + "\n", Utf8);
+            return string.Join("; ", file.variants.Select(x => $"{x.id} vs {x.variant_of}: {x.verdict_body} (max bone offset {(x.max_bone_offset_m * 1000f).ToString("0.00", Inv)} mm at {x.max_bone}, " +
+                                                               $"{x.bones_compared} bones), meshes same {x.meshes_same.Length}, changed [{string.Join(", ", x.meshes_changed)}], " +
+                                                               $"only in variant [{string.Join(", ", x.meshes_only_in_variant)}], only in base [{string.Join(", ", x.meshes_only_in_base)}] {x.note}")) +
+                   $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/variants.json";
+        }
+
         /// <summary>A front view of the model in its import pose on a grey background (one directional light); the PNG is saved and the
         /// error-shader magenta pixels counted (LookInventory.MagentaPixels, tolerance 8).</summary>
         static int RenderNeutral(GameObject model, string pngPath)
