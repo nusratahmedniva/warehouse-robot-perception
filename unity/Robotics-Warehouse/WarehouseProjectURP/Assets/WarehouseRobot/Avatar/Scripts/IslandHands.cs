@@ -12,6 +12,8 @@ namespace WarehouseAvatar
         public string look, material;
         public string[] hands = new string[0];
         public float weld_m, contact_m, blend_segments;
+        /// <summary>Addendum 11: move each finger chain's joints onto its finger group's axis before binding.</summary>
+        public bool move_joints;
     }
 
     /// <summary>
@@ -97,17 +99,149 @@ namespace WarehouseAvatar
             return false;
         }
 
-        /// <summary>Distance from q to the polyline p.</summary>
-        static float ChainDistance(Vector3 q, IList<Vector3> p)
+        /// <summary>Addendum 11: one hand's island analysis (in the space of the vertices given): the plate, the finger groups (island ids),
+        /// each group's axis (knuckle and tip end) and its chain by the anatomical rule.</summary>
+        public sealed class HandAnalysis
         {
-            float best = float.PositiveInfinity;
-            for (int k = 0; k + 1 < p.Count; k++)
+            public int Plate = -1;
+            public Vector3 PlateCentre;
+            public readonly List<HashSet<int>> Groups = new List<HashSet<int>>();
+            public readonly List<Vector3> Knuckle = new List<Vector3>(), Tip = new List<Vector3>();
+            /// <summary>Per group: the index of its chain in Chains.</summary>
+            public int[] ChainOf = new int[0];
+            public List<Transform[]> Chains = new List<Transform[]>();
+            public string Problem = "";
+            public bool Ok => Problem.Length == 0;
+        }
+
+        /// <summary>The chains under a hand bone (each child followed down its first children; at least two joints).</summary>
+        public static List<Transform[]> Chains(Transform hand)
+        {
+            var chains = new List<Transform[]>();
+            foreach (Transform child in hand)
             {
-                Vector3 a = p[k], ab = p[k + 1] - p[k];
-                float s = ab.sqrMagnitude > 1e-12f ? Mathf.Clamp01(Vector3.Dot(q - a, ab) / ab.sqrMagnitude) : 0f;
-                best = Mathf.Min(best, Vector3.Distance(q, a + s * ab));
+                var chain = new List<Transform>();
+                for (var t = child; t != null; t = t.childCount > 0 ? t.GetChild(0) : null) chain.Add(t);
+                if (chain.Count >= 2) chains.Add(chain.ToArray());
             }
-            return best;
+            return chains;
+        }
+
+        static readonly string[] k_Anatomy = { "Thumb", "Index", "Middle", "Ring" };
+
+        /// <summary>
+        /// Addendum 11 (declared before it was built): the plate (largest box island among mine), the finger groups (islands joined when
+        /// their closest vertices lie within contact), each group's PCA axis with its knuckle end nearest the plate's centre, and the chain
+        /// of each group by the anatomical rule: the thumb deviates most from the hand's forward axis (hand bone to plate centre); index,
+        /// middle and ring follow by their knuckle's distance from the thumb's knuckle across the palm (the plate's longest axis made
+        /// perpendicular to forward). Chains by their Mixamo names. Refused unless there is exactly one group per named chain.
+        /// </summary>
+        public static HandAnalysis Analyse(IList<Vector3> verts, int[] island, IList<int> mine, Vector3 handPos, List<Transform[]> chains, float contact)
+        {
+            var a = new HandAnalysis { Chains = chains };
+            a.Plate = PalmPlate.LargestIsland(verts, island, mine);
+            if (a.Plate < 0) { a.Problem = "no plate island"; return a; }
+            var platePts = mine.Where(i => island[i] == a.Plate).Select(i => verts[i]).ToList();
+            var plateShape = PalmPlate.Shape(platePts);
+            a.PlateCentre = plateShape.Centre;
+            var members = new Dictionary<int, List<Vector3>>();
+            foreach (int i in mine)
+            {
+                if (island[i] < 0 || island[i] == a.Plate) continue;
+                if (!members.TryGetValue(island[i], out var m)) members[island[i]] = m = new List<Vector3>();
+                m.Add(verts[i]);
+            }
+            var ids = members.Keys.OrderBy(x => x).ToList();
+            var parent = ids.ToDictionary(x => x, x => x);
+            int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+            for (int p = 0; p < ids.Count; p++)
+                for (int q = p + 1; q < ids.Count; q++)
+                    if (Touch(members[ids[p]], members[ids[q]], contact)) parent[Find(ids[p])] = Find(ids[q]);
+            foreach (var g in ids.GroupBy(Find)) a.Groups.Add(new HashSet<int>(g));
+            foreach (var g in a.Groups)
+            {
+                var pts = g.SelectMany(id => members[id]).ToList();
+                var sh = PalmPlate.Shape(pts);
+                float lo = float.MaxValue, hi = float.MinValue;
+                foreach (var p in pts) { float d = Vector3.Dot(p - sh.Centre, sh.Long); lo = Mathf.Min(lo, d); hi = Mathf.Max(hi, d); }
+                Vector3 e1 = sh.Centre + sh.Long * lo, e2 = sh.Centre + sh.Long * hi;
+                bool firstNear = Vector3.Distance(e1, a.PlateCentre) <= Vector3.Distance(e2, a.PlateCentre);
+                a.Knuckle.Add(firstNear ? e1 : e2);
+                a.Tip.Add(firstNear ? e2 : e1);
+            }
+            var named = k_Anatomy.Select(n => chains.FindIndex(c => c[0].name.Contains(n))).ToArray();
+            if (named.Any(x => x < 0)) { a.Problem = "the hand lacks a Thumb, Index, Middle or Ring chain"; return a; }
+            if (a.Groups.Count != k_Anatomy.Length) { a.Problem = $"{a.Groups.Count} finger groups for {k_Anatomy.Length} named chains: refused"; return a; }
+            Vector3 forward = (a.PlateCentre - handPos).normalized;
+            int thumb = Enumerable.Range(0, a.Groups.Count).OrderByDescending(g => Vector3.Angle(a.Tip[g] - a.Knuckle[g], forward)).First();
+            Vector3 across = Vector3.ProjectOnPlane(plateShape.Long, forward).normalized;
+            var rest = Enumerable.Range(0, a.Groups.Count).Where(g => g != thumb)
+                                 .OrderBy(g => Mathf.Abs(Vector3.Dot(a.Knuckle[g] - a.Knuckle[thumb], across))).ToList();
+            a.ChainOf = new int[a.Groups.Count];
+            a.ChainOf[thumb] = named[0];
+            for (int k = 0; k < rest.Count; k++) a.ChainOf[rest[k]] = named[k + 1];
+            return a;
+        }
+
+        /// <summary>The glove of one hand of a mesh: its triangles' islands (welded within weld) and the vertices mostly (>= 0.5) on that hand
+        /// bone or below it.</summary>
+        static bool Glove(Mesh mesh, Transform[] bones, string[] materialNames, IslandHandsSpec spec, string handName, float unit,
+                          out Vector3[] verts, out int[] island, out List<int> mine, out int handIndex)
+        {
+            verts = null; island = null; mine = null;
+            handIndex = Array.FindIndex(bones, b => b != null && b.name == handName);
+            if (mesh == null || handIndex < 0) return false;
+            var tris = new List<int>();
+            var glove = new HashSet<int>();
+            for (int sub = 0; sub < mesh.subMeshCount && sub < materialNames.Length; sub++)
+            {
+                if ((materialNames[sub] ?? "").Replace(" (Instance)", "") != spec.material) continue;
+                var idx = mesh.GetIndices(sub);
+                tris.AddRange(idx);
+                foreach (int i in idx) glove.Add(i);
+            }
+            if (tris.Count == 0) return false;
+            verts = mesh.vertices;
+            island = PalmPlate.Islands(verts, tris, spec.weld_m * unit);
+            var hand = bones[handIndex];
+            var tree = bones.Select(b => b != null && (b == hand || b.IsChildOf(hand))).ToArray();
+            var bw = mesh.boneWeights;
+            mine = glove.Where(i => i < bw.Length && (tree[bw[i].boneIndex0] ? bw[i].weight0 : 0f) + (tree[bw[i].boneIndex1] ? bw[i].weight1 : 0f)
+                                                  + (tree[bw[i].boneIndex2] ? bw[i].weight2 : 0f) + (tree[bw[i].boneIndex3] ? bw[i].weight3 : 0f) >= 0.5f).OrderBy(i => i).ToList();
+            return true;
+        }
+
+        /// <summary>
+        /// Addendum 11: place each finger chain's joints on its group's axis (j0 at the knuckle end, the last joint at the tip end, the others
+        /// evenly between), base to tip, by position only. Returns one line per moved joint ("name: old -> new cm"); refused hands are listed
+        /// as problems and left alone. The caller recomputes the bind poses of the moved bones.
+        /// </summary>
+        public static List<string> AlignChains(Mesh mesh, Transform[] bones, string[] materialNames, IslandHandsSpec spec, Matrix4x4 meshFromWorld, Matrix4x4 worldFromMesh,
+                                               float scale, List<Transform> moved)
+        {
+            var log = new List<string>();
+            float unit = scale > 1e-9f ? 1f / scale : 1f;
+            foreach (var handName in spec.hands)
+            {
+                if (!Glove(mesh, bones, materialNames, spec, handName, unit, out var verts, out var island, out var mine, out int hi)) { log.Add($"{handName}: no glove"); continue; }
+                var hand = bones[hi];
+                var a = Analyse(verts, island, mine, meshFromWorld.MultiplyPoint3x4(hand.position), Chains(hand), spec.contact_m * unit);
+                if (!a.Ok) { log.Add($"{handName}: PROBLEM {a.Problem}"); continue; }
+                for (int g = 0; g < a.Groups.Count; g++)
+                {
+                    var ch = a.Chains[a.ChainOf[g]];
+                    var original = ch.Select(t => t.position).ToArray();
+                    for (int k = 0; k < ch.Length; k++)
+                    {
+                        Vector3 target = worldFromMesh.MultiplyPoint3x4(Vector3.Lerp(a.Knuckle[g], a.Tip[g], k / (float)(ch.Length - 1)));
+                        Vector3 old = original[k];
+                        ch[k].position = target;
+                        moved.Add(ch[k]);
+                        log.Add($"{ch[k].name}: moved {(Vector3.Distance(old, target) * 100f).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} cm");
+                    }
+                }
+            }
+            return log;
         }
 
         /// <summary>The weights of a hand's glove after binding: per hand, the glove vertices on this hand, those entirely on the hand bone,
@@ -156,101 +290,38 @@ namespace WarehouseAvatar
         }
 
         /// <summary>
-        /// Bind the hands of one skinned mesh by islands (returns one entry per hand; the mesh's bone weights are replaced for the glove
-        /// vertices of each hand only). meshFromWorld maps world positions (bones at the bind pose) into mesh space; scale = world metres per
-        /// mesh unit (the distances of the spec are in metres).
+        /// Bind the hands of one skinned mesh by islands (addenda 9 to 11): the plate 100 % to the hand bone; each finger group only along
+        /// the chain the anatomical rule gives it (Analyse). The mesh's bone weights are replaced for the glove vertices of each analysed hand
+        /// only; a refused hand is reported and left alone. meshFromWorld maps world positions (bones at the import pose) into mesh space;
+        /// scale = world metres per mesh unit.
         /// </summary>
         public static List<HandBinding> Bind(Mesh mesh, Transform[] bones, string[] materialNames, IslandHandsSpec spec, Matrix4x4 meshFromWorld, float scale)
         {
             var result = new List<HandBinding>();
             if (mesh == null || bones == null || spec == null) return result;
-            var tris = new List<int>();
-            var glove = new HashSet<int>();
-            for (int sub = 0; sub < mesh.subMeshCount && sub < materialNames.Length; sub++)
-            {
-                if ((materialNames[sub] ?? "").Replace(" (Instance)", "") != spec.material) continue;
-                var idx = mesh.GetIndices(sub);
-                tris.AddRange(idx);
-                foreach (int i in idx) glove.Add(i);
-            }
-            if (tris.Count == 0) return result;
-            var verts = mesh.vertices;
-            var bw = mesh.boneWeights;
             float unit = scale > 1e-9f ? 1f / scale : 1f;
-            var island = PalmPlate.Islands(verts, tris, spec.weld_m * unit);
+            var bw = mesh.boneWeights;
             Vector3 M(Transform t) => meshFromWorld.MultiplyPoint3x4(t.position);
             foreach (var handName in spec.hands)
             {
                 var hb = new HandBinding { Hand = handName };
                 result.Add(hb);
-                int hi = Array.FindIndex(bones, b => b != null && b.name == handName);
-                if (hi < 0) { hb.Problem = "hand bone not among the mesh's bones"; continue; }
-                var hand = bones[hi];
-                var tree = bones.Select(b => b != null && (b == hand || b.IsChildOf(hand))).ToArray();
-                var mine = glove.Where(i => i < bw.Length && (tree[bw[i].boneIndex0] ? bw[i].weight0 : 0f) + (tree[bw[i].boneIndex1] ? bw[i].weight1 : 0f)
-                                                         + (tree[bw[i].boneIndex2] ? bw[i].weight2 : 0f) + (tree[bw[i].boneIndex3] ? bw[i].weight3 : 0f) >= 0.5f).ToList();
-                int plate = PalmPlate.LargestIsland(verts, island, mine);
-                if (plate < 0) { hb.Problem = "no plate island"; continue; }
-                // finger groups: the other islands, joined when their closest vertices lie within contact_m (addendum 10: not their
-                // bounding boxes, which joined a diagonal thumb with the index finger)
-                var members = new Dictionary<int, List<Vector3>>();
+                if (!Glove(mesh, bones, materialNames, spec, handName, unit, out var verts, out var island, out var mine, out int hi)) { hb.Problem = "no glove or hand bone"; continue; }
+                var a = Analyse(verts, island, mine, M(bones[hi]), Chains(bones[hi]), spec.contact_m * unit);
+                if (!a.Ok) { hb.Problem = a.Problem; continue; }
                 foreach (int i in mine)
+                    if (island[i] == a.Plate) { bw[i] = new BoneWeight { boneIndex0 = hi, weight0 = 1f }; hb.Plate++; }
+                for (int g = 0; g < a.Groups.Count; g++)
                 {
-                    if (island[i] < 0 || island[i] == plate) continue;
-                    if (!members.TryGetValue(island[i], out var m)) members[island[i]] = m = new List<Vector3>();
-                    m.Add(verts[i]);
-                }
-                var ids = members.Keys.OrderBy(x => x).ToList();
-                var parent = ids.ToDictionary(x => x, x => x);
-                int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
-                float contact = spec.contact_m * unit;
-                for (int a = 0; a < ids.Count; a++)
-                    for (int c = a + 1; c < ids.Count; c++)
-                        if (Touch(members[ids[a]], members[ids[c]], contact)) parent[Find(ids[a])] = Find(ids[c]);
-                var groups = ids.GroupBy(Find).Select(g => new HashSet<int>(g)).ToList();
-                var chains = new List<Transform[]>();
-                foreach (Transform child in hand)
-                {
-                    var chain = new List<Transform>();
-                    for (var t = child; t != null; t = t.childCount > 0 ? t.GetChild(0) : null) chain.Add(t);
-                    if (chain.Count >= 2) chains.Add(chain.ToArray());
-                }
-                if (groups.Count == 0 || chains.Count == 0) { hb.Problem = $"{groups.Count} finger groups, {chains.Count} chains"; continue; }
-                var joints = chains.Select(ch => ch.Select(M).ToList()).ToList();
-                var centroid = groups.Select(g =>
-                {
-                    Vector3 s = Vector3.zero; int n = 0;
-                    foreach (int i in mine) if (island[i] >= 0 && g.Contains(island[i])) { s += verts[i]; n++; }
-                    return n > 0 ? s / n : Vector3.zero;
-                }).ToList();
-                int[] chainOf;
-                if (groups.Count <= chains.Count)
-                {
-                    var cost = new float[groups.Count, chains.Count];
-                    for (int g = 0; g < groups.Count; g++) for (int c = 0; c < chains.Count; c++) cost[g, c] = ChainDistance(centroid[g], joints[c]);
-                    chainOf = Match(cost);
-                }
-                else
-                {
-                    chainOf = centroid.Select(cg => Enumerable.Range(0, chains.Count).OrderBy(c => ChainDistance(cg, joints[c])).First()).ToArray();
-                    hb.Problem = $"{groups.Count} finger groups for {chains.Count} chains: nearest chain used";
-                }
-                // the weights
-                foreach (int i in mine)
-                {
-                    if (island[i] < 0) continue;
-                    if (island[i] == plate) { bw[i] = new BoneWeight { boneIndex0 = hi, weight0 = 1f }; hb.Plate++; continue; }
-                }
-                for (int g = 0; g < groups.Count; g++)
-                {
-                    var ch = chains[chainOf[g]];
+                    var ch = a.Chains[a.ChainOf[g]];
+                    var joints = ch.Select(M).ToList();
                     var jointBone = ch.Take(ch.Length - 1).Select(t => Array.IndexOf(bones, t)).ToArray();
                     if (jointBone.Any(x => x < 0)) { hb.Problem += $" {ch[0].name}: a joint is not among the mesh's bones;"; continue; }
                     int n = 0;
                     foreach (int i in mine)
                     {
-                        if (island[i] < 0 || !groups[g].Contains(island[i])) continue;
-                        var w = ChainWeights(verts[i], joints[chainOf[g]], spec.blend_segments);
+                        if (island[i] < 0 || !a.Groups[g].Contains(island[i])) continue;
+                        var w = ChainWeights(verts[i], joints, spec.blend_segments);
                         var nb = new BoneWeight { boneIndex0 = jointBone[w[0].joint], weight0 = w[0].weight };
                         if (w.Count > 1) { nb.boneIndex1 = jointBone[w[1].joint]; nb.weight1 = w[1].weight; }
                         bw[i] = nb;

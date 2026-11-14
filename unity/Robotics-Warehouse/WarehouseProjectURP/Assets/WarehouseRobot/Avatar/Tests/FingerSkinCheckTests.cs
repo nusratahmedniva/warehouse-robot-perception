@@ -97,61 +97,37 @@ namespace WarehouseAvatar.Tests
             Assert.AreEqual(0f, r[1].OwnFraction, 1e-6f);
         }
 
-        /// <summary>Addendum 7 decision 4: two finger strips (triangles, each its own island) and a palm plate island weighted to finger 1's
-        /// first bone (as Boxo's auto-rigged plate), one sub-mesh of material "glovemat".</summary>
-        Transform IslandHand(out SkinnedMeshRenderer smr)
-        {
-            var hand = Hand(false, out smr);
-            var bones = smr.bones;
-            int f1 = System.Array.FindIndex(bones, b => b.name == "Finger1_1"), f2 = System.Array.FindIndex(bones, b => b.name == "Finger2_1");
-            var verts = new List<Vector3>();
-            var weights = new List<BoneWeight>();
-            var tris = new List<int>();
-            void Strip(float x0, float x1, float z, int bone, int n)
-            {
-                int start = verts.Count;
-                for (int i = 0; i <= n; i++)
-                    foreach (var dz in new[] { -0.006f, 0.006f })
-                    {
-                        verts.Add(new Vector3(Mathf.Lerp(x0, x1, i / (float)n), dz > 0f ? 0.003f : 0f, z + dz));   // tilted: a box with thickness
-                        weights.Add(new BoneWeight { boneIndex0 = bone, weight0 = 1f });
-                    }
-                for (int i = 0; i < n; i++) { int q = start + 2 * i; tris.AddRange(new[] { q, q + 1, q + 2, q + 1, q + 3, q + 2 }); }
-            }
-            Strip(0.06f, 0.13f, -0.04f, f1, 20);              // finger 1
-            Strip(0.06f, 0.13f, 0.04f, f2, 20);               // finger 2
-            for (int k = 0; k < 6; k++) Strip(0.0f, 0.045f, -0.05f + 0.02f * k, f1, 12);   // the plate: 6 strips side by side ...
-            for (int k = 0; k < 5; k++)                        // ... stitched into one island
-                for (int i = 0; i < 12; i++)
-                {
-                    int a = 42 + 42 + k * 26 + 2 * i + 1, b = 42 + 42 + (k + 1) * 26 + 2 * i;
-                    tris.AddRange(new[] { a, b, a + 2, b, b + 2, a + 2 });
-                }
-            var mesh = smr.sharedMesh;
-            mesh.Clear();
-            mesh.SetVertices(verts);
-            mesh.SetTriangles(tris, 0);
-            mesh.boneWeights = weights.ToArray();
-            mesh.bindposes = bones.Select(b => b.worldToLocalMatrix * hand.localToWorldMatrix).ToArray();
-            var mat = new Material(Shader.Find("Unlit/Color")) { name = "glovemat" };
-            m_Made.Add(mat);
-            smr.sharedMaterials = new[] { mat };
-            return hand;
-        }
-
+        /// <summary>Addendum 11 (decision 4): the probe uses the importer's assignment; on a synthetic Boxo-like hand, aligned and bound by
+        /// islands, bending each finger moves its own vertices and none of the other fingers'.</summary>
         [Test]
-        public void IslandMode_LeavesThePlateOut_AndMeasuresEachFingerByItsIsland()
+        public void IslandMode_UsesTheImportersAssignment_BendingAFingerMovesNoOtherFinger()
         {
-            var hand = IslandHand(out var smr);
-            var spec = new PalmPlateSpec { look = "x", material = "glovemat", max_dimension_change = 0.05f, weld_m = 0.0001f };
-            var islands = FingerSkinCheck.MeasureHand(hand, new[] { smr }, spec);
-            Assert.AreEqual(2, islands.Count);
-            foreach (var f in islands)
+            var h = new SyntheticBoxHand();
+            try
             {
-                Assert.AreEqual(42, f.Region, $"{f.Name}: its own strip only (the plate is left out)");
-                Assert.AreEqual(1f, f.OwnFraction, 1e-6f, f.Name);
-                Assert.AreEqual(0f, f.MaxOtherFraction, 1e-6f, f.Name);
+                var spec = new IslandHandsSpec { look = "x", material = "glovemat", hands = new[] { "mixamorig:RightHand" }, weld_m = 0.0001f, contact_m = 0.005f, blend_segments = 0.25f, move_joints = true };
+                IslandHands.AlignChains(h.Mesh, h.Bones, new[] { "glovemat" }, spec, Matrix4x4.identity, Matrix4x4.identity, 1f, new List<Transform>());
+                IslandHands.Bind(h.Mesh, h.Bones, new[] { "glovemat" }, spec, Matrix4x4.identity, 1f);
+                h.Mesh.bindposes = h.Bones.Select(b => b.worldToLocalMatrix * h.Hand.localToWorldMatrix).ToArray();
+                var mat = new Material(Shader.Find("Unlit/Color")) { name = "glovemat" };
+                h.Made.Add(mat);
+                var smr = h.Hand.gameObject.AddComponent<SkinnedMeshRenderer>();
+                smr.bones = h.Bones;
+                smr.rootBone = h.Hand;
+                smr.sharedMesh = h.Mesh;
+                smr.sharedMaterials = new[] { mat };
+                var plate = new PalmPlateSpec { look = "x", material = "glovemat", max_dimension_change = 0.05f, weld_m = 0.0001f };
+                var r = FingerSkinCheck.MeasureHand(h.Hand, new[] { smr }, plate, 0.005f);
+                Assert.AreEqual(4, r.Count);
+                foreach (var f in r)
+                {
+                    string name = SyntheticBoxHand.Names.First(n => f.Name.Contains(n));
+                    Assert.AreEqual(h.Finger[name].Count, f.Region, $"{f.Name}: its own mesh finger");
+                    Assert.GreaterOrEqual(f.OwnFraction, 0.8f, f.Name);
+                    Assert.AreEqual(0f, f.MaxOtherFraction, 1e-6f, $"{f.Name}: no other finger moves");
+                }
             }
+            finally { h.Destroy(); }
         }
 
         [Test]

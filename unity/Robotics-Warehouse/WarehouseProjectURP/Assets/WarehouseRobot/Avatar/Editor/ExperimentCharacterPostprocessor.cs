@@ -31,14 +31,39 @@ namespace WarehouseAvatar.EditorTools
             var spec = System.Array.Find(looks.rigid_parts, r => r != null && r.look == id);
             var hands = System.Array.Find(looks.island_hands, r => r != null && r.look == id);
             if (spec == null && hands == null) return;
-            foreach (var smr in g.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            var smrs = g.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            foreach (var smr in smrs)
             {
                 var names = System.Array.ConvertAll(smr.sharedMaterials, m => m != null ? m.name : "");
-                if (spec != null)
+                if (spec == null) continue;
+                var done = ExperimentLooks.BindRigid(smr.sharedMesh, smr.bones, names, spec);
+                if (done.Count > 0) Debug.Log($"[ExperimentLooks] {id}: rigid parts bound to {spec.bone}: {string.Join(", ", done)}");
+            }
+            if (hands != null && hands.move_joints)
+            {
+                // section 12 addendum 11: the finger chains moved onto their finger groups' axes, then the moved bones' bind poses recomputed
+                var moved = new System.Collections.Generic.List<Transform>();
+                foreach (var smr in smrs)
                 {
-                    var done = ExperimentLooks.BindRigid(smr.sharedMesh, smr.bones, names, spec);
-                    if (done.Count > 0) Debug.Log($"[ExperimentLooks] {id}: rigid parts bound to {spec.bone}: {string.Join(", ", done)}");
+                    var names = System.Array.ConvertAll(smr.sharedMaterials, m => m != null ? m.name : "");
+                    var log = IslandHands.AlignChains(smr.sharedMesh, smr.bones, names, hands, smr.transform.worldToLocalMatrix, smr.transform.localToWorldMatrix,
+                                                      smr.transform.lossyScale.x, moved);
+                    if (log.Count > 0) Debug.Log($"[ExperimentLooks] {id}: chains aligned: {string.Join("; ", log)}");
                 }
+                foreach (var smr in smrs)
+                {
+                    var mesh = smr.sharedMesh;
+                    var bones = smr.bones;
+                    if (mesh == null || bones == null) continue;
+                    var bp = mesh.bindposes;
+                    for (int i = 0; i < bones.Length && i < bp.Length; i++)
+                        if (bones[i] != null && moved.Contains(bones[i])) bp[i] = bones[i].worldToLocalMatrix * smr.transform.localToWorldMatrix;
+                    mesh.bindposes = bp;
+                }
+            }
+            foreach (var smr in smrs)
+            {
+                var names = System.Array.ConvertAll(smr.sharedMaterials, m => m != null ? m.name : "");
                 if (hands != null)
                 {
                     // section 12 addendum 9: the hands by their mesh islands (the imported hierarchy is at the bind pose here)

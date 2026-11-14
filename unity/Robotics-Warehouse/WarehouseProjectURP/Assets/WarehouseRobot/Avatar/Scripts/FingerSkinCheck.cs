@@ -60,7 +60,7 @@ namespace WarehouseAvatar
         /// rule, experiments_ab.md section 12 addendum 7 decision 4) a finger's vertices are those of its mesh islands instead of the RegionM
         /// region: every island of the rule's material belonging to this hand except the plate (the largest box), assigned to the chain
         /// nearest to its centroid.</summary>
-        public static List<FingerResult> MeasureHand(Transform hand, IList<SkinnedMeshRenderer> meshes, PalmPlateSpec islands = null)
+        public static List<FingerResult> MeasureHand(Transform hand, IList<SkinnedMeshRenderer> meshes, PalmPlateSpec islands = null, float contact = 0.005f)
         {
             var chains = Chains(hand);
             var results = new List<FingerResult>();
@@ -69,7 +69,7 @@ namespace WarehouseAvatar
             try
             {
                 var rest = BakeAll(meshes, tmp);
-                var owner = islands != null ? IslandOwners(hand, meshes, chains, rest, islands) : RegionOwners(chains, rest);
+                var owner = islands != null ? IslandOwners(hand, meshes, chains, rest, islands, contact) : RegionOwners(chains, rest);
                 var count = new int[chains.Count];
                 foreach (int o in owner) if (o >= 0) count[o]++;
                 Vector3 normal = PalmNormal(hand, chains);
@@ -124,8 +124,10 @@ namespace WarehouseAvatar
         /// <summary>Diagnostic lines of the last island measurement (report only): island centroids and chain joints in the hand's frame.</summary>
         public static readonly List<string> IslandDiagnostic = new List<string>();
 
-        /// <summary>Addendum 7 decision 4: each vertex's finger by mesh islands (see MeasureHand); vertex order as BakeAll's.</summary>
-        static int[] IslandOwners(Transform hand, IList<SkinnedMeshRenderer> meshes, List<Transform[]> chains, List<Vector3> rest, PalmPlateSpec spec)
+        /// <summary>Addendum 11 (decision 4): each vertex's finger by the same island analysis the importer uses (IslandHands.Analyse: the
+        /// anatomical rule, no distance matching); vertex order as BakeAll's. A hand the analysis refuses leaves every vertex unowned and adds
+        /// a line to IslandDiagnostic.</summary>
+        static int[] IslandOwners(Transform hand, IList<SkinnedMeshRenderer> meshes, List<Transform[]> chains, List<Vector3> rest, PalmPlateSpec spec, float contact)
         {
             var owner = new int[rest.Count];
             for (int i = 0; i < owner.Length; i++) owner[i] = -1;
@@ -161,33 +163,21 @@ namespace WarehouseAvatar
                             float t = (tree[w.boneIndex0] ? w.weight0 : 0f) + (tree[w.boneIndex1] ? w.weight1 : 0f) + (tree[w.boneIndex2] ? w.weight2 : 0f) + (tree[w.boneIndex3] ? w.weight3 : 0f);
                             if (t >= 0.5f) mine.Add(i);
                         }
+                        mine.Sort();
                         var island = PalmPlate.Islands(local, tris, spec.weld_m);
-                        int plate = PalmPlate.LargestIsland(local, island, mine);
-                        var centroid = new Dictionary<int, Vector3>();
-                        var size = new Dictionary<int, int>();
-                        foreach (int i in mine)
-                        {
-                            if (island[i] < 0 || island[i] == plate) continue;
-                            centroid[island[i]] = (centroid.TryGetValue(island[i], out var c) ? c : Vector3.zero) + local[i];
-                            size[island[i]] = (size.TryGetValue(island[i], out int k) ? k : 0) + 1;
-                        }
-                        var finger = new Dictionary<int, int>();
-                        foreach (var kv in centroid)
-                        {
-                            Vector3 c = kv.Value / size[kv.Key];
-                            int best = -1;
-                            float bd = float.PositiveInfinity;
-                            for (int f = 0; f < chains.Count; f++) { float d = Distance(c, chains[f]); if (d < bd) { bd = d; best = f; } }
-                            finger[kv.Key] = best;
-                            // diagnostic (report only): where each island lies against each chain, in the hand's frame
-                            Vector3 lc = hand.InverseTransformPoint(c);
-                            IslandDiagnostic.Add($"{hand.name} island {kv.Key} ({size[kv.Key]} v) centroid hand-local ({lc.x:0.000}, {lc.y:0.000}, {lc.z:0.000}) -> " +
-                                                 string.Join(", ", chains.Select((ch, f) => $"{ch[0].name.Replace("mixamorig:", "")} {Distance(c, ch) * 100f:0.0} cm")));
-                        }
-                        foreach (var ch in chains)
-                            IslandDiagnostic.Add($"{hand.name} chain {ch[0].name.Replace("mixamorig:", "")} joints hand-local: " +
-                                                 string.Join(" ", ch.Select(t => { var p = hand.InverseTransformPoint(t.position); return $"({p.x:0.000}, {p.y:0.000}, {p.z:0.000})"; })));
-                        foreach (int i in mine) if (island[i] >= 0 && finger.TryGetValue(island[i], out int f)) owner[offset + i] = f;
+                        var a = IslandHands.Analyse(local, island, mine, hand.position, IslandHands.Chains(hand), contact);
+                        if (!a.Ok) IslandDiagnostic.Add($"{hand.name}: analysis refused: {a.Problem}");
+                        else
+                            for (int g = 0; g < a.Groups.Count; g++)
+                            {
+                                var ch = a.Chains[a.ChainOf[g]];
+                                int f = chains.FindIndex(c => c[0] == ch[0]);
+                                foreach (int i in mine) if (island[i] >= 0 && a.Groups[g].Contains(island[i])) owner[offset + i] = f;
+                                Vector3 k = hand.InverseTransformPoint(a.Knuckle[g]), tp = hand.InverseTransformPoint(a.Tip[g]);
+                                IslandDiagnostic.Add($"{hand.name} group {g} -> {ch[0].name.Replace("mixamorig:", "")}: knuckle hand-local ({k.x:0.000}, {k.y:0.000}, {k.z:0.000}), " +
+                                                     $"tip ({tp.x:0.000}, {tp.y:0.000}, {tp.z:0.000}); joints " +
+                                                     string.Join(" ", ch.Select(j => { var p = hand.InverseTransformPoint(j.position); return $"({p.x:0.000}, {p.y:0.000}, {p.z:0.000})"; })));
+                            }
                     }
                 }
                 offset += n;

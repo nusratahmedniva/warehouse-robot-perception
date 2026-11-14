@@ -364,7 +364,8 @@ namespace WarehouseAvatar.EditorTools
                         var ih = new HandReport { side = h.side, hand_bone = h.hand_bone, chains = h.chains };
                         p.island_hands.Add(ih);
                         FingerSkinCheck.IslandDiagnostic.Clear();
-                        var islandResults = FingerSkinCheck.MeasureHand(hand, smrs, plateSpec);
+                        float contact = f.island_hands.FirstOrDefault(x => x != null && x.look == l.id)?.contact_m ?? 0.005f;
+                        var islandResults = FingerSkinCheck.MeasureHand(hand, smrs, plateSpec, contact);
                         p.island_diagnostic.AddRange(FingerSkinCheck.IslandDiagnostic);
                         foreach (var r in islandResults)
                             ih.fingers.Add(new FingerReport
@@ -575,6 +576,7 @@ namespace WarehouseAvatar.EditorTools
             public string[] finger_remap = new string[0];
             public string[] rigid_parts = new string[0];
             public string[] island_hands = new string[0];
+            public string skeleton_rebuild = "";
         }
 
         [Serializable] class ImportReport { public string created_local, unity_version, render_pipeline; public List<CharacterReport> characters = new List<CharacterReport>(); }
@@ -693,6 +695,7 @@ namespace WarehouseAvatar.EditorTools
             if (spec != null) Recolour(spec, matDir, r);
             FixUnitScale(r);
             RemapMixamoFingers(r);
+            RebuildSkeleton(f, r);
             CountRigidParts(f, r);
             AuditIslandHands(f, r);
 
@@ -781,6 +784,39 @@ namespace WarehouseAvatar.EditorTools
             }
             r.rigid_parts = list.ToArray();
             r.note += $" Rigid parts (section 12 addendum 7): {string.Join("; ", list)}.";
+        }
+
+        /// <summary>experiments_ab.md section 12 addendum 11: for a look whose finger chains the postprocessor moves (island_hands move_joints),
+        /// the Humanoid avatar is rebuilt from the corrected skeleton: every humanDescription.skeleton entry takes the imported transform's
+        /// local position, rotation and scale, and the model is re-imported (the postprocessor moves the chains again, to the same place).</summary>
+        static void RebuildSkeleton(ExperimentLooksFile f, CharacterReport r)
+        {
+            var spec = f.island_hands.FirstOrDefault(x => x != null && x.look == r.id && x.move_joints);
+            if (spec == null) return;
+            var imp = (ModelImporter)AssetImporter.GetAtPath(r.asset);
+            var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
+            if (imp == null || go == null || imp.animationType != ModelImporterAnimationType.Human) return;
+            var byName = go.GetComponentsInChildren<Transform>(true).GroupBy(t => t.name).ToDictionary(g => g.Key, g => g.First());
+            var hd = imp.humanDescription;
+            var sk = hd.skeleton ?? new SkeletonBone[0];
+            int changed = 0;
+            float maxCm = 0f;
+            for (int i = 0; i < sk.Length; i++)
+            {
+                if (!byName.TryGetValue(sk[i].name, out var t)) continue;
+                float d = Vector3.Distance(sk[i].position, t.localPosition) * Mathf.Max(1e-6f, t.parent != null ? t.parent.lossyScale.x : 1f);
+                if (d > 1e-5f) { changed++; maxCm = Mathf.Max(maxCm, d * 100f); }
+                sk[i].position = t.localPosition;
+                sk[i].rotation = t.localRotation;
+                sk[i].scale = t.localScale;
+            }
+            hd.skeleton = sk;
+            imp.humanDescription = hd;
+            imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            imp.SaveAndReimport();
+            var avatar = AssetDatabase.LoadAllAssetsAtPath(r.asset).OfType<Avatar>().FirstOrDefault();
+            r.skeleton_rebuild = $"{changed} skeleton entries moved (largest {maxCm.ToString("0.0", Inv)} cm); avatar human {avatar != null && avatar.isHuman}, valid {avatar != null && avatar.isValid}";
+            r.note += $" Humanoid avatar rebuilt from the corrected skeleton (section 12 addendum 11): {r.skeleton_rebuild}.";
         }
 
         /// <summary>experiments_ab.md section 12 addendum 9: the island-bound hands as imported (IslandHands.Audit): per hand, the glove vertices,

@@ -53,78 +53,96 @@ namespace WarehouseAvatar.Tests
             CollectionAssert.AreEqual(new[] { 1, 0 }, IslandHands.Match(cost));
         }
 
-        static void Box(List<Vector3> v, List<int> t, Vector3 c, Vector3 size, int n)
+        /// <summary>The joint lies inside the box of the points in their principal frame (min to max projection on each axis, 1 mm).</summary>
+        static void AssertInside(List<Vector3> pts, Transform joint)
         {
-            for (int axis = 0; axis < 3; axis++)
-                foreach (float side in new[] { -0.5f, 0.5f })
-                {
-                    int a1 = (axis + 1) % 3, a2 = (axis + 2) % 3, start = v.Count;
-                    for (int i = 0; i <= n; i++)
-                        for (int j = 0; j <= n; j++)
-                        {
-                            var p = Vector3.zero;
-                            p[axis] = side * size[axis];
-                            p[a1] = (i / (float)n - 0.5f) * size[a1];
-                            p[a2] = (j / (float)n - 0.5f) * size[a2];
-                            v.Add(c + p);
-                        }
-                    for (int i = 0; i < n; i++)
-                        for (int j = 0; j < n; j++) { int q = start + i * (n + 1) + j; t.AddRange(new[] { q, q + 1, q + n + 1, q + 1, q + n + 2, q + n + 1 }); }
-                }
+            var box = PalmPlate.Shape(pts);
+            foreach (var (axis, what) in new[] { (box.Long, "along"), (box.Mid, "across"), (box.Thin, "through") })
+            {
+                float lo = pts.Min(p => Vector3.Dot(p, axis)), hi = pts.Max(p => Vector3.Dot(p, axis)), j = Vector3.Dot(joint.position, axis);
+                Assert.IsTrue(j >= lo - 0.001f && j <= hi + 0.001f, $"{joint.name} {what} its finger: {j:0.0000} not in [{lo:0.0000}, {hi:0.0000}]");
+            }
+        }
+
+        static IslandHandsSpec Spec() => new IslandHandsSpec
+        {
+            look = "x", material = "glovemat", hands = new[] { "mixamorig:RightHand" }, weld_m = 0.0001f, contact_m = 0.005f, blend_segments = 0.25f, move_joints = true,
+        };
+
+        static (Vector3[] verts, int[] island, List<int> mine) Glove(SyntheticBoxHand h)
+        {
+            var verts = h.Mesh.vertices;
+            var island = PalmPlate.Islands(verts, h.Mesh.GetIndices(0), 0.0001f);
+            return (verts, island, Enumerable.Range(0, verts.Length).ToList());
         }
 
         [Test]
-        public void Bind_PlateOnTheHand_EachFingerOnlyOnItsOwnChain()
+        public void Analyse_ThumbByAxisDeviation_ThenIndexMiddleRingAcrossThePalm_NoDistanceMatching()
         {
-            var hand = new GameObject("mixamorig:RightHand").transform;
-            m_Made.Add(hand.gameObject);
-            var bones = new List<Transform> { hand };
-            foreach (var (name, z) in new[] { ("Index", -0.04f), ("Middle", 0.04f) })
+            var h = new SyntheticBoxHand();
+            try
             {
-                Transform parent = hand;
-                for (int j = 1; j <= 4; j++)
+                var (verts, island, mine) = Glove(h);
+                var a = IslandHands.Analyse(verts, island, mine, h.Hand.position, IslandHands.Chains(h.Hand), 0.005f);
+                Assert.IsTrue(a.Ok, a.Problem);
+                Assert.AreEqual(4, a.Groups.Count);
+                foreach (var name in SyntheticBoxHand.Names)
                 {
-                    var b = new GameObject($"mixamorig:RightHand{name}{j}").transform;
-                    b.SetParent(parent, false);
-                    b.position = new Vector3(0.07f + 0.03f * (j - 1), 0f, z);
-                    bones.Add(b);
-                    parent = b;
+                    int g = Enumerable.Range(0, 4).Single(x => a.Chains[a.ChainOf[x]][0].name.Contains(name));
+                    int v0 = h.Finger[name][0];
+                    Assert.IsTrue(a.Groups[g].Contains(island[v0]), $"{name}: its own mesh finger, although its chain lies elsewhere");
+                }
+                int index = Enumerable.Range(0, 4).Single(x => a.Chains[a.ChainOf[x]][0].name.Contains("Index"));
+                Assert.AreEqual(0.075f, a.Knuckle[index].x, 0.002f, "the knuckle end is the end nearest the plate");
+                Assert.AreEqual(0.1775f, a.Tip[index].x, 0.002f);
+            }
+            finally { h.Destroy(); }
+        }
+
+        [Test]
+        public void AlignChains_PutsEveryJointOnItsFingersAxis_InsideTheFinger()
+        {
+            var h = new SyntheticBoxHand();
+            try
+            {
+                var moved = new List<Transform>();
+                var log = IslandHands.AlignChains(h.Mesh, h.Bones, new[] { "glovemat" }, Spec(), Matrix4x4.identity, Matrix4x4.identity, 1f, moved);
+                Assert.IsFalse(log.Any(l => l.Contains("PROBLEM")), string.Join("; ", log));
+                Assert.AreEqual(16, moved.Count, "four joints of four chains");
+                var verts = h.Mesh.vertices;
+                foreach (var name in SyntheticBoxHand.Names)
+                {
+                    var pts = h.Finger[name].Select(i => verts[i]).ToList();
+                    foreach (var j in h.Chain(name).Take(3)) AssertInside(pts, j);
                 }
             }
-            var v = new List<Vector3>();
-            var t = new List<int>();
-            Box(v, t, new Vector3(0.03f, 0f, 0f), new Vector3(0.08f, 0.03f, 0.14f), 3);              // the plate
-            int plateEnd = v.Count;
-            foreach (var z in new[] { -0.04f, 0.04f })
+            finally { h.Destroy(); }
+        }
+
+        [Test]
+        public void Bind_AfterAlignment_PlateOnTheHand_EachFingerOnlyOnItsOwnChain()
+        {
+            var h = new SyntheticBoxHand();
+            try
             {
-                Box(v, t, new Vector3(0.115f, 0f, z), new Vector3(0.09f, 0.02f, 0.02f), 3);         // the finger
-                Box(v, t, new Vector3(0.165f, 0f, z), new Vector3(0.015f, 0.015f, 0.015f), 2);      // its tip, touching
+                IslandHands.AlignChains(h.Mesh, h.Bones, new[] { "glovemat" }, Spec(), Matrix4x4.identity, Matrix4x4.identity, 1f, new List<Transform>());
+                var b = IslandHands.Bind(h.Mesh, h.Bones, new[] { "glovemat" }, Spec(), Matrix4x4.identity, 1f);
+                Assert.AreEqual("", b[0].Problem);
+                Assert.AreEqual(h.PlateVertices, b[0].Plate);
+                var bw = h.Mesh.boneWeights;
+                for (int i = 0; i < h.PlateVertices; i++) Assert.IsTrue(bw[i].boneIndex0 == 0 && bw[i].weight0 == 1f, "plate vertex on the hand");
+                foreach (var name in SyntheticBoxHand.Names)
+                {
+                    var own = h.Chain(name).Select(t => System.Array.IndexOf(h.Bones, t)).ToArray();
+                    foreach (int i in h.Finger[name])
+                        foreach (var (bi, wt) in new[] { (bw[i].boneIndex0, bw[i].weight0), (bw[i].boneIndex1, bw[i].weight1) })
+                            if (wt > 0f) CollectionAssert.Contains(own, bi, $"{name} vertex {i} only on its own chain");
+                }
+                var audit = IslandHands.Audit(h.Mesh, h.Bones, new[] { "glovemat" }, Spec());
+                Assert.AreEqual(0, audit[0].crossed);
+                Assert.AreEqual(4, audit[0].chainsUsed);
             }
-            var mesh = new Mesh();
-            m_Made.Add(mesh);
-            mesh.SetVertices(v);
-            mesh.SetTriangles(t, 0);
-            // the auto-rigger's spread: everything on the index finger's first bone
-            mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 1, weight0 = 1f }, v.Count).ToArray();
-            var spec = new IslandHandsSpec { look = "x", material = "glovemat", hands = new[] { "mixamorig:RightHand" }, weld_m = 0.0001f, contact_m = 0.005f, blend_segments = 0.25f };
-            var b0 = IslandHands.Bind(mesh, bones.ToArray(), new[] { "glovemat" }, spec, Matrix4x4.identity, 1f);
-            Assert.AreEqual("", b0[0].Problem);
-            Assert.AreEqual(plateEnd, b0[0].Plate, "the whole plate on the hand bone");
-            var bw = mesh.boneWeights;
-            for (int i = 0; i < plateEnd; i++) Assert.IsTrue(bw[i].boneIndex0 == 0 && bw[i].weight0 == 1f, "plate vertex on the hand");
-            int[] index = { 1, 2, 3 }, middle = { 5, 6, 7 };
-            for (int i = plateEnd; i < v.Count; i++)
-            {
-                var own = v[i].z < 0f ? index : middle;
-                var w = bw[i];
-                foreach (var (bi, wt) in new[] { (w.boneIndex0, w.weight0), (w.boneIndex1, w.weight1) })
-                    if (wt > 0f) CollectionAssert.Contains(own, bi, $"vertex {i} only on its own chain");
-            }
-            var audit = IslandHands.Audit(mesh, bones.ToArray(), new[] { "glovemat" }, spec);
-            Assert.AreEqual(0, audit[0].crossed);
-            Assert.AreEqual(plateEnd, audit[0].onHand);
-            Assert.AreEqual(v.Count - plateEnd, audit[0].oneChain);
-            Assert.AreEqual(2, audit[0].chainsUsed, "both chains get their finger");
+            finally { h.Destroy(); }
         }
 
         [Test]
@@ -147,6 +165,29 @@ namespace WarehouseAvatar.Tests
                     Assert.AreEqual(a.chains, a.chainsUsed, $"{a.hand}: every chain gets its finger (addendum 10)");
                 }
             Assert.AreEqual(2, hands);
+            // addendum 11: every finger bends at its own knuckles: joints j0..j2 inside their group's box (principal frame, 1 mm)
+            var smr0 = go.GetComponentsInChildren<SkinnedMeshRenderer>(true).First(s => s.sharedMaterials.Any(m => m != null && m.name == spec.material));
+            var mesh = smr0.sharedMesh;
+            var toWorld = smr0.transform.localToWorldMatrix;
+            var world = mesh.vertices.Select(p => toWorld.MultiplyPoint3x4(p)).ToArray();
+            var tris = new List<int>();
+            var mats = smr0.sharedMaterials;
+            for (int sub = 0; sub < mesh.subMeshCount && sub < mats.Length; sub++) if (mats[sub] != null && mats[sub].name == spec.material) tris.AddRange(mesh.GetIndices(sub));
+            var island = PalmPlate.Islands(world, tris, spec.weld_m);
+            foreach (var handName in spec.hands)
+            {
+                var hand = smr0.bones.First(b => b != null && b.name == handName);
+                var bw = mesh.boneWeights;
+                var tree = smr0.bones.Select(b => b != null && (b == hand || b.IsChildOf(hand))).ToArray();
+                var mine = tris.Distinct().Where(i => (tree[bw[i].boneIndex0] ? bw[i].weight0 : 0f) + (tree[bw[i].boneIndex1] ? bw[i].weight1 : 0f) >= 0.5f).OrderBy(i => i).ToList();
+                var a = IslandHands.Analyse(world, island, mine, hand.position, IslandHands.Chains(hand), spec.contact_m);
+                Assert.IsTrue(a.Ok, $"{handName}: {a.Problem}");
+                for (int g = 0; g < a.Groups.Count; g++)
+                {
+                    var pts = mine.Where(i => a.Groups[g].Contains(island[i])).Select(i => world[i]).ToList();
+                    foreach (var j in a.Chains[a.ChainOf[g]].Take(3)) AssertInside(pts, j);
+                }
+            }
         }
     }
 }
