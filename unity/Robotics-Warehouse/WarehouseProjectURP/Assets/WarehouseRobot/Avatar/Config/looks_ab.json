@@ -112,7 +112,7 @@
     {
       "id": "anime_f_02_outfit_short", "family": "vroid", "role": "candidate", "kind": "prefab", "kind_group": "anime",
       "gender": "female", "person": "anime", "costume": "outfit_short", "navigation": false, "proposed_split": "",
-      "variant_of": "anime_f_01", "variant_changes": "the outfit, sleeves included: a different outfit with short sleeves (forearms and hands uncovered); hair, face and body as anime_f_01",
+      "variant_of": "anime_f_01", "variant_changes": "the outfit, sleeves included: a different outfit with short sleeves (forearms and hands uncovered); hair, face and body as anime_f_01. Its skeleton lies 1.55 mm from anime_f_01's as a whole (probe_variants_20261114_184319): an export difference, accepted by Nusrat (experiments_ab.md section 11 item 5)",
       "source": "Nusrat's controlled variant of anime_f_01 made in VRoid Studio (unity/downloads/characters_v4/anime_f_02_outfit_short.fbx, sha256 d94b472a..., git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters; experiments_ab.md section 10)",
       "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, 2026-11-14: controlled variant of anime_f_01 made by Nusrat Ahmed Niva in VRoid Studio, converted in Blender, not redistributed); VRoid Studio Guidelines as anime_f_01 (experiments_ab.md section 6); never redistributed, git-ignored",
       "asset": "Assets/ThirdParty/CharactersV4/anime_f_02_outfit_short/anime_f_02_outfit_short.fbx", "material_override": "",
@@ -123,7 +123,7 @@
       "gender": "female", "person": "anime", "costume": "default", "navigation": false, "proposed_split": "",
       "variant_of": "anime_f_01", "variant_changes": "only the bangs: parted so both eyes are visible; outfit, face and body as anime_f_01",
       "source": "Nusrat's controlled variant of anime_f_01 made in VRoid Studio (unity/downloads/characters_v4/anime_f_03_bangs_parted.fbx, sha256 a3cf3439..., git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters; experiments_ab.md section 10)",
-      "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, 2026-11-14: controlled variant of anime_f_01 made by Nusrat Ahmed Niva in VRoid Studio, converted in Blender, not redistributed; SOURCES.txt names this file anime_f_03_hairback.fbx, 'hair tied back', experiments_ab.md section 10); VRoid Studio Guidelines as anime_f_01; never redistributed, git-ignored",
+      "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, 2026-11-14: controlled variant of anime_f_01 made by Nusrat Ahmed Niva in VRoid Studio, converted in Blender, not redistributed; 'bangs parted so both eyes are visible; same outfit, face and body', under this file name since Nusrat's correction, experiments_ab.md section 11); VRoid Studio Guidelines as anime_f_01; never redistributed, git-ignored",
       "asset": "Assets/ThirdParty/CharactersV4/anime_f_03_bangs_parted/anime_f_03_bangs_parted.fbx", "material_override": "",
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     },

@@ -52,6 +52,10 @@ namespace WarehouseAvatar.Tests
             }
             StringAssert.Contains("sleeves", f.looks.Single(x => x.id == "anime_f_02_outfit_short").variant_changes);
             StringAssert.StartsWith("only the bangs", f.looks.Single(x => x.id == "anime_f_03_bangs_parted").variant_changes);
+            // section 11 item 5: the skeleton shift is recorded as an accepted export difference; SOURCES.txt's name is corrected
+            StringAssert.Contains("1.55 mm", f.looks.Single(x => x.id == "anime_f_02_outfit_short").variant_changes);
+            StringAssert.Contains("export difference, accepted", f.looks.Single(x => x.id == "anime_f_02_outfit_short").variant_changes);
+            StringAssert.DoesNotContain("hairback", f.looks.Single(x => x.id == "anime_f_03_bangs_parted").licence);
             var worker = WorkerV4Config.Parse(Project("Assets/WarehouseRobot/Avatar/Config/worker_v4.json"));
             var bad = ExperimentLooks.Parse(Project(ExperimentLooks.AssetPath));
             bad.looks.Single(x => x.id == "anime_f_03_bangs_parted").variant_of = "cartoon_boxo_01";
