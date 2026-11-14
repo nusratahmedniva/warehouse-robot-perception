@@ -310,7 +310,8 @@ class IsolationTests(unittest.TestCase):
             # the evaluation modules themselves (final evaluation and analysis are evaluation code too)
             if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in (
                     "hri_eval_dev_v4.py", "hri_eval_final_v4.py", "hri_analysis_v4.py", "calibrate_v4.py",   # calibrate_v4: P4, 2026-11-12
-                    "export_csv_v4.py", "run_experiments_ab_v4.py"):   # experiments A and B (AUDIT.md section 16): evaluation code
+                    "export_csv_v4.py", "run_experiments_ab_v4.py",   # experiments A and B (AUDIT.md section 16): evaluation code
+                    "analyse_false_stop_v4.py"):   # the false-STOP analysis of Nusrat's logs (AUDIT.md 16.14): evaluation code
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

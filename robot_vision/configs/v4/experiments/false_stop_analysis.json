@@ -1,0 +1,65 @@
+{
+  "label": "Settings of analyse_false_stop_v4.py (AUDIT.md 16.14, item 1 of the decisions of 2026-11-14): the false STOP of the live reader, found by Nusrat. Analysis only: nothing here is a reader value and nothing here changes the reader.",
+  "declared": "2026-11-14, before the data was read. The candidate cues are the three of the decision (palm normal facing the camera, the STOP hand static over the window, the spread measured between the fingertips). The grids below only show how each cue behaves; the values of 'combined' are display values for the combined rows, not proposals. Anisha decides before any reader value (configs/v4/gesture_reader.json, gesture_motion.py) changes.",
+  "sessions": {
+    "R1": {
+      "bridge": "bridge_guide_20261112_163011",
+      "unity": "trials_development_Task2_20261112_163710",
+      "what": "R1, the Stage C session (recording plan D1), 20 runs, 2026-11-12"
+    },
+    "V13": {
+      "bridge": "bridge_guide_20261113_193706",
+      "unity": "trials_development_Task2_20261113_194012",
+      "what": "the 13 Nov video session, 3 runs"
+    }
+  },
+  "match_bearing_deg": 10.0,
+  "match_bearing_deg_why": "As configs/v4/eval_dev.json match_bearing_deg: a person in the pan-tilt view is matched to the truth worker whose true bearing from the robot is nearest, within this many degrees and strictly nearer than the next.",
+  "truth_join_max_s": 0.06,
+  "shown_phases": [
+    "gesturing",
+    "holding"
+  ],
+  "shown_phases_why": "As eval_dev.json accuracy_phases: a worker 'shows' a command in the phases gesturing and holding; idle, start_delay and returning rows are 'nothing shown' (returning keeps the command while the arm goes down and is left out of both groups).",
+  "episode_gap_s": 0.5,
+  "episode_gap_s_why": "STOP readings of one run closer together than this are one stop episode (the controller's gesture_stale_s is 0.5 s).",
+  "candidates": {
+    "palm": {
+      "min_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3
+      ],
+      "why": "Palm normal facing the camera, from the 21 pixel landmarks: the signed sine of the angle between wrist-to-index-knuckle and wrist-to-pinky-knuckle, positive when the palm (not the back of the hand) faces the camera; the sign follows the person's own side (left hand +, right hand -). 0.0 = the sign only."
+    },
+    "spread": {
+      "min_values": [
+        1.1,
+        1.2,
+        1.3,
+        1.4,
+        1.5
+      ],
+      "why": "Fingertip spread: distance between the index tip and the pinky tip over the distance between the index and pinky knuckles. About 1 for fingers held together (the knuckle width), larger for a fan. The reader's own spread is an angle measured at the WRIST, which already contains the knuckle width."
+    },
+    "static": {
+      "modes": [
+        "arm_moving",
+        "speed_stop_window"
+      ],
+      "why": "The STOP hand is not swinging. arm_moving: the reader's own 'moving' flag of that arm (wrist path of the last window_s of at least motion_path_min torso lengths); speed_stop_window: the mean wrist speed over the last stop_window_s at most still_speed_max torso lengths per second (both values are the reader's own; no new number)."
+    },
+    "extra": {
+      "raised": {
+        "why": "NOT one of the three cues of the decision, added because none of them touches the stops of a hanging hand: STOP also needs the reader's existing 'arm raised' flag (wrist above the hip by arm_raised_margin and the arm within raised_max_abs_deg of vertical). Since 2026-11-08 STOP needs no arm keypoints at all (AUDIT.md 14.16), so this reverses part of that decision; shown only to measure it."
+      }
+    }
+  },
+  "combined": {
+    "palm": 0.1,
+    "spread": 1.3,
+    "static": "arm_moving",
+    "why": "Display values for the combined rows (a mid-grid value of each cue), NOT proposals."
+  }
+}
