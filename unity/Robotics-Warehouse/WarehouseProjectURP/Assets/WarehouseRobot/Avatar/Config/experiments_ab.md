@@ -591,5 +591,15 @@ shoulder-to-hand axis, which Mecanim takes from the hint. PROCEED's hint lies 0.
 misses it. *Change (a cause item 1 does not cover):* with the rig split, PROCEED's hint is the intended elbow pushed away from the shoulder-to-hand
 axis (hint = E* + 0.5 L x the unit vector from the axis to E*), so the bend plane contains E*; with the legacy split the old hint is kept (it stays
 the reference of the target-shift column). Nothing else changes; the tolerance stays.
+
+*Results (2026-11-14, steps 1 to 7 committed 67efb67 to aa3db71; report `reports_v4/avatar_pipeline_fixes_20261114.md`, a byte-identical copy of
+`robot_vision/outputs/avatar_pipeline_fixes_20261114.md`, with the geometry tables next to it).* Geometry on aa3db71
+(`gesture_geometry_final_20261114_193832`, 14 spawnable looks): POINT, PROCEED and WAIT within tolerance on every look; PROCEED's forearm error
+11.1 to 12.9 deg (baseline) -> 0.0 deg; anime_f_01's POINT elbow at least 150.9 deg before and after (no fold in the bones). STOP: the design's
+116 deg elbows (addendum 2, [N]) and one out-of-reach take of anime_f_02 (168.8 vs 180 deg, direction exact). Boxo v2: four separate finger chains
+per hand, no little finger, so still Edit mode only ([N]); Edit-mode pose geometry of every look within tolerance (`pose_geometry_20261114_194216`).
+Variants: 02 differs in the clothing mesh and its materials (the skeleton shifted by 1.55 mm as a whole), 03 only in the hair mesh. PROCEED is in
+both look checks (format checked: 21 frames, Play spans 2.006 to 2.015 s after a timing fix of the first try's 1.990 s). The run-once guard refuses
+both parts today (not frozen, finals not done). SOURCES.txt's name for anime_f_03 differs from the file **[N]**. No perception was run.
 - **Boxo's screenshots come from its Edit-mode poses** with the neutral camera of item 8 (POINT and WAIT `seq1`, STOP `seq1`, PROCEED at the top of
   the `seq1` swing; both arms). The anime looks' screenshots come from the Play geometry check (the worker template), as declared.
