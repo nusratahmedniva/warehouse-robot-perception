@@ -32,11 +32,21 @@
     "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Prefabs/WorkerV4.prefab",
     "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json",
     "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/final_v4.json",
-    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_zoom_on.json",
-    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_zoom_off.json",
-    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_bystanders.json",
-    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_zoom_on_repeat.json",
-    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/trial_plan_v4.json"
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/trial_plan_v4.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/looks_ab.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/roadmap_proposals/turn_left.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/look_check.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/look_check_play_ab.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_A1.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_A2_right.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_A2_left.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_A3.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_A4.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_B1.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_B2_right.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_B3.json",
+    "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/sessions/final_ab_B4.json"
   ],
-  "freeze_files_note": "B9 (AUDIT.md section 14.7, Nusrat): the Unity files of the v4 scene to freeze, as repository paths. Anisha adds them to configs/v4/frozen.json the way the v3 Unity files were added; a final is refused unless every file is recorded there (looked up by this path in any of its hash tables) with its LF-normalised SHA-256. Code is pinned by the commit in session.json. The avatar look assets are third-party and not in git, so they are not hashed; each session records their appearance text."
+  "freeze_files_note": "B9 OF THE NEW STUDY (2026-11-14, experiments_ab.md section 7 step 4, Nusrat; pending Anisha's freeze): the v4 scene and its configs as before, plus what the experiments read at Play (looks_ab.json, experiments_ab_unity.json, the left-turn map roadmap_proposals/turn_left.json), the avatar experiment's look-check configs (look_check.json, look_check_play_ab.json; section 8) and the nine final experiment configs sessions/final_ab_<setting>.json. The four superseded Task 2 session configs left the list (never run). Python's experiment files (scenarios_ab.json, the control and map files of configs/v4/experiments/) are Anisha's freeze. Earlier note: B9 (AUDIT.md section 14.7, Nusrat): the Unity files of the v4 scene to freeze, as repository paths. Anisha adds them to configs/v4/frozen.json the way the v3 Unity files were added; a final is refused unless every file is recorded there (looked up by this path in any of its hash tables) with its LF-normalised SHA-256. Code is pinned by the commit in session.json. The avatar look assets are third-party and not in git, so they are not hashed; each session records their appearance text."
 }

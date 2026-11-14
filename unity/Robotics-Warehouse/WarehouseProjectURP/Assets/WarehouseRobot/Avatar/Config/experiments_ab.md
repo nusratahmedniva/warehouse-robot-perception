@@ -382,3 +382,12 @@ be frozen with every B9 file present, recorded and unchanged; no development ove
 setting (also `A2_right` vs `A2_left`, or a superseded Task 2 setting) refuses nothing else. A config listing a name both as a setting and as
 superseded is invalid. Tests: `FinalExperimentsABTests` (guard section). Today every experiment final is refused (not frozen; not in
 `final_plan.json`).
+
+*Step 4, B9 of the new study (`final_v4.json` `freeze_files`, 22 files; `freeze_v4.unity_files` reads this list unchanged).* Kept: the v4 scene,
+`bridge_unity_v4.json`, `robot_unity_v4.json`, `worker_v4.json` (looks, clips, gesture variation, question), `WorkerV4.prefab`,
+`trial_workers_v4.json` (the experiment settings' `workers_config`), `final_v4.json`, `trial_plan_v4.json`. Added: `looks_ab.json` (the
+experiment looks), `experiments_ab_unity.json` (slots, placement margins, who answers, activation, the lie and marker settings),
+`roadmap_proposals/turn_left.json` (Unity's left-turn map), the avatar experiment's `Avatar/Config/look_check.json` and `look_check_play_ab.json`
+(section 8), and the nine `sessions/final_ab_<setting>.json`. Removed: the four superseded Task 2 session configs (never run). Not hashed, as
+before: the code (pinned by the commit in `session.json`) and the third-party and git-ignored avatar assets (each session records their appearance
+text). Python's experiment files (`scenarios_ab.json` is frozen already; the `control_lie_*` and `roadmap_a*` files are not yet) are Anisha's.

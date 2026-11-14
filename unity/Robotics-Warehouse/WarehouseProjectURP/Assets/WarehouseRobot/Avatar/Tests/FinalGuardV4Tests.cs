@@ -100,7 +100,7 @@ namespace WarehouseAvatar.Tests
         // ---------------------------------------------------------------- B9 freeze list
 
         [Test]
-        public void FreezeList_ListsTheV4SceneConfigsAndFinalSessions_AndEveryFileExists()
+        public void FreezeList_ListsTheV4SceneConfigsTheExperimentFilesAndFinalConfigs_AndEveryFileExists()
         {
             var f = Final();
             const string P = "unity/Robotics-Warehouse/WarehouseProjectURP/";
@@ -114,9 +114,17 @@ namespace WarehouseAvatar.Tests
                 P + BaseWorkers,
                 P + FinalAsset,
                 P + "Assets/WarehouseRobot/Scenario/Config/trial_plan_v4.json",
+                // experiments A/B (2026-11-14, experiments_ab.md section 7 step 4): what the experiments read at Play, the avatar
+                // experiment's look-check configs (section 8) and every final config; the superseded Task 2 sessions are not frozen
+                P + "Assets/WarehouseRobot/Avatar/Config/looks_ab.json",
+                P + "Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json",
+                P + "Assets/WarehouseRobot/Scenario/Config/roadmap_proposals/turn_left.json",
+                P + "Assets/WarehouseRobot/Avatar/Config/look_check.json",
+                P + "Assets/WarehouseRobot/Avatar/Config/look_check_play_ab.json",
             };
-            foreach (var s in f.superseded_settings) expect.Add(P + s.workers_config);
+            foreach (var s in f.settings) expect.Add(P + s.experiment_config);
             CollectionAssert.AreEquivalent(expect, f.freeze_files);
+            foreach (var s in f.superseded_settings) CollectionAssert.DoesNotContain(f.freeze_files, P + s.workers_config, s.name);
             foreach (var path in f.freeze_files) Assert.IsTrue(File.Exists(Path.Combine(RepoRoot, path)), path);
         }
 
