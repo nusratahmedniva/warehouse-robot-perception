@@ -1,0 +1,23 @@
+{
+  "note": "FINAL experiment config of setting A1 (experiments A/B; Avatar/Config/experiments_ab.md section 7, declared 2026-11-14 before it was built). Read by TrialRunnerV4 only with TrialPlayV4 -finalSetting A1 (final_v4.json settings). Test looks and test clips only (data_splits.json test, checked by FinalGuardV4.ExperimentProblems and every run by DataSplitsV4.GuardRun as a final). The final seed, runs, timeout and success radius are NOT here: they come from robot_vision/configs/v4/final_plan.json. Maps, slots, placement, lies and activation as in experiments_ab_unity.json and scenarios_ab.json (unchanged).",
+  "experiment": "A1",
+  "a2_side": "",
+  "a2_side_note": "The turn side of A2 / B2 (scenarios_ab.json maps turn / turn_left); replaces experiments_ab_unity.json a2_sides for this setting. Empty for every other experiment.",
+  "lie_detection": "on",
+  "python_control": "configs/v4/experiments/control_lie_on_a1.json",
+  "python_control_note": "PROPOSED, Anisha's decision [A][N] (experiments_ab.md section 7): the control file the server must run this setting with (bridge.server --control-config, with --final-setting A1): lie detection on (second opinion + reject impossible, backtrack off) and the map of the experiment. The launcher finals_v4/run_session_v4.ps1 passes it and refuses a final when Python's FINAL_CONTROL names another file.",
+  "male_looks": [
+    "sunbox_m_shirt_plaid"
+  ],
+  "female_looks": [
+    "sunbox_f_shirt_plaid"
+  ],
+  "looks_note": "The test looks (data_splits.json test, AUDIT.md 16.12 item 5): slots 1 and 3 male, slot 2 female. With one look per gender the third worker at J1 (A3, A4, B3, B4) wears the same look as the first (declared difference from development).",
+  "point_clips": [
+    "point_mixamo_02"
+  ],
+  "proceed_clips": [
+    "proceed_ik_03"
+  ],
+  "clips_note": "The test clips of the two commands an experiment worker shows (POINT, PROCEED for the FORWARD branch)."
+}

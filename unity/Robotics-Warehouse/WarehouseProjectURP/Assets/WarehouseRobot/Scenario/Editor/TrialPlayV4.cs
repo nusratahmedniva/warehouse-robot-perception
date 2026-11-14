@@ -23,7 +23,10 @@ namespace WarehouseRobot.ScenarioEditor
     /// override is absent and the setting has not run before. The Python server must run with --final-setting NAME.
     /// -experiment NAME (2026-11-14, experiments A and B, Avatar/Config/experiments_ab.md): a DEVELOPMENT session of experiment A1..A4 or
     /// B1..B4 (Scenario/Config/experiments_ab_unity.json); refused together with -finalSetting. -experimentLooks MALE|FEMALE: smoke check of the
-    /// runner only, two existing development looks instead of the navigation looks (experiments_ab.md section 3).
+    /// runner only, two existing development looks instead of the navigation looks (experiments_ab.md section 3). -experimentSide right|left
+    /// (2026-11-14, development only): the A2 / B2 turn side for the session (experiments_ab.md section 7). Since 2026-11-14 the final
+    /// settings are the experiments (A1, A2_right, A2_left, A3, A4, B1, B2_right, B3, B4; final_v4.json): -finalSetting A2_left runs the
+    /// final of A2 with the left turn; zoom_on, zoom_off, bystanders and zoom_on_repeat are superseded and refused.
     /// </summary>
     [InitializeOnLoad]
     public static class TrialPlayV4
@@ -49,7 +52,7 @@ namespace WarehouseRobot.ScenarioEditor
         public static void Run()
         {
             float timeout = 1800f;
-            string checkDir = "", workers = "", finalSetting = "", experiment = "", experimentLooks = "";
+            string checkDir = "", workers = "", finalSetting = "", experiment = "", experimentLooks = "", experimentSide = "";
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
@@ -59,11 +62,13 @@ namespace WarehouseRobot.ScenarioEditor
                 if (args[i] == "-finalSetting") finalSetting = args[i + 1];
                 if (args[i] == "-experiment") experiment = args[i + 1];
                 if (args[i] == "-experimentLooks") experimentLooks = args[i + 1];
+                if (args[i] == "-experimentSide") experimentSide = args[i + 1];
             }
             SessionState.SetString(TrialRunnerV4.WorkersOverrideKey, workers);
             SessionState.SetString(TrialRunnerV4.FinalSettingKey, finalSetting);
             SessionState.SetString(TrialRunnerV4.ExperimentKey, experiment);
             SessionState.SetString(TrialRunnerV4.ExperimentLooksKey, experimentLooks);
+            SessionState.SetString(TrialRunnerV4.ExperimentSideKey, experimentSide);
             if (checkDir.Length > 0) Directory.CreateDirectory(checkDir);
             EditorSceneManager.OpenScene(Scene);
             SessionState.SetBool(ActiveKey, true);
@@ -130,6 +135,7 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.FinalSettingKey, "");
             SessionState.SetString(TrialRunnerV4.ExperimentKey, "");
             SessionState.SetString(TrialRunnerV4.ExperimentLooksKey, "");
+            SessionState.SetString(TrialRunnerV4.ExperimentSideKey, "");
             EditorApplication.update -= Poll;
             Debug.Log($"[TrialPlayV4] finished ({code}): {status}");
             EditorApplication.Exit(code);

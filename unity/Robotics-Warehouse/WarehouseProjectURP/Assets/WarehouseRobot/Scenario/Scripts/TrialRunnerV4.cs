@@ -113,10 +113,12 @@ namespace WarehouseRobot.Scenario
 #endif
         // Stage F (2026-11-13, upgrade_design.md section 13): a final session of one setting, guarded by FinalGuardV4
         const string FinalConfigAsset = "Assets/WarehouseRobot/Avatar/Config/final_v4.json";
-        string finalSetting = "", finalCfgText = "", finalPlanText = "", frozenText = "";
+        string finalSetting = "", finalCfgText = "", finalPlanText = "", frozenText = "", fexpText = "";
         FinalConfigV4 fcfg;
         FinalSettingV4 fset;
         FinalPlanV4 fplan;
+        /// <summary>Experiments A/B (experiments_ab.md section 7): the final experiment config of an experiment setting; null otherwise.</summary>
+        FinalExperimentV4 fexp;
         bool Final => finalSetting.Length > 0;
         [Serializable] class TrialPlanV4 { public float development_timeout_s; }
         [Serializable] class ControlDialog { public string wait_text = ""; }
@@ -298,6 +300,25 @@ namespace WarehouseRobot.Scenario
             if (problems.Count > 0) return Fail(out error, $"final {finalSetting} refused: " + string.Join("; ", problems));
             fset = fcfg.Setting(finalSetting);
             fplan = FinalPlanV4.Parse(finalPlanText);
+            // experiments A/B (experiments_ab.md section 7): the setting names its experiment, side, looks and clips; nothing of them
+            // may come from the command line
+            string devArgs = experimentName;
+#if UNITY_EDITOR
+            devArgs += UnityEditor.SessionState.GetString(ExperimentSideKey, "") + UnityEditor.SessionState.GetString(ExperimentLooksKey, "");
+#endif
+            if (devArgs.Length > 0)
+                return Fail(out error, $"final {finalSetting} refused: -experiment, -experimentSide and -experimentLooks are development options (a final setting names its experiment)");
+            if (fset.IsExperiment)
+            {
+                try
+                {
+                    fexpText = File.ReadAllText(Path.Combine(Application.dataPath, "..", fset.experiment_config));
+                    fexp = FinalExperimentV4.Parse(fexpText);
+                }
+                catch (Exception e) { return Fail(out error, $"final {finalSetting}: cannot read {fset.experiment_config}: {e.Message}"); }
+                experimentName = fexp.experiment ?? "";
+                if (experimentName.Length == 0) return Fail(out error, $"final {finalSetting}: {fset.experiment_config} names no experiment");
+            }
             cfg.timeout_s = fplan.TimeoutS;
             cfg.success_radius_m = fplan.SuccessRadiusM;
             return true;

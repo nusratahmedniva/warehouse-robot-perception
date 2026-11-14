@@ -362,3 +362,15 @@ Mode was 216/221: since Anisha listed the six experiment looks in `data_splits.j
 `looks_ab.json` has, and refused every Task 2 session ("not in worker_v4.json"). Fix: an empty `looks` list means every look of the split *that
 the Task 2 template (worker_v4.json) has*: development `sunbox_f1`, `sunbox_m1`, test `sunbox_f2`, exactly as before her change. The test that
 pinned the split's names (`Splits_RealFile_HasTheAgreedNames`) now lists her file as it is.
+
+*Step 2, built as declared (final configs).* `final_v4.json` `settings` = the nine experiment settings (`experiment_config` =
+`sessions/final_ab_<setting>.json`, `workers_config` = the base `trial_workers_v4.json`, test / test); the four Task 2 settings moved unchanged to
+`superseded_settings`, and their session configs (and `rehearsal_zoom_on.json`) say SUPERSEDED at the start of `session_note` (no parsed value
+changed). `FinalGuardV4.ExperimentProblems` refuses a final config whose looks or clips are not test (or not navigation looks of the listed gender,
+or not clips of their command), whose side, setting name, lie switch or control file do not fit the experiment's map, or whose set fails `GuardRun`
+as a final; `FinalGuardV4.ExperimentData` gives a final exactly its config's looks and clips and a development session only development looks and
+clips. `TrialRunnerV4` in a final of an experiment setting: experiment and side from the final config (any `-experiment`, `-experimentSide`,
+`-experimentLooks` refused), seed `final_seed`, `GuardRun` as a final on every run, the final config copied to `config_used/`. New in development:
+`TrialPlayV4 -experimentSide right|left` (the A2 / B2 side for that session; refused on any other map). The freeze list is unchanged until step 4.
+Edit Mode test (`FinalExperimentsABTests`) plans the 20 seed-2 runs of every setting with its final looks (placement rules met everywhere; the
+in-scene free-cell and collider check runs only at Play).

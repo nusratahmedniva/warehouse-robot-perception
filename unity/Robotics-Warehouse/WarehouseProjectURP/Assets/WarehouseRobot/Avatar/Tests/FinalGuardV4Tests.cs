@@ -12,6 +12,8 @@ namespace WarehouseAvatar.Tests
     /// <summary>
     /// v4 Stage F (2026-11-13, Avatar/Config/upgrade_design.md section 13): final_v4.json, the final session configs, the B9 freeze list,
     /// the final-run guard (FinalGuardV4) and the final plans of the B7 test assignment (pending Anisha). No final is run here.
+    /// Since 2026-11-14 (experiments_ab.md section 7) the four Task 2 settings are superseded_settings (kept, never run); the tests of
+    /// their configs read them from there. The experiment settings are tested in FinalExperimentsABTests.
     /// </summary>
     public class FinalGuardV4Tests
     {
@@ -20,6 +22,7 @@ namespace WarehouseAvatar.Tests
         const string FinalAsset = "Assets/WarehouseRobot/Avatar/Config/final_v4.json";
         const string BaseWorkers = "Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json";
         static readonly string[] Names = { "zoom_on", "zoom_off", "bystanders", "zoom_on_repeat" };
+        static readonly string[] ExperimentNames = { "A1", "A2_right", "A2_left", "A3", "A4", "B1", "B2_right", "B3", "B4" };
 
         static FinalConfigV4 Final() => FinalConfigV4.Parse(File.ReadAllText(Path.Combine(ProjectDir, FinalAsset)));
         static TrialWorkersConfig Workers(string asset) => TrialWorkersConfig.Parse(File.ReadAllText(Path.Combine(ProjectDir, asset)));
@@ -30,12 +33,12 @@ namespace WarehouseAvatar.Tests
         // ---------------------------------------------------------------- final_v4.json and the session configs
 
         [Test]
-        public void Config_IsValid_AndHasTheFourSettingsOfThePythonPlan()
+        public void Config_IsValid_TheExperimentSettings_TheFourTaskTwoSettingsSuperseded()
         {
             var f = Final();
             CollectionAssert.IsEmpty(f.Validate(), string.Join("\n", f.Validate()));
-            CollectionAssert.AreEqual(Names, f.settings.Select(s => s.name).ToArray());
-            CollectionAssert.AreEquivalent(Names, FinalPlanV4.Parse(RealPlan()).Settings, "final_plan.json settings");
+            CollectionAssert.AreEqual(ExperimentNames, f.settings.Select(s => s.name).ToArray());
+            CollectionAssert.AreEqual(Names, f.superseded_settings.Select(s => s.name).ToArray());
             Assert.AreEqual("robot_vision/configs/v4/final_plan.json", f.final_plan);
             Assert.AreEqual("robot_vision/configs/v4/frozen.json", f.frozen);
             Assert.AreEqual("UNITY_FINAL_DONE.json", f.done_file);
@@ -45,8 +48,9 @@ namespace WarehouseAvatar.Tests
         [Test]
         public void Config_B7_PlanB_TheTestLookAndTestClipsInEverySetting()
         {
-            // 2026-11-13: B7 = plan (b), decided by Nusrat in Anisha's absence, pending her confirmation (upgrade_design.md section 13)
-            foreach (var s in Final().settings)
+            // 2026-11-13: B7 = plan (b), decided by Nusrat in Anisha's absence, pending her confirmation (upgrade_design.md section 13);
+            // the experiment settings of 2026-11-14 are test-only too
+            foreach (var s in Final().settings.Concat(Final().superseded_settings))
             {
                 Assert.AreEqual("test", s.look_split, s.name);
                 Assert.AreEqual("test", s.clip_split, s.name);
@@ -57,18 +61,18 @@ namespace WarehouseAvatar.Tests
         public void ZoomOnRepeat_IsARepeatOfZoomOn()
         {
             var f = Final();
-            var a = Workers(f.Setting("zoom_on").workers_config);
-            var b = Workers(f.Setting("zoom_on_repeat").workers_config);
+            var a = Workers(f.Superseded("zoom_on").workers_config);
+            var b = Workers(f.Superseded("zoom_on_repeat").workers_config);
             Assert.AreEqual(JsonUtility.ToJson(a), JsonUtility.ToJson(b), "the same config apart from the session_note (not parsed)");
-            Assert.AreEqual(f.Setting("zoom_on").look_split, f.Setting("zoom_on_repeat").look_split);
-            Assert.AreEqual(f.Setting("zoom_on").clip_split, f.Setting("zoom_on_repeat").clip_split);
+            Assert.AreEqual(f.Superseded("zoom_on").look_split, f.Superseded("zoom_on_repeat").look_split);
+            Assert.AreEqual(f.Superseded("zoom_on").clip_split, f.Superseded("zoom_on_repeat").clip_split);
         }
 
         [Test]
         public void SessionConfigs_DifferFromTheBaseOnlyInTheBystanderCount()
         {
             var basis = Workers(BaseWorkers);
-            foreach (var s in Final().settings)
+            foreach (var s in Final().superseded_settings)
             {
                 Assert.AreEqual($"Assets/WarehouseRobot/Avatar/Config/sessions/final_{s.name}.json", s.workers_config);
                 var t = Workers(s.workers_config);
@@ -111,7 +115,7 @@ namespace WarehouseAvatar.Tests
                 P + FinalAsset,
                 P + "Assets/WarehouseRobot/Scenario/Config/trial_plan_v4.json",
             };
-            foreach (var s in f.settings) expect.Add(P + s.workers_config);
+            foreach (var s in f.superseded_settings) expect.Add(P + s.workers_config);
             CollectionAssert.AreEquivalent(expect, f.freeze_files);
             foreach (var path in f.freeze_files) Assert.IsTrue(File.Exists(Path.Combine(RepoRoot, path)), path);
         }
@@ -280,7 +284,7 @@ namespace WarehouseAvatar.Tests
             var f = Final();
             string frozen = File.ReadAllText(Path.Combine(RepoRoot, f.frozen));
             if (Regex.IsMatch(frozen, "\"frozen\"\\s*:\\s*true")) Assert.Ignore("frozen.json is frozen: this test documents the state before the freeze");
-            foreach (var n in Names)
+            foreach (var n in Names.Concat(ExperimentNames))
             {
                 var p = FinalGuardV4.Problems(f, n, RealPlan(), frozen,
                     path => File.Exists(Path.Combine(RepoRoot, path)) ? FinalGuardV4.Sha256Lf(File.ReadAllBytes(Path.Combine(RepoRoot, path))) : null,
@@ -295,7 +299,7 @@ namespace WarehouseAvatar.Tests
         public void PlanFinal_EverySetting_UsesOnlyTheTestLookAndTestClips_TheBystandersWearItToo()
         {
             var s = Splits();
-            foreach (var setting in Final().settings)
+            foreach (var setting in Final().superseded_settings)
             {
                 for (int run = 1; run <= 3; run++)
                 {
@@ -314,7 +318,7 @@ namespace WarehouseAvatar.Tests
         public void PlanFinal_RefusesALookOutsideTheSettingsSplit_DevelopmentClips_AndPlaceholders()
         {
             var s = Splits();
-            var setting = Final().Setting("zoom_on");
+            var setting = Final().Superseded("zoom_on");
             var w = Workers(setting.workers_config);
             w.looks = new List<string> { "sunbox_m1" };
             Assert.IsNull(TrialRunWorkers.PlanFinal(1, setting, w, Template(), s, out string error));
@@ -332,7 +336,7 @@ namespace WarehouseAvatar.Tests
         public void Development_StillRefusesTheTestLookAndTestClips_TheFinalPlansAreFinalOnly()
         {
             // outside final mode nothing changes: the development plan refuses the final settings' test data
-            var setting = Final().Setting("zoom_on_repeat");
+            var setting = Final().Superseded("zoom_on_repeat");
             Assert.IsNull(TrialRunWorkers.Plan(1, "development", Workers(setting.workers_config).WithLooks("sunbox_f2"), Template(), Splits(), out string error));
             StringAssert.Contains("test data", error);
             Assert.IsNull(TrialRunWorkers.Plan(1, "final", Workers(setting.workers_config), Template(), Splits(), out error));
@@ -349,7 +353,7 @@ namespace WarehouseAvatar.Tests
         [Test]
         public void Rehearsal_DiffersFromTheZoomOnFinalOnlyInItsLooks()
         {
-            string finalAsset = Final().Setting("zoom_on").workers_config;
+            string finalAsset = Final().Superseded("zoom_on").workers_config;
             Assert.AreEqual(WithoutLooksAndNote(File.ReadAllText(Path.Combine(ProjectDir, finalAsset))),
                             WithoutLooksAndNote(File.ReadAllText(Path.Combine(ProjectDir, RehearsalAsset))), "every line but looks and session_note");
             var f = Workers(finalAsset);
@@ -383,7 +387,7 @@ namespace WarehouseAvatar.Tests
             var f = Final();
             Assert.IsFalse(f.settings.Any(x => x.workers_config == RehearsalAsset));
             Assert.IsFalse(f.freeze_files.Any(x => x.EndsWith("/rehearsal_zoom_on.json")));
-            Assert.IsNull(TrialRunWorkers.PlanFinal(1, f.Setting("zoom_on"), r, Template(), s, out string why));
+            Assert.IsNull(TrialRunWorkers.PlanFinal(1, f.Superseded("zoom_on"), r, Template(), s, out string why));
             StringAssert.Contains("not a test look", why);
             Assert.IsNull(TrialRunWorkers.Plan(1, "final", r, Template(), s, out why));
             StringAssert.Contains("development mode only", why);

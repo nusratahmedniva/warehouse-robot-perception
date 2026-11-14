@@ -25,7 +25,9 @@ namespace WarehouseRobot.Scenario
 
     /// <summary>
     /// Experiments A and B (Avatar/Config/experiments_ab.md sections 3 and 4): TrialRunnerV4's experiment mode, selected by
-    /// TrialPlayV4 -experiment A1..B4 (development only). Instead of the Task 2 commander that moves between stands, every asking node
+    /// TrialPlayV4 -experiment A1..B4 (development; -experimentSide right|left for A2/B2), or a final of the new study with TrialPlayV4
+    /// -finalSetting A1..B4 (experiments_ab.md section 7: final_v4.json, Avatar/Config/sessions/final_ab_&lt;setting&gt;.json, test looks and
+    /// clips only, the seed and numbers of final_plan.json). Instead of the Task 2 commander that moves between stands, every asking node
     /// of the experiment's map has 2 (J1 in A3, A4, B3, B4: 3) workers placed by ExperimentPlanAB under the placement rules; whoever the
     /// robot asks answers (the active worker nearest the pan-tilt camera's axis), a liar (Set B, p = 0.2 per worker per run) always with
     /// the same wrong direction. Workers are active only near the robot (activation window, max_active_avatars). truth.jsonl gets
@@ -38,6 +40,9 @@ namespace WarehouseRobot.Scenario
         public const string ExperimentKey = "WarehouseRobot.TrialRunnerV4.Experiment";
         /// <summary>Editor session key: smoke check only (TrialPlayV4 -experimentLooks male|female); "" = the navigation looks of looks_ab.json.</summary>
         public const string ExperimentLooksKey = "WarehouseRobot.TrialRunnerV4.ExperimentLooks";
+        /// <summary>Editor session key: development only (TrialPlayV4 -experimentSide right|left): the A2 / B2 turn side instead of
+        /// experiments_ab_unity.json a2_sides; "" = a2_sides. A final takes its side from its final config.</summary>
+        public const string ExperimentSideKey = "WarehouseRobot.TrialRunnerV4.ExperimentSide";
 #endif
         const string ExperimentsAsset = "Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json";
         string experimentName = "", expText = "", scenariosText = "", looksAbText = "", looksOverride = "";
@@ -54,17 +59,19 @@ namespace WarehouseRobot.Scenario
         RoadmapV4 eMap;
         WorkerV4 eAsked;
         Transform eGoalMarker;
-        string eSplit = "", eLimit = "";
+        string eSplit = "", eLimit = "", eSide = "";
+        /// <summary>The session seed of the experiment: final_plan.json final_seed in a final, trials.json dev_seed otherwise.</summary>
+        int eSeed;
         Material eTruthfulMat, eLiarMat;
 
         bool Experiment => experimentName.Length > 0;
 
-        /// <summary>Setup, experiment mode: the configs, the plan of the experiment and the development navigation looks and clips.</summary>
+        /// <summary>Setup, experiment mode: the configs, the plan of the experiment and its navigation looks and clips (development:
+        /// the development split; a final: its final config's test looks and clips, checked by FinalGuardV4.ExperimentProblems).</summary>
         bool SetupExperiment(string mode, out string error)
         {
             error = null;
-            if (Final) return Fail(out error, "an experiment is a development session: -experiment and -finalSetting together are refused");
-            if (mode != DataSplitsV4.Development) return Fail(out error, $"experiment {experimentName}: development mode only (trials mode '{mode}')");
+            if (!Final && mode != DataSplitsV4.Development) return Fail(out error, $"experiment {experimentName}: development mode only (trials mode '{mode}')");
             try
             {
                 expText = File.ReadAllText(Path.Combine(Application.dataPath, "..", ExperimentsAsset));
@@ -74,22 +81,37 @@ namespace WarehouseRobot.Scenario
                 elooks = ExperimentLooks.Parse(looksAbText);
             }
             catch (Exception e) { return Fail(out error, $"cannot read {ExperimentsAsset}, scenarios_ab.json or looks_ab.json: {e.Message}"); }
+            // the A2 / B2 side (experiments_ab.md section 7): a final's from its final config, in development -experimentSide; it
+            // replaces experiments_ab_unity.json a2_sides for this session only (the file is not changed)
+            eSide = Final ? fexp.a2_side ?? "" : "";
+#if UNITY_EDITOR
+            if (!Final) eSide = UnityEditor.SessionState.GetString(ExperimentSideKey, "");
+#endif
+            if (eSide.Length > 0)
+            {
+                if (Array.IndexOf(FinalExperimentV4.Sides, eSide) < 0) return Fail(out error, $"experiment {experimentName}: side '{eSide}' is neither right nor left");
+                ecfg.a2_sides = new[] { eSide };
+            }
             eplan = ExperimentPlanAB.Build(ecfg, experimentName, scenariosText, roadText,
                                            p => File.ReadAllText(Path.Combine(Application.dataPath, "..", p)), out error);
             if (eplan == null) return false;
+            if (eSide.Length > 0 && eplan.MapName != FinalExperimentV4.Turn)
+                return Fail(out error, $"experiment {experimentName}: a side (right / left) is for the turn map only; this experiment uses {eplan.MapName}");
             var le = ExperimentLooks.Validate(elooks, workerTemplate.looks);
             if (le.Count > 0) return Fail(out error, "looks_ab.json: " + string.Join("; ", le));
+            if (Final)
+            {
+                var fp = FinalGuardV4.ExperimentProblems(fset, fexp, x => ExperimentPlanAB.MapOfExperiment(ecfg, scenariosText, x), splits, elooks, workerTemplate);
+                if (fp.Count > 0) return Fail(out error, $"final {finalSetting} refused: " + string.Join("; ", fp));
+            }
 
-            // navigation looks of the session's split (data_splits.json decides; looks_ab.json's proposed_split is never read here)
-            eMales.Clear();
-            eFemales.Clear();
-            foreach (var l in elooks.looks)
-                if (l != null && l.navigation && splits.Looks.TryGetValue(l.id, out var s) && s == mode)
-                    (l.gender == "male" ? eMales : eFemales).Add(l.id);
-            eMales.Sort(StringComparer.Ordinal);
-            eFemales.Sort(StringComparer.Ordinal);
+            // navigation looks and clips: development = the development split (data_splits.json decides; looks_ab.json's proposed_split
+            // is never read here), a final = exactly its final config's test looks and clips
+            if (!FinalGuardV4.ExperimentData(Final ? fset : null, fexp, mode, splits, elooks, workerTemplate,
+                                             new[] { wcfg.commander_command, wcfg.forward_command }, eMales, eFemales, eClips, out error))
+                return Fail(out error, $"experiment {experimentName}: {error}");
 #if UNITY_EDITOR
-            looksOverride = UnityEditor.SessionState.GetString(ExperimentLooksKey, "");
+            looksOverride = Final ? "" : UnityEditor.SessionState.GetString(ExperimentLooksKey, "");
 #endif
             if (looksOverride.Length > 0)
             {
@@ -100,21 +122,9 @@ namespace WarehouseRobot.Scenario
                 eMales.Clear(); eMales.Add(two[0]);
                 eFemales.Clear(); eFemales.Add(two[1]);
             }
-            if (eMales.Count == 0 || eFemales.Count == 0)
-                return Fail(out error, $"data_splits.json lists no {mode} navigation look of " + (eMales.Count == 0 ? "a male" : "a female") +
-                                       " worker of looks_ab.json: Anisha adds the names (experiments_ab.md section 2) before an experiment session");
-            eClips.Clear();
-            foreach (var command in new[] { wcfg.commander_command, wcfg.forward_command })
-            {
-                if (string.IsNullOrEmpty(command)) continue;
-                var mine = new List<string>();
-                foreach (var c in workerTemplate.ClipNames(command))
-                    if (splits.Clips.TryGetValue(c, out var split) && split == mode) mine.Add(c);
-                if (mine.Count == 0) return Fail(out error, $"no {command} clip of worker_v4.json is a {mode} clip in data_splits.json");
-                eClips[command] = mine;
-            }
+            eSeed = Final ? fplan.FinalSeed : cfg.dev_seed;
             eGoals.Clear();
-            eGoals.AddRange(eplan.Goals(cfg.dev_seed, TrialTotal));
+            eGoals.AddRange(eplan.Goals(eSeed, TrialTotal));
             return true;
         }
 
@@ -131,14 +141,14 @@ namespace WarehouseRobot.Scenario
             };
             for (int run = 1; run <= TrialTotal; run++)
             {
-                var plan = eplan.PlanRun(cfg.dev_seed, run, eGoals[run - 1], eMales, eFemales, free, out error);
+                var plan = eplan.PlanRun(eSeed, run, eGoals[run - 1], eMales, eFemales, free, out error);
                 if (plan == null) return false;
-                var map = eplan.RunMap(cfg.dev_seed, run, out _);
+                var map = eplan.RunMap(eSeed, run, out _);
                 var looks = new List<string>();
                 foreach (var w in plan.Workers) looks.Add(w.Look);
                 var clips = new List<string>();
                 foreach (var kv in eClips) clips.AddRange(kv.Value);
-                string split = splits.GuardRun(looks, clips, false, out error);
+                string split = splits.GuardRun(looks, clips, Final, out error);       // a final: wholly test; development: never test
                 if (split == null) { error = $"run {run}: {error}"; return false; }
                 eSplit = split;
                 var a = ExperimentPlanAB.Pos(map.Node(map.Start));
@@ -157,7 +167,7 @@ namespace WarehouseRobot.Scenario
         Vector3 GoalPosition(string goal, int run)
         {
             if (!Experiment) return nodes[goal].Position;
-            var map = eplan.RunMap(cfg.dev_seed, run, out _);
+            var map = eplan.RunMap(eSeed, run, out _);
             var n = map.Node(ExperimentPlanAB.GoalOn(map, goal));
             return new Vector3(n.X, nodes[meta.start].Position.y, n.Z);
         }
@@ -172,7 +182,7 @@ namespace WarehouseRobot.Scenario
             if (spawnedRun == run) return true;
             DestroyWorkers();
             eRun = eRuns[run - 1];
-            eMap = eplan.RunMap(cfg.dev_seed, run, out _);
+            eMap = eplan.RunMap(eSeed, run, out _);
             eAsked = null;
             eLimit = "";
             eWorkers.Clear();
@@ -324,6 +334,7 @@ namespace WarehouseRobot.Scenario
             GroundTruthFiles.WriteNew(Path.Combine(used, "experiments_ab_unity.json"), expText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "scenarios_ab.json"), scenariosText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "looks_ab.json"), looksAbText);
+            if (Final) GroundTruthFiles.WriteNew(Path.Combine(used, Path.GetFileName(fset.experiment_config)), fexpText);
         }
     }
 }
