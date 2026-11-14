@@ -226,43 +226,43 @@ class GuardAndOutputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             u, b = tf.session(Path(d), "t")
             with self.assertRaisesRegex(SystemExit, "final evaluation only"):
-                an.analyse([("zoom_on", u, b)], CFG)
+                an.analyse([("A3", u, b)], CFG)
 
     def test_final_is_refused_while_not_frozen(self):
         with tempfile.TemporaryDirectory() as d:
             u, b = tf.session(Path(d), "t")
             with self.assertRaisesRegex(SystemExit, "not frozen"):
-                an.analyse([("zoom_on", u, b)], CFG, final=True)
+                an.analyse([("A3", u, b)], CFG, final=True)
 
     def test_final_on_a_frozen_repo_with_test_data(self):
         with tempfile.TemporaryDirectory() as d:
             repo = tf.final_repo(Path(d) / "r")
             u, b = tf.session(Path(d), "t")
-            res = an.analyse([("zoom_on", u, b)], CFG, final=True, repo=repo)
+            res = an.analyse([("A3", u, b)], CFG, final=True, repo=repo)
             self.assertTrue(res["final"])
             self.assertIn("TEST", res["splits"])
-            self.assertEqual(res["settings"]["zoom_on"]["runs"], 2)
+            self.assertEqual(res["settings"]["A3"]["runs"], 2)
             self.assertIn("FINAL settings, test data", an.markdown(res))
 
     def test_final_checks_the_setting_and_refuses_development_data(self):
         with tempfile.TemporaryDirectory() as d:
             repo = tf.final_repo(Path(d) / "r")
-            u, b = tf.session(Path(d), "z", zoom=False)
-            with self.assertRaisesRegex(SystemExit, "needs zoom on"):
-                an.analyse([("zoom_on", u, b)], CFG, final=True, repo=repo)
+            u, b = tf.session(Path(d), "z", setting="B3_off")                    # a detection-OFF session given as setting A3
+            with self.assertRaisesRegex(SystemExit, "lie_detection.second_opinion is False but setting A3 needs True"):
+                an.analyse([("A3", u, b)], CFG, final=True, repo=repo)
             du, db = tf.session(Path(d), "dev", spec_kw={"commander_look": "sunbox_m1",
                                                          "clips": {"POINT": "point_mixamo_01", "WAIT": "wait_ik_01",
                                                                    "STOP": "stop_ik_01"}})
             with self.assertRaisesRegex(SystemExit, "--final-evaluation given"):
-                an.analyse([("zoom_on", du, db)], CFG, final=True, repo=repo)
+                an.analyse([("A3", du, db)], CFG, final=True, repo=repo)
 
     def test_the_analysis_may_be_repeated_unlike_the_final_evaluation(self):
         with tempfile.TemporaryDirectory() as d:
             repo = tf.final_repo(Path(d) / "r")
             u, b = tf.session(Path(d), "t")
-            an.analyse([("zoom_on", u, b)], CFG, final=True, repo=repo)
-            an.analyse([("zoom_on", u, b)], CFG, final=True, repo=repo)
-            self.assertEqual(fg.markers(d, "zoom_on", "evaluation"), [])
+            an.analyse([("A3", u, b)], CFG, final=True, repo=repo)
+            an.analyse([("A3", u, b)], CFG, final=True, repo=repo)
+            self.assertEqual(fg.markers(d, "A3", "evaluation"), [])
 
     def test_main_writes_a_new_folder_with_the_table_and_the_commit(self):
         with tempfile.TemporaryDirectory() as d:
@@ -288,7 +288,7 @@ class GuardAndOutputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             u, b = tf.session(Path(d), "t")
             with self.assertRaises(SystemExit):
-                an.main(["--session", "zoom_on", str(u), str(b)])
+                an.main(["--session", "A3", str(u), str(b)])
 
 
 class IsolationTests(unittest.TestCase):

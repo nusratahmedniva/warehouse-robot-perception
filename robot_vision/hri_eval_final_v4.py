@@ -1,4 +1,5 @@
-"""v4 FINAL evaluation of one setting (zoom_on, zoom_off, bystanders, zoom_on_repeat). EVALUATION CODE ONLY.
+"""v4 FINAL evaluation of one setting (since 2026-11-14 the 13 settings of the experiments A/B in configs/v4/final_plan.json, AUDIT.md 16.15:
+A1 ... B4 and the detection-off B1_off ... B4_off). EVALUATION CODE ONLY.
 
 Allowed only when ALL of this holds, otherwise refused (SystemExit) before any test data is read:
   1. configs/v4/frozen.json is frozen and every hash matches (v4 configs, v3 files v4 reads, pose weights, MediaPipe model);
@@ -8,14 +9,17 @@ Allowed only when ALL of this holds, otherwise refused (SystemExit) before any t
      disagreement refuses, with the reason;
   4. every run lies wholly in the TEST split (data_splits_v4.guard_run with final evaluation: test looks and clips only, no
      development data, no mix, no placeholders) and is what the setting says (zoom, bystanders, runs, seed, task, Unity mode).
-It runs the same evaluation as hri_eval_dev_v4.py (the numbers are computed by the same code), writes a new folder
+It runs the same evaluation as hri_eval_dev_v4.py (the numbers are computed by the same code) and adds the numbers of the experiment
+(eval.json "experiment", eval.md): SUCCESS with a Wilson 95 % interval and the failure kinds (collision, timeout, aborted, wrong goal), median
+time, trail against the optimal corridor (gt_path), lies given / detected / corrected / fooled with their rates, safety stops and watchdog
+stops, each with its count (export_csv_v4.summarize, the same code as the final CSV export). It writes a new folder
 <output_root>/hri_eval_final_v4_<setting>_<time>/ with eval.json, eval.md, the frozen record and every v4 config used, and
 run.json (git commit), and only then FINAL_DONE.json (also a crash leaves no marker). No threshold is changed here.
 It also counts Unity's watchdog stops PER RUN from each bridge run's messages.jsonl (watchdog_block; eval.json watchdog_stops,
 a table in eval.md): per B11(a) (2026-11-13) a watchdog stop is a result, never a reason to refuse or invalidate.
 
 Usage (from robot_vision/):
-  python hri_eval_final_v4.py --setting zoom_on --session outputs/trials_final_X outputs/bridge_guide_Y [--session ... ...]
+  python hri_eval_final_v4.py --setting A3 --session outputs/trials_final_Task2_A3_X outputs/bridge_guide_Y [--session ... ...]
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ import shutil
 from pathlib import Path
 
 import data_splits_v4 as ds
+import export_csv_v4 as ex
 import final_guard_v4 as fg
 import freeze_v4 as fz
 import gesture_data as gd
@@ -35,10 +40,11 @@ import hri_eval_dev_v4 as ev
 HERE = Path(__file__).resolve().parent
 
 
-def gate(setting: str, pairs, output_root, gcfg: dict, repo: Path = fz.REPO) -> list:
-    """All the checks, in order, before and while the test data is loaded. Returns the loaded runs."""
+def gate(setting: str, pairs, output_root, gcfg: dict, repo: Path = fz.REPO, kind: str = "evaluation") -> list:
+    """All the checks, in order, before and while the test data is loaded. Returns the loaded runs. kind: the run-once marker that
+    refuses a repetition: 'evaluation' (this tool) or 'export' (export_csv_v4.py final mode, its own marker)."""
     fz.require_frozen(repo)                                           # 1. frozen and every hash matches (models must be present)
-    fg.ensure_not_done(output_root, setting, "evaluation", repo)       # 2. not evaluated before
+    fg.ensure_not_done(output_root, setting, kind, repo)               # 2. not evaluated (or exported) before
     gt_cfg = gt_path.load_config(repo / "robot_vision/configs/v4/gt_eval.json")
     for unity in sorted({Path(u) for u, _ in pairs}, key=str):         # 3. the leak test passed (before any test data is read)
         leak = gt_path.session_leak_check(unity, gt_cfg)
@@ -134,6 +140,9 @@ def evaluate_final(setting: str, pairs, repo: Path = fz.REPO, output_root: Path 
     res["final_setting"] = setting
     res["splits"] = "TEST looks and clips only (data_splits_v4.guard_run, final evaluation), frozen configs verified"
     res["watchdog_stops"] = watchdog_block(runs)                     # B11(a): a result, never a refusal
+    run_rows, _ = ex.build_tables(runs, ecfg)                         # the experiment's own numbers (AUDIT.md 16.15 item 6)
+    res["experiment"] = {"setting": setting, "plan_entry": fg.plan(repo)["settings"][setting],
+                         "summary": ex.summarize(run_rows, ex.wilson_z(repo)), "runs_table": run_rows}
     out = dio.new_run_dir({"paths": {"output_root": str(output_root)}}, f"{fg.EVAL_PREFIX}_{setting}")
     (out / "config_used").mkdir()
     for f in fz.config_files(repo):
@@ -144,7 +153,8 @@ def evaluate_final(setting: str, pairs, repo: Path = fz.REPO, output_root: Path 
     frozen_sha = fz.sha256_lf(repo / fz.FROZEN_REL)
     dio.write_json(out / "run.json", {"git": git, "setting": setting, "sessions": [[u.name, b.name] for u, b in pairs],
                                       "frozen_sha256": frozen_sha})
-    (out / "eval.md").write_text(ev.markdown(res) + "\n" + watchdog_markdown(res["watchdog_stops"]), encoding="utf-8")
+    (out / "eval.md").write_text(ev.markdown(res) + "\n" + ex.summary_markdown(setting, res["experiment"]["summary"]) + "\n"
+                                 + watchdog_markdown(res["watchdog_stops"]), encoding="utf-8")
     fg.write_done(out, setting, "evaluation", {"git_commit": git["commit"], "evaluation_folder": out.name, "runs": len(runs),
                                                "frozen_sha256": frozen_sha})      # last: a crash above leaves no marker
     return out, res
@@ -159,7 +169,7 @@ def main(argv=None) -> None:
     a = ap.parse_args(argv)
     pairs = [(dio.resolve(u), dio.resolve(b)) for u, b in a.session]
     out, res = evaluate_final(a.setting, pairs)
-    print(ev.markdown(res) + "\n" + watchdog_markdown(res["watchdog_stops"]))
+    print(ev.markdown(res) + "\n" + ex.summary_markdown(a.setting, res["experiment"]["summary"]) + "\n" + watchdog_markdown(res["watchdog_stops"]))
     print(f"Folder: {out}\nFINAL_DONE.json written: setting {a.setting} cannot be evaluated again.")
 
 
