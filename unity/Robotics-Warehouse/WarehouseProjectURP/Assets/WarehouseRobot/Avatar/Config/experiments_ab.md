@@ -991,3 +991,49 @@ tables in `reports_v4/`).*
   - His POINT stripes are straight.
 
 No perception was run.
+
+*Addendum 7 (2026-11-15): Nusrat's four decisions, declared before any change.* No perception; one commit per decision. The
+five-finger looks must stay unchanged: decisions 2 to 4 apply only to looks named in a new `looks_ab.json` rule, i.e. only Boxo. The
+Sunbox pin test, the golden test and a `BatchHandShapes` comparison prove it.
+
+**1. Torso core check (replaces the torso rule of addendum 5).**
+- **Core:** the torso vertices as before (largest weight on Hips, Spine, Chest or UpperChest, at least 0.5), **minus a shoulder zone**:
+  every vertex within **0.4 x the rig's own upper-arm length (Lu)** of either UpperArm bone, at the take's reference pose. The zone is
+  about 11 cm on Sunbox, 9 cm on the anime looks and 10 cm on Boxo.
+- **Metric:** as before, each vertex in its own dominant bone's frame, the 95th percentile of its displacement from the pre-take idle.
+- **Limit, calibrated before it is applied:**
+  - First the check runs on the professionally rigged looks only: the 10 Sunbox looks and mixamo_worker. Their worst core p95 over every
+    command, frame and arm, **x 1.25**, is the limit.
+  - It is written into `gesture_geometry.json` (`torso_max_displacement_m`) and recorded here as a further addendum, committed, and only
+    then applied to all 15 looks.
+- The whole-torso p95 of addendum 5 stays in `skin_table.md` as information, not as a rule.
+
+**2. Boxo's rigid torso (importer, Boxo only).** Boxo's body is a rigid box by design. A new `looks_ab.json` rule `rigid_parts`
+(look `cartoon_boxo_01`, bone `mixamorig:Spine2`, Mixamo's upper spine, mapped as Chest or UpperChest) binds every vertex of the
+materials `bodymat`, `vestmat`, `stripemat`, `eye_whitemat`, `pupilmat`, `mouthmat` and `helmetmat` 100 % to that bone.
+- This is done in `ExperimentCharacterPostprocessor.OnPostprocessModel`, so it is applied by every import of that model and never by
+  hand.
+- Arms (`limbmat`), hands (`glovemat`) and legs (`trousersmat`, `bootmat`) keep their weights.
+- The import report lists the vertices rebound per material.
+- The re-check of the rerun (screenshots and torso core) must show no shoulder flap, straight vest stripes, and the torso check passing.
+
+**3. Boxo's palm plate (geometry check, Boxo only).** A new `looks_ab.json` rule `palm_plates` (look `cartoon_boxo_01`, material
+`glovemat`, `max_dimension_change` 0.05).
+- **The plate:** the hand's glove mesh island with the largest bounding-box volume. Islands are formed from the triangles, with the
+  vertices welded by position to 0.1 mm. "The hand's" means more than half the weight on that hand bone or below it.
+- **Measure:** a PCA of the plate's vertices. Its **thinnest principal axis is the palm normal**, signed by the bone normal, and the 30 deg
+  palm-to-camera rule applies to it.
+- **Shape:** the plate's extents along its three principal axes, sorted, must each stay **within 5 %** of the rest plate's (the plate
+  as spawned, before the first animated frame).
+- For that look this replaces the hand-bound-vertex mesh normal (whose flatness rule could not be met by a 4.5 cm thick plate). The bone
+  normal rule stays.
+- The plate's triangles must be readable at Play, so the rule also imports Boxo's model with Read/Write enabled. Nothing else changes.
+
+**4. Boxo's fingers by mesh islands (finger probe).** For a look with a `palm_plates` rule, the finger probe also measures each finger by
+its mesh islands instead of the 4 cm region:
+- Every glove island of the hand except the plate is assigned to the finger chain nearest to its centroid. A finger's vertices are those
+  of its islands.
+- The bend (30 deg), the movement threshold (2 mm) and the verdict (own >= 80 %, every other <= 20 %, at least 30 vertices) are as before.
+- If middle and ring still move together, it is reported as real.
+
+**Then** all checks rerun on all 15 looks, with screenshots: geometry, hand, skinning with the calibrated torso core, and Boxo's probes.
