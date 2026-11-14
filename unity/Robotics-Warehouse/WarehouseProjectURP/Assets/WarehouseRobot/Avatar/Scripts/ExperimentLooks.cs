@@ -140,6 +140,26 @@ namespace WarehouseAvatar
             return null;
         }
 
+        public const string SubsetArg = "-lookCheckLooks";
+
+        /// <summary>experiments_ab.md section 5: the looks of <paramref name="looks"/> named by the command-line option -lookCheckLooks
+        /// &lt;id&gt;[,&lt;id&gt;...], in the list's order; null when the option is absent or on an error (a name not in the list, no value).</summary>
+        public static string[] Subset(string[] args, IList<string> looks, out string error)
+        {
+            error = null;
+            int i = Array.IndexOf(args ?? new string[0], SubsetArg);
+            if (i < 0) return null;
+            if (i + 1 >= args.Length || args[i + 1].StartsWith("-", StringComparison.Ordinal)) { error = SubsetArg + " needs <id>[,<id>...]"; return null; }
+            var want = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var part in args[i + 1].Split(',')) if (part.Trim().Length > 0) want.Add(part.Trim());
+            foreach (var w in want)
+                if (looks == null || !looks.Contains(w)) { error = $"{SubsetArg}: '{w}' is not in the run's look list"; return null; }
+            if (want.Count == 0) { error = SubsetArg + " needs <id>[,<id>...]"; return null; }
+            var keep = new List<string>();
+            foreach (var l in looks) if (want.Contains(l) && !keep.Contains(l)) keep.Add(l);
+            return keep.ToArray();
+        }
+
         /// <summary>The navigation looks of one gender and proposed split, in name order (the look rotation of experiments_ab.md section 3).</summary>
         public static List<string> Navigation(ExperimentLooksFile f, string gender, string split)
         {

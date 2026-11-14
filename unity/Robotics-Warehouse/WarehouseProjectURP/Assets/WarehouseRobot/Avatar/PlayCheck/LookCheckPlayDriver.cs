@@ -118,6 +118,8 @@ namespace WarehouseRobot.AvatarCheck
             public string play_config_sha256, look_check_sha256, worker_config_sha256, robot_unity_config_sha256, clip_index_sha256;
             public int recordings, frames, frames_outside_hold;
             public string status, note;
+            /// <summary>experiments_ab.md section 5: the looks kept by -lookCheckLooks ("" = the config's whole list).</summary>
+            public string looks_subset;
         }
 
         /// <summary>One camera of a site: the nominal distance it stands for (2.0 or 4.0 m) and its render targets.</summary>
@@ -291,6 +293,11 @@ namespace WarehouseRobot.AvatarCheck
             var index = Resources.Load<TextAsset>(m_Worker.paths.clip_resources_path + "/" + m_Worker.paths.clip_index_name);
             if (index != null) WriteNew(Path.Combine(used, "clip_index.json"), index.text);
             var info = new RunInfo { created_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv) };
+            // experiments_ab.md section 5: -lookCheckLooks <id>[,<id>...] keeps those looks of the config's list (the config file is unchanged)
+            var subset = ExperimentLooks.Subset(Environment.GetCommandLineArgs(), m_Play.looks, out string subsetError);
+            if (subsetError != null) { Finish("failed: " + subsetError); yield break; }
+            if (subset != null) m_Play.looks = subset;
+            info.looks_subset = subset != null ? string.Join(",", subset) : "";
 
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;

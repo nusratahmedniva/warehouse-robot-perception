@@ -193,3 +193,34 @@ experiment configuration's nodes, branches and slots match them and obey every p
 - **Tests (Edit Mode).** The seeding (the same seed gives the same liars and directions; another run or worker another stream); the rate over many runs
   (0.2 within a binomial bound); consistency (a liar's answer is the same on every ask); valid-branch and fallback directions; the truth field (false
   exactly on a liar's gesture rows, the line format) and the forbidden key.
+
+## 2026-11-14, section 5: anime_f_01 re-export, arm-skin probe, look check of two looks (declared before any of it ran)
+
+- **Inputs (Nusrat, 2026-11-14 afternoon).** `unity/downloads/characters_v4/anime_f_01.fbx` re-exported (sha256 `fe304543...311d`, 9 932 076 bytes;
+  the imported file of section 2 is `79f49bc1...7b377`). `cartoon_boxo_01.fbx` unchanged (`431e6cb2...7632`, same as imported).
+  `unity/downloads/characters_v4/SOURCES.txt` now exists but is **empty (0 bytes)**: the licences of both characters cannot be checked from it and
+  stay **not verified** **[N]**. Nothing of these files is committed either way.
+- **Re-import.** The importer never overwrites an imported FBX that differs (section 2). The superseded import folder
+  `Assets/ThirdParty/CharactersV4/anime_f_01/` (with `anime_f_01.meta`) is **moved, not deleted**, to the git-ignored
+  `unity/downloads/superseded/anime_f_01_79f49bc1/` (outside `Assets/`, so Unity no longer imports it); then `Import Characters` runs unchanged.
+  The declared fixes of section 2 (unit scale, textures without an extension, white emission) apply only where the new file needs them, and the
+  import report says which did. cartoon_boxo_01 is imported again as it is (same file, idempotent). A new problem of the re-export that no declared
+  fix covers is reported, not fixed.
+- **Arm-skin probe (new, report only; `-executeMethod WarehouseAvatar.EditorTools.ExperimentLooksMenu.BatchProbeArmSkin`, every prefab look of
+  looks_ab.json, into `robot_vision/outputs/probe_arm_skin_<time>/`).** Does the mesh follow the Humanoid arm bones? Per side, with the look in its
+  import pose: rotate the upper arm 45 deg about the axis perpendicular to the arm and the vertical (the arm swings up), and bake every skinned mesh
+  before and after. *Arm region* = import-pose vertices within 0.25 x upper-arm length of the forearm segment (elbow to wrist) or of the distal half
+  of the upper arm (midpoint to elbow); *hand region* = the remaining vertices within 0.5 x forearm length of the wrist. A vertex *follows* when its
+  baked position lies within 25 % of its expected displacement of the expected position (the rigid rotation with the upper arm, which carries the
+  forearm and hand). A side **follows** when at least 95 % of its arm-region vertices follow; fewer than 50 arm-region vertices = inconclusive. The
+  hand region is reported the same way, for comparison only. **Controls:** mixamo_worker (expected: follows) and the superseded anime_f_01 import,
+  probed before it is moved (expected: does not follow, the visual finding of section 2). If a control does not come out as expected, the probe's
+  verdict is not used and "the arm follows" is decided from the frames alone, reported as such. An Edit Mode test checks the probe on a synthetic
+  skinned arm (weighted to the arm: follows; weighted to the chest: does not).
+- **Visual check.** The Play-mode frames of anime_f_01 (POINT, WAIT, STOP, both arms) are looked at for the arm mesh following the arm.
+- **Look check of anime_f_01 and cartoon_boxo_01 only.** New command-line option `-lookCheckLooks <id>[,<id>...]` for the Edit-mode
+  (`LookCheckMenu.BatchRunExperiment`) and the Play-mode (`LookCheckPlayMenu.CommandLineRunAB`) look checks: keeps those looks of the run's list, in
+  its order; a name not in the list refuses the run; recorded in `run_info.json` `looks_subset`. No config file changes (copied to `config_used/` as
+  before). With one look, the Play check still records it at both junctions in a round, the coverage each look had in step 2. cartoon_boxo_01 stays
+  out of the Play check (section 2 rule, its file unchanged): its rerun is the Edit-mode check. anime_f_01: Edit and Play. Then Anisha's
+  `look_check_v4.py --input` on both outputs, reported per look in the format of the step 2 report. Nothing is tuned on it.
