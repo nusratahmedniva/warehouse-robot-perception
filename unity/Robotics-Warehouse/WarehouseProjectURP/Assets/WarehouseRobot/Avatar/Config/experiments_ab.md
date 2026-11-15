@@ -1430,6 +1430,46 @@ Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session.json`, with the br
   - the counts actually recorded per kind, look and arm, against the table above.
 - **Not an evaluation:** no criterion of 16.16 is applied here (Anisha's tool and decision), and no reader value is changed.
 
+*Part B, built as declared (commit 560ef27) and recorded once (2026-11-15). Development; not a result.*
+- **Code:**
+  - `TrialWorkersConfig` scenario `stop_session` (`StopSessionConfig`, `StopSessionPlan`), `TrialRunnerV4StopSession.cs`, and
+    `TrialRunnerV4` hooks: per-run look, the idle stand through the bystander check `CheckStand`, the item ends the run;
+  - `sessions/dev_stop_session.json`;
+  - `StopSessionTests` (6): the 64 items, counts, order, clip rule, development-only looks and clips, refusals.
+  - Unity Edit Mode 314/314, Python 1138 OK (2 skipped).
+- **Session:** Unity `trials_development_Task2_20261115_152104` + bridge `bridge_guide_20261115_151856`.
+  - Recorded on 560ef27, clean tree, Unity Editor window, server with the default `configs/v4/control.json` (current reader).
+  - Logs `robot_vision/outputs/stop_session_20261115_151855_{unity,server}.log`.
+- **Run protocol** (`run_protocol_stop_session_20261115_151855.txt`):
+  - before the session: free memory 3,791 MB of 14,226 MB, power Best performance on mains;
+  - still running (not closed): Chrome x10 (285 MB), Claude x9 (489 MB), NVIDIA container x5 and overlay x5, warp-svc;
+  - during the session (`resources.csv`): available memory minimum 725 MB, hard paging median 16 pages/s, peak 58,058 pages/s.
+  - The run protocol (other apps closed) was therefore NOT fully met; disclosed.
+- **Every item recorded as planned, none missed:** 64/64 runs `ITEM_DONE`.
+  - 20 held STOPs (5 per look per arm) and 36 negatives (3 POINT, 3 PROCEED, 3 WAIT per look per arm), all at the first ask at A,
+    robot 2.08 to 2.15 m from the worker.
+  - 6 driving STOPs:
+    - each requested at the band's first moment, 5.98 to 5.99 m, robot 0.80 m/s, Python `navigate`;
+    - shown (first gesturing frame) 5.48 to 5.71 m from the robot while it was still driving (0.35 to 0.65 m/s);
+    - arms: m1 right, left, right; f1 left, right, left.
+  - 2 idle passes.
+  - **Deviation found (not changed):** the robot passed the idle worker at 1.06 m and 1.08 m (centre to centre), not 1.6 m. The robot
+    drives from its ask position at A straight to J1, not along the road centre line, so the declared 1.6 m from the centre line was
+    not the passing distance. Robot at 0.80 m/s at the closest point.
+- **Bridge:**
+  - watchdog stops 0;
+  - 2 Unity frame stalls (11.1 s and 2.1 s), both at start-up before trial 1;
+  - pan-tilt frames 11,236 sent / 11,237 received, drop rate 1.2 % on both cameras;
+  - `model_outputs.jsonl` has 16,819 lines for 16,857 received frames (the worker takes the latest frame only).
+- **Checks:**
+  - leak test passed in Unity (`session.json` `leak_test.passed` true) and in Python (`gt_path.py session`: max diff 0, 2 pairs);
+  - `gesture_data.py <run>/truth.jsonl --messages <bridge>/messages.jsonl` exit 0 for all 64 runs (19,071 truth rows);
+  - counts recorded = the declared table.
+- **Descriptive only (the live robot, `decisions.csv`; Anisha's tool decides the criteria):** runs with at least one stop by STOP:
+  - held STOP 20/20, driving STOP 6/6;
+  - negatives: PROCEED 12/12, WAIT 4/12, POINT 0/12;
+  - idle pass 2/2. These runs also contain the PROCEED at A, so this count does not isolate the hanging hands.
+
 ### Part C: the zip for Anisha (read only on outputs)
 
 - **File:** a new `robot_vision/outputs/stop_session_logs_<time>.zip`, laid out as `analyse_false_stop_v4.Logs` reads it.
