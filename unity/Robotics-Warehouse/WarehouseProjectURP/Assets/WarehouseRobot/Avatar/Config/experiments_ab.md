@@ -1580,3 +1580,52 @@ decision 3: **20 STOPs per look (10 per arm), part of them while driving**. Sess
   counts per look and arm against the plan of each session and against 16.16 decision 3 (20 per look, 10 per arm); every file's size
   and SHA-256.
 - The script `make_stop_zip.py` (now taking several sessions) is stored in the zip. Path, size and SHA-256 reported.
+
+*Section 14, built as declared (commit c2e75f4) and recorded once (2026-11-15). Development; not a result.*
+- **Code:** `StopSessionConfig.seed` and `StopSessionPlan.SessionSeed` (config seed, 0 = dev seed; the final seed and negatives refused),
+  the runner's session seed, `sessions/dev_stop_session_2.json`, 5 new `StopSessionTests`. Unity Edit Mode 319/319, Python 1138 OK
+  (2 skipped).
+- **Session S2:** Unity `trials_development_Task2_20261115_191700` + bridge `bridge_guide_20261115_191520`.
+  - Recorded on c2e75f4, clean tree, Unity Editor window; `session.json` mode development, seed 3, scenario `stop_session`, 14 runs.
+  - Server with the default `configs/v4/control.json` (current reader).
+  - Logs `robot_vision/outputs/stop_session_2_20261115_191518_{unity,server}.log`.
+- **Run protocol** (`run_protocol_stop_session_2_20261115_191518.txt`):
+  - before the session: free memory 3,865 MB of 14,226 MB; `launch_prep`: power mode Best performance on mains;
+  - still running (not closed): Chrome x6 (529 MB), Claude x1 (247 MB), NVIDIA container x4 (121 MB), warp-svc (52 MB);
+  - during the session (`resources.csv`, 471 samples): available memory minimum 882 MB (median 1,299 MB), hard paging median
+    11.9 pages/s, peak 32,292 pages/s.
+  - The run protocol (other apps closed) was therefore NOT fully met; disclosed.
+- **Every item recorded as planned, none missed:** 14/14 runs `ITEM_DONE`.
+  - 8 held STOPs (2 per look per arm) at the first ask at A, robot 2.06 to 2.11 m from the worker; clips `stop_ik_01` (rep 1),
+    `stop_ik_03` (rep 2).
+  - 6 driving STOPs:
+    - requested at 5.96 to 6.00 m, robot 0.80 m/s, Python `navigate`;
+    - shown (first gesturing frame) 5.52 to 5.74 m from the robot while it was still driving (0.43 to 0.67 m/s);
+    - arms: f1 right, left, right; m1 left, right, left; clips `stop_ik_01`, `stop_ik_03`, `stop_ik_01`.
+  - **Both sessions together: 10 STOPs per look and arm** (7 held + 3 driving), 20 per look, as AUDIT.md 16.16 decision 3.
+- **Bridge:**
+  - watchdog stops 0;
+  - 1 Unity frame stall (2.46 s) at start-up, before trial 1;
+  - round trip max 45.1 ms, event-loop lag max 84 ms;
+  - pan-tilt frames 3,588 sent / 3,588 received, Unity drop rate 3.65 % (session 1: 1.2 %); 360 frames 0.11 %;
+  - `model_outputs.jsonl` 4,774 lines.
+- **Checks:**
+  - leak test passed in Unity (`session.json` `leak_test.passed` true) and in Python (`gt_path.py session`: max diff 0, 2 pairs; it
+    writes `leak_test/leak_test.json` by design);
+  - `gesture_data.py <run>/truth.jsonl --messages <bridge>/messages.jsonl` exit 0 for all 14 runs (4,244 truth rows);
+  - counts recorded = the declared table.
+- **Descriptive only (the live robot, `decisions.csv`):** a STOP reading in 14/14 runs. Anisha's tool decides the criteria.
+
+*Section 14, the zip with both sessions (2026-11-15).*
+- **Zip:** `robot_vision/outputs/stop_session_logs_20261115_192423.zip` (git-ignored; the first zip is kept unchanged).
+  - 5,410,206 bytes; SHA-256 `ca1173ac497eed26ea6e075547a5fae018fc98be7d13c056bae72164162755a5`;
+  - 86 entries (30.6 MB uncompressed): `README.md`, `make_stop_zip.py` (version 2), and for S1 and S2 the bridge's `decisions.csv`,
+    `model_outputs.jsonl`, `v4_log.jsonl` and every `run_###/truth.jsonl` (64 + 14).
+- **README:**
+  - both sessions (S1, S2) with seed and commit;
+  - the `sessions` entries for Anisha's `false_stop_analysis.json` (she adds them);
+  - the STOP totals per look and arm against 16.16 decision 3 (10 each) and the counts against each session's plan (all as declared);
+  - 78 runs, 90 gesture segments (each with its session), the 2 idle passes of S1, every file's size and SHA-256.
+- **Checks:** `zipfile.testzip` clean; Anisha's `analyse_false_stop_v4.Logs` reads both sessions as they are (S1: 64 runs, 11,236 decision
+  rows, 16,819 model-output lines; S2: 14 runs, 3,650 decision rows, 4,774 model-output lines); every run passes her split guard as
+  development.
