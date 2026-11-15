@@ -39,8 +39,9 @@ namespace WarehouseAvatar
         public static FinalExperimentV4 Parse(string json) =>
             JsonUtility.FromJson<FinalExperimentV4>(json ?? "") ?? throw new FormatException("a final experiment config: not a JSON object");
 
-        /// <summary>The final setting this config belongs to: the experiment, plus _right / _left on the turn map.</summary>
-        public string SettingName => experiment + (string.IsNullOrEmpty(a2_side) ? "" : "_" + a2_side);
+        /// <summary>The final setting this config belongs to: the experiment, plus _right / _left on the turn map, plus _off when its lie
+        /// detection is off (2026-11-15, experiments_ab.md section 13: Anisha's B1_off, B2_right_off, B3_off, B4_off).</summary>
+        public string SettingName => experiment + (string.IsNullOrEmpty(a2_side) ? "" : "_" + a2_side) + (lie_detection == "off" ? "_off" : "");
 
         /// <summary>Anisha's control file (robot_vision-relative, configs/v4/experiments/) of a map, side and lie-detection switch.</summary>
         public static string ExpectedControl(string map, string side, string detection) =>
