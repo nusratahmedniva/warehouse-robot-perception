@@ -121,11 +121,145 @@ namespace WarehouseAvatar
         public float[] hold_s = new float[0];
     }
 
+    /// <summary>The STOP session (scenario stop_session, Avatar/Config/experiments_ab.md section 13 part B, 2026-11-15): one item per run,
+    /// planned by <see cref="StopSessionPlan"/>.</summary>
+    [Serializable]
+    public class StopSessionConfig
+    {
+        public List<string> looks = new List<string>();
+        public int held_stop_per_arm;
+        public List<string> negative_commands = new List<string>();
+        public int negatives_per_arm;
+        public int driving_stop_per_look;
+        public float[] driving_stop_distance_m = new float[0];
+        public int idle_pass_per_look;
+        /// <summary>The idle worker of an idle pass, in the frame of a junction's arrival road (as a bystander stand).</summary>
+        public BystanderStand idle_stand = new BystanderStand();
+        public float idle_passed_m;
+        public float point_body_azimuth_deg;
+        public float settle_s;
+        public float item_timeout_s;
+        /// <summary>2026-11-15 (experiments_ab.md section 14): the session seed of this STOP session; 0 = the runner's dev_seed. Never the
+        /// final seed (<see cref="StopSessionPlan.SessionSeed"/>).</summary>
+        public int seed;
+    }
+
+    public enum StopItemKind { Held, DrivingStop, IdlePass }
+
+    /// <summary>One run of the STOP session: who shows what, with which arm (empty for an idle pass), and its repetition within its look,
+    /// command and arm (1-based; it picks the clip).</summary>
+    public sealed class StopSessionItem
+    {
+        public int Run;
+        public string Look = "";
+        public StopItemKind Kind;
+        public string Command = "";
+        public string Arm = "";
+        public int Repetition;
+
+        public string KindName => Kind == StopItemKind.Held ? (Command == WorkerV4Config.Stop ? "held" : "negative") : Kind == StopItemKind.DrivingStop ? "driving" : "idle_pass";
+
+        public string Describe() => Kind == StopItemKind.IdlePass
+            ? $"{Look} idle pass {Repetition}"
+            : $"{Look} {KindName} {Command} {Arm} {Repetition}";
+    }
+
+    /// <summary>The order of the STOP session's items (experiments_ab.md section 13 part B), pure so Edit Mode tests can pin it.</summary>
+    public static class StopSessionPlan
+    {
+        public static readonly string[] Arms = { "right", "left" };
+
+        /// <summary>
+        /// Per look: repetitions 1..max(held, negatives) of [STOP right, STOP left (while r &lt;= held_stop_per_arm), each negative command
+        /// right, left (while r &lt;= negatives_per_arm)]; then the driving STOPs, arms alternating from right for the first look and from
+        /// left for the second; then the idle passes. The looks alternate run by run (run 1 look 1 item 1, run 2 look 2 item 1, ...).
+        /// </summary>
+        public static List<StopSessionItem> Items(StopSessionConfig c)
+        {
+            var perLook = new List<List<StopSessionItem>>();
+            for (int li = 0; li < c.looks.Count; li++)
+            {
+                var seq = new List<StopSessionItem>();
+                string look = c.looks[li];
+                int reps = Math.Max(c.held_stop_per_arm, c.negatives_per_arm);
+                for (int r = 1; r <= reps; r++)
+                {
+                    if (r <= c.held_stop_per_arm)
+                        foreach (var arm in Arms) seq.Add(new StopSessionItem { Look = look, Kind = StopItemKind.Held, Command = WorkerV4Config.Stop, Arm = arm, Repetition = r });
+                    if (r <= c.negatives_per_arm)
+                        foreach (var cmd in c.negative_commands)
+                            foreach (var arm in Arms) seq.Add(new StopSessionItem { Look = look, Kind = StopItemKind.Held, Command = cmd, Arm = arm, Repetition = r });
+                }
+                for (int k = 1; k <= c.driving_stop_per_look; k++)
+                    seq.Add(new StopSessionItem { Look = look, Kind = StopItemKind.DrivingStop, Command = WorkerV4Config.Stop, Arm = Arms[(k - 1 + li) % 2], Repetition = k });
+                for (int k = 1; k <= c.idle_pass_per_look; k++)
+                    seq.Add(new StopSessionItem { Look = look, Kind = StopItemKind.IdlePass, Command = "NONE", Arm = "", Repetition = k });
+                perLook.Add(seq);
+            }
+            var items = new List<StopSessionItem>();
+            int longest = 0;
+            foreach (var s in perLook) longest = Math.Max(longest, s.Count);
+            for (int i = 0; i < longest; i++)
+                foreach (var s in perLook)
+                    if (i < s.Count)
+                    {
+                        s[i].Run = items.Count + 1;
+                        items.Add(s[i]);
+                    }
+            return items;
+        }
+
+        /// <summary>The clip of repetition r (1-based): the (r - 1) mod n-th of the command's allowed clips (worker_v4.json order).</summary>
+        public static string Clip(IList<string> allowed, int repetition) =>
+            allowed == null || allowed.Count == 0 ? "" : allowed[(Math.Max(1, repetition) - 1) % allowed.Count];
+
+        /// <summary>The session seed of a STOP session (experiments_ab.md section 14): config seed, or the dev seed when 0; -1 with the reason
+        /// when it is below 0 or the final seed (development never uses the finals' draws).</summary>
+        public static int SessionSeed(StopSessionConfig c, int devSeed, int finalSeed, out string error)
+        {
+            error = null;
+            int seed = c == null || c.seed == 0 ? devSeed : c.seed;
+            if (c != null && c.seed < 0) error = $"stop_session.seed {c.seed} must be >= 0 (0 = dev_seed)";
+            else if (seed == finalSeed) error = $"stop_session.seed {seed} is the final seed: a development session never uses it";
+            return error == null ? seed : -1;
+        }
+
+        public static List<string> Validate(StopSessionConfig c, TrialWorkersConfig cfg)
+        {
+            var e = new List<string>();
+            if (c == null) { e.Add("stop_session: required for the stop_session scenario"); return e; }
+            if (c.looks == null || c.looks.Count == 0) e.Add("stop_session.looks: at least one look");
+            if (c.held_stop_per_arm < 0 || c.negatives_per_arm < 0 || c.driving_stop_per_look < 0 || c.idle_pass_per_look < 0) e.Add("stop_session: counts must be >= 0");
+            foreach (var cmd in c.negative_commands ?? new List<string>())
+                if (cmd != WorkerV4Config.Point && cmd != WorkerV4Config.Proceed && cmd != WorkerV4Config.Wait)
+                    e.Add($"stop_session.negative_commands: '{cmd}' must be POINT, PROCEED or WAIT");
+            if (c.driving_stop_per_look > 0 && (c.driving_stop_distance_m == null || c.driving_stop_distance_m.Length != 2 ||
+                                                !(c.driving_stop_distance_m[0] > 2f && c.driving_stop_distance_m[0] <= c.driving_stop_distance_m[1])))
+                e.Add("stop_session.driving_stop_distance_m: [min, max] with 2 < min <= max");
+            if (c.idle_pass_per_look > 0)
+            {
+                if (c.idle_stand == null || string.IsNullOrEmpty(c.idle_stand.junction)) e.Add("stop_session.idle_stand: a junction is required for an idle pass");
+                if (!(c.idle_passed_m > 0f)) e.Add("stop_session.idle_passed_m must be > 0");
+                if (cfg.max_active_avatars < 2) e.Add("max_active_avatars must be >= 2 for an idle pass (the worker at A and the idle worker)");
+            }
+            if (!(c.point_body_azimuth_deg > 0f && c.point_body_azimuth_deg <= 120f)) e.Add("stop_session.point_body_azimuth_deg must be in (0, 120]");
+            if (!(c.settle_s >= 0f)) e.Add("stop_session.settle_s must be >= 0");
+            if (!(c.item_timeout_s > 0f)) e.Add("stop_session.item_timeout_s must be > 0");
+            if (c.seed < 0) e.Add("stop_session.seed must be >= 0 (0 = dev_seed)");
+            if (cfg.forward_command != WorkerV4Config.Proceed) e.Add("stop_session: forward_command must be PROCEED (the answer at A that starts a drive)");
+            if (cfg.bystanders != null && cfg.bystanders.count != 0) e.Add("stop_session: bystanders.count must be 0 (the idle worker is the session's own)");
+            if (Items(c).Count == 0) e.Add("stop_session: the plan has no item");
+            return e;
+        }
+    }
+
     /// <summary>Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json: who stands in a v4 trial and what the commander shows.</summary>
     [Serializable]
     public class TrialWorkersConfig
     {
         public const string ScenarioDirection = "direction", ScenarioWaitThenDirection = "wait_then_direction", ScenarioStop = "stop_while_driving";
+        /// <summary>2026-11-15 (experiments_ab.md section 13 part B): the STOP session, one declared item per run.</summary>
+        public const string ScenarioStopSession = "stop_session";
 
         public string data_splits = "";
         public string commander_command = "";
@@ -135,6 +269,7 @@ namespace WarehouseAvatar
         /// <summary>direction (default), wait_then_direction (WAIT, then the direction, at every ask) or stop_while_driving.</summary>
         public string scenario = ScenarioDirection;
         public TrialStopScenario stop = new TrialStopScenario();
+        public StopSessionConfig stop_session = new StopSessionConfig();
         public List<string> looks = new List<string>();
         public int commander_worker_id = 1;
         public TrialBystanders bystanders = new TrialBystanders();
@@ -149,8 +284,8 @@ namespace WarehouseAvatar
         {
             var list = new List<string> { commander_command };
             if (!string.IsNullOrEmpty(forward_command)) list.Add(forward_command);
-            if (scenario == ScenarioWaitThenDirection) list.Add(WorkerV4Config.Wait);
-            if (scenario == ScenarioStop) list.Add(WorkerV4Config.Stop);
+            if (scenario == ScenarioWaitThenDirection || scenario == ScenarioStopSession) list.Add(WorkerV4Config.Wait);
+            if (scenario == ScenarioStop || scenario == ScenarioStopSession) list.Add(WorkerV4Config.Stop);
             return list;
         }
 
@@ -161,8 +296,9 @@ namespace WarehouseAvatar
             if (commander_command != WorkerV4Config.Point) e.Add("commander_command must be POINT (the direction toward B; WAIT and STOP are scenarios)");
             if (!string.IsNullOrEmpty(forward_command) && forward_command != WorkerV4Config.Proceed) e.Add("forward_command must be \"\" or PROCEED");
             if (string.IsNullOrEmpty(scenario)) scenario = ScenarioDirection;
-            if (scenario != ScenarioDirection && scenario != ScenarioWaitThenDirection && scenario != ScenarioStop)
-                e.Add($"scenario must be {ScenarioDirection}, {ScenarioWaitThenDirection} or {ScenarioStop}");
+            if (scenario != ScenarioDirection && scenario != ScenarioWaitThenDirection && scenario != ScenarioStop && scenario != ScenarioStopSession)
+                e.Add($"scenario must be {ScenarioDirection}, {ScenarioWaitThenDirection}, {ScenarioStop} or {ScenarioStopSession}");
+            if (scenario == ScenarioStopSession) e.AddRange(StopSessionPlan.Validate(stop_session, this));
             if (scenario == ScenarioStop && (stop == null || stop.distance_m == null || stop.distance_m.Length != 2 || stop.hold_s == null || stop.hold_s.Length != 2 ||
                                              !(stop.distance_m[0] > 2f && stop.distance_m[0] <= stop.distance_m[1]) || !(stop.hold_s[0] > 0f && stop.hold_s[0] <= stop.hold_s[1])))
                 e.Add("stop: distance_m [min, max] with 2 < min <= max and hold_s [min, max] with 0 < min <= max are required for stop_while_driving");
@@ -204,14 +340,17 @@ namespace WarehouseAvatar
         /// look of the mode's split when empty, rotated per run (commander looks[(run - 1) mod n], bystander k
         /// looks[(run - 1 + k) mod n]). Clips: every worker_v4.json clip of the commander's command that lies in the split.
         /// The whole plan is then checked by <see cref="DataSplitsV4.GuardRun"/>; null with the reason if anything is refused.
+        /// <paramref name="onlyLook"/> (the STOP session, experiments_ab.md section 13): this run's look, instead of the rotation.
         /// </summary>
-        public static TrialRunWorkers Plan(int run, string mode, TrialWorkersConfig cfg, WorkerV4Config workers, DataSplitsV4 splits, out string error)
+        public static TrialRunWorkers Plan(int run, string mode, TrialWorkersConfig cfg, WorkerV4Config workers, DataSplitsV4 splits, out string error,
+                                           string onlyLook = null)
         {
             error = null;
             if (mode != DataSplitsV4.Development) { error = $"mode '{mode}': the v4 trial workers run in development mode only (the final-run guard is Phase 4)"; return null; }
             // empty = every look of the split that the Task 2 template has (2026-11-14, experiments_ab.md section 7: data_splits.json also
             // lists the experiment looks of looks_ab.json, which only the experiment mode spawns)
-            var looks = cfg.looks != null && cfg.looks.Count > 0 ? new List<string>(cfg.looks) : splits.Names(true, mode).FindAll(l => workers.Look(l) != null);
+            var looks = onlyLook != null ? new List<string> { onlyLook }
+                      : cfg.looks != null && cfg.looks.Count > 0 ? new List<string>(cfg.looks) : splits.Names(true, mode).FindAll(l => workers.Look(l) != null);
             if (looks.Count == 0) { error = $"data_splits.json has no {mode} look"; return null; }
             foreach (var l in looks)
                 if (workers.Look(l) == null) { error = $"look '{l}' is not in worker_v4.json"; return null; }

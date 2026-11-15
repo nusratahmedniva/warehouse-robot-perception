@@ -1,6 +1,7 @@
 param(
     [string]$Experiment = "",                         # experiments A/B (the final study since 2026-11-14): A1, A2, A3, A4, B1, B2, B3, B4
     [string]$Side = "",                               # A2 / B2 only (the turn map): right or left; the final setting is <Experiment>_<Side>
+    [ValidateSet("on", "off")][string]$LieDetection = "on",   # 2026-11-15 (experiments_ab.md section 13): off = the setting <name>_off (B1_off, B2_right_off, B3_off, B4_off)
     [string]$Setting = "",                            # SUPERSEDED (refused): the v4 Task 2 settings zoom_on, zoom_off, bystanders, zoom_on_repeat
     [switch]$Rehearsal,                               # development rehearsal of a final setting (TrialPlayV4 -experiment, development looks and clips)
     [switch]$DryRun,                                  # print every command without running it (only read-only lookups run)
@@ -10,6 +11,9 @@ param(
 # One v4 session, end to end (2026-11-13; Avatar/Config/final_procedure_v4.md). Since 2026-11-14 the finals are the experiments A/B
 # (Avatar/Config/experiments_ab.md section 7): -Experiment A1..B4, with -Side right|left for A2 and B2; the setting must be one of the
 # final matrix (Avatar/Config/final_v4.json settings), whose final config (sessions/final_ab_<setting>.json) names the Python control file.
+# Since 2026-11-15 (experiments_ab.md section 13) -LieDetection off selects the detection-off setting <name>_off (B1_off, B2_right_off,
+# B3_off, B4_off): Unity runs it as its on twin (-finalSetting <name>_off; a rehearsal uses -experiment <Experiment>), the server gets the
+# off control file of its final config (and --final-setting <name>_off in a final).
 # The Task 2 settings (-Setting) are superseded and refused. Finals run in the Unity Editor WINDOW (never -batchmode: it hangs before the
 # leak test, AUDIT.md section 15), as the development sessions D2 to D4 did.
 #   1. the run-protocol note (run_protocol_v4.ps1)          4. Unity in the Editor window (TrialPlayV4), waited for until it quits
@@ -51,11 +55,12 @@ $map = (Json (Join-Path $repo $ecfg.scenarios_ab)).scenarios.($edef[0].scenario)
 if ($map -eq "turn") {
     if (@("right", "left") -notcontains $Side) { Say "REFUSED: $Experiment runs on the turn map: give -Side right or left"; exit 2 }
 } elseif ($Side) { Say "REFUSED: -Side is for the turn experiments (A2, B2) only; $Experiment uses the map $map"; exit 2 }
-$name = if ($Side) { "${Experiment}_$Side" } else { $Experiment }
+$name = $(if ($Side) { "${Experiment}_$Side" } else { $Experiment }) + $(if ($LieDetection -eq "off") { "_off" } else { "" })
 $finalCfg = Json (Join-Path $assets "Avatar\Config\final_v4.json")
 $fset = @($finalCfg.settings | Where-Object { $_.name -eq $name })
 if ($fset.Count -ne 1) { Say "REFUSED: '$name' is not a setting of the final matrix (final_v4.json settings: $(@($finalCfg.settings | ForEach-Object name) -join ', '))"; exit 2 }
 $fexp = Json (Join-Path $project $fset[0].experiment_config)
+if ($fexp.lie_detection -ne $LieDetection) { Say "REFUSED: $($fset[0].experiment_config) has lie_detection '$($fexp.lie_detection)', -LieDetection is $LieDetection"; exit 2 }
 $control = $fexp.python_control
 if (-not $control -or -not (Test-Path (Join-Path $rv $control))) { Say "REFUSED: the control file '$control' of $($fset[0].experiment_config) does not exist under robot_vision\"; exit 2 }
 $label = "${kind}_$name"

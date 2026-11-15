@@ -22,7 +22,8 @@ namespace WarehouseAvatar.Tests
         const string FinalAsset = "Assets/WarehouseRobot/Avatar/Config/final_v4.json";
         const string BaseWorkers = "Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json";
         static readonly string[] Names = { "zoom_on", "zoom_off", "bystanders", "zoom_on_repeat" };
-        static readonly string[] ExperimentNames = { "A1", "A2_right", "A2_left", "A3", "A4", "B1", "B2_right", "B3", "B4" };
+        static readonly string[] ExperimentNames = { "A1", "A2_right", "A2_left", "A3", "A4", "B1", "B2_right", "B3", "B4",
+                                                     "B1_off", "B2_right_off", "B3_off", "B4_off" };     // 2026-11-15, experiments_ab.md section 13
 
         static FinalConfigV4 Final() => FinalConfigV4.Parse(File.ReadAllText(Path.Combine(ProjectDir, FinalAsset)));
         static TrialWorkersConfig Workers(string asset) => TrialWorkersConfig.Parse(File.ReadAllText(Path.Combine(ProjectDir, asset)));

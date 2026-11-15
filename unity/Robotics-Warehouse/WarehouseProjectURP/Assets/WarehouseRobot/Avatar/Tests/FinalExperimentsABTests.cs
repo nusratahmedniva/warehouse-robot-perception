@@ -20,7 +20,13 @@ namespace WarehouseAvatar.Tests
         const string FinalAsset = "Assets/WarehouseRobot/Avatar/Config/final_v4.json";
         const string BaseWorkers = "Assets/WarehouseRobot/Avatar/Config/trial_workers_v4.json";
         const string ExperimentsAsset = "Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json";
-        static readonly string[] Names = { "A1", "A2_right", "A2_left", "A3", "A4", "B1", "B2_right", "B3", "B4" };
+        static readonly string[] Names = { "A1", "A2_right", "A2_left", "A3", "A4", "B1", "B2_right", "B3", "B4",
+                                           "B1_off", "B2_right_off", "B3_off", "B4_off" };     // 2026-11-15, experiments_ab.md section 13
+        /// <summary>The detection-off settings (Anisha's names, AUDIT.md 16.15 decision 1) and their on twins.</summary>
+        static readonly Dictionary<string, string> OffTwin = new Dictionary<string, string>
+            { ["B1_off"] = "B1", ["B2_right_off"] = "B2_right", ["B3_off"] = "B3", ["B4_off"] = "B4" };
+        static bool IsOff(string setting) => OffTwin.ContainsKey(setting);
+        static string Twin(string setting) => IsOff(setting) ? OffTwin[setting] : setting;
         static readonly string[] TestLooks = { "sunbox_f_shirt_plaid", "sunbox_m_shirt_plaid" };
         static readonly string[] Commands = { "POINT", "PROCEED" };
 
@@ -43,7 +49,7 @@ namespace WarehouseAvatar.Tests
         // ---------------------------------------------------------------- final_v4.json and the final configs
 
         [Test]
-        public void Settings_AreTheNineExperiments_EachWithItsOwnFinalConfig()
+        public void Settings_AreTheThirteenExperimentSettings_EachWithItsOwnFinalConfig()
         {
             var f = Final();
             CollectionAssert.AreEqual(Names, f.settings.Select(s => s.name).ToArray());
@@ -60,7 +66,7 @@ namespace WarehouseAvatar.Tests
         }
 
         [Test]
-        public void FinalConfigs_PassEveryCheck_TestLooksAndTestClipsOnly_LieDetectionOn()
+        public void FinalConfigs_PassEveryCheck_TestLooksAndTestClipsOnly_LieDetectionOnExceptTheOffSettings()
         {
             var splits = Splits();
             foreach (var s in Final().settings)
@@ -74,13 +80,55 @@ namespace WarehouseAvatar.Tests
                 CollectionAssert.AreEqual(new[] { "proceed_ik_03" }, x.proceed_clips, s.name);
                 foreach (var l in x.male_looks.Concat(x.female_looks)) Assert.AreEqual("test", splits.Looks[l], l);
                 foreach (var c in x.point_clips.Concat(x.proceed_clips)) Assert.AreEqual("test", splits.Clips[c], c);
-                Assert.AreEqual("on", x.lie_detection, s.name);
-                Assert.AreEqual(s.name.StartsWith("A2") || s.name.StartsWith("B2") ? s.name.Substring(3) : "", x.a2_side, s.name);
+                Assert.AreEqual(IsOff(s.name) ? "off" : "on", x.lie_detection, s.name);
+                Assert.AreEqual(Twin(s.name).StartsWith("A2") || Twin(s.name).StartsWith("B2") ? Twin(s.name).Substring(3) : "", x.a2_side, s.name);
             }
         }
 
         [Test]
-        public void FinalConfigs_PythonControlFile_ExistsWithTheExperimentsMapAndLieDetectionOn()
+        public void OffSettings_AreTheirOnTwins_ExceptTheLieSwitchAndTheControlFile()
+        {
+            // experiments_ab.md section 13 part A: Unity runs B*_off exactly as B* (same experiment, side, looks, clips; seed 2)
+            var f = Final();
+            Assert.AreEqual(4, OffTwin.Count);
+            foreach (var kv in OffTwin)
+            {
+                var off = Exp(f.Setting(kv.Key));
+                var on = Exp(f.Setting(kv.Value));
+                Assert.AreEqual("off", off.lie_detection, kv.Key);
+                Assert.AreEqual("on", on.lie_detection, kv.Value);
+                Assert.AreEqual(on.python_control.Replace("control_lie_on", "control_lie_off"), off.python_control, kv.Key);
+                var same = Copy(off);
+                same.lie_detection = on.lie_detection;
+                same.python_control = on.python_control;
+                Assert.AreEqual(JsonUtility.ToJson(on), JsonUtility.ToJson(same), kv.Key + ": every other field as " + kv.Value);
+                Assert.AreEqual(f.Setting(kv.Value).workers_config, f.Setting(kv.Key).workers_config, kv.Key);
+            }
+        }
+
+        [Test]
+        public void SettingName_CarriesTheLieSwitch_SoAnOffConfigIsRefusedUnderItsTwinsName()
+        {
+            var f = Final();
+            Assert.AreEqual("B2_right_off", Exp(f.Setting("B2_right_off")).SettingName);
+            Assert.AreEqual("B2_right", Exp(f.Setting("B2_right")).SettingName);
+            string Why(string setting, Action<FinalExperimentV4> change)
+            {
+                var s = f.Setting(setting);
+                var y = Copy(Exp(s));
+                change(y);
+                return string.Join(" | ", Problems(s, y));
+            }
+            StringAssert.Contains("it is the config of setting B1_off, not of B1",
+                Why("B1", y => { y.lie_detection = "off"; y.python_control = "configs/v4/experiments/control_lie_off_a1.json"; }));
+            StringAssert.Contains("it is the config of setting B3, not of B3_off",
+                Why("B3_off", y => { y.lie_detection = "on"; y.python_control = "configs/v4/experiments/control_lie_on.json"; }));
+            StringAssert.Contains("python_control must be configs/v4/experiments/control_lie_off_a2_right.json",
+                Why("B2_right_off", y => y.python_control = "configs/v4/experiments/control_lie_on_a2_right.json"));
+        }
+
+        [Test]
+        public void FinalConfigs_PythonControlFile_ExistsWithTheExperimentsMapAndItsLieSwitches()
         {
             // the server takes its map from the control file's roadmap key (AUDIT.md 16.12 item 5); "on" = second opinion + reject impossible
             var roadmapOf = new Dictionary<string, string>
@@ -96,10 +144,11 @@ namespace WarehouseAvatar.Tests
                 string path = Path.Combine(RepoRoot, "robot_vision", x.python_control);
                 Assert.IsTrue(File.Exists(path), s.name + ": " + x.python_control);
                 var control = (Dictionary<string, object>)MiniJson.Parse(File.ReadAllText(path));
-                Assert.AreEqual(roadmapOf[s.name], control["roadmap"], s.name);
+                Assert.AreEqual(roadmapOf[Twin(s.name)], control["roadmap"], s.name);
                 var lie = (Dictionary<string, object>)control["lie_detection"];
-                Assert.AreEqual(true, lie["second_opinion"], s.name);
-                Assert.AreEqual(true, lie["reject_impossible"], s.name);
+                // "off" = second opinion, reject impossible and backtrack all false (scenarios_ab.json detection.off)
+                Assert.AreEqual(!IsOff(s.name), lie["second_opinion"], s.name);
+                Assert.AreEqual(!IsOff(s.name), lie["reject_impossible"], s.name);
                 Assert.AreEqual(false, lie["backtrack"], s.name);
             }
         }
@@ -322,6 +371,13 @@ namespace WarehouseAvatar.Tests
                 // a marker of a superseded Task 2 setting blocks nothing of the new study
                 o.Marker("trials_final_Task2_zoom_on_20261201_080000", "UNITY_FINAL_DONE.json", FinalGuardV4.DoneJson("zoom_on", 20, 20, "abc", "x", "t"));
                 Assert.AreEqual("", Why(cfg, "A1", PlanAB, frozen, Sha, o.Root));
+                // an on twin and its detection-off setting are run once each, independently (section 13)
+                o.Marker("trials_final_Task2_B1_20261201_110000", "UNITY_FINAL_DONE.json", FinalGuardV4.DoneJson("B1", 20, 15, "abc", "x", "t"));
+                StringAssert.Contains("already run as a final", Why(cfg, "B1", PlanAB, frozen, Sha, o.Root));
+                Assert.AreEqual("", Why(cfg, "B1_off", PlanAB, frozen, Sha, o.Root), "B1_off after B1");
+                o.Marker("bridge_guide_20261201_120000", "FINAL_RUN_DONE.json", "{\"setting\": \"B4_off\", \"kind\": \"run\"}");
+                StringAssert.Contains("bridge_guide_20261201_120000/FINAL_RUN_DONE.json", Why(cfg, "B4_off", PlanAB, frozen, Sha, o.Root));
+                Assert.AreEqual("", Why(cfg, "B4", PlanAB, frozen, Sha, o.Root), "B4 after B4_off");
             }
         }
 

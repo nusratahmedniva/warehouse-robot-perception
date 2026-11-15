@@ -26,7 +26,9 @@ namespace WarehouseRobot.ScenarioEditor
     /// runner only, two existing development looks instead of the navigation looks (experiments_ab.md section 3). -experimentSide right|left
     /// (2026-11-14, development only): the A2 / B2 turn side for the session (experiments_ab.md section 7). Since 2026-11-14 the final
     /// settings are the experiments (A1, A2_right, A2_left, A3, A4, B1, B2_right, B3, B4; final_v4.json): -finalSetting A2_left runs the
-    /// final of A2 with the left turn; zoom_on, zoom_off, bystanders and zoom_on_repeat are superseded and refused.
+    /// final of A2 with the left turn; zoom_on, zoom_off, bystanders and zoom_on_repeat are superseded and refused. Since 2026-11-15
+    /// (experiments_ab.md section 13) also B1_off, B2_right_off, B3_off, B4_off: Unity runs each as its on twin; the server runs it with
+    /// the lie-detection-off control file of its final config.
     /// </summary>
     [InitializeOnLoad]
     public static class TrialPlayV4

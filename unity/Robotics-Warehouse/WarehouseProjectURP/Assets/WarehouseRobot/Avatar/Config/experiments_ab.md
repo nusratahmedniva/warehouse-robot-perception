@@ -1263,3 +1263,369 @@ confirmed (be2346f, `import_characters_20261115_022715`) is recorded and guarded
   - a fresh re-import (`import_characters_20261115_025911`) reports "pinned assignment: matches", and
     `IslandHandsTests.BoxoAssignment_MatchesThePin` passes on it;
   - the synthetic swap test catches index and middle swapped, and only those.
+
+## 2026-11-15, section 13: detection-off finals, the STOP session, the zip for Anisha (declared before any change or recording; nothing run)
+
+Branch `nusrat/v4-stop-session` (from main c59b168, which holds Anisha's AUDIT.md 16.15 to 16.17 and the avatar fixes of sections 10 to
+12). Unity side only: no file under `robot_vision/`, `docs/` or `external/` is changed, nothing is frozen, no final is run. The two
+sessions of part B run in the Unity Editor WINDOW (never `-batchmode`). One commit per part.
+
+### Part A: the four detection-off final settings (agreed with Anisha)
+
+**Her names, used exactly** (checked on main: `configs/v4/final_plan.json` `settings`, `bridge/server.py` `FINAL_CONTROL`, AUDIT.md 16.15
+decision 1): `B1_off`, `B2_right_off`, `B3_off`, `B4_off`. Each is its on twin (`B1`, `B2_right`, `B3`, `B4`) with the server's
+lie-detection-OFF control file:
+
+| setting | experiment | side | control file (`--control-config`) | on twin |
+|---|---|---|---|---|
+| `B1_off` | B1 | - | `configs/v4/experiments/control_lie_off_a1.json` | `B1` |
+| `B2_right_off` | B2 | right | `configs/v4/experiments/control_lie_off_a2_right.json` | `B2_right` |
+| `B3_off` | B3 | - | `configs/v4/experiments/control_lie_off.json` | `B3` |
+| `B4_off` | B4 | - | `configs/v4/experiments/control_lie_off.json` | `B4` |
+
+What changes in Unity:
+1. **Final configs** `Avatar/Config/sessions/final_ab_<setting>.json` for the four: the on twin's file with `lie_detection` "off" and
+   `python_control` the off file; looks, clips and side unchanged. Unity runs the same as for the twin: same experiment, seed 2, so the
+   same goals, placements and liars run by run (the paired comparison of AUDIT.md 16.15: `B*` against `B*_off`).
+2. **The config names its setting with its lie switch:** `FinalExperimentV4.SettingName` becomes experiment + `_<side>` +
+   (`_off` when `lie_detection` is "off"). Without it the guard would call a `B1_off` config "the config of setting B1" and refuse it.
+   A `B1` config with "off" is then "the config of setting B1_off" and is refused under `B1`. The control-file check is unchanged.
+3. **`final_v4.json`:** `settings` 9 -> 13 (the four after the nine); `freeze_files` 24 -> 28 (the four configs).
+   `freeze_v4.unity_files` reads this list unchanged, so no Python change is needed.
+4. **The guard is unchanged.** It already looks a setting up by its exact name in the markers: a `B1` marker never blocks `B1_off`.
+5. **Launcher** `finals_v4/run_session_v4.ps1`: new `-LieDetection on|off` (default on). The setting name gets `_off` with "off". A
+   setting missing from `final_v4.json` (e.g. `A1_off`) is refused as now. `-DryRun` prints the commands and every refusal.
+   - final: Unity `-finalSetting B1_off`, server `--final-setting B1_off --control-config <off file>`;
+   - rehearsal: Unity `-experiment B1` (development looks and clips), server with the off control file.
+6. **Tests:** the 13 settings and their configs; on/off switches of each control file; on and off twins identical except the switch and
+   the control file; the name rule; markers of a twin independent; launcher dry runs (by hand).
+
+**The matrix: 13 settings x 20 runs = 260 runs.**
+- Estimate: the method and numbers of section 7. A detection-off run = the on run divided by the simulator's on/off factor
+  (16.13.1: B1 1.21, B2 1.37, B3 1.63, B4 1.54).
+- The caveats of section 7 hold: no experiment run has completed in Unity yet.
+
+| setting | mean run (s) | longest run (s) | session (min) |
+|---|---|---|---|
+| `B1_off` | 93 | 93 | 38 |
+| `B2_right_off` | 92 | 92 | 38 |
+| `B3_off` | 141 | 171 | 55 |
+| `B4_off` | 140 | 171 | 54 |
+| the nine of section 7 | | | 557 |
+| **total** | | | **742 min, about 12.4 h** |
+
+**Proposed four sittings** (Anisha 16.17 item 1: four sittings of about 3 h; each B with its off partner; the A settings spread) **[N]**:
+- *Sitting 1 (3.1 h):* `B3`, `B3_off`, `A2_right`.
+- *Sitting 2 (3.1 h):* `B4_off`, `B4`, `A2_left`.
+- *Sitting 3 (3.4 h):* `B1`, `B1_off`, `A1`, `A4`.
+- *Sitting 4 (2.8 h):* `B2_right_off`, `B2_right`, `A3`.
+
+Rules for the sittings:
+- On and off alternate which runs first (on first in sittings 1 and 3).
+- Every setting has its own Unity start, the run protocol and one session of 20 runs.
+- Splitting changes nothing in a setting.
+
+Alternative: group by scenario (A, B, B_off together). Not proposed, because the third sitting would take 3.6 h. Anything the Python
+side still needs goes to a file under `robot_vision/outputs/` (`for_anisha_off_settings_<time>.md`), never into her files.
+
+*Part A, built as declared (2026-11-15).*
+- **Files:** the four `sessions/final_ab_<setting>_off.json` (+ `.meta`), generated from the twins (only `lie_detection`,
+  `python_control` and the two notes differ); `final_v4.json` (13 settings, 28 freeze files); `FinalExperimentV4.SettingName`; the
+  launcher's `-LieDetection`; `TrialPlayV4` doc comment.
+- **Tests:** `FinalExperimentsABTests` covers the 13 names, on/off per setting, the control file's switches, the twins identical but
+  for the switch and the file, the name rule, and independent markers of a twin pair. `FinalGuardV4Tests` covers the 13 names.
+  Unity Edit Mode 308/308.
+- **Launcher dry runs:** all four off settings show the right Unity and server commands. Each is refused today only for "not on main",
+  "tree not clean" and "frozen.json is not frozen"; Python's `final_plan.json` and `FINAL_CONTROL` accept each with the same control
+  file. `-Experiment A1 -LieDetection off` is refused ("'A1_off' is not a setting of the final matrix"). A rehearsal of `B3_off` runs
+  Unity `-experiment B3` with the server on `control_lie_off.json`.
+- **For Anisha:** the note `for_anisha_off_settings_20261115.md` (a byte-identical copy in `Avatar/Config/reports_v4/`). Her side
+  needs no change for the off settings. Open for her: whether the timeout rule needs detection-off development runs, the STOP counts
+  (13 vs 20 per look), and the sittings.
+
+### Part B: the STOP session (development, seed 1, today's poses)
+
+Purpose: the recordings AUDIT.md 16.16 decision 3 asks for, with the poses on main (PROCEED changed on every look, sections 10 and 11).
+Anisha checks the candidate false-STOP rule (16.17 item 3) on them against criteria (a) to (c) of 16.16 decision 2. **The server runs
+the CURRENT reader** (`configs/v4/gesture_reader.json` as on main; the rule is not switched on). It logs every processed frame's
+model outputs (`model_outputs.jsonl`), and Unity writes the truth per frame (`truth.jsonl` every 0.05 s and on every phase change:
+`true_command`, `arm`, `phase`, `clip`, `look`).
+
+**Not the look-check Play mode:** that mode never connects to Python, so it gives no `model_outputs.jsonl` and no `decisions.csv`. The
+session is a new **development scenario** `stop_session` of `TrialRunnerV4`: `TrialPlayV4 -workersConfig
+Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session.json`, with the bridge server in guide mode. The robot really reacts.
+
+**One item per run, 64 runs, exact counts:**
+
+| kind | command | looks | arms | per look per arm | runs |
+|---|---|---|---|---|---|
+| held at the ask (A) | STOP | `sunbox_m1`, `sunbox_f1` | right, left | 5 | 20 |
+| negative at the ask (A) | POINT | both | right, left | 3 | 12 |
+| negative at the ask (A) | PROCEED | both | right, left | 3 | 12 |
+| negative at the ask (A) | WAIT | both | right, left | 3 | 12 |
+| STOP while the robot drives (toward J1) | STOP | both | m1: right, left, right; f1: left, right, left | 3 per look | 6 |
+| drive past an idle worker | (none) | both | - | 1 per look | 2 |
+| **total** | | | | | **64** |
+
+- **Counts differ from Anisha's 16.16 decision 3.** She asked for 20 STOPs per look (10 per arm), part while driving. This task gives
+  13 per look (5 held per arm + 3 while driving). Disclosed for her; criterion (a) is n of n with the n reported.
+- **Looks and clips:** development only.
+  - Looks: `sunbox_m1`, `sunbox_f1` (`data_splits.json`).
+  - Clips: the development clips of each command in `worker_v4.json` order, by repetition within a look and arm: repetition r uses
+    clip (r - 1) mod 2. So STOP `stop_ik_01`, `stop_ik_03`; POINT `point_mixamo_01`, `point_ik_01`; PROCEED `proceed_ik_01`,
+    `proceed_ik_02`; WAIT `wait_ik_01`, `wait_raise_01`.
+  - Every run passes `DataSplitsV4.GuardRun` as development (test data refused before anything is recorded).
+  - Speed, size, start delay, hold (3.0 to 4.5 s) and sway: the worker's seeded draw (seed 1, run, worker id) from `worker_v4.json`, as
+    in every session.
+- **Order:** the 32 items of a look in this order, with the two looks alternating run by run (run 1 `sunbox_m1` item 1, run 2
+  `sunbox_f1` item 1, ...):
+  1. repetitions 1 to 3 of [STOP R, STOP L, POINT R, POINT L, PROCEED R, PROCEED L, WAIT R, WAIT L];
+  2. repetitions 4 and 5 of [STOP R, STOP L];
+  3. the three driving STOPs;
+  4. the idle pass.
+- **Held items and negatives (at A, at 2 m):**
+  - The robot starts at A, scans, approaches the worker at A's stand to Python's 2.0 m standoff and asks "Which direction?".
+  - At the first ask the worker shows the item. It starts only after the question appears, as every answer does; STOP too.
+  - POINT points at 90 deg to the worker's own side of the arm (the worker faces the robot). PROCEED, WAIT and STOP are shown as
+    in every session.
+  - The worker answers no later ask.
+  - What the robot does is the real controller: STOP stops it; WAIT holds it; PROCEED sends it toward J1; POINT to the side is unclear
+    and asked again. So some PROCEED and POINT frames come from a robot that is moving or repositioning; the README says which.
+- **STOP while driving:**
+  - At A the worker answers every ask with PROCEED (the direction; not a counted item) until the robot drives toward J1. It is then
+    moved, once idle, to J1's stand, as in `stop_while_driving`.
+  - It shows STOP (the item's arm and clip, drawn hold) when Python's state is `navigate`, it has noticed the robot (8 m) and the
+    robot is **4.0 to 6.0 m** from it.
+  - 2 m is not possible while driving: on the road the robot comes no nearer than about 3.7 m to J1's stand before it stops to scan.
+    That was measured in `bridge_guide_20261112_181504` run 1 (scan at 6.26, -0.24). 4.0 to 6.0 m is the nearest band in which it
+    still drives (`stop_while_driving` used 6 to 9 m).
+- **Idle pass:**
+  - At A the worker answers with PROCEED as above and is NOT moved.
+  - A second worker of the same look (`worker_id` 2, never gestures, relaxed hanging hands) stands 10.0 m before J1, 1.6 m to the
+    right of the road A-J1, at (7.85, -10.0). It turns to face the robot as every worker does.
+  - Its stand passes the bystander checks: `min_road_clearance_m` 1.5 (1.6 rather than exactly 1.5, so float noise in the scene's node
+    positions cannot put it on the limit), 4.0 m from every commander stand, farther than the commander on every approach (nearest
+    margin 1.14 m on the last 3 m before J1), a free grid cell, no collider.
+- **End of a run (Unity):**
+  - **`ITEM_DONE`:** the item's gesture has returned to idle and 1.5 s more have passed; for the idle pass, the robot is 3.0 m past
+    the idle worker along the road.
+  - **`ITEM_MISSED`:** the item has not ended 90 s after the run start, e.g. PROCEED never read at A or the driving band never
+    reached.
+  - **Collision and stuck:** end the run as always (FAILURE). Python's `aborted` and `done` do not end a run of this scenario: the
+    item does.
+  - The robot never reaches B; the goal (GoalSequence(1)) only names the grid and optimal-path files.
+  - **A missed item is reported, never re-recorded** to fill the counts.
+- **Fixed for the session:**
+  - `trials.json` `trial_count` is not used: the plan's 64 items set it.
+  - No bystanders; at most 2 avatars.
+  - `session.json` `scenario` "stop_session"; `run_workers` lists every run's item.
+  - `truth_run###.json` `detail` names the item.
+- **Python:** `bridge.server --mode guide --task Task2 --perception vision --config configs/v4/bridge.json` with the default
+  `configs/v4/control.json`: v4 map, lie detection off, the current reader. Started with `--resource-log --exit-on-disconnect`.
+- **Run protocol:** `finals_v4/run_protocol_v4.ps1 -Label stop_session` before the session (free memory, programs still running). The
+  free memory and the heavy programs still running are reported with the bridge's `resources.csv` minimum.
+- **Checks:**
+  - leak test in Unity (`session.json` `leak_test.passed`) and in Python (`gt_path.py session <folder>`);
+  - every `run_###/truth.jsonl` accepted by `gesture_data.py` (with `--messages` of the bridge run);
+  - the counts actually recorded per kind, look and arm, against the table above.
+- **Not an evaluation:** no criterion of 16.16 is applied here (Anisha's tool and decision), and no reader value is changed.
+
+*Part B, built as declared (commit 560ef27) and recorded once (2026-11-15). Development; not a result.*
+- **Code:**
+  - `TrialWorkersConfig` scenario `stop_session` (`StopSessionConfig`, `StopSessionPlan`), `TrialRunnerV4StopSession.cs`, and
+    `TrialRunnerV4` hooks: per-run look, the idle stand through the bystander check `CheckStand`, the item ends the run;
+  - `sessions/dev_stop_session.json`;
+  - `StopSessionTests` (6): the 64 items, counts, order, clip rule, development-only looks and clips, refusals.
+  - Unity Edit Mode 314/314, Python 1138 OK (2 skipped).
+- **Session:** Unity `trials_development_Task2_20261115_152104` + bridge `bridge_guide_20261115_151856`.
+  - Recorded on 560ef27, clean tree, Unity Editor window, server with the default `configs/v4/control.json` (current reader).
+  - Logs `robot_vision/outputs/stop_session_20261115_151855_{unity,server}.log`.
+- **Run protocol** (`run_protocol_stop_session_20261115_151855.txt`):
+  - before the session: free memory 3,791 MB of 14,226 MB, power Best performance on mains;
+  - still running (not closed): Chrome x10 (285 MB), Claude x9 (489 MB), NVIDIA container x5 and overlay x5, warp-svc;
+  - during the session (`resources.csv`): available memory minimum 725 MB, hard paging median 16 pages/s, peak 58,058 pages/s.
+  - The run protocol (other apps closed) was therefore NOT fully met; disclosed.
+- **Every item recorded as planned, none missed:** 64/64 runs `ITEM_DONE`.
+  - 20 held STOPs (5 per look per arm) and 36 negatives (3 POINT, 3 PROCEED, 3 WAIT per look per arm), all at the first ask at A,
+    robot 2.08 to 2.15 m from the worker.
+  - 6 driving STOPs:
+    - each requested at the band's first moment, 5.98 to 5.99 m, robot 0.80 m/s, Python `navigate`;
+    - shown (first gesturing frame) 5.48 to 5.71 m from the robot while it was still driving (0.35 to 0.65 m/s);
+    - arms: m1 right, left, right; f1 left, right, left.
+  - 2 idle passes.
+  - **Deviation found (not changed):** the robot passed the idle worker at 1.06 m and 1.08 m (centre to centre), not 1.6 m. The robot
+    drives from its ask position at A straight to J1, not along the road centre line, so the declared 1.6 m from the centre line was
+    not the passing distance. Robot at 0.80 m/s at the closest point.
+- **Bridge:**
+  - watchdog stops 0;
+  - 2 Unity frame stalls (11.1 s and 2.1 s), both at start-up before trial 1;
+  - pan-tilt frames 11,236 sent / 11,237 received, drop rate 1.2 % on both cameras;
+  - `model_outputs.jsonl` has 16,819 lines for 16,857 received frames (the worker takes the latest frame only).
+- **Checks:**
+  - leak test passed in Unity (`session.json` `leak_test.passed` true) and in Python (`gt_path.py session`: max diff 0, 2 pairs);
+  - `gesture_data.py <run>/truth.jsonl --messages <bridge>/messages.jsonl` exit 0 for all 64 runs (19,071 truth rows);
+  - counts recorded = the declared table.
+- **Descriptive only (the live robot, `decisions.csv`; Anisha's tool decides the criteria):** runs with at least one stop by STOP:
+  - held STOP 20/20, driving STOP 6/6;
+  - negatives: PROCEED 12/12, WAIT 4/12, POINT 0/12;
+  - idle pass 2/2. These runs also contain the PROCEED at A, so this count does not isolate the hanging hands.
+
+### Part C: the zip for Anisha (read only on outputs)
+
+- **File:** a new `robot_vision/outputs/stop_session_logs_<time>.zip`, laid out as `analyse_false_stop_v4.Logs` reads it.
+- **Contents:**
+  - root `stop_session_logs_<time>/`;
+  - `<bridge run>/decisions.csv`, `model_outputs.jsonl`, `v4_log.jsonl`;
+  - `<Unity session>/run_###/truth.jsonl` for every run;
+  - `README.md` at the root.
+- **The README lists:**
+  - every gesture segment from `truth.jsonl`: run, kind, look, arm, command, clip, start and end `time_s`, first shown time, whether
+    the robot was driving (speed from `trail.csv` above 0.05 m/s at the first shown frame, plus the share of shown time driving) and
+    the robot-to-worker distance there;
+  - the idle passes (window and closest distance);
+  - the session ids, every file's size and SHA-256.
+- **Integrity:** the zip's path, size and SHA-256 are reported. Nothing in either session folder is changed. The generating script is
+  stored in the zip (`make_stop_zip.py`).
+
+*Part C, made (2026-11-15).*
+- **Zip:** `robot_vision/outputs/stop_session_logs_20261115_154026.zip` (git-ignored).
+  - 4,439,567 bytes; SHA-256 `34feb2c98831986dc737b0afb03d4314edf201b9b7ce715ac27dd2461113ccbd`;
+  - 69 entries (25.1 MB uncompressed): `README.md`, `make_stop_zip.py`, the bridge's `decisions.csv`, `model_outputs.jsonl` and
+    `v4_log.jsonl`, and the 64 `run_###/truth.jsonl`.
+- **README:**
+  - the run table;
+  - the counts against the plan (all as declared);
+  - 70 gesture segments: 56 at the ask, 6 driving STOPs and 8 PROCEEDs that start a drive (marked "not an item");
+  - the 2 idle passes;
+  - every file's size and SHA-256.
+- **Checks:**
+  - `zipfile.testzip` clean;
+  - Anisha's `analyse_false_stop_v4.Logs` opens it as is (64 runs, 11,236 decision rows, 16,819 model-output lines);
+  - the session folders are unchanged except `leak_test/leak_test.json`, which `gt_path.py session` writes by design (part B check).
+
+## 2026-11-15, section 14: the second STOP session (declared before any change or recording; nothing run)
+
+Same branch `nusrat/v4-stop-session` (after b5afb7f). Unity side only: no file under `robot_vision/`, `docs/` or `external/` is changed,
+nothing is frozen, no final is run, the session runs in the Unity Editor WINDOW. Purpose: reach Anisha's declared count, AUDIT.md 16.16
+decision 3: **20 STOPs per look (10 per arm), part of them while driving**. Session 1 (section 13 part B) gave 13 per look.
+
+**Seed 3, not 2 (Nusrat, 2026-11-15, before anything was built).**
+- The task said seed 2 "so items differ from session 1". Seed 2 is the final seed (`final_plan.json` `final_seed`).
+- The runner refuses `dev_seed == final_seed`.
+- Each worker's draws (speed, size, start delay, hold, sway) come from the stream (session seed, run, worker id). So seed 2 would give
+  this session's worker 1 in runs 1 to 14 the same draws as worker 1 in runs 1 to 14 of every final setting, and Anisha sets her
+  false-STOP rule from this data.
+- Seed 3 differs from session 1 just as much (the item list does not depend on the seed; only the draws do) and touches no final.
+
+**One item per run, 14 runs, exact counts:**
+
+| kind | command | look | arms (in order) | runs |
+|---|---|---|---|---|
+| held at the ask (A), 2 m | STOP | `sunbox_f1` | right, left, right, left (repetitions 1, 1, 2, 2) | 4 |
+| held at the ask (A), 2 m | STOP | `sunbox_m1` | right, left, right, left (repetitions 1, 1, 2, 2) | 4 |
+| STOP while the robot drives (toward J1) | STOP | `sunbox_f1` | right, left, right | 3 |
+| STOP while the robot drives (toward J1) | STOP | `sunbox_m1` | left, right, left | 3 |
+| **total** | | | | **14** |
+
+- **No negatives and no idle pass:** session 1 already gave the 3 negatives of each command per look per arm (16.16 decision 3).
+- **Order:** the plan of section 13 part B, unchanged code, with the looks listed as [`sunbox_f1`, `sunbox_m1`]:
+  - the looks alternate run by run, `sunbox_f1` first (run 1 f1, run 2 m1, ...);
+  - per look: held STOP right 1, left 1, right 2, left 2, then the three driving STOPs;
+  - the plan's driving arms alternate from right for the first listed look and from left for the second. Listing f1 first gives m1
+    left, right, left and f1 right, left, right: the arms session 1 did not give.
+- **Totals over both sessions, per look and arm (STOP):**
+
+| look | arm | held (S1 + S2) | driving (S1 + S2) | total |
+|---|---|---|---|---|
+| `sunbox_m1` | right | 5 + 2 | 2 + 1 | 10 |
+| `sunbox_m1` | left | 5 + 2 | 1 + 2 | 10 |
+| `sunbox_f1` | right | 5 + 2 | 1 + 2 | 10 |
+| `sunbox_f1` | left | 5 + 2 | 2 + 1 | 10 |
+
+  So 20 per look, 6 of them while driving.
+- **Clips:** as in section 13 part B (repetition r uses the (r - 1) mod 2-th development clip): held reps 1, 2 `stop_ik_01`,
+  `stop_ik_03`; driving 1, 2, 3 `stop_ik_01`, `stop_ik_03`, `stop_ik_01`.
+  - Held clips over both sessions per look and arm: `stop_ik_01` 4, `stop_ik_03` 3.
+  - Driving clips per look over both sessions: `stop_ik_01` 4, `stop_ik_03` 2.
+- **Everything else as session 1 (section 13 part B):** worker at A's stand, item at the first ask after the question; the driving
+  STOP shown when Python's state is `navigate`, the worker has noticed the robot and the robot is 4.0 to 6.0 m from it; settle 1.5 s;
+  `ITEM_MISSED` after 90 s, reported and never re-recorded; at most 1 avatar (no idle worker); development mode; development looks
+  and clips only (`DataSplitsV4.GuardRun`).
+
+**What changes in Unity (built only after this note):**
+1. `StopSessionConfig.seed` (int): the session seed of a STOP session; 0 = the runner's `dev_seed` (session 1's config has none, so
+   it is unchanged). The runner refuses a STOP-session seed equal to `final_seed` or below 0. `session.json` `seed` records it.
+2. `Avatar/Config/sessions/dev_stop_session_2.json` (+ `.meta`): looks [`sunbox_f1`, `sunbox_m1`], `held_stop_per_arm` 2,
+   `negative_commands` [], `negatives_per_arm` 0, `driving_stop_per_look` 3, band [4.0, 6.0], `idle_pass_per_look` 0,
+   `max_active_avatars` 1, `seed` 3; the other values as `dev_stop_session.json`.
+3. `StopSessionTests`: the 14 items, counts, order and arms; the totals of both sessions per look and arm (10 each); development
+   looks and clips only; the seed rule (0 -> dev seed, 3 accepted, the final seed and negatives refused).
+
+**Recording and checks (as session 1):**
+- `finals_v4/run_protocol_v4.ps1 -Label stop_session_2` before the session (free memory, programs still running); the bridge's
+  `resources.csv` minimum reported.
+- Server: `bridge.server --mode guide --task Task2 --perception vision --config configs/v4/bridge.json --resource-log
+  --exit-on-disconnect` with the default `configs/v4/control.json` (the CURRENT reader; the candidate rule not switched on).
+- Unity: `TrialPlayV4 -workersConfig Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session_2.json`, Editor window.
+- Checks: leak test in Unity (`session.json` `leak_test.passed`) and in Python (`gt_path.py session`); every `run_###/truth.jsonl`
+  accepted by `gesture_data.py --messages`; the counts recorded against the table above.
+- Not an evaluation: no criterion of 16.16 is applied and no reader value is changed.
+
+**The zip, rebuilt with both sessions:** a NEW `robot_vision/outputs/stop_session_logs_<time>.zip` (the first zip is kept, unchanged).
+- Root `stop_session_logs_<time>/` holding both pairs side by side: each session's bridge files (`decisions.csv`,
+  `model_outputs.jsonl`, `v4_log.jsonl`) and every `run_###/truth.jsonl`, under their own folder names, as `analyse_false_stop_v4`
+  reads a session (`sessions.<name>.bridge` / `.unity` in her config; Anisha adds the two entries, the README gives them).
+- `README.md`: both session ids (S1, S2) with seed and commit; every run's item and outcome; every gesture segment with its session,
+  run, look, arm, command, clip, start and end `time_s`, first shown time and whether the robot was driving; the idle passes of S1; the
+  counts per look and arm against the plan of each session and against 16.16 decision 3 (20 per look, 10 per arm); every file's size
+  and SHA-256.
+- The script `make_stop_zip.py` (now taking several sessions) is stored in the zip. Path, size and SHA-256 reported.
+
+*Section 14, built as declared (commit c2e75f4) and recorded once (2026-11-15). Development; not a result.*
+- **Code:** `StopSessionConfig.seed` and `StopSessionPlan.SessionSeed` (config seed, 0 = dev seed; the final seed and negatives refused),
+  the runner's session seed, `sessions/dev_stop_session_2.json`, 5 new `StopSessionTests`. Unity Edit Mode 319/319, Python 1138 OK
+  (2 skipped).
+- **Session S2:** Unity `trials_development_Task2_20261115_191700` + bridge `bridge_guide_20261115_191520`.
+  - Recorded on c2e75f4, clean tree, Unity Editor window; `session.json` mode development, seed 3, scenario `stop_session`, 14 runs.
+  - Server with the default `configs/v4/control.json` (current reader).
+  - Logs `robot_vision/outputs/stop_session_2_20261115_191518_{unity,server}.log`.
+- **Run protocol** (`run_protocol_stop_session_2_20261115_191518.txt`):
+  - before the session: free memory 3,865 MB of 14,226 MB; `launch_prep`: power mode Best performance on mains;
+  - still running (not closed): Chrome x6 (529 MB), Claude x1 (247 MB), NVIDIA container x4 (121 MB), warp-svc (52 MB);
+  - during the session (`resources.csv`, 471 samples): available memory minimum 882 MB (median 1,299 MB), hard paging median
+    11.9 pages/s, peak 32,292 pages/s.
+  - The run protocol (other apps closed) was therefore NOT fully met; disclosed.
+- **Every item recorded as planned, none missed:** 14/14 runs `ITEM_DONE`.
+  - 8 held STOPs (2 per look per arm) at the first ask at A, robot 2.06 to 2.11 m from the worker; clips `stop_ik_01` (rep 1),
+    `stop_ik_03` (rep 2).
+  - 6 driving STOPs:
+    - requested at 5.96 to 6.00 m, robot 0.80 m/s, Python `navigate`;
+    - shown (first gesturing frame) 5.52 to 5.74 m from the robot while it was still driving (0.43 to 0.67 m/s);
+    - arms: f1 right, left, right; m1 left, right, left; clips `stop_ik_01`, `stop_ik_03`, `stop_ik_01`.
+  - **Both sessions together: 10 STOPs per look and arm** (7 held + 3 driving), 20 per look, as AUDIT.md 16.16 decision 3.
+- **Bridge:**
+  - watchdog stops 0;
+  - 1 Unity frame stall (2.46 s) at start-up, before trial 1;
+  - round trip max 45.1 ms, event-loop lag max 84 ms;
+  - pan-tilt frames 3,588 sent / 3,588 received, Unity drop rate 3.65 % (session 1: 1.2 %); 360 frames 0.11 %;
+  - `model_outputs.jsonl` 4,774 lines.
+- **Checks:**
+  - leak test passed in Unity (`session.json` `leak_test.passed` true) and in Python (`gt_path.py session`: max diff 0, 2 pairs; it
+    writes `leak_test/leak_test.json` by design);
+  - `gesture_data.py <run>/truth.jsonl --messages <bridge>/messages.jsonl` exit 0 for all 14 runs (4,244 truth rows);
+  - counts recorded = the declared table.
+- **Descriptive only (the live robot, `decisions.csv`):** a STOP reading in 14/14 runs. Anisha's tool decides the criteria.
+
+*Section 14, the zip with both sessions (2026-11-15).*
+- **Zip:** `robot_vision/outputs/stop_session_logs_20261115_192423.zip` (git-ignored; the first zip is kept unchanged).
+  - 5,410,206 bytes; SHA-256 `ca1173ac497eed26ea6e075547a5fae018fc98be7d13c056bae72164162755a5`;
+  - 86 entries (30.6 MB uncompressed): `README.md`, `make_stop_zip.py` (version 2), and for S1 and S2 the bridge's `decisions.csv`,
+    `model_outputs.jsonl`, `v4_log.jsonl` and every `run_###/truth.jsonl` (64 + 14).
+- **README:**
+  - both sessions (S1, S2) with seed and commit;
+  - the `sessions` entries for Anisha's `false_stop_analysis.json` (she adds them);
+  - the STOP totals per look and arm against 16.16 decision 3 (10 each) and the counts against each session's plan (all as declared);
+  - 78 runs, 90 gesture segments (each with its session), the 2 idle passes of S1, every file's size and SHA-256.
+- **Checks:** `zipfile.testzip` clean; Anisha's `analyse_false_stop_v4.Logs` reads both sessions as they are (S1: 64 runs, 11,236 decision
+  rows, 16,819 model-output lines; S2: 14 runs, 3,650 decision rows, 4,774 model-output lines); every run passes her split guard as
+  development.

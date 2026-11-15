@@ -1,0 +1,47 @@
+{
+  "note": "DEVELOPMENT session config of the SECOND STOP session (Avatar/Config/experiments_ab.md section 14, declared 2026-11-15 before it was built or recorded; Nusrat). With session 1 (dev_stop_session.json, section 13 part B) it gives AUDIT.md 16.16 decision 3's count: 20 STOPs per look, 10 per arm, part while driving. Read by TrialRunnerV4 with TrialPlayV4 -workersConfig Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session_2.json; the bridge server runs in guide mode with the default configs/v4/control.json (the current reader). Development looks and clips only; session seed 3 (stop_session.seed; not the dev seed 1 of session 1 and never the final seed 2). Every value is scenario design; no Python threshold is set or changed here.",
+  "data_splits": "robot_vision/configs/v4/data_splits.json",
+  "commander_command": "POINT",
+  "forward_command": "PROCEED",
+  "scenario": "stop_session",
+  "stop_session": {
+    "looks": [
+      "sunbox_f1",
+      "sunbox_m1"
+    ],
+    "held_stop_per_arm": 2,
+    "negative_commands": [],
+    "negatives_per_arm": 0,
+    "driving_stop_per_look": 3,
+    "driving_stop_distance_m": [
+      4.0,
+      6.0
+    ],
+    "idle_pass_per_look": 0,
+    "idle_stand": {
+      "junction": "J1",
+      "ahead_m": -10.0,
+      "right_m": 1.6
+    },
+    "idle_passed_m": 3.0,
+    "point_body_azimuth_deg": 90.0,
+    "settle_s": 1.5,
+    "item_timeout_s": 90.0,
+    "seed": 3,
+    "note": "One item per run, 14 runs (2 looks x [2 held STOPs per arm + 3 driving STOPs]); no negatives and no idle pass (session 1 gave them). Per look, in this order: STOP right 1, STOP left 1, STOP right 2, STOP left 2, then the three driving STOPs; the looks alternate run by run, sunbox_f1 first. The driving arms alternate from right for the first listed look (sunbox_f1: right, left, right) and from left for the second (sunbox_m1: left, right, left): the arms session 1 did not give, so both sessions together give 10 STOPs per look and arm (7 held + 3 driving). idle_stand and idle_passed_m are kept from session 1 but unused (idle_pass_per_look 0). Everything else as session 1: held STOP at A's stand at the first ask after the question; driving STOP shown when Python's state is navigate, the worker has noticed the robot and the robot is driving_stop_distance_m from it; a run ends settle_s after the gesture has returned to idle or as ITEM_MISSED item_timeout_s after the run start; a missed item is reported, never re-recorded. seed: the session seed (0 would be dev_seed)."
+  },
+  "looks": [],
+  "commander_worker_id": 1,
+  "bystanders": {
+    "count": 0,
+    "stands": [],
+    "min_road_clearance_m": 1.5,
+    "min_commander_distance_m": 4.0,
+    "approach_m": 3.0,
+    "nearer_margin_m": 1.0,
+    "note": "No bystanders (as session 1); the rules are kept for the validator; no idle worker stands in this session."
+  },
+  "max_active_avatars": 1,
+  "max_active_avatars_note": "The worker at A only (no idle pass).",
+  "session_note": "2026-11-15 declared development session config (experiments_ab.md section 14): scenario stop_session, second session, seed 3."
+}
