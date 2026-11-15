@@ -33,10 +33,12 @@ namespace WarehouseAvatar
             return a;
         }
 
+        /// <summary>The arm and the index, middle and ring fingers' proximal bones; the little finger is optional (experiments_ab.md section 11
+        /// item 3: a hand without one is shaped with the fingers present, the ring finger then being the outermost).</summary>
         public static bool Complete(LookPoser.Arm a)
         {
             if (a.Upper == null || a.Lower == null || a.Hand == null) return false;
-            for (int f = Index; f <= Little; f++) if (a.Fingers[f][0] == null) return false;
+            for (int f = Index; f <= Ring; f++) if (a.Fingers[f][0] == null) return false;
             return true;
         }
 
@@ -143,7 +145,8 @@ namespace WarehouseAvatar
         /// Turn the hand so its fingers point along fingerDir and the palm faces palmWant, then shape the fingers; both
         /// blended from the animated pose by weight (0 = animated, 1 = shaped).
         /// </summary>
-        public static void Apply(LookPoser.Arm a, Quaternion[][] bind, HandShapeSpec shape, Vector3 fingerDir, Vector3 palmWant, float weight)
+        public static void Apply(LookPoser.Arm a, Quaternion[][] bind, HandShapeSpec shape, Vector3 fingerDir, Vector3 palmWant, float weight,
+                                 ThumbTuckResult tuck = null)
         {
             weight = Mathf.Clamp01(weight);
             if (weight <= 0f || !Complete(a)) return;
@@ -152,11 +155,125 @@ namespace WarehouseAvatar
             Aim(a.Hand, middle.position, fingerDir);
             AlignPalm(a, fingerDir, palmWant);
             a.Hand.rotation = Quaternion.Slerp(animated, a.Hand.rotation, weight);
-            ShapeFingers(a, bind, shape, weight);
+            ShapeFingers(a, bind, shape, weight, tuck);
         }
 
-        /// <summary>Finger joints from the bind pose, curled per joint toward the palm, spread; blended from the animated locals.</summary>
-        public static void ShapeFingers(LookPoser.Arm a, Quaternion[][] bind, HandShapeSpec shape, float weight)
+        /// <summary>A rig's tucked thumb for one hand shape (experiments_ab.md section 12 addendum 2): the thumb bones' local rotations that
+        /// replace the shape's thumb; inactive when the shaped thumb already meets the goal (nothing changes then).</summary>
+        public sealed class ThumbTuckResult
+        {
+            public bool Active;
+            public readonly Quaternion[] Local = new Quaternion[3];
+            /// <summary>Thumb tip to palm centre in palm lengths, with the shape alone and with the tuck (NaN = not measurable).</summary>
+            public float BeforeLp = float.NaN, AfterLp = float.NaN;
+            /// <summary>The root swing fraction and the outer-joint curl used.</summary>
+            public float Swing, CurlDeg;
+        }
+
+        /// <summary>
+        /// experiments_ab.md section 12 addendum 2: tuck the thumb of this shape per rig. The shape is applied at weight 1 to the bind pose and
+        /// the thumb tip (Tip) measured against the palm centre (HandGeometry.Frame). If it lies farther than
+        /// shape.thumb_tuck_max_palm_lengths palm lengths, the thumb root swings by the smallest fraction of the rotation that aims its
+        /// root-to-tip direction at a point shape.thumb_tuck_side_l palm lengths in front of the palm centre; if the full swing is not
+        /// enough, the two outer joints also curl toward the palm by the smallest equal angle up to 90 deg. The bones are restored; the
+        /// result holds the thumb's local rotations. Every quantity is relative to the hand, so the result holds for any hand orientation.
+        /// </summary>
+        public static ThumbTuckResult ThumbTuck(LookPoser.Arm a, Quaternion[][] bind, HandShapeSpec shape)
+        {
+            var r = new ThumbTuckResult();
+            if (shape == null || !(shape.thumb_tuck_max_palm_lengths > 0f) || !Complete(a)) return r;
+            var th = a.Fingers[Thumb];
+            if (th[0] == null || th[1] == null || th[2] == null) return r;
+            var saved = Capture(a);
+            var savedHand = a.Hand.localRotation;
+            try
+            {
+                ShapeFingers(a, bind, shape, 1f);
+                float D()
+                {
+                    var fr = HandGeometry.Frame(a);
+                    return fr.Valid ? Vector3.Distance(Tip(a, Thumb), fr.P) / fr.Lp : float.NaN;
+                }
+                float goal = shape.thumb_tuck_max_palm_lengths;
+                r.BeforeLp = r.AfterLp = D();
+                if (!(r.BeforeLp > goal)) return r;     // within the goal (or not measurable): untouched
+                var f0 = HandGeometry.Frame(a);
+                Vector3 target = f0.P + f0.Normal * (shape.thumb_tuck_side_l * f0.Lp);
+                Quaternion root0 = th[0].rotation;
+                Quaternion aim = Quaternion.FromToRotation(Tip(a, Thumb) - th[0].position, target - th[0].position);
+                float AtSwing(float s)
+                {
+                    th[0].rotation = Quaternion.Slerp(Quaternion.identity, aim, s) * root0;
+                    return D();
+                }
+                float swing = Smallest(AtSwing, 1f, goal);
+                AtSwing(swing < 0f ? 1f : swing);
+                r.Swing = swing < 0f ? 1f : swing;
+                if (swing < 0f)
+                {
+                    // the full swing is not enough: curl the two outer joints toward the palm, about the axis perpendicular to the swung
+                    // thumb and the palm normal (addendum 3: the shape's own axis runs along a thumb that lies across the palm)
+                    Vector3 thumbDir = (Tip(a, Thumb) - th[0].position).normalized;
+                    Vector3 axis = Vector3.Cross(thumbDir, f0.Normal).normalized;
+                    float sign = Vector3.Dot(Quaternion.AngleAxis(10f, axis) * thumbDir, f0.Normal) >= 0f ? 1f : -1f;
+                    Quaternion l1 = th[1].localRotation, l2 = th[2].localRotation;
+                    float AtCurl(float c)
+                    {
+                        th[1].localRotation = l1;
+                        th[2].localRotation = l2;
+                        var q = Quaternion.AngleAxis(sign * c * 90f, axis);
+                        th[1].rotation = q * th[1].rotation;
+                        th[2].rotation = q * th[2].rotation;
+                        return D();
+                    }
+                    float c01 = Smallest(AtCurl, 1f, goal);
+                    if (c01 < 0f)
+                    {
+                        // never within: the curl with the smallest distance (reported by AfterLp)
+                        float best = 0f, bestD = float.MaxValue;
+                        for (int i = 0; i <= 18; i++) { float d = AtCurl(i / 18f); if (d < bestD) { bestD = d; best = i / 18f; } }
+                        c01 = best;
+                    }
+                    AtCurl(c01);
+                    r.CurlDeg = c01 * 90f;
+                }
+                r.AfterLp = D();
+                for (int j = 0; j < 3; j++) r.Local[j] = th[j].localRotation;
+                r.Active = true;
+                return r;
+            }
+            finally
+            {
+                a.Hand.localRotation = savedHand;
+                for (int f = 0; f < 5; f++)
+                    for (int j = 0; j < 3; j++)
+                        if (a.Fingers[f][j] != null) a.Fingers[f][j].localRotation = saved[f][j];
+            }
+        }
+
+        /// <summary>The smallest x in [0, max] with eval(x) &lt;= goal: a scan in 20 steps, then bisection of the first step that meets it; -1
+        /// if none does.</summary>
+        static float Smallest(System.Func<float, float> eval, float max, float goal)
+        {
+            float prev = 0f;
+            for (int i = 1; i <= 20; i++)
+            {
+                float x = max * i / 20f;
+                if (!(eval(x) <= goal)) { prev = x; continue; }
+                float lo = prev, hi = x;
+                for (int k = 0; k < 24; k++)
+                {
+                    float mid = 0.5f * (lo + hi);
+                    if (eval(mid) <= goal) hi = mid; else lo = mid;
+                }
+                return hi;
+            }
+            return -1f;
+        }
+
+        /// <summary>Finger joints from the bind pose, curled per joint toward the palm, spread; blended from the animated locals. An active
+        /// tuck replaces the thumb's local rotations (section 12 addendum 2).</summary>
+        public static void ShapeFingers(LookPoser.Arm a, Quaternion[][] bind, HandShapeSpec shape, float weight, ThumbTuckResult tuck = null)
         {
             var animated = Capture(a);
             for (int f = 0; f < 5; f++)
@@ -176,17 +293,20 @@ namespace WarehouseAvatar
                 ThumbAcross(a, palm, shape.thumb_across_deg);
                 Spread(a, fingerDir, palm, shape.spread_deg);
             }
+            if (tuck != null && tuck.Active)
+                for (int j = 0; j < 3; j++)
+                    if (a.Fingers[Thumb][j] != null) a.Fingers[Thumb][j].localRotation = tuck.Local[j];
             for (int f = 0; f < 5; f++)
                 for (int j = 0; j < 3; j++)
                     if (a.Fingers[f][j] != null) a.Fingers[f][j].localRotation = Quaternion.Slerp(animated[f][j], a.Fingers[f][j].localRotation, weight);
         }
 
-        /// <summary>Swing the thumb about the palm normal so its tip moves across the palm toward the little finger.</summary>
+        /// <summary>Swing the thumb about the palm normal so its tip moves across the palm toward the little finger (the outermost finger present).</summary>
         static void ThumbAcross(LookPoser.Arm a, Vector3 palm, float deg)
         {
             var root = a.Fingers[Thumb][0];
             var tip = a.Fingers[Thumb][2] != null ? a.Fingers[Thumb][2] : a.Fingers[Thumb][1];
-            var little = a.Fingers[Little][0];
+            var little = LookPoser.OuterFinger(a);
             if (deg <= 0f || root == null || tip == null || little == null) return;
             Vector3 toTip = tip.position - root.position;
             float plus = Vector3.Distance(root.position + Quaternion.AngleAxis(deg, palm) * toTip, little.position);

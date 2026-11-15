@@ -132,6 +132,8 @@ namespace WarehouseAvatar
                     if (!straight && sum < 180f) e.Add($"hand_shapes.{name}.{finger}_deg must be a tight curl (sum >= 180 deg)");
                 }
                 if (s.spread_deg < 0f || s.spread_deg > 20f) e.Add($"hand_shapes.{name}.spread_deg must be in [0, 20]");
+                if (s.thumb_tuck_max_palm_lengths < 0f || s.thumb_tuck_max_palm_lengths > 2f) e.Add($"hand_shapes.{name}.thumb_tuck_max_palm_lengths must be in [0, 2] (0 = off)");
+                if (s.thumb_tuck_side_l < 0f || s.thumb_tuck_side_l > 1f) e.Add($"hand_shapes.{name}.thumb_tuck_side_l must be in [0, 1]");
             }
             Shape("point", h.point, true, false);
             Shape("wait", h.wait, true, false);
@@ -316,6 +318,9 @@ namespace WarehouseAvatar
         public float[] ring_deg;
         public float[] little_deg;
         public float spread_deg;
+        /// <summary>experiments_ab.md section 12 addendum 2 (WAIT only; 0 = off): the thumb is tucked per rig until its tip lies within this many
+        /// palm lengths of the palm centre (HandShaper.ThumbTuck), toward a point thumb_tuck_side_l palm lengths in front of the palm.</summary>
+        public float thumb_tuck_max_palm_lengths, thumb_tuck_side_l;
 
         public float[] Finger(int f)
         {

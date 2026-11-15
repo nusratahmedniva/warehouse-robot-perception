@@ -1,0 +1,67 @@
+{
+  "note": "Geometric check of the worker template's gestures (Avatar/Config/experiments_ab.md section 10, declared 2026-11-14 before any change or measurement; Nusrat). Read by Tools > Warehouse v4 > Experiments > Run Gesture Geometry Check (GestureGeometryDriver, Play mode). Every look of looks_ab.json avatar_experiment the worker template can spawn performs every clip of POINT, PROCEED, WAIT and STOP in worker_v4.json with both arms on a neutral stage; the rendered joints (UpperArm, LowerArm, Hand bones after the worker's LateUpdate) are compared with the worker's own goal of that frame. No perception model is run: an engineering check of the pose, not of what a camera reads.",
+  "tolerance": {
+    "elbow_angle_deg": 10.0,
+    "arm_direction_deg": 5.0,
+    "forearm_direction_deg": 10.0,
+    "no_fold_min_elbow_deg": 120.0,
+    "no_fold_commands": ["POINT"],
+    "palm_facing_deg": 30.0,
+    "palm_commands": ["STOP", "WAIT"],
+    "thumb_tip_max_palm_lengths": 1.0,
+    "thumb_palm_side_min": 0.0,
+    "palm_mesh_min_vertices": 30,
+    "palm_mesh_flatness_max": 0.5,
+    "palm_hand_weight_min": 0.5,
+    "palm_why": "2026-11-14, experiments_ab.md section 12 (Nusrat's check before the merge, declared before it was built or measured): on every measured hold frame of STOP and WAIT, the palm normal from the bones (LookPoser.PalmNormal) and from the skinned mesh (plane fit of the vertices mainly bound to the Hand bone, weight >= palm_hand_weight_min, between the wrist and the finger bases; undetermined below palm_mesh_min_vertices or above palm_mesh_flatness_max = smallest / middle variance, reported as mesh n/a) must point within palm_facing_deg of the robot camera (the stand-in robot's eye); WAIT's thumb tip must lie within thumb_tip_max_palm_lengths palm lengths of the palm centre and at least thumb_palm_side_min palm lengths on the palm side. Reported per look in hand_table.md; the arm check and its pass are unchanged.",
+    "why": "Declared in experiments_ab.md section 10 before any measurement. elbow_angle_deg: the rendered elbow's interior angle (shoulder-elbow-wrist) against the two-bone angle of the goal's shoulder-to-target distance with the rig's own upper arm and forearm. arm_direction_deg: shoulder-to-wrist against shoulder-to-target. forearm_direction_deg: elbow-to-wrist against vertical (WAIT) or against intended elbow-to-target (PROCEED). no_fold_min_elbow_deg: a straight-arm command (POINT 144 to 163 deg by design, worker_v4.json limits) whose elbow closes below 120 deg has folded. A look x command passes when every measured frame of every take passes all of them. 2026-11-14, section 11 item 1 (Nusrat's check correction, declared before the change): no_fold_commands POINT only, the one extended gesture; STOP (stop_reach 0.85 to 0.97 L: 116 to 152 deg by design), PROCEED (bent, 38 to 125 deg over the swing) and WAIT are checked against their own design elbow angle by elbow_angle_deg. Before: POINT and STOP."
+  },
+  "stage": {
+    "seed": 1,
+    "spacing_m": 5.0,
+    "robot_distance_m": 2.0,
+    "settle_after_hold_s": 0.2,
+    "question_after_request_s": 0.3,
+    "pause_between_s": 0.4,
+    "phase_wait_max_s": 15.0,
+    "hold_frames": 5,
+    "proceed_window_s": 2.0,
+    "point_side_azimuth_deg": [0.0, 45.0],
+    "floor_grey": 0.55,
+    "backdrop_grey": 0.78,
+    "ambient_grey": 0.5,
+    "light_intensity": 1.1,
+    "light_euler_deg": [50.0, -30.0, 0.0],
+    "why": "A new unsaved scene: a grey floor, one directional light, flat ambient, no warehouse. One worker per look on its own spot spacing_m apart along x, a stand-in robot robot_distance_m in front (the asking distance), so each worker turns to face it. Variation stream SetRun(seed, take). hold_frames frames spread over the hold from settle_after_hold_s; PROCEED: every frame of proceed_window_s of the swing (the reader's window, gesture_reader.json proceed.window_s). POINT at the look check's side azimuths (0 = straight out to the person's own side, 45 = toward the front)."
+  },
+  "screens": {
+    "kind_groups": ["realistic_human", "stylised_human", "anime", "cartoon_non_human"],
+    "distance_m": 3.0,
+    "azimuth_right_deg": 20.0,
+    "height_m": 1.3,
+    "vertical_fov_deg": 35.0,
+    "aim_height_of_body": 0.6,
+    "width_px": 1280,
+    "height_px": 960,
+    "why": "Screenshots for Nusrat's visual check (section 10 item 8), NOT the robot cameras' settings and not perception input: a neutral camera distance_m in front of the worker, azimuth_right_deg toward its right, at height_m, aimed at aim_height_of_body x the look's height; one PNG per look of these kind groups (looks_ab.json kind_group), command and arm, in the middle of the hold (PROCEED: at the top of the swing). Every group since section 11 item 7 (2026-11-14, declared before the rerun: a screenshot of every look); before: anime and cartoon_non_human."
+  },
+  "skinning": {
+    "forearm_bands": 5,
+    "forearm_min_band_vertices": 8,
+    "forearm_min_ratio": 0.70,
+    "forearm_weight_min": 0.5,
+    "torso_bones": ["Hips", "Spine", "Chest", "UpperChest"],
+    "torso_weight_min": 0.5,
+    "torso_percentile": 95,
+    "torso_max_displacement_m": 0.02125,
+    "torso_limit_why": "2026-11-15, experiments_ab.md section 12 addendum 8: the worst torso core p95 of mixamo_worker and the 10 Sunbox looks (1.70 cm, sunbox_f_shirt_plaid POINT right, gesture_geometry_torso_calibration_20261115_004424) x 1.25, declared before it was applied to the other looks. Before (addendum 5): 0.01 for the whole torso.",
+    "torso_core_shoulder_zone_lu": 0.4,
+    "torso_core_why": "2026-11-15, experiments_ab.md section 12 addendum 7 (Nusrat's decision 1, declared before it was built): the torso rule applies to the torso core only, i.e. the torso vertices farther than torso_core_shoulder_zone_lu x the rig's own upper-arm length from both UpperArm bones at the take's reference; torso_max_displacement_m is then the worst core p95 of the Sunbox looks and mixamo_worker x 1.25, calibrated and declared (addendum 8) before it is applied to the other looks. The whole-torso p95 stays reported as information.",
+    "proceed_frames": 5,
+    "why": "2026-11-14, experiments_ab.md section 12 addendum 5 (Nusrat's skinning checks, declared before they were built or measured). Reference: the idle pose just before each take's request. Forearm volume: the vertices of every skinned mesh whose largest bone weight is on the gesturing arm's LowerArm bone (>= forearm_weight_min), put in forearm_bands bands along elbow to wrist at the reference (a band with fewer than forearm_min_band_vertices is skipped); on each measured frame each band's mean distance from the elbow-to-wrist line over its reference value; the narrowest band must keep at least forearm_min_ratio. Torso: the vertices whose largest bone weight is on a torso_bones bone (>= torso_weight_min), each in its own dominant bone's frame (rotation and position, no scale); their displacement from the reference; the torso_percentile-th percentile must stay below torso_max_displacement_m (the maximum is reported). Frames: the arm check's hold frames; PROCEED proceed_frames frames evenly over its window. Reported in skin_table.md; the arm and hand checks are unchanged."
+  },
+  "output": {
+    "root": "robot_vision/outputs",
+    "run_prefix": "gesture_geometry"
+  }
+}

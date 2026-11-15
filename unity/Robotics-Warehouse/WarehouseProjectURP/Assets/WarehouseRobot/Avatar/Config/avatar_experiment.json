@@ -1,0 +1,11 @@
+{
+  "note": "Run-once guard of the avatar experiment (Avatar/Config/experiments_ab.md section 10 item 6, declared 2026-11-14 before it was built; replaces section 8 step 6, 'no code guard'). Read by Tools > Warehouse v4 > Experiments (LookCheckMenu.BatchRunExperiment, part edit; LookCheckPlayMenu.CommandLineRunAB / Run Play-Mode Look Check, part play) when the run is started with the flag below. Without the flag those tools are engineering checks and never the avatar experiment.",
+  "flag": "-avatarExperiment",
+  "final_config": "Assets/WarehouseRobot/Avatar/Config/final_v4.json",
+  "output_root": "robot_vision/outputs",
+  "started_file": "AVATAR_EXPERIMENT_STARTED.json",
+  "done_file": "AVATAR_EXPERIMENT_DONE.json",
+  "parts": ["edit", "play"],
+  "requires_finals_done": true,
+  "why": "An official run of a part is refused unless robot_vision/configs/v4/frozen.json is frozen with every file of final_v4.json freeze_files recorded and unchanged (the rule of FinalGuardV4), every final setting of final_v4.json has Unity's UNITY_FINAL_DONE.json (section 8: the avatar experiment runs after the last navigation final, so no avatar result can influence a final), no -lookCheckLooks subset is given (the experiment records its whole list), and no started or done marker of the same part exists in a folder directly under output_root. started_file is written into the run's folder before the first render, so a crashed run also counts as run; done_file after the last file. Neither name is a marker of Python's final guard (FINAL_DONE.json, FINAL_RUN_DONE.json), and neither has a key 'setting' or 'final_setting'."
+}

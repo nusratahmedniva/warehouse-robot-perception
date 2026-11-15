@@ -50,11 +50,13 @@ namespace WarehouseAvatar.EditorTools
         public static void RunMenuAB()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            SessionState.SetString(PartKey, "");                // the menu runs an engineering check; the official run is command-line only
             Start(false, 3600f * 3f, PlayConfigPathAB);
         }
 
         public static void CommandLineRun()
         {
+            SessionState.SetString(PartKey, "");
             float timeout = 3600f;
             var args = Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
@@ -69,8 +71,28 @@ namespace WarehouseAvatar.EditorTools
             var args = Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
                 if (args[i] == "-lookCheckTimeout") float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out timeout);
+            // experiments_ab.md section 10 item 6: with -avatarExperiment this is the avatar experiment's play part, run once after the freeze
+            SessionState.SetString(PartKey, "");
+            try
+            {
+                var official = AvatarExperimentGate.Requested();
+                if (official != null)
+                {
+                    AvatarExperimentGate.Check(official, AvatarExperimentConfig.Play, Array.IndexOf(args, ExperimentLooks.SubsetArg) >= 0);
+                    SessionState.SetString(PartKey, AvatarExperimentConfig.Play);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[LookCheckPlay] " + e.Message);
+                EditorApplication.Exit(1);
+                return;
+            }
             Start(true, timeout, PlayConfigPathAB);
         }
+
+        /// <summary>"play" while the avatar experiment's official play part runs (the driver writes its markers), "" otherwise.</summary>
+        const string PartKey = "WarehouseAvatar.LookCheckPlay.AvatarExperimentPart";
 
         static string ActiveConfig() => SessionState.GetString(ConfigKey, PlayConfigPath);
 
@@ -121,6 +143,11 @@ namespace WarehouseAvatar.EditorTools
             var d = go.AddComponent<LookCheckPlayDriver>();
             d.playConfig = Load(ActiveConfig());
             if (ActiveConfig() == PlayConfigPathAB) AddExperimentLooks(d);
+            if (ActiveConfig() == PlayConfigPathAB && SessionState.GetString(PartKey, "") == AvatarExperimentConfig.Play)
+            {
+                d.avatarExperimentConfig = Load(AvatarExperimentConfig.AssetPath);
+                d.avatarExperimentPart = AvatarExperimentConfig.Play;
+            }
             d.lookCheckConfig = Load(LookCheckMenu.ConfigPath);
             d.robotConfig = Load(RobotConfigPath);
             d.workerPrefab = prefab != null ? prefab.GetComponent<WorkerV4>() : null;
@@ -158,6 +185,7 @@ namespace WarehouseAvatar.EditorTools
         static void Finish(int code, string status)
         {
             SessionState.SetBool(ActiveKey, false);
+            SessionState.SetString(PartKey, "");
             EditorApplication.update -= Poll;
             SceneManager.sceneLoaded -= OnSceneLoaded;
             ShaderUtil.allowAsyncCompilation = SessionState.GetBool(AsyncShadersKey, true);

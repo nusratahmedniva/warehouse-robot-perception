@@ -38,7 +38,9 @@
     "wait": {
       "thumb_deg": [35, 45, 40], "thumb_across_deg": 30,
       "index_deg": [0, 0, 0], "middle_deg": [95, 105, 75], "ring_deg": [95, 105, 75], "little_deg": [95, 105, 75],
-      "spread_deg": 0
+      "spread_deg": 0,
+      "thumb_tuck_max_palm_lengths": 0.95, "thumb_tuck_side_l": 0.25,
+      "thumb_tuck_why": "2026-11-14, Avatar/Config/experiments_ab.md section 12 addendum 2 (Nusrat's decision, declared before the change): the same WAIT hand on every look. A rig whose shaped thumb tip lies farther than 0.95 palm lengths from the palm centre (the geometry check's limit is 1.0) gets its thumb curled across the palm per rig (HandShaper.ThumbTuck at Initialize) toward a point 0.25 palm lengths in front of the palm centre; a rig already within (the Sunbox looks) is untouched."
     },
     "stop": {
       "thumb_deg": [0, 0, 0], "thumb_across_deg": 0,

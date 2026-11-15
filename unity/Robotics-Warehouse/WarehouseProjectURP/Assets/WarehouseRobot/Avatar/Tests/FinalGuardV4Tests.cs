@@ -121,6 +121,9 @@ namespace WarehouseAvatar.Tests
                 P + "Assets/WarehouseRobot/Scenario/Config/roadmap_proposals/turn_left.json",
                 P + "Assets/WarehouseRobot/Avatar/Config/look_check.json",
                 P + "Assets/WarehouseRobot/Avatar/Config/look_check_play_ab.json",
+                // section 10 item 7: the avatar experiment's run-once guard and the gesture geometry tolerance
+                P + "Assets/WarehouseRobot/Avatar/Config/avatar_experiment.json",
+                P + "Assets/WarehouseRobot/Avatar/Config/gesture_geometry.json",
             };
             foreach (var s in f.settings) expect.Add(P + s.experiment_config);
             CollectionAssert.AreEquivalent(expect, f.freeze_files);

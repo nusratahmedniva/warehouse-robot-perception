@@ -244,6 +244,313 @@ namespace WarehouseAvatar.EditorTools
                    $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/arm_skin.json";
         }
 
+        /// <summary>Command line: -executeMethod WarehouseAvatar.EditorTools.ExperimentLooksMenu.BatchProbeFingers [-lookCheckLooks a,b]: per
+        /// prefab-kind look of looks_ab.json, each hand's bone chains, the Humanoid finger mapping, the finger skin probe (FingerSkinCheck,
+        /// experiments_ab.md section 10), every material (shader, base colour, base texture), the error-shader check and the magenta pixels of
+        /// a neutral render (saved next to the report). Report only.</summary>
+        public static void BatchProbeFingers()
+        {
+            try
+            {
+                Debug.Log("[ExperimentLooks] " + ProbeFingers());
+                EditorApplication.Exit(0);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[ExperimentLooks] FAILED: " + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        [Serializable]
+        class FingerReport
+        {
+            public string name, verdict, most_moved_other;
+            public string[] bones = new string[0];
+            public string[] humanoid = new string[0];
+            public int region_vertices, region_moved;
+            public float own_fraction, max_other_fraction;
+        }
+
+        [Serializable]
+        class HandReport
+        {
+            public string side, hand_bone, verdict;
+            public int chains;
+            public List<FingerReport> fingers = new List<FingerReport>();
+        }
+
+        [Serializable]
+        class MaterialReport { public string renderer, material, shader, base_colour, base_texture; }
+
+        [Serializable]
+        class FingerLook
+        {
+            public string id, asset, asset_sha256, note = "";
+            public int finger_bones_mapped, magenta_pixels = -1;
+            public bool hand_shapes_possible;
+            public string[] material_problems = new string[0];
+            public string render = "";
+            public List<HandReport> hands = new List<HandReport>();
+            /// <summary>Section 12 addendum 7 decision 4: for a palm_plates look, the same probe with each finger's vertices = its mesh islands.</summary>
+            public List<HandReport> island_hands = new List<HandReport>();
+            /// <summary>Diagnostic (report only): island centroids and chain joints in each hand's frame.</summary>
+            public List<string> island_diagnostic = new List<string>();
+            public List<MaterialReport> materials = new List<MaterialReport>();
+        }
+
+        [Serializable] class FingerFile { public string created_local, rule; public List<FingerLook> looks = new List<FingerLook>(); }
+
+        public static string ProbeFingers()
+        {
+            var f = Load(out _);
+            var ids = f.looks.Where(l => l != null && l.kind == LookEntry.KindPrefab).Select(l => l.id).ToList();
+            var subset = ExperimentLooks.Subset(Environment.GetCommandLineArgs(), ids, out string subsetError);
+            if (subsetError != null) throw new ArgumentException(subsetError);
+            var file = new FingerFile
+            {
+                created_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv),
+                rule = $"experiments_ab.md section 10: each chain's first bone bent {FingerSkinCheck.BendDeg.ToString("0", Inv)} deg; a vertex moves above " +
+                       $"{(FingerSkinCheck.MoveM * 1000f).ToString("0", Inv)} mm; region = within {(FingerSkinCheck.RegionM * 100f).ToString("0", Inv)} cm of its own chain and nearest to it; " +
+                       $"separate when >= {FingerSkinCheck.OwnMin.ToString("0.00", Inv)} of its own region and <= {FingerSkinCheck.OtherMax.ToString("0.00", Inv)} of every other moves (at least {FingerSkinCheck.MinRegion} vertices)",
+            };
+            var repo = RepoRoot(f);
+            string outDir = NewFolder(Path.Combine(repo, f.paths.output_root), "probe_fingers");
+            foreach (var id in subset ?? ids.ToArray())
+            {
+                var l = f.looks.First(x => x.id == id);
+                var p = new FingerLook { id = l.id, asset = l.asset };
+                file.looks.Add(p);
+                string path = Path.Combine(Application.dataPath, "..", l.asset);
+                var go = AssetDatabase.LoadAssetAtPath<GameObject>(l.asset);
+                if (go == null || !File.Exists(path)) { p.note = "not installed"; continue; }
+                p.asset_sha256 = Sha256(File.ReadAllBytes(path));
+                var inst = (GameObject)Object.Instantiate(go);
+                try
+                {
+                    inst.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                    var a = inst.GetComponentInChildren<Animator>();
+                    if (a == null || a.avatar == null || !a.avatar.isHuman) { p.note = "no Humanoid Animator"; continue; }
+                    if (!string.IsNullOrEmpty(l.material_override))
+                    {
+                        var mo = AssetDatabase.LoadAssetAtPath<Material>(l.material_override);
+                        if (mo != null) foreach (var r in inst.GetComponentsInChildren<Renderer>(true)) r.sharedMaterials = Enumerable.Repeat(mo, Mathf.Max(1, r.sharedMaterials.Length)).ToArray();
+                    }
+                    var bones = new AnimatorBones(a);
+                    p.finger_bones_mapped = LookInventory.FingerBones.Count(b => bones.Get(b) != null);
+                    var poser = new LookPoser(bones, new LookCheckHand { fist_curl_deg = 1f });
+                    p.hand_shapes_possible = poser.HasArms && poser.HasFingers;
+                    var human = new Dictionary<Transform, string>();
+                    foreach (var b in LookInventory.FingerBones) { var t = bones.Get(b); if (t != null) human[t] = b.ToString(); }
+                    var smrs = inst.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                    foreach (bool left in new[] { true, false })
+                    {
+                        var hand = a.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
+                        var h = new HandReport { side = left ? "left" : "right", hand_bone = hand != null ? hand.name : "unmapped" };
+                        p.hands.Add(h);
+                        if (hand == null) { h.verdict = FingerSkinCheck.Inconclusive; continue; }
+                        h.chains = FingerSkinCheck.Chains(hand).Count;
+                        foreach (var r in FingerSkinCheck.MeasureHand(hand, smrs))
+                            h.fingers.Add(new FingerReport
+                            {
+                                name = r.Name, verdict = r.Verdict, most_moved_other = r.MostMovedOther, bones = r.Bones,
+                                humanoid = FingerSkinCheck.Chains(hand).First(c => c[0].name == r.Name).Where(human.ContainsKey).Select(t => human[t]).ToArray(),
+                                region_vertices = r.Region, region_moved = r.RegionMoved, own_fraction = r.OwnFraction, max_other_fraction = r.MaxOtherFraction,
+                            });
+                        h.verdict = h.fingers.Count <= 1 ? "one_chain" : h.fingers.All(x => x.verdict == FingerSkinCheck.Separate) ? FingerSkinCheck.Separate
+                                  : h.fingers.Any(x => x.verdict == FingerSkinCheck.Merged) ? FingerSkinCheck.Merged : FingerSkinCheck.Inconclusive;
+                        var plateSpec = f.palm_plates.FirstOrDefault(x => x != null && x.look == l.id);
+                        if (plateSpec == null) continue;
+                        var ih = new HandReport { side = h.side, hand_bone = h.hand_bone, chains = h.chains };
+                        p.island_hands.Add(ih);
+                        FingerSkinCheck.IslandDiagnostic.Clear();
+                        float contact = f.island_hands.FirstOrDefault(x => x != null && x.look == l.id)?.contact_m ?? 0.005f;
+                        var islandResults = FingerSkinCheck.MeasureHand(hand, smrs, plateSpec, contact);
+                        p.island_diagnostic.AddRange(FingerSkinCheck.IslandDiagnostic);
+                        foreach (var r in islandResults)
+                            ih.fingers.Add(new FingerReport
+                            {
+                                name = r.Name, verdict = r.Verdict, most_moved_other = r.MostMovedOther, bones = r.Bones,
+                                humanoid = FingerSkinCheck.Chains(hand).First(c => c[0].name == r.Name).Where(human.ContainsKey).Select(t => human[t]).ToArray(),
+                                region_vertices = r.Region, region_moved = r.RegionMoved, own_fraction = r.OwnFraction, max_other_fraction = r.MaxOtherFraction,
+                            });
+                        ih.verdict = ih.fingers.Count <= 1 ? "one_chain" : ih.fingers.All(x => x.verdict == FingerSkinCheck.Separate) ? FingerSkinCheck.Separate
+                                   : ih.fingers.Any(x => x.verdict == FingerSkinCheck.Merged) ? FingerSkinCheck.Merged : FingerSkinCheck.Inconclusive;
+                    }
+                    foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
+                        foreach (var m in r.sharedMaterials)
+                        {
+                            if (m == null) { p.materials.Add(new MaterialReport { renderer = r.name, material = "(missing)" }); continue; }
+                            Color c = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.HasProperty("_Color") ? m.GetColor("_Color") : Color.white;
+                            Texture t = m.HasProperty("_BaseMap") ? m.GetTexture("_BaseMap") : m.HasProperty("_MainTex") ? m.GetTexture("_MainTex") : null;
+                            p.materials.Add(new MaterialReport
+                            {
+                                renderer = r.name, material = m.name, shader = m.shader != null ? m.shader.name : "(none)",
+                                base_colour = $"rgb({c.r.ToString("0.00", Inv)}, {c.g.ToString("0.00", Inv)}, {c.b.ToString("0.00", Inv)})",
+                                base_texture = t != null ? t.name : "",
+                            });
+                        }
+                    p.material_problems = LookInventory.MaterialProblems(inst, out _).ToArray();
+                    p.render = l.id + "_neutral.png";
+                    p.magenta_pixels = RenderNeutral(inst, Path.Combine(outDir, p.render));
+                }
+                finally { Object.DestroyImmediate(inst); }
+            }
+            File.WriteAllText(Path.Combine(outDir, "fingers.json"), JsonUtility.ToJson(file, true).Replace("\r\n", "\n") + "\n", Utf8);
+            return string.Join("; ", file.looks.Select(x => $"{x.id}: fingers {x.finger_bones_mapped}/30, shapes {x.hand_shapes_possible}, " +
+                                                            string.Join(", ", x.hands.Select(h => $"{h.side} {h.chains} chains {h.verdict}")) +
+                                                            (x.island_hands.Count > 0 ? ", by mesh islands: " + string.Join(", ", x.island_hands.Select(h => $"{h.side} {h.verdict}")) : "") +
+                                                            $", magenta {x.magenta_pixels}, material problems {x.material_problems.Length} {x.note}")) +
+                   $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/fingers.json";
+        }
+
+        /// <summary>Command line: -executeMethod WarehouseAvatar.EditorTools.ExperimentLooksMenu.BatchProbeVariants: every controlled variant of
+        /// looks_ab.json (variant_of) against its base look (experiments_ab.md section 10): the rest position of every mapped Humanoid bone
+        /// (same body = all within 1 mm) and the skinned meshes by name and vertex count. Report only.</summary>
+        public static void BatchProbeVariants()
+        {
+            try
+            {
+                Debug.Log("[ExperimentLooks] " + ProbeVariants());
+                EditorApplication.Exit(0);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[ExperimentLooks] FAILED: " + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        public const float SameBodyM = 0.001f;
+
+        [Serializable]
+        class VariantReport
+        {
+            public string id, variant_of, variant_changes, asset_sha256, base_sha256, verdict_body, note = "";
+            public int bones_compared;
+            public float max_bone_offset_m = -1f;
+            public string max_bone = "";
+            /// <summary>Every mapped bone beyond the limit: Humanoid name, the variant's transform name, offset in mm.</summary>
+            public string[] bones_over_limit = new string[0];
+            public string[] meshes_same = new string[0], meshes_changed = new string[0], meshes_only_in_variant = new string[0], meshes_only_in_base = new string[0];
+            public string[] materials_only_in_variant = new string[0], materials_only_in_base = new string[0];
+        }
+
+        [Serializable] class VariantFile { public string created_local, rule; public List<VariantReport> variants = new List<VariantReport>(); }
+
+        public static string ProbeVariants()
+        {
+            var f = Load(out _);
+            var file = new VariantFile
+            {
+                created_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv),
+                rule = $"experiments_ab.md section 10: same body when every mapped Humanoid bone's rest position (relative to the model root) lies within {(SameBodyM * 1000f).ToString("0", Inv)} mm of the base look's; skinned meshes compared by name and vertex count",
+            };
+            foreach (var v in f.looks.Where(l => l != null && !string.IsNullOrEmpty(l.variant_of)))
+            {
+                var b = f.looks.First(x => x.id == v.variant_of);
+                var r = new VariantReport { id = v.id, variant_of = v.variant_of, variant_changes = v.variant_changes };
+                file.variants.Add(r);
+                var goV = AssetDatabase.LoadAssetAtPath<GameObject>(v.asset);
+                var goB = AssetDatabase.LoadAssetAtPath<GameObject>(b.asset);
+                if (goV == null || goB == null) { r.note = (goV == null ? v.asset : b.asset) + " not installed"; continue; }
+                r.asset_sha256 = Sha256(File.ReadAllBytes(Path.Combine(Application.dataPath, "..", v.asset)));
+                r.base_sha256 = Sha256(File.ReadAllBytes(Path.Combine(Application.dataPath, "..", b.asset)));
+                var iv = (GameObject)Object.Instantiate(goV);
+                var ib = (GameObject)Object.Instantiate(goB);
+                try
+                {
+                    foreach (var i in new[] { iv, ib }) i.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                    var av = iv.GetComponentInChildren<Animator>();
+                    var ab = ib.GetComponentInChildren<Animator>();
+                    if (av == null || ab == null || !av.isHuman || !ab.isHuman) { r.note = "no Humanoid Animator"; continue; }
+                    var over = new List<string>();
+                    for (var hb = HumanBodyBones.Hips; hb < HumanBodyBones.LastBone; hb++)
+                    {
+                        Transform tv = av.GetBoneTransform(hb), tb = ab.GetBoneTransform(hb);
+                        if (tv == null || tb == null) continue;
+                        r.bones_compared++;
+                        float d = Vector3.Distance(tv.position, tb.position);
+                        if (d > r.max_bone_offset_m) { r.max_bone_offset_m = d; r.max_bone = hb.ToString(); }
+                        if (d > SameBodyM) over.Add($"{hb} ({tv.name}{(tv.name != tb.name ? " vs " + tb.name : "")}) {(d * 1000f).ToString("0.00", Inv)} mm");
+                    }
+                    r.bones_over_limit = over.ToArray();
+                    r.verdict_body = r.bones_compared == 0 ? "inconclusive" : r.max_bone_offset_m <= SameBodyM ? "same_body" : "different_body";
+                    Dictionary<string, int> Meshes(GameObject g) => g.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                        .GroupBy(s => s.name).ToDictionary(x => x.Key, x => x.Sum(s => s.sharedMesh != null ? s.sharedMesh.vertexCount : 0));
+                    HashSet<string> Mats(GameObject g) => new HashSet<string>(g.GetComponentsInChildren<Renderer>(true).SelectMany(x => x.sharedMaterials)
+                        .Where(m => m != null).Select(m => m.name.Replace(" (Instance)", "")));
+                    var mv = Meshes(iv);
+                    var mb = Meshes(ib);
+                    r.meshes_same = mv.Keys.Where(k => mb.ContainsKey(k) && mb[k] == mv[k]).OrderBy(k => k).Select(k => $"{k} ({mv[k]} vertices)").ToArray();
+                    r.meshes_changed = mv.Keys.Where(k => mb.ContainsKey(k) && mb[k] != mv[k]).OrderBy(k => k).Select(k => $"{k} ({mb[k]} -> {mv[k]} vertices)").ToArray();
+                    r.meshes_only_in_variant = mv.Keys.Where(k => !mb.ContainsKey(k)).OrderBy(k => k).Select(k => $"{k} ({mv[k]} vertices)").ToArray();
+                    r.meshes_only_in_base = mb.Keys.Where(k => !mv.ContainsKey(k)).OrderBy(k => k).Select(k => $"{k} ({mb[k]} vertices)").ToArray();
+                    var tv2 = Mats(iv);
+                    var tb2 = Mats(ib);
+                    r.materials_only_in_variant = tv2.Except(tb2).OrderBy(x => x).ToArray();
+                    r.materials_only_in_base = tb2.Except(tv2).OrderBy(x => x).ToArray();
+                }
+                finally
+                {
+                    Object.DestroyImmediate(iv);
+                    Object.DestroyImmediate(ib);
+                }
+            }
+            var repo = RepoRoot(f);
+            string outDir = NewFolder(Path.Combine(repo, f.paths.output_root), "probe_variants");
+            File.WriteAllText(Path.Combine(outDir, "variants.json"), JsonUtility.ToJson(file, true).Replace("\r\n", "\n") + "\n", Utf8);
+            return string.Join("; ", file.variants.Select(x => $"{x.id} vs {x.variant_of}: {x.verdict_body} (max bone offset {(x.max_bone_offset_m * 1000f).ToString("0.00", Inv)} mm at {x.max_bone}, " +
+                                                               $"{x.bones_compared} bones), meshes same {x.meshes_same.Length}, changed [{string.Join(", ", x.meshes_changed)}], " +
+                                                               $"only in variant [{string.Join(", ", x.meshes_only_in_variant)}], only in base [{string.Join(", ", x.meshes_only_in_base)}] {x.note}")) +
+                   $". {Path.GetRelativePath(repo, outDir).Replace('\\', '/')}/variants.json";
+        }
+
+        /// <summary>A front view of the model in its import pose on a grey background (one directional light); the PNG is saved and the
+        /// error-shader magenta pixels counted (LookInventory.MagentaPixels, tolerance 8).</summary>
+        static int RenderNeutral(GameObject model, string pngPath)
+        {
+            var b = new Bounds(model.transform.position, Vector3.zero);
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true)) b.Encapsulate(r.bounds);
+            var camGo = new GameObject("ProbeCamera");
+            var lightGo = new GameObject("ProbeLight");
+            var rt = new RenderTexture(768, 1024, 24, RenderTextureFormat.ARGB32);
+            var tex = new Texture2D(768, 1024, TextureFormat.RGBA32, false);
+            try
+            {
+                var light = lightGo.AddComponent<Light>();
+                light.type = LightType.Directional;
+                light.intensity = 1.1f;
+                lightGo.transform.rotation = Quaternion.Euler(40f, 160f, 0f);
+                var cam = camGo.AddComponent<Camera>();
+                cam.enabled = false;
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.78f, 0.78f, 0.78f, 1f);
+                cam.fieldOfView = 30f;
+                // the model faces +z: the camera in front of it, far enough for its whole height and arm span
+                float size = Mathf.Max(b.size.y, b.size.x * 0.75f);
+                float dist = 0.6f * size / Mathf.Tan(15f * Mathf.Deg2Rad) + b.extents.z;
+                cam.transform.SetPositionAndRotation(b.center + Vector3.forward * dist, Quaternion.LookRotation(Vector3.back, Vector3.up));
+                cam.targetTexture = rt;
+                cam.Render();
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
+                tex.Apply(false);
+                RenderTexture.active = prev;
+                cam.targetTexture = null;
+                File.WriteAllBytes(pngPath, tex.EncodeToPNG());
+                return LookInventory.MagentaPixels(tex.GetPixels32(), 8);
+            }
+            finally
+            {
+                Object.DestroyImmediate(camGo);
+                Object.DestroyImmediate(lightGo);
+                Object.DestroyImmediate(rt);
+                Object.DestroyImmediate(tex);
+            }
+        }
+
         public static ExperimentLooksFile Load(out string text)
         {
             var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(ExperimentLooks.AssetPath) ?? throw new FileNotFoundException(ExperimentLooks.AssetPath);
@@ -265,6 +572,11 @@ namespace WarehouseAvatar.EditorTools
             public string[] materials = new string[0];
             public string[] recoloured = new string[0];
             public string[] colourless_unmatched = new string[0];
+            public string[] alpha_clipped = new string[0];
+            public string[] finger_remap = new string[0];
+            public string[] rigid_parts = new string[0];
+            public string[] island_hands = new string[0];
+            public string skeleton_rebuild = "";
         }
 
         [Serializable] class ImportReport { public string created_local, unity_version, render_pipeline; public List<CharacterReport> characters = new List<CharacterReport>(); }
@@ -321,6 +633,8 @@ namespace WarehouseAvatar.EditorTools
             if (imp.animationType != ModelImporterAnimationType.Human) { imp.animationType = ModelImporterAnimationType.Human; changed = true; }
             if (imp.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel) { imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel; changed = true; }
             if (imp.materialImportMode == ModelImporterMaterialImportMode.None) { imp.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription; changed = true; }
+            // section 12 addendum 7 decision 3: a palm-plate look's triangles must be readable at Play (its plate island)
+            if (f.palm_plates.Any(x => x != null && x.look == id) && !imp.isReadable) { imp.isReadable = true; changed = true; r.note += " Read/Write enabled (palm_plates rule)."; }
             if (changed) imp.SaveAndReimport();
 
             // textures and materials next to the model, so they can be recoloured and inspected
@@ -374,10 +688,16 @@ namespace WarehouseAvatar.EditorTools
                 unlit++;
             }
             if (unlit > 0) { AssetDatabase.SaveAssets(); r.note += $" Emission switched off on {unlit} materials (pure white, no emission map)."; }
+            r.alpha_clipped = ClipCutouts(matDir);
+            if (r.alpha_clipped.Length > 0) r.note += $" Alpha clipping on {r.alpha_clipped.Length} materials (base texture with a cut-out mask).";
 
             var spec = f.recolour?.FirstOrDefault(x => x != null && x.look == id);
             if (spec != null) Recolour(spec, matDir, r);
             FixUnitScale(r);
+            RemapMixamoFingers(r);
+            RebuildSkeleton(f, r);
+            CountRigidParts(f, r);
+            AuditIslandHands(f, r);
 
             var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
             var avatar = AssetDatabase.LoadAllAssetsAtPath(r.asset).OfType<Avatar>().FirstOrDefault();
@@ -407,6 +727,135 @@ namespace WarehouseAvatar.EditorTools
             r.status = !r.humanoid ? "not_humanoid" : !r.avatar_valid ? "avatar_invalid" : "ok";
             r.note = r.note.Trim();
             return r;
+        }
+
+        /// <summary>experiments_ab.md section 11 item 4: every material of the model whose base texture carries a cut-out mask (CutoutMaterials)
+        /// gets alpha clipping. The texture is read from its file (the importer's copy need not be readable). Idempotent. Returns one entry per
+        /// clipped material with its clear fraction.</summary>
+        static string[] ClipCutouts(string matDir)
+        {
+            var clipped = new List<string>();
+            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { matDir }))
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                if (m == null || !m.HasProperty("_BaseMap")) continue;
+                var tex = m.GetTexture("_BaseMap");
+                string texPath = tex != null ? AssetDatabase.GetAssetPath(tex) : "";
+                string ext = Path.GetExtension(texPath).ToLowerInvariant();
+                if (ext != ".png" && ext != ".jpg" && ext != ".jpeg") continue;
+                var t = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                try
+                {
+                    if (!t.LoadImage(File.ReadAllBytes(Path.Combine(Application.dataPath, "..", texPath)))) continue;
+                    float clear = CutoutMaterials.ClearFraction(t.GetPixels32());
+                    if (clear < CutoutMaterials.MinClearFraction || !CutoutMaterials.ApplyAlphaClip(m)) continue;
+                    EditorUtility.SetDirty(m);
+                    clipped.Add($"{m.name}: {Path.GetFileName(texPath)} {(100f * clear).ToString("0.0", Inv)} % of texels below alpha {CutoutMaterials.Cutoff.ToString("0.0", Inv)}");
+                }
+                finally { Object.DestroyImmediate(t); }
+            }
+            if (clipped.Count > 0) AssetDatabase.SaveAssets();
+            return clipped.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        }
+
+        /// <summary>experiments_ab.md section 12 addendum 7 decision 2: report, per material of a rigid_parts rule, how many of its vertices the
+        /// imported mesh binds 100 % to the rule's bone (the binding itself is done by ExperimentCharacterPostprocessor on every import).</summary>
+        static void CountRigidParts(ExperimentLooksFile f, CharacterReport r)
+        {
+            var spec = f.rigid_parts.FirstOrDefault(x => x != null && x.look == r.id);
+            if (spec == null) return;
+            var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
+            var list = new List<string>();
+            foreach (var smr in go != null ? go.GetComponentsInChildren<SkinnedMeshRenderer>(true) : new SkinnedMeshRenderer[0])
+            {
+                var mesh = smr.sharedMesh;
+                int bi = Array.FindIndex(smr.bones, b => b != null && b.name == spec.bone);
+                if (mesh == null || bi < 0) { list.Add($"{smr.name}: bone {spec.bone} not found"); continue; }
+                var bw = mesh.boneWeights;
+                var mats = smr.sharedMaterials;
+                for (int sub = 0; sub < mesh.subMeshCount && sub < mats.Length; sub++)
+                {
+                    string name = mats[sub] != null ? mats[sub].name : "";
+                    if (Array.IndexOf(spec.materials, name) < 0) continue;
+                    var idx = new HashSet<int>(mesh.GetIndices(sub));
+                    int rigid = idx.Count(i => i < bw.Length && bw[i].boneIndex0 == bi && bw[i].weight0 >= 0.9999f);
+                    list.Add($"{name}: {rigid}/{idx.Count} vertices 100 % on {spec.bone}");
+                }
+            }
+            r.rigid_parts = list.ToArray();
+            r.note += $" Rigid parts (section 12 addendum 7): {string.Join("; ", list)}.";
+        }
+
+        /// <summary>experiments_ab.md section 12 addendum 11: for a look whose finger chains the postprocessor moves (island_hands move_joints),
+        /// the Humanoid avatar is rebuilt from the corrected skeleton: every humanDescription.skeleton entry takes the imported transform's
+        /// local position, rotation and scale, and the model is re-imported (the postprocessor moves the chains again, to the same place).</summary>
+        static void RebuildSkeleton(ExperimentLooksFile f, CharacterReport r)
+        {
+            var spec = f.island_hands.FirstOrDefault(x => x != null && x.look == r.id && x.move_joints);
+            if (spec == null) return;
+            var imp = (ModelImporter)AssetImporter.GetAtPath(r.asset);
+            var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
+            if (imp == null || go == null || imp.animationType != ModelImporterAnimationType.Human) return;
+            var byName = go.GetComponentsInChildren<Transform>(true).GroupBy(t => t.name).ToDictionary(g => g.Key, g => g.First());
+            var hd = imp.humanDescription;
+            var sk = hd.skeleton ?? new SkeletonBone[0];
+            int changed = 0;
+            float maxCm = 0f;
+            for (int i = 0; i < sk.Length; i++)
+            {
+                if (!byName.TryGetValue(sk[i].name, out var t)) continue;
+                float d = Vector3.Distance(sk[i].position, t.localPosition) * Mathf.Max(1e-6f, t.parent != null ? t.parent.lossyScale.x : 1f);
+                if (d > 1e-5f) { changed++; maxCm = Mathf.Max(maxCm, d * 100f); }
+                sk[i].position = t.localPosition;
+                sk[i].rotation = t.localRotation;
+                sk[i].scale = t.localScale;
+            }
+            hd.skeleton = sk;
+            imp.humanDescription = hd;
+            imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            imp.SaveAndReimport();
+            var avatar = AssetDatabase.LoadAllAssetsAtPath(r.asset).OfType<Avatar>().FirstOrDefault();
+            r.skeleton_rebuild = $"{changed} skeleton entries moved (largest {maxCm.ToString("0.0", Inv)} cm); avatar human {avatar != null && avatar.isHuman}, valid {avatar != null && avatar.isValid}";
+            r.note += $" Humanoid avatar rebuilt from the corrected skeleton (section 12 addendum 11): {r.skeleton_rebuild}.";
+        }
+
+        /// <summary>experiments_ab.md section 12 addendum 9: the island-bound hands as imported (IslandHands.Audit): per hand, the glove vertices,
+        /// those entirely on the hand bone, those on one finger chain only, and those crossing parts (must be 0).</summary>
+        static void AuditIslandHands(ExperimentLooksFile f, CharacterReport r)
+        {
+            var spec = f.island_hands.FirstOrDefault(x => x != null && x.look == r.id);
+            if (spec == null) return;
+            var go = AssetDatabase.LoadAssetAtPath<GameObject>(r.asset);
+            var list = new List<string>();
+            foreach (var smr in go != null ? go.GetComponentsInChildren<SkinnedMeshRenderer>(true) : new SkinnedMeshRenderer[0])
+                foreach (var a in IslandHands.Audit(smr.sharedMesh, smr.bones, smr.sharedMaterials.Select(m => m != null ? m.name : "").ToArray(), spec))
+                    list.Add($"{a.hand}: {a.vertices} glove vertices, {a.onHand} on the hand bone only, {a.oneChain} on one finger chain only, {a.crossed} crossing parts, {a.chainsUsed} of {a.chains} chains used");
+            // addendum 13: the assignment the binding holds against the pinned one
+            var now = new List<PinnedFinger>();
+            foreach (var smr in go != null ? go.GetComponentsInChildren<SkinnedMeshRenderer>(true) : new SkinnedMeshRenderer[0])
+                now.AddRange(IslandHands.ReadAssignment(smr.sharedMesh, smr.bones, smr.sharedMaterials.Select(m => m != null ? m.name : "").ToArray(), spec, smr.transform.lossyScale.x));
+            var diff = IslandHands.CompareAssignment(spec.pinned_assignment, now);
+            list.Add(spec.pinned_assignment.Length == 0 ? "pinned assignment: none recorded; now " + string.Join("; ", now)
+                     : diff.Count == 0 ? "pinned assignment: matches" : "pinned assignment DIFFERS: " + string.Join("; ", diff));
+            r.island_hands = list.ToArray();
+            r.note += $" Island hands (section 12 addendum 9): {string.Join("; ", list)}.";
+        }
+
+        /// <summary>experiments_ab.md section 12 addendum 6: a Mixamo-rigged model whose Humanoid finger mapping contradicts its bone names
+        /// gets the name-based finger mapping (MixamoFingerMap) and its avatar rebuilt from it; otherwise nothing changes. Idempotent.</summary>
+        static void RemapMixamoFingers(CharacterReport r)
+        {
+            var imp = (ModelImporter)AssetImporter.GetAtPath(r.asset);
+            if (imp.animationType != ModelImporterAnimationType.Human) return;
+            var hd = imp.humanDescription;
+            var fixedHuman = MixamoFingerMap.Correct(hd.human, (hd.skeleton ?? new SkeletonBone[0]).Select(s => s.name), out var changes);
+            if (fixedHuman == null) return;
+            hd.human = fixedHuman;
+            imp.humanDescription = hd;
+            imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            imp.SaveAndReimport();
+            r.finger_remap = changes.ToArray();
+            r.note += $" Humanoid fingers mapped by the Mixamo bone names (section 12 addendum 6): {changes.Count} entries changed.";
         }
 
         /// <summary>experiments_ab.md section 2, unit scale: a Humanoid model whose head-to-foot bone height lies outside [0.5, 2.5] m

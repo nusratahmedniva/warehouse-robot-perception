@@ -28,6 +28,10 @@ namespace WarehouseAvatar
         public string proposed_split;
         /// <summary>The licence status as checked (e.g. "Unity Asset Store EULA", "not verified: SOURCES.txt missing").</summary>
         public string licence;
+        /// <summary>A controlled variant (experiments_ab.md section 10): the look it varies ("" = not a variant), of the same kind_group.</summary>
+        public string variant_of;
+        /// <summary>What the variant changes against variant_of (and only that).</summary>
+        public string variant_changes;
     }
 
     [Serializable]
@@ -58,12 +62,26 @@ namespace WarehouseAvatar
         public RecolourRule[] rules = new RecolourRule[0];
     }
 
+    /// <summary>experiments_ab.md section 12 addendum 7 decision 2: the vertices of these materials are bound 100 % to one bone at import
+    /// (ExperimentCharacterPostprocessor): a part that is rigid by design (Boxo's box body).</summary>
+    [Serializable]
+    public class RigidPartsSpec
+    {
+        public string look, bone;
+        public string[] materials = new string[0];
+    }
+
     [Serializable]
     public class ExperimentLooksFile
     {
         public string note;
         public ExperimentLookPaths paths;
         public RecolourSpec[] recolour = new RecolourSpec[0];
+        public RigidPartsSpec[] rigid_parts = new RigidPartsSpec[0];
+        /// <summary>Addendum 7 decisions 3 and 4: looks whose palm is a box plate (measured as a plate; fingers probed by mesh islands).</summary>
+        public PalmPlateSpec[] palm_plates = new PalmPlateSpec[0];
+        /// <summary>Addendum 9: looks whose hands the importer binds by their mesh islands.</summary>
+        public IslandHandsSpec[] island_hands = new IslandHandsSpec[0];
         /// <summary>Every look the experiments use that worker_v4.json does not define.</summary>
         public ExperimentLook[] looks = new ExperimentLook[0];
         /// <summary>The avatar experiment (look check only, no navigation runs): ids of looks_ab.json or worker_v4.json, in order.</summary>
@@ -80,7 +98,32 @@ namespace WarehouseAvatar
             if (f == null) throw new InvalidOperationException("looks_ab.json: not a JSON object");
             f.looks = f.looks ?? new ExperimentLook[0];
             f.avatar_experiment = f.avatar_experiment ?? new string[0];
+            f.rigid_parts = f.rigid_parts ?? new RigidPartsSpec[0];
+            f.palm_plates = f.palm_plates ?? new PalmPlateSpec[0];
+            f.island_hands = f.island_hands ?? new IslandHandsSpec[0];
             return f;
+        }
+
+        /// <summary>Addendum 7 decision 2: bind every vertex of the named materials' sub-meshes 100 % to the bone; returns the vertices rebound
+        /// per material ("bodymat 1234"). Vertices of other materials keep their weights. Empty when the bone is not among the renderer's bones.</summary>
+        public static List<string> BindRigid(Mesh mesh, Transform[] bones, string[] materialNames, RigidPartsSpec spec)
+        {
+            var done = new List<string>();
+            if (mesh == null || bones == null || spec == null) return done;
+            int bi = Array.FindIndex(bones, b => b != null && b.name == spec.bone);
+            if (bi < 0) return done;
+            var bw = mesh.boneWeights;
+            if (bw.Length != mesh.vertexCount) return done;
+            for (int sub = 0; sub < mesh.subMeshCount && sub < materialNames.Length; sub++)
+            {
+                string name = (materialNames[sub] ?? "").Replace(" (Instance)", "");
+                if (Array.IndexOf(spec.materials, name) < 0) continue;
+                var seen = new HashSet<int>(mesh.GetIndices(sub));
+                foreach (int i in seen) bw[i] = new BoneWeight { boneIndex0 = bi, weight0 = 1f };
+                done.Add($"{name} {seen.Count}");
+            }
+            if (done.Count > 0) mesh.boneWeights = bw;
+            return done;
         }
 
         /// <summary>The file's rules. <paramref name="baseLooks"/> = worker_v4.json's looks: an id may not be defined in both.</summary>
@@ -111,6 +154,14 @@ namespace WarehouseAvatar
                     if (l.id != expected) e.Add($"looks '{l.id}': the name must encode person, gender and costume ('{expected}')");
                 }
                 else if (!string.IsNullOrEmpty(l.proposed_split)) e.Add($"looks '{l.id}': proposed_split is for navigation looks only");
+                if (!string.IsNullOrEmpty(l.variant_of))
+                {
+                    var of = Array.Find(f.looks, x => x != null && x.id == l.variant_of);
+                    if (of == null) e.Add($"looks '{l.id}': variant_of '{l.variant_of}' is not a look of looks_ab.json");
+                    else if (of.kind_group != l.kind_group) e.Add($"looks '{l.id}': a variant keeps the kind_group of '{l.variant_of}'");
+                    if (string.IsNullOrEmpty(l.variant_changes)) e.Add($"looks '{l.id}': a variant says what it changes (variant_changes)");
+                    if (l.navigation) e.Add($"looks '{l.id}': a controlled variant is for the avatar experiment only");
+                }
             }
             var exp = new HashSet<string>(StringComparer.Ordinal);
             foreach (var id in f.avatar_experiment)

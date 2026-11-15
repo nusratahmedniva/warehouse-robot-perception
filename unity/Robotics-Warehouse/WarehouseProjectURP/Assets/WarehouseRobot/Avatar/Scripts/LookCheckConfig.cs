@@ -15,6 +15,8 @@ namespace WarehouseAvatar
     public class LookCheckConfig
     {
         public const string Point = "POINT", Wait = "WAIT", Stop = "STOP", None = "NONE";
+        /// <summary>Experiments A/B, experiments_ab.md section 10: the forearm swing, recorded as a posed swing (optional command).</summary>
+        public const string Proceed = "PROCEED";
         public static readonly string[] RequiredCommands = { Point, Wait, Stop };
         public static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
@@ -86,6 +88,9 @@ namespace WarehouseAvatar
             if (r.sequence_frames < 10 || r.sequence_frames > 20) e.Add("recording.sequence_frames: docs/look_check_v4.md accepts 10 to 20 frames");
             if (r.arms == null || r.arms.Length != 2 || Array.IndexOf(r.arms, "left") < 0 || Array.IndexOf(r.arms, "right") < 0)
                 e.Add("recording.arms must be [\"left\", \"right\"] (the person's own arms)");
+            bool proceed = commands != null && Array.Exists(commands, c => c != null && c.command == Proceed);
+            if (proceed && (r.proceed_sequence_frames < 21 || r.proceed_sequence_frames > 40))
+                e.Add("recording.proceed_sequence_frames: a PROCEED sequence spans the reader's 2.0 s window at 10 Hz (21 to 40 frames)");
         }
 
         void ValidateCommands(List<string> e)
@@ -94,9 +99,9 @@ namespace WarehouseAvatar
             var seen = new HashSet<string>();
             foreach (var c in commands)
             {
-                if (c == null || (c.command != Point && c.command != Wait && c.command != Stop && c.command != None))
+                if (c == null || (c.command != Point && c.command != Wait && c.command != Stop && c.command != None && c.command != Proceed))
                 {
-                    e.Add($"commands: unknown command '{c?.command}' (POINT, WAIT, STOP, NONE; capitals)");
+                    e.Add($"commands: unknown command '{c?.command}' (POINT, WAIT, STOP, NONE, PROCEED; capitals)");
                     continue;
                 }
                 if (!seen.Add(c.command)) e.Add($"commands: {c.command} listed twice");
@@ -114,6 +119,14 @@ namespace WarehouseAvatar
                     if (c.command == Wait && !v.forearm_up) e.Add($"commands WAIT {v.take}: forearm_up must be true (forearm vertical)");
                     if ((c.command == Point || c.command == None) && v.forearm_up) e.Add($"commands {c.command} {v.take}: forearm_up must be false (straight arm)");
                     if (c.command == Stop && !(v.spread_deg > 0f)) e.Add($"commands STOP {v.take}: spread_deg must be > 0 (fingers spread)");
+                    if (c.command == Proceed)
+                    {
+                        if (v.forearm_up) e.Add($"commands PROCEED {v.take}: forearm_up must be false (the forearm swings)");
+                        if (v.upper_forward_deg < 0f || v.upper_forward_deg > 90f) e.Add($"commands PROCEED {v.take}: upper_forward_deg must be in 0..90");
+                        if (v.swing_low_deg < -90f || v.swing_high_deg > 90f || v.swing_high_deg < v.swing_low_deg)
+                            e.Add($"commands PROCEED {v.take}: swing_low_deg <= swing_high_deg within -90..90");
+                        if (v.sequence && !(v.swing_hz > 0f && v.swing_high_deg > v.swing_low_deg)) e.Add($"commands PROCEED {v.take}: a sequence swings (swing_hz > 0, high > low)");
+                    }
                     if (v.sequence)
                     {
                         sequences++;
@@ -152,7 +165,8 @@ namespace WarehouseAvatar
         /// (docs/protocol_v3.md section 2) for this render, plus "arm" (the person's own gesturing arm) when given and the
         /// pose variant (ignored by the tool). time_s is left out: an Edit Mode render has no Unity Time.time.
         /// </summary>
-        public static string HeaderJson(int width, int height, double fovDeg, float cameraHeightM, int frameIndex, string arm, LookVariant v)
+        public static string HeaderJson(int width, int height, double fovDeg, float cameraHeightM, int frameIndex, string arm, LookVariant v,
+                                        double proceedForearmDeg = double.NaN)
         {
             Intrinsics(width, height, fovDeg, out double fx, out double fy, out double cx, out double cy);
             string N(double x) => x.ToString("R", Inv);
@@ -169,8 +183,10 @@ namespace WarehouseAvatar
             sb.Append("  \"pose\": {\"x\": 0.0, \"z\": 0.0, \"yaw_deg\": 0.0},\n");
             sb.Append("  \"encoding\": \"png\",\n");
             if (!string.IsNullOrEmpty(arm)) sb.Append($"  \"arm\": \"{arm}\",\n");
+            string proceed = double.IsNaN(proceedForearmDeg) ? "" :
+                $", \"upper_forward_deg\": {F(v.upper_forward_deg)}, \"forearm_deg\": {N(Math.Round(proceedForearmDeg, 3))}";
             sb.Append($"  \"look_check_variant\": {{\"take\": \"{v.take}\", \"azimuth_front_deg\": {F(v.azimuth_front_deg)}, " +
-                      $"\"elevation_deg\": {F(v.elevation_deg)}, \"forearm_up\": {(v.forearm_up ? "true" : "false")}, \"spread_deg\": {F(v.spread_deg)}}}\n");
+                      $"\"elevation_deg\": {F(v.elevation_deg)}, \"forearm_up\": {(v.forearm_up ? "true" : "false")}, \"spread_deg\": {F(v.spread_deg)}{proceed}}}\n");
             sb.Append("}\n");
             return sb.ToString();
         }
@@ -204,6 +220,8 @@ namespace WarehouseAvatar
         public float[] distances_m;
         public float vertical_fov_deg;
         public int sequence_frames;
+        /// <summary>PROCEED sequences (experiments_ab.md section 10): frames at 10 Hz, at least the reader's 2.0 s window (21).</summary>
+        public int proceed_sequence_frames;
         public string[] arms;
     }
 
@@ -225,6 +243,13 @@ namespace WarehouseAvatar
         public float elevation_deg;
         public bool forearm_up;
         public float spread_deg;
+        /// <summary>PROCEED (experiments_ab.md section 10): the upper arm this far forward of straight down, the forearm swinging between
+        /// swing_low_deg and swing_high_deg above horizontal at swing_hz (a single frame: swing_low_deg).</summary>
+        public float upper_forward_deg, swing_low_deg, swing_high_deg, swing_hz;
+
+        /// <summary>The forearm's angle above horizontal at time t of a PROCEED swing (the worker's law: low + (high - low)(1 - cos 2 pi f t)/2).</summary>
+        public float ForearmDeg(double t) =>
+            swing_hz > 0f ? swing_low_deg + (swing_high_deg - swing_low_deg) * 0.5f * (1f - (float)Math.Cos(2.0 * Math.PI * swing_hz * t)) : swing_low_deg;
     }
 
     [Serializable]

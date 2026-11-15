@@ -457,3 +457,809 @@ Written for Anisha to `robot_vision/outputs/for_anisha_finals_ab_20261114_164233
 `Avatar/Config/reports_v4/`): the decisions before the freeze (lie detection in the finals, the 270 s timeout, B2 sides, the shared J1 look, the
 sittings), the nine `final_plan.json` settings and their test assignment, the `FINAL_CONTROL` entries, the experiment control and map files for the
 freeze, and a final mode of the evaluation and CSV export per experiment. None of her files was changed.
+
+## 2026-11-14, section 10: avatar pipeline fixes before the freeze (declared before any change; nothing run)
+
+Branch `nusrat/v4-finals-ab` (HEAD 085e4ff). Unity side only: nothing under `robot_vision/`, `docs/` or `external/` is changed, nothing is frozen, no
+final and no navigation run is made. The avatar-experiment configs are on the B9 list (section 7 step 4), so these fixes come before the freeze.
+**Integrity rule:** every fix is verified GEOMETRICALLY (bone and joint positions of the rendered pose against the intended pose; the arm-skin probe
+of section 5 shows the meshes follow these bones). **No perception** (YOLO, MediaPipe, `look_check_v4.py`) is run on any avatar-experiment look in
+this work: the avatar experiment measures perception once, after the finals (section 8). Nothing is tuned on a perception result.
+
+**Inputs** (`unity/downloads/characters_v4/`, git-ignored, never committed):
+- `cartoon_boxo_01.fbx` **version 2** (sha256 `00fbf466...`, 366 096 bytes): fingers fanned with gaps of at least 3 cm so Mixamo's auto-rigger
+  separates them, rigged with Mixamo's Standard Skeleton (65). Version 1 (`431e6cb2...`, the imported file of sections 2 and 5) is kept in
+  `unity/downloads/superseded/`. Its generator `unity/tools/avatars/make_cartoon_boxo.py` (v2) is committed with step 3.
+- `anime_f_02_outfit_short.fbx` (`d94b472a...`, 11 192 092 bytes) and `anime_f_03_bangs_parted.fbx` (`a3cf3439...`, 10 025 164 bytes): Nusrat's
+  **controlled variants of anime_f_01**. 02 changes the outfit, sleeves included (short sleeves); hair, face and body as 01. 03 changes only the
+  bangs (parted, both eyes visible); outfit, face and body as 01.
+- *Found, not changed:* `SOURCES.txt` names the third file `anime_f_03_hairback.fbx` ("hair tied back, same outfit"), but the file present is
+  `anime_f_03_bangs_parted.fbx` and the task describes parted bangs. The licence statement is the same (Nusrat's own VRoid character, converted in
+  Blender, not redistributed); `looks_ab.json` uses the file name and the task's description. SOURCES.txt is Nusrat's record and is not edited **[N]**.
+
+**1. Arm scaling.** What is Sunbox's in `WorkerV4.ComputeTargets` today (every target is already an offset from the rig's own shoulder bone, in units
+of its own shoulder-to-wrist length L): PROCEED splits L into upper arm 0.53 L and forearm 0.47 L; the elbow hints of POINT and STOP lie 0.5 L along
+the arm and the WAIT hint ("forearm vertical") 0.5 L below the hand, i.e. an arm with equal segments. *Change:* each rig is measured once at
+`Initialize`, in its rest pose before any animation: upper arm `Lu` (UpperArm to LowerArm bone), forearm `Lf` (LowerArm to Hand), `L = Lu + Lf` (as
+now), shoulder width `W` (between the two upper-arm bones) and shoulder height `H` (upper-arm bones above the worker's root). PROCEED: the elbow at
+`Lu` from the shoulder and the hand at `Lf` from the elbow; POINT and STOP hints at `Lu` along the arm; WAIT hint `Lf` below the hand. The other
+offsets stay fractions of the rig's own L from its own shoulder bone, which already carries W and H; W and H are recorded per look and enter the
+check's body frame. `worker_v4.json` values are not changed.
+*Baseline first:* the geometry check below runs once on the UNCHANGED code (baseline, kept and reported), then on the changed code. If the baseline
+shows a cause this change does not cover (for example the anime forearm fold of section 5, which was read from YOLO's wrist, not from bones), it is
+written here as an addendum before any further change.
+
+**2. Geometric verification (`GestureGeometryCheck`, Play mode).** Stage: a new unsaved scene (grey floor, one directional light, no warehouse), one
+worker template per look, each on its own spot 4 m apart, a stand-in robot 2.0 m in front of it. Looks: every look of `looks_ab.json`
+`avatar_experiment` the worker template can spawn, plus the two anime variants (and Boxo v2 if its hands can be shaped). Per look: every clip of
+POINT, PROCEED, WAIT and STOP in `worker_v4.json`, both arms; POINT at side azimuth 0 and 45 deg (the look check's convention); variation stream
+`SetRun(1, take)`. Measured after the worker's LateUpdate (hand shape, torso turn) on 5 frames spread over the hold, PROCEED on every frame of 2.0 s
+of the swing, from the bones: shoulder S (UpperArm), elbow E (LowerArm), wrist Wr (Hand). *Intended pose* = the worker's own goal of that frame:
+hand target T from shoulder s; intended elbow interior angle = the two-bone angle of `|T - s|` with the rig's `Lu`, `Lf` (180 deg if out of reach);
+intended arm direction = `(T - s)`; PROCEED also the intended elbow E* and forearm direction `(T - E*)`; WAIT forearm direction = up.
+*Measures:* elbow interior angle `angle(S - E, Wr - E)` minus intended; arm direction `angle(Wr - S, T - s)`; forearm direction `angle(Wr - E, intended)`
+(WAIT, PROCEED). **Tolerance (declared now, in a new config `Avatar/Config/gesture_geometry.json`):** elbow angle within **10 deg**, arm direction
+within **5 deg**, forearm direction within **10 deg**, and **no fold**: the elbow interior angle of POINT and STOP at least **120 deg** (POINT's design
+is 144 to 163 deg, `worker_v4.json` limits). A look x command passes when every measured frame of every take passes. **No regression:** every
+Sunbox look and mixamo_worker must pass after the change; the largest shift of a hand target between the old and the new formula is reported per look.
+Output `robot_vision/outputs/gesture_geometry_<time>/` (geometry.json, a per-look table, run_info.json with the commit); the table is copied
+byte-identical to `reports_v4/`. Edit Mode tests: the two-bone angle, the measures and the pass rule on synthetic arms, and the new targets on a
+synthetic rig (the old targets equal for an arm with Lu = 0.53 L).
+
+**3. Boxo v2.** The v1 import folder `Assets/ThirdParty/CharactersV4/cartoon_boxo_01/` (and its `.meta`) is moved, not deleted, to the git-ignored
+`unity/downloads/superseded/cartoon_boxo_01_431e6cb2_import/`, then `Import Characters` runs unchanged (scale, texture, emission and recolour rules
+of sections 2 and 5). Report: each hand's bones (every chain under the Hand bone, by name) and the Humanoid finger mapping; **finger skin probe**
+(new, report only, like the arm-skin probe): per hand, each finger chain's proximal bone is bent 30 deg about the axis across the finger (finger
+direction x palm normal) and every skinned mesh is baked before and after; a vertex *moves* when it moves more than 2 mm; a finger's *region* = the
+rest-pose vertices within 4 cm of its own bone chain (base to the end of its last bone) and nearer to it than to any other chain of that hand. A
+finger is **separate** when at least 80 % of its own region moves and at most 20 % of every other finger's region moves; fewer than 30 vertices in
+its region = inconclusive. Colours: every material with its shader, base colour and base texture (recolour rule unchanged); **error-shader check**:
+a material on `Hidden/InternalErrorShader` or without a URP pass, and the magenta pixels of a neutral render (`LookInventory.MagentaPixels`).
+**If the fingers are still one chain, the work STOPS there and is reported.** If both hands have the index to little bones the worker template needs,
+Boxo joins the Play look check (`look_check_play_ab.json`; its exclusion was "cannot be spawned", section 2 rule) and the geometry check.
+
+**4. Anime variants.** Imported by the same importer, unchanged; arm-skin probe (section 5 rule). **Controlled-variant check** (geometric, report
+only): every mapped Humanoid bone's rest position of each variant against anime_f_01 (same body = all within 1 mm), and the skinned meshes compared by
+name and vertex count (which meshes differ; expected: 02 the clothing, 03 the hair). Added to `looks_ab.json` under kind `anime`
+(`navigation` false, no proposed split, licence from SOURCES.txt) with `variant_of` `anime_f_01` and `variant_changes`, and to `avatar_experiment`
+after anime_f_01 (15 looks). A result is reported as it comes; nothing is adjusted on it.
+
+**5. PROCEED in the Unity look-check recordings (changes section 8 before anything ran).** The Play-mode look check of the avatar experiment
+(`look_check_play_ab.json`) records PROCEED for every look it spawns, in Anisha's format (`configs/v4/look_check.json` `graded_when_present`): the
+same takes as the other commands (2 sequences + 16 singles per distance and arm, the PROCEED variants cycling), sequences of **21 frames** at 10 Hz
+(2.0 s, the reader's `proceed.window_s`) taken during the swing, singles at a random moment of it; names `<look>__PROCEED__<d>__<arm>_<take>`, the arm
+label and the real `time_s` in every header. `look_check_play.json` (the v4 Phase 2 check) is unchanged. The Edit-mode stage shows held poses only;
+a look the worker template cannot spawn gets PROCEED there as a posed swing of 21 frames (`LookPoser`, the proceed_ik_01 swing at 1.5 Hz), built
+only if such a look remains after step 3.
+
+**6. Run-once guard of the avatar experiment (replaces section 8 step 6, "no code guard").** New config `Avatar/Config/avatar_experiment.json`. An
+official run is started with `-avatarExperiment` on `LookCheckMenu.BatchRunExperiment` (part `edit`) or `LookCheckPlayMenu.CommandLineRunAB` (part
+`play`) and is refused unless: `frozen.json` is frozen with every B9 file recorded and unchanged (the rule of `FinalGuardV4`); every final setting of
+`final_v4.json` has its `UNITY_FINAL_DONE.json` (section 8 precondition); no `-lookCheckLooks` subset; and no marker of the same part exists under
+`robot_vision/outputs/`. It writes `AVATAR_EXPERIMENT_STARTED.json` before the first render (so a crashed run also counts as run) and
+`AVATAR_EXPERIMENT_DONE.json` at the end; either marker of a part refuses a second run of that part. Without `-avatarExperiment` the tools stay
+engineering checks and are never the experiment. Edit Mode tests of every refusal.
+
+**7. B9.** `avatar_experiment.json` and `gesture_geometry.json` join `final_v4.json` `freeze_files`; the changed `looks_ab.json`,
+`look_check_play_ab.json` and `worker_v4.json` (if changed) are already on it.
+
+**8. Screenshots for Nusrat's visual check** (not perception input): from the geometry check's neutral camera, NOT the robot cameras' settings:
+3.0 m in front of the worker, 20 deg to its right, 1.3 m high, vertical field of view 35 deg, 1280 x 960 PNG, in the middle of the hold (PROCEED: at
+the top of the swing), every anime look and Boxo, each of POINT, PROCEED, WAIT and STOP, both arms, into `gesture_geometry_<time>/screens/`.
+
+*Addendum 1 (2026-11-14, after the Boxo v2 import and its finger probe; before the arm-scaling change, the Edit-mode PROCEED or any screenshot).*
+Results: `import_characters_20261114_180918` (Boxo v2: unit scale x100 and avatar rebuilt as section 2, humanScale 0.774, bone height 1.138 m; 46
+Humanoid bones; finger bones **24 of 30**: thumb, index, middle and ring mapped, **no little finger** on either hand; `glovemat` and `helmetmat`
+recoloured, `eye_whitemat` and `stripemat` colourless and matched by no rule; the variants: 55 bones, 30 of 30 finger bones, 25 textures linked).
+`probe_fingers_20261114_181109`: **Boxo v2 has 4 chains per hand (Thumb, Index, Middle, Ring) and every finger is separate** (own region 93 to 100 %
+moves, no other finger's region more than 4 %); no material problem, 0 magenta pixels. Controls: mixamo_worker 5 separate chains per hand (own 87 to
+96 %, others at most 7 %); anime_f_01 reads "merged" by the rule (own 61 to 89 %, others at most 15 %: no finger moves its neighbour, but the 4 cm
+region of this small hand reaches palm vertices weighted to the hand bone), reported as it is, the rule is not changed. So the fingers are no longer
+one chain and the work continues. **Consequences (declared now):**
+- Boxo v2 still cannot be spawned by the worker template: `HandShaper` needs index to little (section 2 rule; the template is not changed to make a
+  look pass; a three-finger hand shape would be a template change for **[N]**). It stays out of the Play look check and the Play geometry check;
+  `look_check_play_ab.json` `looks_excluded` gets the new reason. It stays in the Edit-mode look check (which records it as before).
+- Item 5 applies: **PROCEED is added to the Edit-mode look check** (`look_check.json`) for every look of it, as a posed swing: upper arm down and
+  `upper_forward_deg` forward with the elbow 0.08 L out, forearm at `phi(t) = low + (high - low) * (1 - cos(2 pi f t)) / 2`, f 1.5 Hz,
+  t = frame / 10 s; flat hand, fingers along the forearm, palm toward the body (the worker's PROCEED shape). Takes: two 21-frame sequences
+  (`seq1` = proceed_ik_01: 15, -20, 60 deg; `seq2` = proceed_ik_02: 35, 0, 75 deg) and singles at fixed phases of proceed_ik_01 (forearm at -20, 0,
+  20, 40, 60 deg), with no `time_s` (Anisha's tool then uses 10 Hz). A sequence's frames are rendered one by one (the held-pose sequences keep one
+  render per sequence). Recordings named as the others.
+- **Boxo's geometric check comes from its Edit-mode poses** (`LookPoser`, every POINT, WAIT, STOP and PROCEED take of `look_check.json`, both arms):
+  rendered elbow angle, upper-arm and forearm directions against the pose's intended ones, with the declared tolerance (elbow 10 deg, upper-arm
+  direction 5 deg in place of the shoulder-to-wrist direction, forearm 10 deg; no fold for the POINT and STOP poses designed straight: the STOP takes
+  with `forearm_up` are bent by design since Phase 2A). The same Edit-mode geometry is reported for every look of the Edit-mode check
+  (`pose_geometry_<time>/`).
+
+*Addendum 2 (2026-11-14, after the baseline geometry run, before the arm-scaling change).* Baseline `gesture_geometry_baseline_20261114_182535`
+(commit 3e6054b, targets unchanged; 12 looks spawned, Boxo not: "lacks arm or finger bones"). **POINT and WAIT pass on every look, anime_f_01
+included**: its POINT elbow is never below 151.0 deg (intended 151.9 to 157.0), so the "forearm folds back" of section 5 is NOT in the bones; it was
+read from YOLO's wrist on the rendered frames (the wide sleeve), which this work does not measure. **PROCEED fails on every look** (forearm 10.7 to
+12.9 deg off its goal): the Sunbox split and the sideways offset put the intended elbow where the arm cannot reach, exactly what item 1 changes. No
+other cause is found, so no further change is added. Measured proportions: upper-arm share of L 0.512 (every Sunbox look), 0.536 (mixamo_worker),
+0.514 (anime_f_01); arm-to-shoulder ratio 1.590, 1.098, 2.241. **Found, not changed (decision for [N]):** STOP is flagged "fold" on 10 looks at
+elbows of 116.2 to 119.8 deg with an elbow error of at most 0.7 deg there: the rendered pose equals the intended one, and the intended one is
+`worker_v4.json` `limits.stop_reach` [0.85, 0.97] at its lower bound (0.85 L gives 116 deg). The declared no-fold threshold (120 deg) is stricter
+than the frozen STOP design; neither is changed after seeing this. STOP is reported with this split: elbow, direction and forearm checks
+(rendering) and the no-fold check (design) separately.
+
+*Addendum 3 (2026-11-14, after the first run with item 1, before any further change).* `gesture_geometry_after_20261114_183103` (item 1 applied,
+uncommitted, on 3e6054b): POINT, WAIT and the rendering of STOP pass on every look as before; PROCEED's forearm error falls from 12.3 to 12.9 deg
+(Sunbox) to 10.1 to 10.6 deg (mixamo_worker 10.9 to 11.2) but still exceeds 10 deg, **with an elbow-angle error of 0.0 and an arm-direction error of
+0.0 deg on every frame**: the hand is on its target and the elbow has the intended angle, so the only freedom left is the elbow's swivel about the
+shoulder-to-hand axis, which Mecanim takes from the hint. PROCEED's hint lies 0.1 L sideways and 0.02 L below the intended elbow, so the bend plane
+misses it. *Change (a cause item 1 does not cover):* with the rig split, PROCEED's hint is the intended elbow pushed away from the shoulder-to-hand
+axis (hint = E* + 0.5 L x the unit vector from the axis to E*), so the bend plane contains E*; with the legacy split the old hint is kept (it stays
+the reference of the target-shift column). Nothing else changes; the tolerance stays.
+
+*Results (2026-11-14, steps 1 to 7 committed 67efb67 to aa3db71; report `reports_v4/avatar_pipeline_fixes_20261114.md`, a byte-identical copy of
+`robot_vision/outputs/avatar_pipeline_fixes_20261114.md`, with the geometry tables next to it).* Geometry on aa3db71
+(`gesture_geometry_final_20261114_193832`, 14 spawnable looks): POINT, PROCEED and WAIT within tolerance on every look; PROCEED's forearm error
+11.1 to 12.9 deg (baseline) -> 0.0 deg; anime_f_01's POINT elbow at least 150.9 deg before and after (no fold in the bones). STOP: the design's
+116 deg elbows (addendum 2, [N]) and one out-of-reach take of anime_f_02 (168.8 vs 180 deg, direction exact). Boxo v2: four separate finger chains
+per hand, no little finger, so still Edit mode only ([N]); Edit-mode pose geometry of every look within tolerance (`pose_geometry_20261114_194216`).
+Variants: 02 differs in the clothing mesh and its materials (the skeleton shifted by 1.55 mm as a whole), 03 only in the hair mesh. PROCEED is in
+both look checks (format checked: 21 frames, Play spans 2.006 to 2.015 s after a timing fix of the first try's 1.990 s). The run-once guard refuses
+both parts today (not frozen, finals not done). SOURCES.txt's name for anime_f_03 differs from the file **[N]**. No perception was run.
+- **Boxo's screenshots come from its Edit-mode poses** with the neutral camera of item 8 (POINT and WAIT `seq1`, STOP `seq1`, PROCEED at the top of
+  the `seq1` swing; both arms). The anime looks' screenshots come from the Play geometry check (the worker template), as declared.
+
+## 2026-11-14, section 11: Nusrat's decisions on the section 10 results (declared before any change; nothing run)
+
+Branch `nusrat/v4-avatar-fixes` (renamed from `nusrat/v4-finals-ab`; HEAD e6c6bfd, `main` merged in, Anisha's PR #35 false-STOP analysis
+included). The rules of section 10 stay: Unity side only (nothing under `robot_vision/`, `docs/` or `external/` changes), every fix verified
+GEOMETRICALLY, **no perception** (YOLO, MediaPipe, `look_check_v4.py`) on any avatar-experiment look, nothing frozen, nothing pushed, one commit
+per decision. Nusrat has corrected `SOURCES.txt` (the third anime file is `anime_f_03_bangs_parted.fbx`), which closes the section 10 [N] on its name.
+
+**1. Check correction (the no-fold rule).** The 120 deg no-fold rule was meant for extended gestures only. Nusrat named POINT and PROCEED.
+PROCEED's elbow is bent by design, though: 38 to 125 deg over the swing (`gesture_geometry_final_20261114_193832`, rendered with 0.0 deg error),
+so the rule would flag almost every PROCEED frame. Asked about this, Nusrat chose (2026-11-14) **POINT only**: `gesture_geometry.json`
+`no_fold_commands` becomes `["POINT"]`. STOP, PROCEED and WAIT are checked against their own design elbow angle within the 10 deg elbow
+tolerance, which is the existing elbow measure (the two-bone angle of the take's target with the rig's own upper arm and forearm). Both geometry
+tools read the rule from the config (the Play check and the Edit-mode pose geometry). This corrects a mis-specified check, not the avatars; the
+STOP design (`worker_v4.json` `limits.stop_reach` [0.85, 0.97]) is not changed. *Disclosed:* a check rule changed after its results were seen
+(section 10 addendum 2), by Nusrat's decision.
+
+**2. Reach cap.** `GestureTargets.Compute` caps the hand target's distance from the shoulder, `|T - s|`, after the size and the STOP push are
+applied, at the command's own maximum reach in the rig's own `L` (upper arm + forearm, measured per rig in section 10). The caps are
+POINT `limits.point_reach[1]` (0.99 L) and STOP `limits.stop_reach[1]` (0.97 L). WAIT and PROCEED are capped at `L`; their designs never
+reach it, so this cap is a guard only. The target moves toward the shoulder along `T - s`, so its direction is kept, and the elbow hint is
+unchanged. The cap level is Nusrat's answer (2026-11-14) to whether "the rig's own reach" means `L` or the command's maximum: Mecanim does not
+straighten an arm fully, so out-of-reach takes rendered at 168.8 to 174 deg against an intended 180 deg. `worker_v4.json` is not changed.
+The legacy goal (the "target shift vs old" column) stays uncapped, so that column shows what the cap moved. Expected effect: only STOP takes
+whose push carried the target beyond 0.97 L. anime_f_02's STOP is re-verified. Edit Mode tests: a pushed STOP target is capped at exactly
+0.97 L in its own direction, and a take within reach is unchanged bit for bit.
+
+**3. Boxo in Play mode (the worker template accepts hands without a little finger).** `HandShaper.Complete` now requires the upper arm,
+forearm, hand and the index, middle and ring proximal bones; the little finger is optional. Two hand measures used the little finger's base:
+the palm normal (`LookPoser.PalmNormal`, from the index and little bases) and the thumb's swing across the palm. Both now use the outermost
+finger present (little, otherwise ring). Every shape bends only the bones that exist, as before. On a five-finger rig every code path is the
+one used before.
+**Proof that five-finger looks are unchanged:**
+- (a) An Edit Mode test with golden values computed by the UNCHANGED code before the change: a synthetic five-finger hand, every hand shape of
+  `worker_v4.json`, both hands, every finger joint and tip within 1e-6 m. It is committed with the change and must pass before and after.
+- (b) A new Edit-mode tool, `ExperimentLooksMenu.BatchHandShapes`, runs on every installed avatar-experiment look. It writes every finger
+  bone's world position and rotation after `HandShaper.Apply` for every hand shape and both hands, on the rest pose with fixed directions and
+  `MirrorRest` as the template applies it. It runs before and after the change, and the two outputs are compared value for value: every
+  five-finger look must be **exactly** equal.
+- A Play run is not bit-reproducible (it depends on frame timing), so the identity is proven in Edit mode on the functions the template
+  calls. The Play geometry rerun (item 7) then shows every look within tolerance.
+
+Boxo then joins `look_check_play_ab.json` `looks` (its exclusion is removed), the Play geometry check and its screenshots, PROCEED included. A
+**format check** of the Play recordings runs on Boxo alone (`-lookCheckLooks cartoon_boxo_01`; an engineering check, not the experiment; no
+perception). *Disclosed:* Boxo's Edit-mode poses change too, because before this its palm was never turned (`PalmNormal` found no little finger).
+
+**4. anime_f_02's black patches (alpha clipping in the importer).** The cause was found by reading the files only. Every imported anime
+material is URP Lit, Opaque. The FBX (Blender's export) links an alpha texture (`TransparencyFactor`) only on the EyeIris, EyeHighlight,
+FaceBrow, FaceEyelash and FaceEyeline materials. Each base texture carries VRoid's cut-out mask in its alpha channel; for example, anime_f_02's
+dress textures `_15` and `_19` have 96 and 99 % of their texels below alpha 0.5, black underneath. The FBX conversion lost the clothing
+material's cut-out link, so opaque rendering shows those texels black.
+*Rule (`ExperimentLooksMenu.ImportOne`, every look it imports):* a material whose base texture has an alpha channel with at least 0.1 % of
+its texels below 0.5 gets URP alpha clipping: `_AlphaClip` 1, `_Cutoff` 0.5 (URP's and glTF's default), keyword `_ALPHATEST_ON`, render
+queue AlphaTest, RenderType TransparentCutout. The surface stays opaque, with no blending. It applies to anime_f_01 and 03 as well (same
+importer, same kind of textures), so the controlled variants stay controlled; Boxo's materials carry no texture and are unaffected.
+Import Characters is re-run (the imports are kept, only material settings change, all git-ignored), with each clipped material in the import
+report. New screenshots come from item 7.
+
+**5. anime_f_02's skeleton shift (1.55 mm as a whole) is an export difference and is accepted.** It is recorded in `looks_ab.json`
+`variant_changes` of anime_f_02. The variant probe's 1 mm "same body" rule and its result stay as reported. In the same commit, the anime_f_03
+licence text drops the SOURCES.txt name mismatch (corrected by Nusrat).
+
+**6. Note for Anisha** (`reports_v4/for_anisha_avatar_fixes_20261114.md`):
+- PROCEED changed on every look (forearm error about 12 deg -> 0.0 deg; hand target moved by up to 22 mm), so her false-STOP fix (PR #35)
+  must be confirmed on the new PROCEED pose in step 5.
+- The anime "fold" was YOLO placing the wrist on the sleeve, not the bones (POINT elbow at least 150.9 deg before and after).
+- Items 2 and 4 change some STOP takes and the anime looks' materials.
+
+A Unity-side note only; nothing of hers is edited.
+
+**7. Rerun.** `gesture_geometry.json` `screens.kind_groups` becomes every group (realistic_human, stylised_human, anime, cartoon_non_human),
+so there is a screenshot of every look, each command and both arms. Then:
+- the Play geometry check of every look of `avatar_experiment`, Boxo included (label `decisions`);
+- the Edit-mode pose geometry, since item 1 applies to it.
+
+Tables are copied byte-identical to `reports_v4/`. No perception is run, and nothing is tuned on these results.
+
+*Results (2026-11-14; items 1 to 7 committed 29507fd to a5c032b, one commit each, every tree tested by Unity; Python 1108 OK on e6c6bfd
+and on the item 6 tree).*
+- **Geometry, Play** (`gesture_geometry_decisions_20261114_210047`, commit a5c032b, clean tree; table in `reports_v4/`): **all 15 looks
+  pass** every command, Boxo included (spawned by the template; upper arm / forearm 0.247 / 0.240 m). POINT elbow at least 150.8 deg; PROCEED
+  forearm error 0.0 deg on every look; STOP elbow error at most 0.9 deg.
+- **anime_f_02's STOP**: 11.2 deg -> 0.9 deg (the out-of-reach take is capped). The cap moved STOP targets by up to 41 mm (sunbox_f_dress_red;
+  the "target shift vs old" column, legacy uncapped). The design's 116 deg STOP elbows remain, and pass against their own design (item 1).
+- **Five-finger looks unchanged** (item 3): the golden test passes, and `hand_shapes_20261114_203658` against `_202913` is identical on all
+  14 five-finger looks (3584 lines). Only Boxo differs: its hands are now shaped.
+- **Pose geometry, Edit mode** (`pose_geometry_20261114_210511`): all 15 looks render within tolerance, with no fold flag.
+- **Alpha clipping** (`import_characters_20261114_204415`): 14 materials per anime look (face, eyes, hair back, body mask, clothing, shoes)
+  and none on Boxo. The 120 screenshots (`gesture_geometry_decisions_20261114_210047/screens/`) show anime_f_02's dress without the black
+  patches.
+- **Boxo's Play recordings, format check** (`look_check_play_ab_debug_20261114_210603`, `-lookCheckQuick cartoon_boxo_01`, not the
+  experiment): 36 recordings, 476 frames, none outside the hold. PROCEED sequences have 21 frames spanning 2.005 to 2.018 s.
+- **Seen in the screenshots, not changed (for Nusrat's visual check):** Boxo's WAIT raises the index finger, but its flat black palm plate is
+  seen edge-on and the thumb stands out to the side.
+
+No perception was run.
+
+## 2026-11-14, section 12: palm orientation and the WAIT thumb in the geometry check (declared before building or measuring; nothing run)
+
+Nusrat's check before the merge (branch `nusrat/v4-avatar-fixes`, HEAD 045dce5). The rules of sections 10 and 11 stay: Unity side
+only, geometric, **no perception**, nothing frozen, nothing pushed.
+
+**Added to the Play geometry check** (`GestureGeometryDriver`), for every look of `avatar_experiment`, both arms, on the same measured hold
+frames of every STOP and WAIT take:
+- **Robot camera point C:** the stand-in robot's eye on the stage (the worker's `robotEye`, 2.0 m in front of it at 1.2 m height). It is
+  the point the worker turns its palm toward.
+- **Hand frame from the rendered bones:**
+  - palm centre P is the mean of the hand bone and the index, middle and outermost (little, else ring) proximal bones;
+  - palm length Lp = |middle proximal - hand|;
+  - finger direction = middle proximal - hand.
+- **Palm normal, bones:** `LookPoser.PalmNormal`, the convention the hand shaper aligns.
+- **Palm normal, mesh** (independent of that convention: what the camera sees):
+  - The vertices are the rendered skinned-mesh vertices whose largest bone weight is on the Hand bone and is at least 0.5, lying between
+    the wrist and the finger bases along the finger direction (0 to Lp from the hand bone). This keeps out sleeves and forearm.
+  - The normal is their plane fit (the least-variance axis of the covariance), with its sign chosen to agree with the bone normal.
+  - It is *undetermined* with fewer than 30 vertices or a flatness (smallest / middle variance) above 0.5. An undetermined mesh normal
+    is reported as "mesh n/a" and the palm check then rests on the bone normal; it is never counted as a pass of the mesh part.
+- **Palm facing (STOP and WAIT): the angle between each palm normal (bones, and mesh when determined) and C - P is at most 30 deg.**
+- **WAIT thumb, curled toward the palm:** the thumb tip Tt (`HandShaper.Tip`, one distal-bone length beyond the distal joint) is
+  *tucked* when **|Tt - P| <= 1.0 Lp** (over the palm, not sticking out) **and (Tt - P) . n_bones >= 0** (on the palm side). Also
+  reported, not judged: the tip's position across the palm (0 at the index base, 1 at the outermost base).
+- **Pass rule:** a look x command passes the hand check when every measured frame passes. It is reported per look in a separate hand
+  table (`hand_table.md`) and in `geometry.json`; the arm columns and their pass are unchanged. Values go to `gesture_geometry.json`
+  `tolerance` (`palm_facing_deg` 30, `palm_commands` STOP and WAIT, `thumb_tip_max_palm_lengths` 1.0, `thumb_palm_side_min` 0.0,
+  `palm_mesh_min_vertices` 30, `palm_mesh_flatness_max` 0.5, `palm_hand_weight_min` 0.5). Edit Mode tests of the measures on synthetic
+  hands.
+
+**If any look fails** (Boxo or another): the fix goes into the pipeline, never the reader. It changes the worker template's hand
+orientation or thumb curl (`HandShaper`, `WorkerV4`) or the import. It is written here as an addendum before the change. Tests must prove
+five-finger looks unchanged (the golden test and the `BatchHandShapes` comparison, value for value). Then the geometry check and its
+screenshots are rerun. Nothing is tuned on a perception result.
+
+*Addendum 1 (2026-11-14, after the first run `gesture_geometry_hand_20261114_214854` on b4cf95c, before any fix).*
+- **The palm faces the camera by the bones on every look:** at most 16.5 deg.
+- **The mesh normal agrees** (10 to 25 deg) on the Sunbox looks, mixamo_worker and anime_f_02.
+- **anime_f_01 and anime_f_03 fail the mesh part at 90 to 101 deg.** These are the long-sleeve variants; the short-sleeve anime_f_02 passes,
+  and the long-sleeve ones have 65 more hand-bound vertices (141 against 76). The suspicion is that sleeve-cuff vertices are weighted to
+  the hand and enter the plane fit.
+- **Boxo's mesh normal is n/a:** its low-poly glove gives 18 to 20 palm vertices, fewer than 30, so its palm rests on the bones (5 to 9 deg).
+- **The WAIT thumb fails on mixamo_worker (1.27 Lp), the three anime looks (1.57 Lp) and Boxo (2.50 Lp)**; the Sunbox looks pass
+  (0.93 to 0.94 Lp).
+
+Four of the five failing looks have five fingers, so item 2's condition "five-finger looks stay unchanged" cannot hold for a fix of
+their thumbs. That is Nusrat's decision. *Diagnostic before asking (report only; the pass rule is not changed):* the geometry check also
+reports the mesh palm normal of each group of palm vertices by sub-mesh (material), so the sleeve suspicion is checked, not assumed. It
+runs on the three anime looks only.
+*Diagnostic result* (`gesture_geometry_hand_diag_20261114_215527`): **inconclusive**. In Play mode the Body mesh gave no sub-mesh
+assignment for any palm vertex (all labelled `Body/none`), so the sleeve could not be separated from the skin. The run reproduces the
+first: anime_f_01 and 03 at 90 to 98 deg (141 to 142 vertices), anime_f_02 at 18 to 22 deg (75 to 76 vertices). The sleeve explanation
+remains a suspicion. Nothing was fixed; Nusrat decides (the thumb of five-finger looks, and the anime mesh result).
+
+*Addendum 2 (2026-11-14): Nusrat's decisions, declared before any change.*
+
+**1. The WAIT thumb is tucked per rig, in the hand shaper.** The aim is the same WAIT hand on every look: the avatar experiment compares
+appearance, not posing.
+- `HandShaper.ThumbTuck` runs at `WorkerV4.Initialize`, per arm. It applies the WAIT shape (weight 1) to the bind pose and measures the
+  thumb tip exactly as the check does (`HandGeometry.Frame`, `HandShaper.Tip`). If the tip lies within the goal, **nothing is stored and
+  nothing changes**.
+- Otherwise the thumb is curled across the palm until the tip is within the goal.
+  - First the thumb root swings toward a target point 0.25 Lp in front of the palm centre (on the palm side). The swing is a fraction
+    a of the rotation that aims the root-to-tip direction at the target, and a is the smallest fraction that meets the goal (bisection).
+  - Only if a = 1 does not meet the goal, the two outer thumb joints are also curled toward the palm, by the smallest equal angle up to
+    90 deg that meets the goal.
+- The resulting thumb local rotations are stored and used for every WAIT frame instead of the shape's thumb; the other fingers are as
+  before. They are blended by the IK weight as the rest of the hand.
+- **Goal: 0.95 Lp**, a 5 % margin under the check's declared 1.0 Lp, so blending and pose noise cannot cross the limit. The values go to
+  `worker_v4.json` `hand_shapes.wait` (`thumb_tuck_max_palm_lengths` 0.95, `thumb_tuck_side_l` 0.25); the other shapes keep 0 (off).
+- A rig whose shaped thumb already meets the goal is untouched. The Sunbox looks are at 0.93 to 0.94 Lp, so this is a 1.5 % margin;
+  their identity is proven, not assumed:
+  - a new Edit Mode test pins every installed Sunbox look of `worker_v4.json` (both bases) to golden values computed by the code before
+    the change;
+  - `BatchHandShapes`, which now applies the tuck as the template does, is compared value for value on every look: the 10 Sunbox looks
+    must be identical.
+- The section 11 golden test of the synthetic hand stays as it is.
+
+**2. Anime palm diagnostic (Edit mode).** The rule is unchanged. A new Edit-mode probe, `LookCheckMenu.BatchPalmProbe`, works on every
+avatar-experiment look on the LookCheck stage:
+- **Pose:** each hand is shaped as the template shapes it (STOP and WAIT, tuck included), with the fingers up and the palm toward a
+  camera point 2.0 m in front of the look at 1.2 m height.
+- **Two mesh palm normals**, compared with the camera direction under the same 30 deg rule:
+  - (a) every hand-bound palm vertex, as the Play check;
+  - (b) only the vertices of the skin material: a sub-mesh whose material name contains `SKIN` (VRoid's `Body_00_SKIN`), so sleeve and
+    cuff are excluded.
+- The sub-mesh of each vertex comes from the mesh's index data. The probe reports how it was read and refuses to guess.
+- **Outcomes:**
+  - If (b) passes on anime_f_01 and anime_f_03, the earlier mesh result is recorded as a sleeve artefact of the check.
+  - If (b) fails, the palm orientation is fixed in the pipeline, after a further addendum, and reported.
+
+**3. Boxo, judged by the bones: the proof.** The same probe reports, for Boxo's hands:
+- the share of the glove vertices (material `glovemat`) bound to the Hand bone with weight >= 0.95;
+- the same share within the palm region (wrist to finger bases).
+
+If (nearly) all palm-region glove vertices move rigidly with the hand bone, the mesh plate turns exactly with the bone frame, so the bone
+and mesh orientation are the same.
+
+**Then** the full geometry and hand check runs on all 15 looks, with screenshots. No perception; one commit per decision.
+
+*Addendum 3 (2026-11-14, after the first tuck run `hand_shapes_20261114_223353`, uncommitted, before any further change).*
+- **Results:** the tuck reaches 0.95 Lp by the root swing alone on mixamo_worker (1.24 to 1.27 -> 0.95; swing 0.43 to 0.46) and on the
+  three anime looks (1.57 -> 0.95; swing 0.68). The 10 Sunbox looks are identical value for value (3584 lines), and on the tucked looks
+  only the WAIT thumb lines changed (12 per look).
+- **Boxo misses** (2.50 / 2.46 -> 1.18 / 1.13 Lp). After the full swing its long thumb lies across the palm, so the declared stage-2 curl
+  axis (the shape's axis, across the fingers) runs almost along the thumb and cannot fold it.
+- *Correction of stage 2 only:* the outer joints curl about the axis perpendicular to the swung thumb (root to tip) and to the palm
+  normal, with the sign that moves the tip toward the palm side. The rule (smallest equal angle up to 90 deg that meets 0.95 Lp) and
+  stage 1 are unchanged.
+- Stage 2 runs only on rigs the full swing does not tuck, so the four looks above and the Sunbox looks keep their values; the comparison
+  with `hand_shapes_20261114_223353` must show only Boxo changed. If Boxo still misses, it is reported, not tuned further.
+- *Result* (`hand_shapes_20261114_223517`): only Boxo changed (14 looks identical). **Boxo still misses the goal at the full 90 deg curl:
+  2.50 / 2.46 -> 1.08 / 1.03 Lp** (left / right). Its glove thumb is longer than its palm can hold, so it will still fail the check's
+  1.0 Lp. This is reported, not tuned further.
+
+*Addendum 4 (2026-11-14, after the palm probe `palm_probe_20261114_225116` on 97c84da plus the uncommitted probe; before any further
+change).*
+
+**Decision 2: the anime mesh palm result is a sleeve artefact of the check.** The Edit-mode probe reproduces the Play failure and
+locates it. The pass rule is unchanged; the earlier mesh result of anime_f_01 and 03 is recorded as the sleeve, not the palm. No
+palm fix is needed.
+
+| look | mesh (a), every hand-bound palm vertex | mesh (b), skin material `N00_000_00_Body_00_SKIN` only |
+|---|---|---|
+| anime_f_01, anime_f_03 | 87 to 89 deg (144 to 145 vertices) | **10.2 to 12.6 deg (74 to 75 vertices)** |
+| anime_f_02 | 10.2 to 12.6 deg (identical to (b), no sleeve) | 10.2 to 12.6 deg |
+
+The bones are at 6.9 deg on all three. The sub-meshes were read from the index data (`Mesh.GetIndices`, Body 9 sub-meshes); in Play
+mode they had not been available.
+
+**Decision 3: Boxo's rigidity is NOT proven.**
+- Only **6 of 576 glove vertices (1.0 %)** are bound to the Hand bone with weight >= 0.95. In the palm region it is **0 of 44 to
+  378**, and only 2 to 4 palm-region vertices are bound mainly to the Hand bone at all (hence "mesh n/a" in Play).
+- Mixamo's auto-rigger spread the glove plate's weights over the finger bones, so the plate does not turn rigidly with the hand bone, and
+  the bones alone do not prove its orientation.
+
+*Diagnostic, declared now:* mesh (c) is the plane fit of Boxo's glove-material vertices in the palm region, whatever their bone
+weights, under the same 30 deg rule, minimum vertices and flatness. It shows whether the rendered plate faces the camera. It is reported
+for Nusrat; the pass rule is not changed.
+*Correction of my probe (before using its numbers):* the first run with mesh (c) (`palm_probe_20261114_225325`) gave Boxo's STOP left
+plate at 91 deg, contradicting the Play screenshots (both STOP palms face-on). The glove vertices had not been limited to the measured
+hand. In the Edit-mode T-pose both hands are at the same height, so the other hand's glove fell into the palm slab, and the 576 "glove
+vertices" were both hands'. The glove counts and mesh (c) now use only the glove vertices of the measured hand: at least half of their
+weight is on that hand bone or a bone below it. The rigid share stays "weight >= 0.95 on the Hand bone itself". The probe is run
+again; the first run is kept.
+
+*Result of decision 3* (`palm_probe_20261114_225451`, the corrected probe; it replaces the counts above):
+- **Rigidity: NOT proven.** Per hand, **6 of 288 glove vertices (2.1 %)** have Hand-bone weight >= 0.95, and **0 of the 22 (STOP) to 193
+  (WAIT)** palm-region glove vertices do. The auto-rigger spread the plate's weights over the finger bones.
+- **Mesh (c), the glove plate itself:** WAIT faces the camera at **13.8 deg (left) and 21.4 deg (right)**, within 30 deg; the flatness of
+  0.33 includes the curled fingers. STOP is *undetermined*: only 22 palm-region vertices, below the declared 30 (a low-poly box plate).
+- The Play screenshots show both STOP plates face-on, a visual check only.
+- So Boxo's palm is judged by the bones (2.0 deg) and, for WAIT, also by the plate mesh; for STOP the mesh cannot be measured under the
+  declared minimum. Nothing is changed for this; it is Nusrat's call.
+
+*Results (2026-11-14, decisions 1 to 3 committed 97c84da, b0eacb3, a1981fc; rerun `gesture_geometry_hand_final_20261114_225633` on
+a1981fc, clean tree, all 15 looks, 120 screenshots; tables in `reports_v4/`).*
+- **Arm geometry:** all 15 looks pass, as before.
+- **Hand check:** 12 of 15 pass.
+  - **WAIT thumb:** mixamo_worker 1.27 -> 0.95 Lp, anime_f_01/02/03 1.57 -> 0.95 Lp, all on the palm side (0.71 to 0.86 Lp). The Sunbox
+    looks are unchanged at 0.93 to 0.94 Lp.
+  - **Palm by the bones:** at most 16.5 deg on every look.
+- **anime_f_01 and anime_f_03 still fail the mesh part** (89 to 95 deg). By decision 2 this is recorded as the sleeve artefact of the
+  check (skin-only palm at 10.2 to 12.6 deg in the probe); the rule is unchanged, so the table still says "no".
+- **cartoon_boxo_01 fails the WAIT thumb:** 1.08 Lp, and -0.07 Lp, i.e. just behind the palm plane. The tuck's best at the full 90 deg
+  curl (addendum 3) is reported, not tuned further. Its STOP passes by the bones; the mesh is n/a.
+- **Screenshots (visual only):** mixamo_worker's WAIT thumb no longer sticks out; Boxo's thumb lies bunched with its curled fingers.
+
+No perception was run.
+
+*Addendum 5 (2026-11-14): Boxo v3 replaces v2, and skinning checks are added. Declared before any change; nothing run.*
+
+Nusrat's finding in the v2 screenshots:
+- WAIT's forearm collapses into a cone and the hand looks detached;
+- the vest stripes bend into a V when an arm is raised.
+
+The cause is that the generator built limbs and body with almost no edge loops, so skinning could not bend or twist smoothly.
+
+**v3** (`unity/downloads/characters_v4/cartoon_boxo_01.fbx`, sha256 `4a69abed...`, 504 944 bytes; SOURCES.txt "version 3"):
+- every part is subdivided with edge loops about every 2.5 cm (`STEP = 0.025` in `unity/tools/avatars/make_cartoon_boxo.py`, committed
+  with step 1);
+- a shorter thumb, set near the wrist;
+- the same look.
+
+v2 (`00fbf466...`) is kept as `unity/downloads/superseded/cartoon_boxo_01_v2.fbx`.
+
+**Step 1: re-import and probes.**
+- The v2 import folder `Assets/ThirdParty/CharactersV4/cartoon_boxo_01/` (and its `.meta`) is moved, not deleted, to the git-ignored
+  `unity/downloads/superseded/cartoon_boxo_01_00fbf466_import/`. Then Import Characters runs unchanged: scale and avatar rebuild,
+  recolour rules, alpha clipping (Boxo has no textures).
+- Probes as before:
+  - the finger probe (chains, Humanoid mapping, skin per finger, materials and colours, error shader, magenta pixels);
+  - the arm-skin probe;
+  - the palm / glove probe of addendum 2.
+- `looks_ab.json` Boxo's source text names v3.
+
+**Step 2: new skinning checks for every look, in the Play geometry check.** These are separate from the arm and hand checks, which do not
+change. The limits are declared now in `gesture_geometry.json` `skinning`.
+- **Reference:** the idle pose just before each take's request (arms down), baked once per take.
+- **Forearm volume** of the gesturing arm:
+  - The forearm vertices are those of every skinned mesh whose largest bone weight is on the LowerArm bone and at least 0.5 (sleeves
+    included: what the camera sees).
+  - At the reference they are assigned to 5 bands by their position along elbow to wrist (0 to 0.2, ..., 0.8 to 1.0); a band with fewer
+    than 8 vertices is skipped.
+  - On each measured frame, each band's mean distance from the current elbow-to-wrist line is divided by its reference value.
+  - **The narrowest band's ratio must be at least 0.70**, on every measured frame of every command.
+- **Torso stays rigid:**
+  - The torso vertices are those whose largest bone weight is on Hips, Spine, Chest or UpperChest and at least 0.5 (vest, shirt and
+    body included).
+  - Each vertex's position is taken in its own dominant bone's frame, so bending or turning of the spine is not counted, only
+    deformation from other bones.
+  - Its displacement from the reference is measured on every measured frame. **The 95th percentile of the displacement must be below
+    1.0 cm.** The maximum is reported too.
+- **Frames:** the arm check's hold frames for POINT, WAIT and STOP; for PROCEED, 5 frames evenly spaced over its 2.0 s window.
+- **Output:** a look x command passes when every frame passes. Reported per look in `skin_table.md`.
+- Edit Mode tests on synthetic meshes cover the bands, the ratio and the percentile.
+- The five-finger looks are expected to pass with their meshes unchanged. If one does not, it is reported, not tuned.
+
+**Step 3: rerun of the geometry, hand and skinning checks on all 15 looks** (WAIT thumb 1.0 Lp; the mesh palm, where Boxo should now have
+at least 30 palm vertices). If Boxo's tucked WAIT thumb still exceeds 1.0 Lp, a thumb opposition at the base joint for him alone is
+declared here as a further addendum before it is built.
+
+**Step 4: screenshots** of every look, command and arm, from the rerun's neutral camera.
+
+No perception. One commit per step; nothing pushed or frozen.
+
+*Addendum 6 (2026-11-14, after the v3 import `import_characters_20261114_234411` and its finger probe `probe_fingers_20261114_234431`,
+before any change).* v3 imports as Humanoid with 46 bones and 24 of 30 finger bones, but **Unity's automatic Humanoid mapping assigns
+the thumb chain `mixamorig:{Left,Right}HandThumb1-3` to the LITTLE finger**, and no thumb is mapped. v2 was mapped correctly. The shorter
+thumb set near the wrist evidently looks like a little finger to the auto-mapper.
+
+With this mapping the worker template would treat Boxo's thumb as his outermost finger: the palm frame, the thumb tuck and every hand
+measure of the probes would be wrong. The probes of this import are therefore kept, but not used.
+
+*Rule (importer, `ExperimentLooksMenu.ImportOne`, after the scale and avatar rebuild):*
+- It applies to a model whose skeleton uses Mixamo's names (`mixamorig:`).
+- Every finger bone the Humanoid avatar maps is checked against Mixamo's own finger names: Thumb, Index, Middle, Ring and Pinky = Little,
+  joints 1 to 3 = proximal, intermediate, distal.
+- **If any finger mapping contradicts the names, all the finger entries are replaced by the name-based ones** and the avatar is rebuilt
+  from that description. The change is listed in the import report.
+- Nothing else is changed. A model without `mixamorig:` names, or one whose mapping already agrees, is untouched; only Boxo is
+  affected.
+
+Then step 1's probes run again on the corrected import. *Also found, rule unchanged:* the finger probe now reads middle and ring as
+"merged". The denser mesh puts palm-plate vertices into their 4 cm regions: middle moves 41 to 42 % of ring's region, and ring moves only
+58 to 59 % of its own. This is reported again after the remap.
+
+*Step 1 results (2026-11-14; import `import_characters_20261114_234707`, probes `probe_fingers_20261114_234734`,
+`probe_arm_skin_20261114_234751`, `palm_probe_20261114_234807`).*
+- **Remap:** 12 entries changed, Boxo only (both thumbs 1 to 3 from Little to Thumb). The anime imports are untouched (0 changes).
+- **Fingers:** 4 chains per hand, the thumb now mapped as the thumb; 24 of 30 finger bones (no little finger).
+  - Index and thumb read separate (own 84 to 98 %, others at most 11 %).
+  - Middle and ring read "merged" by the unchanged rule: bending middle moves 41 to 42 % of ring's 4 cm region, and ring moves 58 to 59 %
+    of its own. This is reported, not changed.
+- **Colours:** 11 materials, all URP Lit, recoloured as before (glove 0.12/0.12/0.14, helmet 0.95); no error shader, 0 magenta pixels.
+- **Arm skin:** both arms and hands follow their bones (219 to 220 arm and 86 to 92 hand vertices).
+- **Glove / palm (Edit mode):**
+  - Bones: 2.5 to 2.6 deg.
+  - Mesh (a), hand-bound palm vertices: now 60 to 127 vertices (above 30), but **undetermined, flatness 0.53 to 0.68 > 0.5**. The v3 glove
+    plate is 4.5 cm thick, and the region between wrist and finger bases is about as short as that, so the region is not flat.
+  - Mesh (c), the glove plate: STOP 14.5 / 17.3 deg (within 30). WAIT is not reliable (n/a and 88 deg), because the curled fingers fall
+    into the region.
+  - Hand-bone weight >= 0.95: 0 to 3.8 % of palm-region vertices.
+- `looks_ab.json` names v3. The edit-mode `LookPoser` still reports "shapes False" (it requires a little finger); the worker template
+  does not.
+
+*Steps 3 and 4 results (2026-11-15; `gesture_geometry_boxo_v3_20261115_000535` on 25fb6fe, clean tree, all 15 looks, 120 screenshots;
+tables in `reports_v4/`).*
+- **Arm geometry:** 15 of 15 pass.
+- **Hand check: 13 of 15**, now including Boxo.
+  - Boxo's tucked WAIT thumb is at **0.95 Lp** (palm side 0.55 Lp), so the thumb opposition of step 3 is not needed and is not built.
+  - Boxo's palm by the bones is at 5.6 to 9.8 deg. His mesh palm is still n/a: 59 to 64 vertices, but flatness 0.66 > 0.5.
+  - anime_f_01 and 03 fail only the mesh part (the sleeve artefact of decision 2).
+- **Forearm volume: passes on every look.** The narrowest band keeps 0.82 to 0.97 on the five-finger looks and **0.72 to 0.91 on Boxo v3**
+  (WAIT 0.72, POINT 0.73, close to the 0.70 limit). In the screenshot Boxo's WAIT forearm keeps its shape and the hand stays attached.
+- **Torso rigidity: the declared limit (p95 < 1.0 cm) fails on 14 of 15 looks, five-finger looks included.** Only anime_f_02 passes.
+
+  | looks | torso p95 (cm) | torso max (cm) |
+  |---|---|---|
+  | mixamo_worker | 0.71 to 1.02 (fails on POINT) | |
+  | Sunbox | 0.63 to 1.71 | 1.35 to 6.75 |
+  | anime_f_01, 03 | 0.98 to 1.80 | |
+  | cartoon_boxo_01 v3 | 0.80 to 1.55 | 3.07 to **11.43** (WAIT) |
+
+  The unchanged five-finger rigs deform their upper chest and shoulder vertices by 1 to 2 cm (p95) when an arm moves, so the limit is
+  stricter than every rig. **This is reported, not tuned (Nusrat decides).**
+  - Boxo's p95 is within the five-finger range, but his WAIT maximum of 11.4 cm is the largest of all. In the WAIT screenshot the upper
+    vest stripe is wavy and a flap of the body pulls out at the raised arm's shoulder.
+  - His POINT stripes are straight.
+
+No perception was run.
+
+*Addendum 7 (2026-11-15): Nusrat's four decisions, declared before any change.* No perception; one commit per decision. The
+five-finger looks must stay unchanged: decisions 2 to 4 apply only to looks named in a new `looks_ab.json` rule, i.e. only Boxo. The
+Sunbox pin test, the golden test and a `BatchHandShapes` comparison prove it.
+
+**1. Torso core check (replaces the torso rule of addendum 5).**
+- **Core:** the torso vertices as before (largest weight on Hips, Spine, Chest or UpperChest, at least 0.5), **minus a shoulder zone**:
+  every vertex within **0.4 x the rig's own upper-arm length (Lu)** of either UpperArm bone, at the take's reference pose. The zone is
+  about 11 cm on Sunbox, 9 cm on the anime looks and 10 cm on Boxo.
+- **Metric:** as before, each vertex in its own dominant bone's frame, the 95th percentile of its displacement from the pre-take idle.
+- **Limit, calibrated before it is applied:**
+  - First the check runs on the professionally rigged looks only: the 10 Sunbox looks and mixamo_worker. Their worst core p95 over every
+    command, frame and arm, **x 1.25**, is the limit.
+  - It is written into `gesture_geometry.json` (`torso_max_displacement_m`) and recorded here as a further addendum, committed, and only
+    then applied to all 15 looks.
+- The whole-torso p95 of addendum 5 stays in `skin_table.md` as information, not as a rule.
+
+**2. Boxo's rigid torso (importer, Boxo only).** Boxo's body is a rigid box by design. A new `looks_ab.json` rule `rigid_parts`
+(look `cartoon_boxo_01`, bone `mixamorig:Spine2`, Mixamo's upper spine, mapped as Chest or UpperChest) binds every vertex of the
+materials `bodymat`, `vestmat`, `stripemat`, `eye_whitemat`, `pupilmat`, `mouthmat` and `helmetmat` 100 % to that bone.
+- This is done in `ExperimentCharacterPostprocessor.OnPostprocessModel`, so it is applied by every import of that model and never by
+  hand.
+- Arms (`limbmat`), hands (`glovemat`) and legs (`trousersmat`, `bootmat`) keep their weights.
+- The import report lists the vertices rebound per material.
+- The re-check of the rerun (screenshots and torso core) must show no shoulder flap, straight vest stripes, and the torso check passing.
+
+**3. Boxo's palm plate (geometry check, Boxo only).** A new `looks_ab.json` rule `palm_plates` (look `cartoon_boxo_01`, material
+`glovemat`, `max_dimension_change` 0.05).
+- **The plate:** the hand's glove mesh island with the largest bounding-box volume. Islands are formed from the triangles, with the
+  vertices welded by position to 0.1 mm. "The hand's" means more than half the weight on that hand bone or below it.
+- **Measure:** a PCA of the plate's vertices. Its **thinnest principal axis is the palm normal**, signed by the bone normal, and the 30 deg
+  palm-to-camera rule applies to it.
+- **Shape:** the plate's extents along its three principal axes, sorted, must each stay **within 5 %** of the rest plate's (the plate
+  as spawned, before the first animated frame).
+- For that look this replaces the hand-bound-vertex mesh normal (whose flatness rule could not be met by a 4.5 cm thick plate). The bone
+  normal rule stays.
+- The plate's triangles must be readable at Play, so the rule also imports Boxo's model with Read/Write enabled. Nothing else changes.
+
+**4. Boxo's fingers by mesh islands (finger probe).** For a look with a `palm_plates` rule, the finger probe also measures each finger by
+its mesh islands instead of the 4 cm region:
+- Every glove island of the hand except the plate is assigned to the finger chain nearest to its centroid. A finger's vertices are those
+  of its islands.
+- The bend (30 deg), the movement threshold (2 mm) and the verdict (own >= 80 %, every other <= 20 %, at least 30 vertices) are as before.
+- If middle and ring still move together, it is reported as real.
+
+**Then** all checks rerun on all 15 looks, with screenshots: geometry, hand, skinning with the calibrated torso core, and Boxo's probes.
+
+*Addendum 8 (2026-11-15): the torso core limit, calibrated on the professionally rigged looks; declared before it is applied to the
+other looks.*
+- **Run:** `gesture_geometry_torso_calibration_20261115_004424` on 0ec0318 (clean tree), with only mixamo_worker and the 10 Sunbox looks.
+- **Worst torso core p95:** **1.70 cm** (sunbox_f_shirt_plaid, POINT, right arm, point_ik_01). The others range from 0.61 to 1.67 cm;
+  mixamo_worker's worst is 0.98 cm.
+- **Limit: 1.70 x 1.25 = 2.125 cm.** `gesture_geometry.json` `skinning.torso_max_displacement_m` becomes **0.02125**, applied from now on
+  to all 15 looks.
+- *Observation:* the shoulder zone (0.4 Lu) removes only 1 to 32 vertices per rig (for example 3082 -> 3079 on mixamo_worker), so the
+  core p95 is nearly the whole-torso p95. On these rigs the 1 to 2 cm is spread over the torso, not concentrated at the shoulder. The zone
+  is not changed after seeing this.
+
+*Results of addendum 7 (2026-11-15; decisions committed 0ec0318, 59a66e5, f796d09, fcdbcc9, b5b6c90; full rerun
+`gesture_geometry_decisions7_20261115_010852` on b5b6c90, clean tree, all 15 looks, 120 screenshots; tables in `reports_v4/`).*
+- **Arm geometry:** 15 of 15 pass.
+- **Skinning: 15 of 15 pass.**
+  - Torso core p95 at most 1.71 cm on any look (sunbox_m1 PROCEED; the calibration run's 1.70 differs by run-to-run noise), under the
+    2.125 cm limit.
+  - Forearm: narrowest band at least 0.72 (Boxo WAIT, 0.716).
+- **Decision 2, Boxo's rigid torso: confirmed.** All 5112 body vertices are bound to `mixamorig:Spine2`. His torso core p95 is 0.00 cm on
+  every command (max 0.53 to 1.13 cm: vertices of other materials dominated by the spine). In the WAIT screenshot the vest stripes are
+  straight and there is no shoulder flap.
+- **Decision 3, Boxo's palm plate:**
+  - STOP passes: plate normal 6.6 deg, plate shape change 1.2 %.
+  - **WAIT fails the plate shape: 35.9 %.** The plate's weights lie on the finger bones (rigid share 0 to 4 %, step 1), so curling the
+    fingers bends the plate. The WAIT screenshot shows the glove crumpled around the curled fingers. Its normal (23.2 deg) is within
+    30 deg. **Hand check 12 of 15**: Boxo fails (WAIT plate), and anime_f_01 and 03 fail (the sleeve artefact of decision 2 of
+    addendum 2).
+- **Decision 4, Boxo's fingers by islands:** index and thumb are separate (114 vertices each, own 100 %, others 0 %). **Middle and ring
+  still move together, reported as real:**
+  - the two finger islands split 34 / 170 (left) and 114 / 90 (right) between the middle and ring chains;
+  - bending middle moves 43 to 62 % of ring's vertices;
+  - so the auto-rigger's middle and ring chains share both finger meshes.
+- **Five-finger looks unchanged:** `hand_shapes_20261115_011330` against `_20261114_223517` is identical on all 14 other looks (Boxo
+  differs; the baseline held v2). The Sunbox pin test and the golden test pass. The rules of decisions 2 to 4 name only Boxo.
+- *Not decided, open for Nusrat:* Boxo's WAIT palm plate. Binding the plate 100 % to the hand bone, as his torso is bound, would keep it
+  rigid. That would be a new decision.
+
+No perception was run.
+
+*Addendum 9 (2026-11-15): Nusrat's decision, declared before any change. Boxo only; no perception.* Boxo's hands are bound by their
+mesh islands, as his torso is. A new `looks_ab.json` rule, `island_hands` (look `cartoon_boxo_01`, material `glovemat`, weld 0.1 mm), is
+applied by `ExperimentCharacterPostprocessor.OnPostprocessModel` on every import of the model, after the rigid torso.
+
+**Method** (in mesh space; joint positions from the bind poses):
+- **This hand's glove:** the glovemat vertices with at least half of their auto-rigger weight on that hand bone or below it (decided
+  before any weight is changed).
+- **Islands:** from the triangles, with the vertices welded within 0.1 mm.
+- **Palm plate:** the island with the largest box volume, bound **100 % to the hand bone**.
+- **Fingers:** the other islands are grouped into fingers by contact: islands whose bounding boxes touch within 5 mm are one finger,
+  e.g. a finger's cylinder and its tip sphere. The finger groups are matched **one to one** with the hand's four chains (thumb, index,
+  middle, ring) by the smallest total centroid-to-chain distance over all assignments. Nearest-centroid assignment had split middle and
+  ring 34 / 170 in addendum 7's probe.
+- **Finger weights, only along the finger's own chain**, with joints j0 to j3 (proximal, intermediate, distal, end):
+  - each vertex gets a position u along the chain's polyline, in segment units: u = k + s on the segment from joint k to joint k + 1,
+    clamped to [0, 3];
+  - a segment's vertex belongs 100 % to that segment's bone (j0, j1 or j2);
+  - within 0.25 segment of an interior joint (j1, j2), it blends linearly between the two bones meeting there (50 / 50 at the joint);
+  - the part beyond the end joint (the tip sphere) belongs to the distal bone, and the part before j0 to the proximal bone;
+  - **no weight on any other finger, the hand or the arm.**
+- The import report lists the vertices bound per part.
+
+**Verification** (rerun of all checks on all 15 looks, with screenshots):
+- **Palm plate shape: change under 5 % in every command.** The geometry check measures Boxo's plate on every measured frame of POINT,
+  PROCEED, WAIT and STOP. It is reported in `skin_table.md` and is part of the skinning pass for a palm-plate look; STOP and WAIT also keep
+  it in the hand check as before.
+- **Fingers:** bending each finger moves **0 %** of the other fingers' vertices (the island finger probe, every finger of both hands).
+- **Five-finger looks unchanged:** the rule names only Boxo. The `BatchHandShapes` comparison, the Sunbox pin test and the golden test
+  confirm it.
+- **Edit Mode tests:**
+  - the binding on a synthetic hand (plate on the hand bone, fingers only on their own chain, the blend at the joints, no cross-finger
+    weight, one-to-one matching);
+  - the installed Boxo import, when present: every plate vertex on the hand bone, and no finger vertex on another chain.
+
+*Addendum 10 (2026-11-15, after the first island-bound import `import_characters_20261115_014947`, uncommitted, before any further
+change): a correction of the finger grouping.*
+- **What happened:** the import bound every vertex to exactly one part (0 crossing), but formed only **three** finger groups per hand:
+  ring 114, middle 114, thumb **204** vertices. The thumb and the index finger became one group, so the index finger was bound to the
+  thumb chain and the index chain got nothing.
+- **Cause:** grouping by *bounding-box* contact. v3's shortened thumb lies diagonally near the index base, so its box touched the index
+  finger's box although the meshes do not touch.
+- **Correction:** two islands are one finger when their **closest vertices** lie within `contact_m` (5 mm). A cylinder and its tip
+  sphere overlap, so they still join. Everything else in addendum 9 is unchanged.
+- The audit and the installed-Boxo test now also require **every chain of each hand to receive vertices**. The earlier test only checked
+  that each vertex lies on one chain, which this fault passed.
+
+*Results of addendums 9 and 10 (2026-11-15; binding committed 148cdbc; import `import_characters_20261115_015143`; rerun
+`gesture_geometry_island_hands_20261115_015310` on 148cdbc, all 15 looks, 120 screenshots; finger probe `probe_fingers_20261115_015834`).*
+
+**Measured (the declared checks):**
+- **Binding:** per hand, the plate's 216 vertices are on the hand bone; index, middle and ring get 114 vertices each and the thumb 90, each
+  on its own chain; 0 vertices cross parts; 4 of 4 chains are used.
+- **Palm plate shape: 0.0 % change in every command** (POINT, PROCEED, WAIT, STOP), under 5 %. The plate's normal is 6.3 deg (STOP) and
+  11.1 deg (WAIT).
+- **Hand check 13 of 15** (Boxo passes; anime_f_01 and 03 are the sleeve artefact). Skinning 15 of 15. Arm geometry 15 of 15.
+- **Five-finger looks unchanged:** `hand_shapes_20261115_015702` against `_011330` is identical on all 15 looks (the bones do not change).
+  The Sunbox pin and golden tests pass.
+
+**But the binding does not give Boxo usable hands. Seen in the screenshots, not measurable by the bone-based checks.**
+- His fingers stick out at odd angles and stand apart from the plate: in WAIT, in STOP, and on the idle hand.
+- The **finger island probe** cannot show "0 % of the other fingers": its nearest-centroid assignment disagrees with the binder's
+  one-to-one matching, so every finger reads "merged" or "inconclusive" (own 0 %, others 44 to 56 %).
+- *Diagnostic (report only):* in each hand's frame,
+  - the **auto-rigger's chains lie bunched within +-3.5 cm** of the middle (index x +0.035, middle 0, ring -0.035 m; the thumb diagonal on
+    the +x side, out of the palm plane);
+  - the **generator's finger meshes fan out to +-15 cm**, with the short 56-vertex thumb mesh on the -x side, opposite the chain named
+    Thumb.
+  - So each finger mesh is bound to a chain whose joints lie several centimetres outside it. It swings about those joints instead of
+    bending at its own knuckles, and no distance rule can identify which mesh finger belongs to which chain.
+- **Cause:** the rig, not the weights. Mixamo placed the finger chains for a human hand, not for Boxo's fanned glove. Island binding
+  removes the plate's bending and the cross-finger weights, but cannot move the joints.
+- **Not fixed, Nusrat's decision:**
+  - (a) Revert the island binding: the auto-rigger's weights, with the bent WAIT plate.
+  - (b) In the importer, move each finger chain's joints into its finger mesh (joint positions along the mesh finger's axis, the bind
+    poses recomputed), then bind by islands. A rig change that needs its own declaration.
+  - (c) Re-rig Boxo outside Unity (a rig built by the generator, with joints at the finger cylinders' ends).
+
+No perception was run.
+
+*Addendum 11 (2026-11-15): Nusrat chose option (b). Declared before any change; Boxo only; no perception.* The importer moves Boxo's
+finger chains into his finger meshes and then binds by islands. `looks_ab.json` `island_hands` gets `move_joints: true`. Everything runs
+in `ExperimentCharacterPostprocessor` on every import of the model, in this order: rigid torso, then chain alignment, then binding.
+
+**1. Finger axis per island group** (rest pose, mesh space):
+- the finger groups are as in addenda 9 and 10 (islands joined by closest vertices within 5 mm; the plate is the largest box);
+- each group's axis is the first principal axis (PCA) of its vertices;
+- its **knuckle end** is the end of the axis nearest the palm plate's centroid, and its **tip end** is the other end (the projections'
+  extreme values along the axis).
+
+**2. Chain assignment by a fixed anatomical rule** (no distance matching):
+- the hand's **forward axis** is from the hand bone to the plate's centroid;
+- the **thumb** is the group whose axis (knuckle to tip) deviates most from the forward axis;
+- the other groups are ordered across the palm by their knuckle's distance from the thumb's knuckle along the plate's across axis (its
+  longest principal axis, made perpendicular to the forward axis): nearest = **index**, then **middle**, then **ring**;
+- chains are identified by their Mixamo names (Thumb, Index, Middle, Ring);
+- a hand that does not give exactly one group per chain is refused: reported, nothing moved or bound.
+
+**3. Chain alignment:**
+- Each chain's joints j0 to j3 are placed on its group's axis: **j0 at the knuckle end, j3 at the tip end, j1 and j2 evenly between**.
+  They are set base to tip by position only; joint rotations are kept.
+- The mesh's bind poses are recomputed for every moved bone (bone world-to-local times the renderer's local-to-world, at the import pose).
+- Then the island binding of addenda 9 and 10 runs, with this assignment in place of the distance matching.
+- **The Humanoid avatar is rebuilt from the corrected skeleton:** `ExperimentLooksMenu.ImportOne` writes the imported hierarchy's
+  transforms into the importer's `humanDescription.skeleton` and re-imports. The import report lists the moved joints (old to new
+  position, in cm) and whether the avatar is valid.
+
+**4. The finger probe uses the same assignment** (the shared `IslandHands.Analyse`) instead of its nearest-centroid rule.
+
+**Tests and checks:**
+- Each finger bends at its own knuckles: on the installed Boxo, every joint j0 to j2 of each chain lies inside its group's box (in the
+  group's principal frame, within 1 mm).
+- Bending one finger moves **0 %** of the other fingers' vertices (island probe, both hands).
+- Palm plate shape change under 5 % in every command.
+- Five-finger looks unchanged (`BatchHandShapes` comparison, Sunbox pin test, golden test).
+- Edit Mode tests of the analysis on a synthetic four-finger hand: thumb by axis deviation, order across the palm, joints on the axes.
+- Then all checks rerun on all 15 looks, with screenshots.
+
+**Stop rule (Nusrat's):** if the screenshots still show fingers swinging outside their knuckles, the work STOPS, Boxo reverts to option
+(a) (the auto-rigger's weights and joints), and his hand is documented as it is.
+
+*Addendum 12 (2026-11-15, after the aligned import `import_characters_20261115_022715` (be2346f), the rerun
+`gesture_geometry_aligned_chains_20261115_022831` and the probe `probe_fingers_20261115_022815`; before any further change).*
+
+**Stop rule: not triggered.** The screenshots show each finger attached at the plate's edge and bending at its own knuckles:
+- STOP: the plate face-on, three fingers straight up, the thumb at the side;
+- POINT: the index straight, the others curled into the plate;
+- WAIT: the index up, the others curled;
+- the idle hand's fingers hang from the plate.
+
+Option (b) stays.
+
+**A correction of my item 4.** The probe re-ran the anatomical rule on the bound model instead of reusing the importer's assignment, and
+the two disagree on the same geometry. The probe's dump shows every chain's joints exactly on a group's axis, but labels the groups
+differently: its "thumb" is a long finger, and the real 90-vertex thumb becomes "ring". So bending each chain moves "another" finger.
+- *Cause:* the rule's forward axis runs from the hand bone to the plate's centre, and the plate counts only "this hand's" vertices.
+  - In the importer these are chosen by the auto-rigger's weights, which put part of the plate elsewhere.
+  - In the probe, after binding, the whole plate counts.
+  - The plate centre shifts, the forward axis tilts, and a long finger out-deviates the thumb.
+- **So the rule as declared is fragile on Boxo. It gave the anatomically right thumb in the importer only with the auto-rigger's
+  partial plate.** The screenshots confirm that the importer's assignment is right: the finger next to the short diagonal thumb is the
+  one that points.
+- *Correction (item 4 as decided: "the SAME assignment"):* the probe reads the importer's assignment from the binding itself. Each glove
+  island of the hand, other than the plate, is owned by the chain that holds most of its vertices' weight. The rule is not re-run.
+- The fragility is reported for Nusrat; the importer's rule is not changed after seeing this.
+
+*Results of addenda 11 and 12 (2026-11-15).*
+- **Import** (`import_characters_20261115_022715`, be2346f):
+  - 32 finger joints moved onto their fingers' axes, by up to 8.4 cm;
+  - the Humanoid avatar was rebuilt from the corrected skeleton (32 entries, human, valid);
+  - per hand, the plate's 216 vertices are on the hand bone; index, middle and ring get 114 each and the thumb 90, on their own chains;
+    0 cross parts.
+- **Joints inside their own finger:** the installed-Boxo test passes (every j0 to j2 inside its own finger group's box, 1 mm).
+- **Fingers** (`probe_fingers_20261115_023523`, the importer's assignment): **every finger of both hands is separate.** Bending it moves
+  95.6 to 96.5 % of its own vertices and **0.000 % of every other finger's.**
+- **Palm plate shape: 0.0 % change in every command** (POINT, PROCEED, WAIT, STOP). The plate's normal is 9.2 deg (STOP) and 14.2 deg
+  (WAIT), and the WAIT thumb is at 0.95 Lp.
+- **Full rerun** (`gesture_geometry_aligned_chains_20261115_022831`, be2346f, all 15 looks, 120 screenshots):
+  - arm geometry 15 of 15;
+  - **hand check 13 of 15** (only anime_f_01 and 03, the sleeve artefact);
+  - skinning 15 of 15 (torso core p95 at most 1.70 cm under 2.125 cm; forearm at least 0.72, Boxo WAIT).
+- **Five-finger looks unchanged:** `hand_shapes_20261115_023246` against `_015702` is identical on the 14 other looks; only Boxo changed
+  (his joints moved). The Sunbox pin test and the golden test pass.
+- **Screenshots:** no finger swings outside its knuckles (stop rule not triggered).
+
+No perception was run.
+
+*Addendum 13 (2026-11-15): Nusrat's decision, declared before any change. Boxo only; no perception.* **The importer's
+island-to-chain assignment is pinned.** Addendum 12 showed that the anatomical rule is fragile on Boxo, so the assignment the screenshots
+confirmed (be2346f, `import_characters_20261115_022715`) is recorded and guarded.
+- **What is recorded** (`looks_ab.json` `island_hands[cartoon_boxo_01].pinned_assignment`): per hand and chain (Thumb, Index, Middle,
+  Ring), the finger the binding gives that chain. It is read back from the imported mesh's weights (`IslandHands.ReadAssignment`):
+  each glove island of the hand except the plate belongs to the chain holding most of its weight. Each entry records the number of
+  vertices and the first and last mesh vertex index. Vertex order is fixed by the FBX, so these identify the finger's islands across
+  re-imports of the same file.
+- **Guard:**
+  - an Edit Mode test on the installed Boxo **fails if a re-import gives a different assignment** (any entry differs, is missing or is
+    extra);
+  - a synthetic test shows that the comparison catches two swapped fingers;
+  - the import report states whether the pin matches.
+- The values are filled from the current import, not chosen.
+- Nothing else changes: the importer still applies the rule of addendum 11; the pin only detects a change.
+- *Result (2026-11-15):*
+  - the pin (8 entries: per hand, index, middle and ring 114 vertices each and the thumb 90) was read from the confirmed binding;
+  - a fresh re-import (`import_characters_20261115_025911`) reports "pinned assignment: matches", and
+    `IslandHandsTests.BoxoAssignment_MatchesThePin` passes on it;
+  - the synthetic swap test catches index and middle swapped, and only those.
