@@ -139,6 +139,9 @@ namespace WarehouseAvatar
         public float point_body_azimuth_deg;
         public float settle_s;
         public float item_timeout_s;
+        /// <summary>2026-11-15 (experiments_ab.md section 14): the session seed of this STOP session; 0 = the runner's dev_seed. Never the
+        /// final seed (<see cref="StopSessionPlan.SessionSeed"/>).</summary>
+        public int seed;
     }
 
     public enum StopItemKind { Held, DrivingStop, IdlePass }
@@ -210,6 +213,17 @@ namespace WarehouseAvatar
         public static string Clip(IList<string> allowed, int repetition) =>
             allowed == null || allowed.Count == 0 ? "" : allowed[(Math.Max(1, repetition) - 1) % allowed.Count];
 
+        /// <summary>The session seed of a STOP session (experiments_ab.md section 14): config seed, or the dev seed when 0; -1 with the reason
+        /// when it is below 0 or the final seed (development never uses the finals' draws).</summary>
+        public static int SessionSeed(StopSessionConfig c, int devSeed, int finalSeed, out string error)
+        {
+            error = null;
+            int seed = c == null || c.seed == 0 ? devSeed : c.seed;
+            if (c != null && c.seed < 0) error = $"stop_session.seed {c.seed} must be >= 0 (0 = dev_seed)";
+            else if (seed == finalSeed) error = $"stop_session.seed {seed} is the final seed: a development session never uses it";
+            return error == null ? seed : -1;
+        }
+
         public static List<string> Validate(StopSessionConfig c, TrialWorkersConfig cfg)
         {
             var e = new List<string>();
@@ -231,6 +245,7 @@ namespace WarehouseAvatar
             if (!(c.point_body_azimuth_deg > 0f && c.point_body_azimuth_deg <= 120f)) e.Add("stop_session.point_body_azimuth_deg must be in (0, 120]");
             if (!(c.settle_s >= 0f)) e.Add("stop_session.settle_s must be >= 0");
             if (!(c.item_timeout_s > 0f)) e.Add("stop_session.item_timeout_s must be > 0");
+            if (c.seed < 0) e.Add("stop_session.seed must be >= 0 (0 = dev_seed)");
             if (cfg.forward_command != WorkerV4Config.Proceed) e.Add("stop_session: forward_command must be PROCEED (the answer at A that starts a drive)");
             if (cfg.bystanders != null && cfg.bystanders.count != 0) e.Add("stop_session: bystanders.count must be 0 (the idle worker is the session's own)");
             if (Items(c).Count == 0) e.Add("stop_session: the plan has no item");

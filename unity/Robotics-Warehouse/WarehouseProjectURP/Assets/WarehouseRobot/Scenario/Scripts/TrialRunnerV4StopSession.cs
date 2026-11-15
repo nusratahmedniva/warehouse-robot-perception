@@ -32,6 +32,7 @@ namespace WarehouseRobot.Scenario
         bool itemRequested, itemBegan;
         float itemReturnedAt = -1f, idleClosest = float.PositiveInfinity;
         string stopNote = "";
+        int stopSeed = -1;
 
         bool StopSession => wcfg != null && wcfg.scenario == TrialWorkersConfig.ScenarioStopSession;
 
@@ -50,6 +51,8 @@ namespace WarehouseRobot.Scenario
             if (!StopSession) return true;
             if (Final || Experiment)
                 return Fail(out error, "the stop_session scenario is a development session of the Task 2 runner: refused with -finalSetting or -experiment");
+            stopSeed = StopSessionPlan.SessionSeed(wcfg.stop_session, cfg.dev_seed, cfg.final_seed, out error);    // section 14
+            if (stopSeed < 0) return false;
             stopItems.AddRange(StopSessionPlan.Items(wcfg.stop_session));
             return true;
         }

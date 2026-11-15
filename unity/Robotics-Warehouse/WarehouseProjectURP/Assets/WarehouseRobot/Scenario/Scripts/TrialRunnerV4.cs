@@ -483,7 +483,7 @@ namespace WarehouseRobot.Scenario
             }
 
             string mode = Final ? FinalRunGuard.Final : FinalRunGuard.Mode(cfg.mode);
-            int seed = Final ? fplan.FinalSeed : cfg.dev_seed;
+            int seed = Final ? fplan.FinalSeed : StopSession ? stopSeed : cfg.dev_seed;    // a STOP session's own seed (experiments_ab.md section 14)
             sessionSeed = seed;
             var endpoints = Endpoints();
             var order = new List<string>();

@@ -1502,3 +1502,81 @@ Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session.json`, with the br
   - `zipfile.testzip` clean;
   - Anisha's `analyse_false_stop_v4.Logs` opens it as is (64 runs, 11,236 decision rows, 16,819 model-output lines);
   - the session folders are unchanged except `leak_test/leak_test.json`, which `gt_path.py session` writes by design (part B check).
+
+## 2026-11-15, section 14: the second STOP session (declared before any change or recording; nothing run)
+
+Same branch `nusrat/v4-stop-session` (after b5afb7f). Unity side only: no file under `robot_vision/`, `docs/` or `external/` is changed,
+nothing is frozen, no final is run, the session runs in the Unity Editor WINDOW. Purpose: reach Anisha's declared count, AUDIT.md 16.16
+decision 3: **20 STOPs per look (10 per arm), part of them while driving**. Session 1 (section 13 part B) gave 13 per look.
+
+**Seed 3, not 2 (Nusrat, 2026-11-15, before anything was built).**
+- The task said seed 2 "so items differ from session 1". Seed 2 is the final seed (`final_plan.json` `final_seed`).
+- The runner refuses `dev_seed == final_seed`.
+- Each worker's draws (speed, size, start delay, hold, sway) come from the stream (session seed, run, worker id). So seed 2 would give
+  this session's worker 1 in runs 1 to 14 the same draws as worker 1 in runs 1 to 14 of every final setting, and Anisha sets her
+  false-STOP rule from this data.
+- Seed 3 differs from session 1 just as much (the item list does not depend on the seed; only the draws do) and touches no final.
+
+**One item per run, 14 runs, exact counts:**
+
+| kind | command | look | arms (in order) | runs |
+|---|---|---|---|---|
+| held at the ask (A), 2 m | STOP | `sunbox_f1` | right, left, right, left (repetitions 1, 1, 2, 2) | 4 |
+| held at the ask (A), 2 m | STOP | `sunbox_m1` | right, left, right, left (repetitions 1, 1, 2, 2) | 4 |
+| STOP while the robot drives (toward J1) | STOP | `sunbox_f1` | right, left, right | 3 |
+| STOP while the robot drives (toward J1) | STOP | `sunbox_m1` | left, right, left | 3 |
+| **total** | | | | **14** |
+
+- **No negatives and no idle pass:** session 1 already gave the 3 negatives of each command per look per arm (16.16 decision 3).
+- **Order:** the plan of section 13 part B, unchanged code, with the looks listed as [`sunbox_f1`, `sunbox_m1`]:
+  - the looks alternate run by run, `sunbox_f1` first (run 1 f1, run 2 m1, ...);
+  - per look: held STOP right 1, left 1, right 2, left 2, then the three driving STOPs;
+  - the plan's driving arms alternate from right for the first listed look and from left for the second. Listing f1 first gives m1
+    left, right, left and f1 right, left, right: the arms session 1 did not give.
+- **Totals over both sessions, per look and arm (STOP):**
+
+| look | arm | held (S1 + S2) | driving (S1 + S2) | total |
+|---|---|---|---|---|
+| `sunbox_m1` | right | 5 + 2 | 2 + 1 | 10 |
+| `sunbox_m1` | left | 5 + 2 | 1 + 2 | 10 |
+| `sunbox_f1` | right | 5 + 2 | 1 + 2 | 10 |
+| `sunbox_f1` | left | 5 + 2 | 2 + 1 | 10 |
+
+  So 20 per look, 6 of them while driving.
+- **Clips:** as in section 13 part B (repetition r uses the (r - 1) mod 2-th development clip): held reps 1, 2 `stop_ik_01`,
+  `stop_ik_03`; driving 1, 2, 3 `stop_ik_01`, `stop_ik_03`, `stop_ik_01`.
+  - Held clips over both sessions per look and arm: `stop_ik_01` 4, `stop_ik_03` 3.
+  - Driving clips per look over both sessions: `stop_ik_01` 4, `stop_ik_03` 2.
+- **Everything else as session 1 (section 13 part B):** worker at A's stand, item at the first ask after the question; the driving
+  STOP shown when Python's state is `navigate`, the worker has noticed the robot and the robot is 4.0 to 6.0 m from it; settle 1.5 s;
+  `ITEM_MISSED` after 90 s, reported and never re-recorded; at most 1 avatar (no idle worker); development mode; development looks
+  and clips only (`DataSplitsV4.GuardRun`).
+
+**What changes in Unity (built only after this note):**
+1. `StopSessionConfig.seed` (int): the session seed of a STOP session; 0 = the runner's `dev_seed` (session 1's config has none, so
+   it is unchanged). The runner refuses a STOP-session seed equal to `final_seed` or below 0. `session.json` `seed` records it.
+2. `Avatar/Config/sessions/dev_stop_session_2.json` (+ `.meta`): looks [`sunbox_f1`, `sunbox_m1`], `held_stop_per_arm` 2,
+   `negative_commands` [], `negatives_per_arm` 0, `driving_stop_per_look` 3, band [4.0, 6.0], `idle_pass_per_look` 0,
+   `max_active_avatars` 1, `seed` 3; the other values as `dev_stop_session.json`.
+3. `StopSessionTests`: the 14 items, counts, order and arms; the totals of both sessions per look and arm (10 each); development
+   looks and clips only; the seed rule (0 -> dev seed, 3 accepted, the final seed and negatives refused).
+
+**Recording and checks (as session 1):**
+- `finals_v4/run_protocol_v4.ps1 -Label stop_session_2` before the session (free memory, programs still running); the bridge's
+  `resources.csv` minimum reported.
+- Server: `bridge.server --mode guide --task Task2 --perception vision --config configs/v4/bridge.json --resource-log
+  --exit-on-disconnect` with the default `configs/v4/control.json` (the CURRENT reader; the candidate rule not switched on).
+- Unity: `TrialPlayV4 -workersConfig Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session_2.json`, Editor window.
+- Checks: leak test in Unity (`session.json` `leak_test.passed`) and in Python (`gt_path.py session`); every `run_###/truth.jsonl`
+  accepted by `gesture_data.py --messages`; the counts recorded against the table above.
+- Not an evaluation: no criterion of 16.16 is applied and no reader value is changed.
+
+**The zip, rebuilt with both sessions:** a NEW `robot_vision/outputs/stop_session_logs_<time>.zip` (the first zip is kept, unchanged).
+- Root `stop_session_logs_<time>/` holding both pairs side by side: each session's bridge files (`decisions.csv`,
+  `model_outputs.jsonl`, `v4_log.jsonl`) and every `run_###/truth.jsonl`, under their own folder names, as `analyse_false_stop_v4`
+  reads a session (`sessions.<name>.bridge` / `.unity` in her config; Anisha adds the two entries, the README gives them).
+- `README.md`: both session ids (S1, S2) with seed and commit; every run's item and outcome; every gesture segment with its session,
+  run, look, arm, command, clip, start and end `time_s`, first shown time and whether the robot was driving; the idle passes of S1; the
+  counts per look and arm against the plan of each session and against 16.16 decision 3 (20 per look, 10 per arm); every file's size
+  and SHA-256.
+- The script `make_stop_zip.py` (now taking several sessions) is stored in the zip. Path, size and SHA-256 reported.

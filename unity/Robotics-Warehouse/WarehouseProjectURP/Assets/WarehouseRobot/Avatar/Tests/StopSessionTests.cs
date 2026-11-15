@@ -144,5 +144,105 @@ namespace WarehouseAvatar.Tests
             CollectionAssert.IsEmpty(task2.Validate());
             CollectionAssert.AreEquivalent(new[] { "POINT", "PROCEED" }, task2.CommanderCommands());
         }
+
+        // ---- the second STOP session (experiments_ab.md section 14, declared 2026-11-15) ----
+
+        const string Session2Asset = "Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session_2.json";
+        static TrialWorkersConfig Session2() => TrialWorkersConfig.Parse(File.ReadAllText(Path.Combine(ProjectDir, Session2Asset)));
+
+        [System.Serializable] class SeedPlan { public int dev_seed = -1, final_seed = -1; }
+        static SeedPlan Seeds() => JsonUtility.FromJson<SeedPlan>(File.ReadAllText(Path.Combine(RepoRoot, "robot_vision/configs/v4/final_plan.json")));
+
+        [Test]
+        public void Session2Config_IsValid_AndDeclaresTheSection14Values()
+        {
+            var c = Session2();
+            CollectionAssert.IsEmpty(c.Validate(), string.Join(" | ", c.Validate()));
+            Assert.AreEqual(TrialWorkersConfig.ScenarioStopSession, c.scenario);
+            var s = c.stop_session;
+            CollectionAssert.AreEqual(new[] { "sunbox_f1", "sunbox_m1" }, s.looks);
+            Assert.AreEqual(2, s.held_stop_per_arm);
+            CollectionAssert.IsEmpty(s.negative_commands);
+            Assert.AreEqual(0, s.negatives_per_arm);
+            Assert.AreEqual(3, s.driving_stop_per_look);
+            CollectionAssert.AreEqual(new[] { 4.0f, 6.0f }, s.driving_stop_distance_m);
+            Assert.AreEqual(0, s.idle_pass_per_look);
+            Assert.AreEqual(3, s.seed);
+            Assert.AreEqual(1, c.max_active_avatars);
+            Assert.AreEqual(0, c.bystanders.count);
+            // everything else as session 1
+            var s1 = Session().stop_session;
+            Assert.AreEqual(s1.point_body_azimuth_deg, s.point_body_azimuth_deg);
+            Assert.AreEqual(s1.settle_s, s.settle_s);
+            Assert.AreEqual(s1.item_timeout_s, s.item_timeout_s);
+            Assert.AreEqual(Session().forward_command, c.forward_command);
+            Assert.AreEqual(Session().data_splits, c.data_splits);
+        }
+
+        [Test]
+        public void Session2Plan_FourteenRuns_TheDeclaredOrderAndArms()
+        {
+            var items = StopSessionPlan.Items(Session2().stop_session);
+            CollectionAssert.AreEqual(new[]
+            {
+                "sunbox_f1 held STOP right 1", "sunbox_m1 held STOP right 1", "sunbox_f1 held STOP left 1", "sunbox_m1 held STOP left 1",
+                "sunbox_f1 held STOP right 2", "sunbox_m1 held STOP right 2", "sunbox_f1 held STOP left 2", "sunbox_m1 held STOP left 2",
+                "sunbox_f1 driving STOP right 1", "sunbox_m1 driving STOP left 1", "sunbox_f1 driving STOP left 2", "sunbox_m1 driving STOP right 2",
+                "sunbox_f1 driving STOP right 3", "sunbox_m1 driving STOP left 3",
+            }, items.Select(i => i.Describe()).ToArray());
+            CollectionAssert.AreEqual(Enumerable.Range(1, 14).ToArray(), items.Select(i => i.Run).ToArray());
+            Assert.IsTrue(items.All(i => i.Command == "STOP"));
+        }
+
+        [Test]
+        public void BothSessions_TwentyStopsPerLook_TenPerArm_SixWhileDriving()
+        {
+            var all = StopSessionPlan.Items(Session().stop_session).Concat(StopSessionPlan.Items(Session2().stop_session))
+                                     .Where(i => i.Command == "STOP").ToList();
+            foreach (var look in new[] { "sunbox_m1", "sunbox_f1" })
+            {
+                Assert.AreEqual(20, all.Count(i => i.Look == look), look);
+                Assert.AreEqual(6, all.Count(i => i.Look == look && i.Kind == StopItemKind.DrivingStop), look);
+                foreach (var arm in StopSessionPlan.Arms)
+                {
+                    Assert.AreEqual(10, all.Count(i => i.Look == look && i.Arm == arm), $"{look} {arm}");
+                    Assert.AreEqual(7, all.Count(i => i.Look == look && i.Arm == arm && i.Kind == StopItemKind.Held), $"{look} {arm} held");
+                    Assert.AreEqual(3, all.Count(i => i.Look == look && i.Arm == arm && i.Kind == StopItemKind.DrivingStop), $"{look} {arm} driving");
+                }
+            }
+        }
+
+        [Test]
+        public void Session2_EveryRun_DevelopmentLookAndClipsOnly()
+        {
+            var cfg = Session2();
+            var splits = Splits();
+            foreach (var item in StopSessionPlan.Items(cfg.stop_session))
+            {
+                var plan = TrialRunWorkers.Plan(item.Run, "development", cfg, Template(), splits, out string error, item.Look);
+                Assert.IsNotNull(plan, $"run {item.Run}: {error}");
+                Assert.AreEqual(item.Look, plan.CommanderLook, $"run {item.Run}");
+                Assert.AreEqual("development", plan.Split, $"run {item.Run}");
+                foreach (var c in plan.AllowedClips) Assert.AreEqual("development", splits.Clips[c], c);
+            }
+        }
+
+        [Test]
+        public void SessionSeed_ConfigSeedOrDevSeed_NeverTheFinalSeed()
+        {
+            var seeds = Seeds();
+            Assert.AreEqual(1, seeds.dev_seed);
+            Assert.AreEqual(2, seeds.final_seed);
+            Assert.AreEqual(1, StopSessionPlan.SessionSeed(Session().stop_session, seeds.dev_seed, seeds.final_seed, out string error), error);
+            Assert.AreEqual(3, StopSessionPlan.SessionSeed(Session2().stop_session, seeds.dev_seed, seeds.final_seed, out error), error);
+            Assert.AreEqual(-1, StopSessionPlan.SessionSeed(new StopSessionConfig { seed = 2 }, seeds.dev_seed, seeds.final_seed, out error));
+            StringAssert.Contains("is the final seed", error);
+            Assert.AreEqual(-1, StopSessionPlan.SessionSeed(new StopSessionConfig { seed = -3 }, seeds.dev_seed, seeds.final_seed, out error));
+            StringAssert.Contains("must be >= 0", error);
+            Assert.AreEqual(-1, StopSessionPlan.SessionSeed(new StopSessionConfig(), 2, 2, out error), "a dev seed equal to the final seed is refused too");
+            var bad = Copy(Session2());
+            bad.stop_session.seed = -1;
+            StringAssert.Contains("stop_session.seed must be >= 0", string.Join(" | ", bad.Validate()));
+        }
     }
 }
