@@ -1486,3 +1486,19 @@ Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session.json`, with the br
   - the session ids, every file's size and SHA-256.
 - **Integrity:** the zip's path, size and SHA-256 are reported. Nothing in either session folder is changed. The generating script is
   stored in the zip (`make_stop_zip.py`).
+
+*Part C, made (2026-11-15).*
+- **Zip:** `robot_vision/outputs/stop_session_logs_20261115_154026.zip` (git-ignored).
+  - 4,439,567 bytes; SHA-256 `34feb2c98831986dc737b0afb03d4314edf201b9b7ce715ac27dd2461113ccbd`;
+  - 69 entries (25.1 MB uncompressed): `README.md`, `make_stop_zip.py`, the bridge's `decisions.csv`, `model_outputs.jsonl` and
+    `v4_log.jsonl`, and the 64 `run_###/truth.jsonl`.
+- **README:**
+  - the run table;
+  - the counts against the plan (all as declared);
+  - 70 gesture segments: 56 at the ask, 6 driving STOPs and 8 PROCEEDs that start a drive (marked "not an item");
+  - the 2 idle passes;
+  - every file's size and SHA-256.
+- **Checks:**
+  - `zipfile.testzip` clean;
+  - Anisha's `analyse_false_stop_v4.Logs` opens it as is (64 runs, 11,236 decision rows, 16,819 model-output lines);
+  - the session folders are unchanged except `leak_test/leak_test.json`, which `gt_path.py session` writes by design (part B check).
