@@ -260,6 +260,7 @@ namespace WarehouseRobot.Scenario
                     return Fail(out error, $"ground-truth grid, {meta.start} to {e}: {planError}");
             if (Experiment) { if (!PlanExperimentRuns(out error)) return Fail(out error, $"experiment {experimentName}: {error}"); }
             else if (!CheckBystanderStands(out error)) return false;
+            if (StopSession && !CheckIdleStand(out error)) return false;
             trail = gt.GetComponent<TrailRecorder>();
             if (trail == null) trail = gt.gameObject.AddComponent<TrailRecorder>();
             truthLog = gameObject.AddComponent<TruthLogger>();
@@ -359,14 +360,15 @@ namespace WarehouseRobot.Scenario
             splits = DataSplitsV4.Parse(splitsText);
 
             string mode = FinalRunGuard.Mode(cfg.mode);
-            TrialTotal = Final ? fplan.RunsPerSetting : Mathf.Max(1, cfg.trial_count);
+            if (!SetupStopSession(out error)) return false;
+            TrialTotal = Final ? fplan.RunsPerSetting : StopSession ? stopItems.Count : Mathf.Max(1, cfg.trial_count);
             plans.Clear();
             if (Experiment && !SetupExperiment(mode, out error)) return false;
             for (int run = 1; run <= TrialTotal && !Experiment; run++)
             {
                 string planError;
                 var plan = Final ? TrialRunWorkers.PlanFinal(run, fset, wcfg, workerTemplate, splits, out planError)
-                                 : TrialRunWorkers.Plan(run, mode, wcfg, workerTemplate, splits, out planError);
+                                 : TrialRunWorkers.Plan(run, mode, wcfg, workerTemplate, splits, out planError, StopSession ? stopItems[run - 1].Look : null);
                 if (plan == null) return Fail(out error, "worker looks and clips: " + planError);
                 plans.Add(plan);
             }
@@ -399,11 +401,25 @@ namespace WarehouseRobot.Scenario
             {
                 var s = b.stands[k];
                 string label = $"bystander {k + 1} ({s.junction}, ahead {s.ahead_m.ToString("0.00", Inv)} m, right {s.right_m.ToString("0.00", Inv)} m)";
+                if (!CheckStand(label, s, b, out var p, out var rot, out error)) return false;
+                bystanderStands.Add((nodes[s.junction], p, rot));
+            }
+            return true;
+        }
+
+        /// <summary>One stand of a worker who never answers (a bystander, or the STOP session's idle worker): on a free grid cell, clear of
+        /// colliders, the roads and every commander stand, and farther than the commander along the approach to every ask node.</summary>
+        bool CheckStand(string label, BystanderStand s, TrialBystanders b, out Vector3 p, out Quaternion rotation, out string error)
+        {
+            error = null;
+            p = Vector3.zero;
+            rotation = Quaternion.identity;
+            {
                 if (!nodes.TryGetValue(s.junction, out var j) || !j.IsJunction) return Fail(out error, label + ": no such junction");
                 var from = ArrivalNode(j);
                 if (from == null) return Fail(out error, label + ": no road arrives at " + j.name);
                 Vector3 arrival = j.Position - from.Position;
-                Vector3 p = TrialWorkerGeometry.Stand(j.Position, arrival, s.ahead_m, s.right_m);
+                p = TrialWorkerGeometry.Stand(j.Position, arrival, s.ahead_m, s.right_m);
                 p.y = j.workerStand != null ? j.workerStand.position.y : j.Position.y;
                 foreach (var a in nodes.Values)
                     foreach (var br in a.branches)
@@ -435,7 +451,7 @@ namespace WarehouseRobot.Scenario
                     return Fail(out error, label + ": inside a collider");
                 Vector3 face = j.Position - p;
                 face.y = 0f;
-                bystanderStands.Add((j, p, Quaternion.LookRotation(face.sqrMagnitude > 1e-6f ? face : Vector3.forward, Vector3.up)));
+                rotation = Quaternion.LookRotation(face.sqrMagnitude > 1e-6f ? face : Vector3.forward, Vector3.up);
             }
             return true;
         }
@@ -543,7 +559,8 @@ namespace WarehouseRobot.Scenario
             for (int i = 0; i < plans.Count && !Experiment; i++)
                 session.run_workers.Add($"run {i + 1}: commander {plans[i].CommanderLook}" +
                                         (plans[i].BystanderLooks.Count > 0 ? "; bystanders " + string.Join(", ", plans[i].BystanderLooks) : "") +
-                                        $"; clips {string.Join(", ", plans[i].AllowedClips)} ({plans[i].Split})");
+                                        $"; clips {string.Join(", ", plans[i].AllowedClips)} ({plans[i].Split})" +
+                                        (StopSession ? "; item " + StopItemText(stopItems[i]) : ""));
             GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, "session.json"), JsonUtility.ToJson(session, true).Replace("\r\n", "\n") + "\n");
 
             if (!leak.passed)
@@ -625,6 +642,7 @@ namespace WarehouseRobot.Scenario
                 if (w == null) return false;
                 bystanders.Add(w);
             }
+            if (StopSession && !ResetStopSessionRun(run, out error)) return false;
             spawnedRun = run;
             return true;
         }
@@ -670,6 +688,7 @@ namespace WarehouseRobot.Scenario
                 commanderAt = moveTo;
                 moveTo = null;
             }
+            if (StopSession) { UpdateStopSession(); return; }        // experiments_ab.md section 13 part B (TrialRunnerV4StopSession.cs)
             UpdateStopScenario();
             // "One moment..." (Python's wait text) continues the ask: the direction that follows a WAIT belongs to it
             bool waiting = waitText.Length > 0 && bridge.ScreenText == waitText;
@@ -712,12 +731,12 @@ namespace WarehouseRobot.Scenario
             Show(direction, dir, false, cmd.ToString());
         }
 
-        bool Show(string command, Vector3 direction, bool ignoreQuestion, string what, float holdS = 0f)
+        bool Show(string command, Vector3 direction, bool ignoreQuestion, string what, float holdS = 0f, string clip = "", string arm = "")
         {
             var req = new GestureRequest
             {
                 Command = command, AllowedClips = runPlan.AllowedFor(command), PointDirection = direction,
-                IgnoreQuestion = ignoreQuestion, HoldS = holdS,
+                IgnoreQuestion = ignoreQuestion, HoldS = holdS, Clip = clip, Arm = arm,
             };
             if (!commander.Request(req, out string error))
             {
@@ -842,7 +861,7 @@ namespace WarehouseRobot.Scenario
                 speedSum += sp; turnSum += tr; speedMax = Mathf.Max(speedMax, sp); turnMax = Mathf.Max(turnMax, tr); samples++;
                 float hd = HumanDistance(body);
                 closest = Mathf.Min(closest, hd);
-                if (!Experiment && bridge.HasTarget)
+                if (!Experiment && bridge.HasTarget && StopSessionMovesCommander)
                     foreach (var kv in nodes)
                         if (kv.Value.IsJunction && !placed.Contains(kv.Key) &&
                             Vector2.Distance(bridge.Target, new Vector2(kv.Value.Position.x, kv.Value.Position.z)) < 0.5f)
@@ -865,7 +884,8 @@ namespace WarehouseRobot.Scenario
                 if (!wantsToMove || moved.magnitude >= cfg.stuck_min_progress_m) { progressTime = now; progressPos = p; }
                 string st = bridge.State ?? "";
                 if (robot.Collisions != null && robot.Collisions.Records.Count > collisionBase) end = "collision";
-                else if ((st.StartsWith("done") || st.StartsWith("aborted")) && Mathf.Abs(robot.Drive.V) < 0.02f) end = st.StartsWith("done") ? "done" : "aborted";
+                else if (StopSession && StopSessionEnd(now, t0, out string itemEnd)) end = itemEnd;     // the item ends a STOP-session run, not Python
+                else if (!StopSession && (st.StartsWith("done") || st.StartsWith("aborted")) && Mathf.Abs(robot.Drive.V) < 0.02f) end = st.StartsWith("done") ? "done" : "aborted";
                 else if (now - t0 > cfg.timeout_s) end = "timeout";
                 else if (now - progressTime > cfg.stuck_s) end = "stuck";
                 else if (!bridge.Connected) Status = $"trial {index}: Python disconnected, waiting";
@@ -908,6 +928,7 @@ namespace WarehouseRobot.Scenario
 
             Score(rec, end, dist);
             if (Experiment && eLimit.Length > 0) rec.detail += "; " + eLimit;
+            if (StopSession && end != StopItemDone && end != StopItemMissed) rec.detail += "; item " + StopItemText(stopItem) + "; " + stopNote;
             bridge.ReachedEndPoint = rec.outcome == "SUCCESS";
             GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, $"truth_run{index:000}.json"), JsonUtility.ToJson(rec, true));
             done(rec);
@@ -922,6 +943,9 @@ namespace WarehouseRobot.Scenario
                 case "stuck": Fail(r, "stuck", "no progress while driving"); break;
                 case "timeout": Fail(r, "timeout", "trial time limit reached"); break;
                 case "aborted": Fail(r, "aborted", r.python_final_state); break;
+                // the STOP session (experiments_ab.md section 13 part B): the run records its item, never a navigation result
+                case StopItemDone: r.outcome = "ITEM_DONE"; r.failure_reason = "none"; r.detail = "item " + StopItemText(stopItem) + "; " + stopNote; break;
+                case StopItemMissed: r.outcome = "ITEM_MISSED"; r.failure_reason = "item_missed"; r.detail = "item " + StopItemText(stopItem) + "; " + stopNote; break;
                 default:
                     if (dist <= cfg.success_radius_m) { r.outcome = "SUCCESS"; r.failure_reason = "none"; r.detail = "stopped " + F3(dist) + " m from B"; }
                     else Fail(r, "wrong_goal", "stopped " + F3(dist) + " m from B (> " + F3(cfg.success_radius_m) + " m)");

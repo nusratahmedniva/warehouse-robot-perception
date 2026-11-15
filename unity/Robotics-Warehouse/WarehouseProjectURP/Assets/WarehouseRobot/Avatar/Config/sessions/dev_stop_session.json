@@ -1,0 +1,50 @@
+{
+  "note": "DEVELOPMENT session config of the STOP session (Avatar/Config/experiments_ab.md section 13 part B, declared 2026-11-15 before it was built or recorded; Nusrat). The recordings AUDIT.md 16.16 decision 3 asks for, for Anisha's check of the candidate false-STOP rule (16.17 item 3) against criteria (a) to (c) of 16.16 decision 2. Read by TrialRunnerV4 with TrialPlayV4 -workersConfig Assets/WarehouseRobot/Avatar/Config/sessions/dev_stop_session.json; the bridge server runs in guide mode with the default configs/v4/control.json (the current reader). Development looks and clips only; seed 1 (trials.json dev_seed). Every value is scenario design; no Python threshold is set or changed here.",
+  "data_splits": "robot_vision/configs/v4/data_splits.json",
+  "commander_command": "POINT",
+  "forward_command": "PROCEED",
+  "scenario": "stop_session",
+  "stop_session": {
+    "looks": [
+      "sunbox_m1",
+      "sunbox_f1"
+    ],
+    "held_stop_per_arm": 5,
+    "negative_commands": [
+      "POINT",
+      "PROCEED",
+      "WAIT"
+    ],
+    "negatives_per_arm": 3,
+    "driving_stop_per_look": 3,
+    "driving_stop_distance_m": [
+      4.0,
+      6.0
+    ],
+    "idle_pass_per_look": 1,
+    "idle_stand": {
+      "junction": "J1",
+      "ahead_m": -10.0,
+      "right_m": 1.6
+    },
+    "idle_passed_m": 3.0,
+    "point_body_azimuth_deg": 90.0,
+    "settle_s": 1.5,
+    "item_timeout_s": 90.0,
+    "note": "One item per run, 64 runs (2 looks x [5 held STOP per arm + 3 POINT, 3 PROCEED and 3 WAIT per arm + 3 driving STOPs + 1 idle pass]). Per look, in this order: repetitions 1..max(held_stop_per_arm, negatives_per_arm) of [STOP right, STOP left (while the repetition <= held_stop_per_arm), then each negative command right, left (while <= negatives_per_arm)]; then the driving STOPs (arms alternating, starting right for the first look and left for the second); then the idle passes. The looks alternate run by run. Clip of repetition r: the (r - 1) mod n-th development clip of the command in worker_v4.json order. Held items and negatives: shown by the worker at A's stand at the first ask (after the question, as every answer); a POINT points point_body_azimuth_deg to the arm's own side. Driving STOP: the worker answers every ask at A with PROCEED, is moved once idle to J1's stand, and shows STOP when Python's state is navigate, it has noticed the robot and the robot is driving_stop_distance_m from it. Idle pass: the worker answers at A with PROCEED and is not moved; a second worker of the same look (worker_id 2, never gestures) stands at idle_stand (ahead_m along the arrival direction at the junction, right_m to its right; checked as a bystander stand). A run ends idle_passed_m after the robot has passed the idle worker along the road, settle_s after the item's gesture has returned to idle, or as ITEM_MISSED item_timeout_s after the run start; a missed item is reported, never re-recorded."
+  },
+  "looks": [],
+  "commander_worker_id": 1,
+  "bystanders": {
+    "count": 0,
+    "stands": [],
+    "min_road_clearance_m": 1.5,
+    "min_commander_distance_m": 4.0,
+    "approach_m": 3.0,
+    "nearer_margin_m": 1.0,
+    "note": "No bystanders. The rules above (as trial_workers_v4.json) check the idle worker's stand: at least min_road_clearance_m from every road, min_commander_distance_m from every commander stand, nearer_margin_m farther than the commander along the last approach_m of the approach to every ask node, on a free grid cell, not inside a collider."
+  },
+  "max_active_avatars": 2,
+  "max_active_avatars_note": "The worker at A plus the idle worker of an idle pass.",
+  "session_note": "2026-11-15 declared development session config (experiments_ab.md section 13 part B): scenario stop_session."
+}
