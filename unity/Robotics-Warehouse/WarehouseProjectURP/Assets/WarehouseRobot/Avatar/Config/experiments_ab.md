@@ -1717,3 +1717,129 @@ wrong-branch decision in Set A ends the step after that setting's 3 runs.
 - `step5_report_20261116_224356.md`, `step5_durations_20261116_224356.csv`, `step5_stops_20261116_224356.csv`;
 - `step5_launcher_<setting>.txt`;
 - `run_protocol_rehearsal_<setting>_*.txt`.
+
+### 2026-11-17, section 15 addendum 1: after the diagnosis (declared before any change below)
+
+Nusrat's task of 2026-11-17, after the report-only diagnosis (PROCEED: the pose did not cause the PROCEED misses or the false STOPs; no pose
+change). Branch `nusrat/v4-step5-dev`. Nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run,
+nothing is pushed. Development work, not a result.
+
+**Already done before this declaration (read only, no change to the repository):**
+- Item 1, the zip for Anisha. It reads `outputs/` only and adds one new zip file (record below).
+- A geometry-only model of the placement, used to find out whether item 3b can be met. It uses the config and map files and one run's saved
+  `grid.json` for the free cells; it reads no trial results. Findings that shaped this declaration:
+  - with the beside slots of section 3 and a 1.0 m clearance, workers on `turn_left` and `roadmap` stand 0.03 to 0.89 m from a segment the
+    robot can drive. One case is J1's slot-2 ask position to J3, which passes J3's slot-2 worker at 0.34 m: A3 run 2 stopped there;
+  - over every pair and triple of junction slots on a 0.5 m grid (before_m -8 to 10, right_m -4.5 to 4.5), every rule together is met only
+    by workers at the junction corners, two of them ahead of the node;
+  - in the random layout (Anisha's 6 m square), 3 workers at J1 are practically never placeable under the clearance (0 of 1,000,000
+    draws); 2 are (about 1 in 400).
+- Nusrat chose (2026-11-17): adopt the corner slots, and 2 workers at J1 in A4 and B4.
+
+**Item 2, answers for Anisha's recovery (report only, no behaviour change):**
+- **(a) Reversing.** A Play-mode check. A new unsaved copy of the v4 scene has `TrialRunnerV4` and the bridge client disabled, so no
+  Python and no trial run.
+  - The robot stands at (6.25, -10.0), facing +z. One worker in a development look (`sunbox_m_shirt_white`) stands 1.2 m ahead, centre to
+    centre.
+  - `DiffDriveController.SetCommand(-0.2, 0)` until the robot has moved 1.0 m backward, then (0, 0).
+  - Reported: the ramp, the speed reached, the distance, lateral drift, heading change, overshoot after the stop command, the signed `V`
+    that telemetry sends, and collisions.
+  - The code already clamps v to +-`max_speed_mps` (no rejection of a negative v); the check confirms the motion.
+- **(b) Side waypoints.** An Edit-mode batch tool on the v4 scene's AMR NavMesh (the bridge's agent type and snap rule). For every road of
+  every map (`corridor`, `turn`, `turn_left`, `roadmap`):
+  - a point every 0.5 m along the road;
+  - a waypoint 1.0 m to its left and to its right;
+  - "reachable" when the waypoint is on the NavMesh within 0.05 m, the path from the road point is complete, and the path is at most 1.5 m
+    long.
+  - Reported per road and side (counts, and where it fails), plus which side the beside workers stand on near each node.
+
+**Item 3a, who answers: a zone per node (live).**
+- A worker answers a new ask only while the robot's centre is within `answer_zone_radius_m` = **6.0 m** of the worker's own node. Outside
+  its zone it answers NONE:
+  - the worker chosen by the existing rule (nearest the pan-tilt axis within 3.5 m) becomes the commander but shows nothing, so
+    `truth.jsonl` has `true_command` NONE;
+  - the ask record says `NONE (outside the <node> zone)`.
+- **Why 6.0 m:**
+  - zones never overlap: 2 x 6.0 < 12.5 m, the shortest distance between two asking nodes of any map;
+  - with `answer_zone_margin_m` 0.5 m, every modelled ask position of a node's own workers must lie within 5.5 m of the node. The live slots
+    reach 5.40 m at J1 (second opinions) and the corner slots 4.95 m.
+- **What it does not cover:** a robot that Python drives into another node's zone and then asks that node's worker still gets an answer
+  for that node. Example: A3 run 1 at 159 s was 4.7 m from J2. Unity cannot tell that apart from a legitimate ask there; the fix is
+  Python's second-opinion search staying near its node (for Anisha). A3 run 1 at 136 s (7.3 m from J2) would now get NONE.
+- Edit Mode tests.
+
+**Item 3b, placement clearance (built, with the new layout PENDING):**
+- **The rule.** No worker within `path_clearance_m` = **1.0 m** of any segment the robot can drive. 1.0 m = Python's person-in-path
+  corridor half-width 0.6 m (`hri_control.json` `safety.corridor_half_width_m`) + 0.4 m (the re-ask shift, also the allowance for where
+  the robot really stands).
+- **The segments**, straight, as Python's `_target` sends the robot (NavMesh paths are straight in the open aisles):
+  - every road of the run's map and of the physical v4 map;
+  - per asking node, from the node to the ask position of each of its workers, in every order (second opinions), including the return to
+    the first worker (tie);
+  - from every ask position, and its re-ask point, to the next node of every branch of the node (any branch can be taken after a wrong
+    answer or a lie).
+- **The ask-position model.** The ask position is `ask_standoff_m` 2.0 m from the worker toward where the robot comes from (the node, or
+  the previous ask position); the re-ask point is that position moved `reask_shift_m` 0.4 m to the robot's right and put back on the
+  2.0 m circle. Both values are Python's (`hri_control.json` `dialog`); Unity holds copies in its config.
+  - Not modelled: Python turning its approach point by 30-degree steps when another person is within 1.2 m of it.
+- **Zone check.** The same model's ask positions must lie within `answer_zone_radius_m - answer_zone_margin_m` of their node (item 3a).
+- **Checked** against the workers already placed at other nodes and against the new node's own workers. Applies to beside (fixed slots)
+  and random (redraws).
+- **Layout (Nusrat's choice):**
+  - junction slots: 1 = 2.5 m before, 2.5 m left; 2 = 4.5 m ahead, 3.5 m right; 3 (J1 in A3 and B3) = 5.0 m ahead, 3.5 m left;
+  - start slots unchanged;
+  - A4 and B4: 2 workers at J1.
+  - Among the slot sets that meet every rule this one has the smallest largest own-ask distance (4.95 m), then the least movement from
+    the section 3 slots.
+- **Why it stays PENDING.** Anisha's `tests/test_lie_detection_v4.py` `MatchesUnity` requires Unity's `junction_slots`, `start_slots` and
+  `three_worker_nodes` to equal her `scenarios_ab.json`. Changing them alone would fail her suite, and her files are hers. So:
+  - the new values go into a `clearance_layout` block of `experiments_ab_unity.json` with `"active": false`;
+  - the code applies the block, the clearance and the zone check only when it is active;
+  - the live layout stays as in section 3 until Anisha changes `scenarios_ab.json` (slots, `people_by_node` of scenario 4), her tests and
+    her simulator's placement rules; then the block is switched on in one change.
+- **Edit Mode tests:**
+  - with the block applied: every run of seed 1 and seed 2 (20 runs each) of every setting (A1, A2 right and left, A3, A4, B1, B2 right and
+    left, B3, B4; the `_off` settings use the same Unity plans) is planned, and every worker keeps the clearance and the zone;
+  - the live slots with the clearance on reproduce the A3 run 2 geometry (0.34 m);
+  - the live config plans as before.
+
+**Item 3c, development-only goal override:**
+- `TrialPlayV4 -experimentGoals E5,E6,...` replaces the seeded goals of an experiment session.
+- **Refused:**
+  - in a final (`-finalSetting`);
+  - on a fixed-goal map (A1, B1, A2, B2);
+  - a name that is not an endpoint of the map;
+  - a list whose length is not the number of runs.
+- **Recorded:** `session.json` `goal_order` holds the list, and a new Unity key `goals_override` holds the given text ("" without one),
+  like `navigation_looks_override`. Python does not check `session.json` keys (v3's `hri_trials` recomputes `goal_order`; v4 tools read
+  each run's goal from `truth_run###.json`).
+- **Launcher:** `run_session_v4.ps1 -ExperimentGoals "E5,E6,E5"`, rehearsal only, refused in a final, passed through to Unity.
+- Edit Mode tests on the parsing and every refusal.
+
+**Item 3d, the PROCEED palm in the geometry check (reported, no pass/fail change):**
+- On every measured PROCEED frame (the swing window `proceed_window_s`), from the bones (`HandGeometry.Frame`, the palm normal the poser
+  sets), measure:
+  - the angle between the palm normal and the direction to the stand-in robot camera;
+  - the angle between the palm normal and the direction to the worker's torso centre (halfway between the midpoint of the two UpperArm
+    bones and the Hips bone).
+- Per look, arm and take: min, mean and max of both angles, the frames where the palm faces the camera more than the body (camera angle
+  < body angle), and the frames with the camera angle under 60 degrees.
+- A new table `proceed_palm_table.md`. The arm, hand and skinning checks and their pass are unchanged. All looks; no perception.
+
+**Item 3e:** correct the sentence about `safety_stops` in section 15 (below, in its own commit).
+
+**Commits:** one per item (declaration; 3e; 2a and 2b; 3a; 3b; 3c; 3d), each after both suites pass.
+
+*Item 1, made (2026-11-17).*
+- **Zip:** `robot_vision/outputs/step5_logs_20261117_011303.zip` (git-ignored).
+  - 9,431,342 bytes; SHA-256 `75bbc8851a758a76c7140a20b8c24e10035d6c0095091d1b2429099c42d17d3f`;
+  - 71 entries (94.8 MB uncompressed); `zipfile.testzip` clean.
+- **Contents:**
+  - the 8 step-5 sessions in the layout of the section 13 zip: `<bridge run>/decisions.csv`, `model_outputs.jsonl`, `v4_log.jsonl`;
+    `<Unity session>/run_###/truth.jsonl` (24 runs);
+  - `step5_durations_20261116_224356.csv`, `step5_stops_20261116_224356.csv`, the step 5 report and `step5_sessions.json`;
+  - `diagnosis/`: the diagnosis tables (`proceed_out/proceed_per_ask.md` and its per-frame JSON), the captured console outputs (PROCEED
+    summary, valid frames, replay vs live, A3 timeline, safety stops by cause) and their scripts;
+  - `make_step5_zip.py`;
+  - `README.md`: a table naming each setting (experiment, map, A2 side, lie detection on/off, goals, folders) and every file's size and
+    SHA-256.
