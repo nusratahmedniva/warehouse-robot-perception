@@ -2631,11 +2631,13 @@ before it is used, and none is applied. The numbers above are the result under t
 The reading and the choice are Anisha's; the original wordings are kept here so that anyone can see what was declared and what was changed.
 
 **1. Criterion (a).** *Original wording (16.15 decision 3, 16.16 decision 2, 16.16 decision 5, 16.18):* every true STOP, held and while driving, is read within 1.0 s of its first shown truth row, n of n.
-*New wording:* **non-inferiority to the current reader: no true STOP is lost or read later than with the current reader.**
+*New wording (corrected by Anisha on 2026-11-16; it replaces the first version of this item, which read "non-inferiority to the current reader: no true STOP is lost or read later than with the current reader" and does not hold for fallback (ii)):*
+**no true STOP is lost compared with the current reader, and every STOP the current reader reads within 1.0 s is still read within 1.0 s** (34 of 40 for both).
 *Reason (Anisha):* the driving STOPs were shown at about 5.5 m (Nusrat's deviation: 2 m is impossible while driving), and even the current reader fails the original (a) on them (34 of 40; in three of the six misses the reader had no hand in the first second).
-*Facts of 16.18.1, checked against the new wording (computed from the same report, `stop_rule_check_v4_20261116_183146`), recorded so the decision is taken with them:*
-fallback (ii) loses **no** STOP (39 of 39 that the current reader ever reads are read, and the same 34 within 1.0 s; the 6 the current reader misses within 1.0 s it misses too); it reads **21 of the 39 later than the current reader** (by 0.21 s at the median, 0.60 s at most), 18 at the same frame and none earlier;
-its slowest reading within 1.0 s is 0.864 s, the current reader's too. So fallback (ii) meets "no STOP lost" and the same 1.0 s set as the current reader; **it does not meet a strict per-STOP "not later than the current reader"**. The candidate with the static cue loses 34 STOPs from the 1.0 s set, fallback (i) five.
+*Facts of 16.18.1, checked against the new wording (computed from the same report, `stop_rule_check_v4_20261116_183146`):* fallback (ii) loses **no** STOP (39 of 39 that the current reader ever reads are read) and reads the same **34 of 40 within 1.0 s**; the 6 the current reader misses within 1.0 s it misses too.
+*The latency cost, recorded next to it:* **21 of the 39 STOPs are read later than with the current reader, by 0.21 s at the median and 0.60 s at most** (18 at the same frame, none earlier); the slowest reading within 1.0 s is 0.864 s, the current reader's too. This is the price of the rule and is part of the decision.
+*For comparison:* the candidate with the static cue loses 34 STOPs from the 1.0 s set, fallback (i) five.
+*Disclosure kept: the original wording of (a) was changed AFTER the results were seen (this entry's heading and first paragraph).*
 
 **2. Criterion (c).** *Original wording (16.16 decision 2, and as made operational in 16.18):* no accepted STOP from an idle worker; operationally zero STOP readings on every idle frame (NONE, idle and start-delay frames of every worker).
 *Reading now:* (c) as worded, "no accepted STOP from an idle worker", **is met**: neither idle pass (2 runs, 1.06 and 1.08 m, 341 idle frames) produced a STOP under any rule, the current reader included.
@@ -2659,3 +2661,8 @@ Everything developed or evaluated before this entry (D2 to D4 and the other deve
 - Tests: `tests/test_stop_rule_switch_v4.py` (8): the keys and values, no static or palm key, `fingertip_spread` on hand-built landmarks (parallel fingers 1.0, a fan 1.67, the analysis function agrees, the reader's open-hand geometry passes both), the truth table of `stop_extra_ok`, absent / null = off, the frame flag with and without the keys, and **the reader with the keys on reads, frame by frame,
   what fallback (ii) read on the earlier reader** (raised still, raised swinging, hanging). Changed tests: `test_v4_upgrades.py` (the open palm that overrides a PROCEED stroke at waist height: with the keys off it still reads STOP, with the keys on it no longer does), `test_false_stop_v4.py` and `test_stop_rule_v4.py` (baseline reader = `live_reader_config()`).
 - Full suite (venv): exit 0, 1163 tests, 3 skipped. `frozen.json`, `unity/`, `external/` and v3 files untouched; `freeze_v4.py --freeze` not run. `gesture_reader.json` is changed before the freeze, as 16.18.2 says.
+
+#### 16.18.4 Correction of 2026-11-16 (Anisha)
+
+Item 1 of 16.18.2 is corrected as above: the non-inferiority wording is "no true STOP lost compared with the current reader, and every STOP the current reader reads within 1.0 s is still read within 1.0 s" (34 of 40), with the latency cost recorded next to it (21 of 39 read later, median +0.21 s, max +0.60 s). The earlier version, which said "or read later than", is replaced in place; its
+substance is kept here: it did not hold for fallback (ii), which reads 21 of 39 STOPs later. The note that the original wording was changed after seeing the results stays. The new STOP rule is added to the declared v3-to-v4 differences of `configs/v4/analysis.json` (extending the entry of 2026-11-08).
