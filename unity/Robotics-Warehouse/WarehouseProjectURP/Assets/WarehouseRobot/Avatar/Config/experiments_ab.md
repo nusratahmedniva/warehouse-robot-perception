@@ -2054,3 +2054,29 @@ from here on they differ in that respect.
 3. the results recorded below.
 
 Each commit is made after both suites pass.
+
+*Amendment, 2026-11-17, after the first verification and before any further change: the stations.*
+- **What happened.** The bake as declared (commit 275a9eb's plan; bake report `robot_vision/outputs/navmesh_v4_bake_20261117_051457/`)
+  was verified in `robot_vision/outputs/navmesh_v4_check_20261117_052310/`.
+  - V1 passed: 13,245,624 paths, none entering a footprint, all complete, every point within 0 m of the NavMesh. The negative control
+    passed.
+  - V4 passed.
+  - **V2's hard rule failed:** 100 grid cells whose centre lies inside a footprint are on the NavMesh. **All 100 are stations.** So are
+    all 276 "NavMesh looser" cells (the other 176 lie 0.2 to 0.4 m from a station).
+- **Why.** The declaration assumed that baking the stations' render meshes makes them obstacles. It does not.
+  - A station is a 0.70 x 0.70 m pad, 0.05 m high (y 0.08 to 0.13).
+  - That is less than one voxel of the bake's height resolution, so the NavMesh runs over the pads.
+  - The racks and walls are tall; they are obstacles now.
+  - V1 did not see this because no modelled point or path comes near a station: all 25 stand along the south wall (z -25).
+- **The added fix** (v4 scene only; the task requires the stations to be obstacles):
+  - a `NavMeshModifier` on the v4 scene's `GeneratedWarehouse/Stations` group object;
+  - override area "Not Walkable", applied to its children;
+  - Unity bakes a Not Walkable mesh as a hole, widened by the agent radius (0.5 m), like any other obstacle.
+  - Only the stations get it. The racks, pallets and walls are already obstacles through their height. The vendored station objects
+    themselves stay unchanged.
+- **How.**
+  - The bake tool adds the modifier when it is missing.
+  - The first bake was never committed. Its asset and scene change are discarded and the bake reruns from the committed scene.
+  - The first verification folder is kept as the record of this failure.
+- **Rules unchanged.** V1 to V4, their pass rules and the tests stay as declared. Two Edit Mode tests are added: the `Stations` modifier,
+  and every station centre off the NavMesh.
