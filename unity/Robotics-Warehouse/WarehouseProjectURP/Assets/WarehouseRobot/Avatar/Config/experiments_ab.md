@@ -1953,3 +1953,104 @@ nothing is pushed. Development work, not a result.
     30 %, `proceed_ik_02` 4 %, `proceed_ik_03` 2 %. The low part of `proceed_ik_01` again (as the diagnosis said).
 - Read with the diagnosis: the pose does not show the palm to the camera. The false STOPs come from the reader's open-hand cues on the
   back of a hand with closed fingers, not from a palm turned toward the robot.
+
+### 2026-11-17, section 15 addendum 2: racks in the robot's NavMesh (declared before any change below)
+
+Nusrat's task of 2026-11-17, before the step-5 rerun: the racks are missing from the AMR NavMesh (item 2b's failed negative control).
+Branch `nusrat/v4-step5-dev`. Nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run, nothing is
+pushed. Development work, not a result.
+
+**Already done before this declaration (read only; a temporary Editor script, deleted again, nothing tracked changed):** a batch-mode
+diagnosis of the v4 scene. It called the NavMesh Surface's own source collection and matched every collected mesh to the obstacle groups
+of `robot_unity_v4.json` (`Shelves`, `FloorBoxes`, `Walls`, `Stations`).
+- The v4 scene has one NavMesh Surface: agent type AMR (radius 0.5 m, height 1.8 m, slope 5 deg, step 0.02 m), collect "All", render
+  meshes, all layers. Its baked data is `Assets/Scenes/WarehouseRobot/NavMesh-NavMesh Surface.asset`: the **v3 scene's asset**. The v4
+  scene was copied from v3 and both scenes still share it.
+- **Cause:** the Surface has "Ignore NavMesh Obstacles" on. It drops every collected mesh whose GameObject has a `NavMeshObstacle`.
+  The generated warehouse put one on every rack and on every pallet: 93 `NavMeshObstacle`s, all under `GeneratedWarehouse/Shelves`.
+  12 are the racks (disabled, carving); 81 are the pallets (enabled, not carving). So none of the 93 rack and pallet meshes (12 racks)
+  reached the bake: 652 meshes were collected, 0 of them from `Shelves`.
+- Neither obstacle type puts the racks back at Play: the rack obstacles are disabled, and the pallet obstacles do not carve. The bridge's
+  NavMesh paths therefore ignore the racks in Play as well.
+- **Not the cause:**
+  - layers: all `Default`, the mask takes all;
+  - static flags: none set, and "All" does not need them;
+  - colliders: the Surface bakes render meshes, not colliders. The racks have their own colliders (165), so `ColliderSetup` adds none
+    to them; it adds boxes only to the stations, at Play;
+  - `NavMeshModifier`s: 5, each ignoring the robot or a worker, as intended.
+- **Walls and stations are collected** (36 of 36 walls and 25 of 25 stations). `FloorBoxes` is empty in the v4 scene (0 units): the
+  only boxes are the pallets on the racks, under `Shelves`.
+
+**The fix (v4 scene only):**
+- On the v4 scene's NavMesh Surface, "Ignore NavMesh Obstacles" off. Everything else stays as it is: the agent type and its settings,
+  render meshes, collect All, the modifiers that keep out the robot and the workers.
+  - Not baking from physics colliders: the stations get colliders only at Play (`ColliderSetup`), so an Edit-mode bake from colliders
+    would lose them. Render meshes already include the walls and the stations.
+  - The vendored warehouse objects and their `NavMeshObstacle`s stay unchanged.
+- Rebake into a **new asset**, `Assets/Scenes/WarehouseRobot_v4/NavMesh-AMR.asset`, referenced only by the v4 scene:
+  - the Editor's Bake button deletes the Surface's current asset before it saves the new one. Here that is the v3 asset, still used by the
+    v3 scene (v1.0 must stay reproducible). So the bake is a script: `NavMeshSurface.BuildNavMesh`, then save the data as the new asset.
+  - The v3 scene and its asset stay byte-for-byte unchanged.
+  - Tool: Tools > Warehouse v4 > NavMesh > Bake v4 NavMesh (and a batch method). It refuses any scene but the v4 one, and any target
+    path that already exists.
+- **Every experiment map:** `corridor`, `turn`, `turn_left` and `roadmap` are road graphs on the one floor of the v4 scene; there is no
+  other scene or NavMesh. One bake covers all four maps. The verification checks each map separately.
+
+**Verification (Tools > Warehouse v4 > NavMesh > Verify; Edit mode, batch; report only, into a new
+`robot_vision/outputs/navmesh_v4_check_<time>/`). Rules fixed here, before anything is baked:**
+- **V1, NavMesh paths and racks.**
+  - **Point set per map:** every node of the map and of the physical v4 map (start, junctions, endpoints). Also every ask position and
+    re-ask point of the item 3b model (`ExperimentPlanAB.DrivableSegments`, standoff 2.0 m, shift 0.4 m), taken from every planned run:
+    seeds 1 and 2, 20 runs, all 10 Unity settings (A1, A2 right and left, A3, A4, B1, B2 right and left, B3, B4), in both the live layout
+    and the pending clearance layout. Duplicates within 0.01 m are merged.
+  - **Paths:** a NavMesh path between every pair of points of the same map, by the bridge's rule (AMR filter; both ends snapped with
+    `NavMesh.SamplePosition` within `snap_max_distance_m` 1.0 m). Each path is sampled every 0.05 m along its corners.
+  - **Footprints:** the obstacle footprints of the ground-truth grid (`ObstacleFootprints`: every unit of the four groups, its colliders
+    or mesh boxes in the robot's height band), not widened.
+  - **Pass needs all three:**
+    - (a) no path sample lies inside a footprint;
+    - (b) every path is complete;
+    - (c) every point snaps within 1.0 m.
+  - **Reported:** per map, the least clearance of any path to a footprint, the paths closer than 0.40 m (the grid's widening), and the
+    snap distances.
+- **V1 negative control (must pass):**
+  - the three rack centres of item 2b's control are not reachable under item 2b's test;
+  - the straight line from (6.25, -5) to (-6.25, -5) crosses the rack at (0, -5), and the NavMesh path between those points does not.
+- **V2, NavMesh against the ground-truth grid (report).**
+  - The grid is the official v4 grid (0.5 m cells, widened by 0.40 m), built in Edit mode by `GroundTruthLayer.BuildGrid`, as at Play.
+    It is also compared cell by cell with run_001's saved `grid.json` of `trials_development_Task2_A3_20261116_222448`.
+  - Every cell centre is "on the NavMesh" when `NavMesh.SamplePosition` finds the AMR NavMesh within 0.05 m horizontally.
+  - Four counts: both free; both blocked; grid free but off the NavMesh (the NavMesh is stricter); grid blocked but on the NavMesh (the
+    NavMesh is looser).
+  - For each disagreeing cell: its position, the distance from its centre to the nearest footprint, and whether that centre is on the
+    floor. Expected, and not a failure: a band where the NavMesh's 0.5 m radius (rounded to its 0.167 m voxels) exceeds the grid's 0.40 m.
+  - **Hard rule, the same as V1 (a):** no cell centre inside a footprint is on the NavMesh. Every other disagreement is reported, not
+    judged.
+- **V3, the 1.0 m side waypoints again.** Item 2b's tool, rerun unchanged on the new NavMesh, with NavMesh paths.
+  - Its negative control must now pass.
+  - Its counts are reported, and compared with the grid check of item 2b (1220/1220 free).
+  - One text fix in that tool's report: it still describes the pending slots as declared ("2.5 m before", "3.5 m left"), not as built
+    ("3.5 m before", "4.0 m left", item 3b's disclosure).
+- **V4, the roadmap builder's own NavMesh check, on all four maps:**
+  - every node within 0.5 m of the AMR NavMesh;
+  - a complete NavMesh path for every branch.
+- **Edit Mode tests (new):**
+  - the v4 Surface does not ignore NavMesh obstacles and refers to the new asset;
+  - the v3 scene still refers to the v3 asset, and the v3 asset's SHA-256 is unchanged (pinned);
+  - on the v4 scene, the rack centres are off the NavMesh and the path across the rack at (0, -5) goes around it.
+- **Then:**
+  - the Edit-mode leak test;
+  - both suites;
+  - the B9 list: the new asset is added to `final_v4.json` `freeze_files` (29 files) and to `FinalGuardV4Tests`. The v4 scene is
+    already listed. `freeze_v4.py` reads that list and needs no change.
+
+**What changes for the robot:** the bridge's NavMesh paths and target snaps now see the racks and pallets. A target inside or within
+0.5 m of a rack snaps to the NavMesh's edge, or fails beyond 1.0 m. Every development session before this change used the old NavMesh;
+from here on they differ in that respect.
+
+**Commits:**
+1. this declaration;
+2. the bake tool, the new asset, the scene change, the verification tool, the tests and the B9 list;
+3. the results recorded below.
+
+Each commit is made after both suites pass.
