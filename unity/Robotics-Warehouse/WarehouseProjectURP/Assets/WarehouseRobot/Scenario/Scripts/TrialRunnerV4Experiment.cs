@@ -21,6 +21,8 @@ namespace WarehouseRobot.Scenario
         /// <summary>Development only (section 15 addendum 1, item 3c): the -experimentGoals text that replaced the seeded goals (goal_order
         /// holds the goals used); "" otherwise.</summary>
         public string goals_override = "";
+        /// <summary>Section 15 addendum 1, item 3b: whether the path clearance and the ask-zone check were applied to the placement.</summary>
+        public string clearance_rule = "";
         public float lie_probability;
         public List<string> placement = new List<string>();
         public List<string> workers_plan = new List<string>();
@@ -350,6 +352,9 @@ namespace WarehouseRobot.Scenario
                 activation_rule = $"active within {ecfg.activation_radius_m.ToString("0.0", Inv)} m of the robot or while gesturing; max {ecfg.max_active_avatars}",
                 navigation_looks_override = looksOverride,
                 goals_override = goalsOverride ?? "",
+                clearance_rule = eplan.Rule.PathClearanceM > 0f
+                    ? $"active: no worker within {eplan.Rule.PathClearanceM.ToString("0.0#", Inv)} m of a drivable segment; ask positions within {eplan.Rule.AskZoneM.ToString("0.0#", Inv)} m of their node (clearance_layout slots)"
+                    : "pending (clearance_layout inactive): section 3 slots, no clearance or ask-zone check (experiments_ab.md section 15 addendum 1, item 3b)",
             };
             foreach (var r in eRuns)
             {

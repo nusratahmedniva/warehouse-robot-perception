@@ -1875,3 +1875,65 @@ nothing is pushed. Development work, not a result.
   - The aisles are about 10 m wide, so 1.0 m to either side is clear of static obstacles everywhere. **"The clear side" is decided by the
     workers only.** `report.md` lists, per road, which side and how far along each beside worker stands (live slots). In the live layout
     the junction workers stand 2.0 m beside the arrival road, slot 1 on the left 3.0 m before the node, slot 2 on the right 5.5 m before it.
+
+*Item 3a, made (2026-11-17, commit 8375ba8).*
+- `answer_zone_radius_m` 6.0 is in `experiments_ab_unity.json`. `TrialRunnerV4Experiment` gates each new ask with
+  `ExperimentPlanAB.InAnswerZone`:
+  - outside the zone the chosen worker is the commander but gets no request (truth NONE);
+  - the ask record reads `NONE (outside the <node> zone)`; `session.json` `answer_rule` says so.
+- 5 Edit Mode tests (`HRI/Tests/ExperimentAnswerZoneTests.cs`):
+  - the radius and its refusal at 0;
+  - the A3 run 1 positions: 7.6 m from J2 gets NONE, 4.7 m still answers (the uncovered case);
+  - the ask-position helper;
+  - every own ask position of the live layout (A1 to A4, seeds 1 and 2, 20 runs) within 5.5 m;
+  - no two zones overlap on any map.
+- Not run in Play (no Python session); the gate is covered by the logic tests only.
+
+*Item 3c, made (2026-11-17, commit 89d7cd1).*
+- `ExperimentPlanAB.GoalsOverride`, `TrialPlayV4 -experimentGoals`, `session.json` `goals_override`, and
+  `run_session_v4.ps1 -ExperimentGoals`.
+- 6 Edit Mode tests (`HRI/Tests/ExperimentGoalsOverrideTests.cs`): no override, order and spaces, planning with the given goals, and the
+  refusals (final, fixed-goal maps, unknown names, empty name, wrong count).
+- Launcher dry runs:
+  - A3 with `"E5, E6,E5"` passes `-experimentGoals E5,E6,E5` to Unity;
+  - refused: A1 (fixed goal B), a count that differs from `-Trials`, a final.
+- Not run in Play.
+
+*Item 3b, made (2026-11-17).*
+- `ExperimentPlanAB.DrivableSegments` / `ReaskPosition` / `ClearanceProblem`, `PlacementRule.PathClearanceM` / `AskZoneM`, and
+  `ExperimentsUnityConfig.WithClearanceLayout`.
+- In `experiments_ab_unity.json`: `answer_zone_margin_m` 0.5, `path_clearance_m` 1.0, `ask_standoff_m` 2.0, `reask_shift_m` 0.4, and the
+  `clearance_layout` block with `"active": false`.
+- `session.json` `clearance_rule` says whether the checks were applied (now: pending).
+- **Disclosure: the slots differ from the ones declared above.**
+  - The slot search before the declaration left out one declared segment, the return to the first worker (tie).
+  - Under the full declared model, checked by Unity's Edit Mode test, the declared choice (slot 1 2.5 m before, slot 3 3.5 m left) failed
+    at A3 J1 seed 1 run 1: worker 3 stood 0.97 m from the segment from its own tie ask position (3.41, 3.11) to E1.
+  - The search was rerun with the tie, with the same rules and the same declared choice rule (meets every rule; smallest largest own-ask
+    distance; then least movement). Nothing else changed: no value and no rule.
+  - Its first choice, now pending:
+    - slot 1: **3.5 m before**, 2.5 m left;
+    - slot 2: 4.5 m ahead, 3.5 m right;
+    - slot 3 (J1 in A3, B3): 5.0 m ahead, **4.0 m left**;
+    - largest own-ask distance 5.19 m (within 5.5).
+  - Still a corner layout, as Nusrat chose. With the tie included, 58 slot sets keep the clearance and 8 of them also keep the 5.5 m ask
+    zone.
+- 5 Edit Mode tests (`HRI/Tests/ExperimentClearanceTests.cs`):
+  - the config values and that the block is inactive;
+  - **all 400 plans with the pending layout pass**: A1, A2 right and left, A3, A4, B1, B2 right and left, B3, B4; seeds 1 and 2; 20 runs
+    each. Each plan gets an independent re-check of separation, turning points, bystander margin, clearance to every road and every
+    drivable segment, ask positions within 5.5 m, and at most 6 active avatars;
+  - the segment model (every order, the tie, every branch, the re-ask point on the 2.0 m circle);
+  - the live slots with the clearance on are refused. From A3 run 2's logged ask position (6.3, -5.3) the line to J3 passes J3's slot-2
+    worker at 0.31 m; the diagnosis's 0.33 m was measured from the driven trail;
+  - the live config plans as before.
+- **Not checked:** free cells and colliders for the pending slots at Play. The Edit Mode tests have no scene; the search checked the slot
+  positions against the saved ground-truth grid. Unity checks both at Play once the block is active.
+- **For Anisha (her files; nothing changed there):**
+  - `scenarios_ab.json` `junction_slots` of scenarios 1 to 3 = the pending slots;
+  - scenario 4 without `people_by_node` J1 3 (A4 and B4: 2 at J1);
+  - her `MatchesUnity` tests (`test_the_slots_and_margins_are_unitys`, `test_slot_positions`);
+  - her simulator's placement: the clearance and the ask zone, so that the simulator still does what Unity does (AUDIT.md 16.13);
+  - then Nusrat sets `clearance_layout.active` true (and the live `junction_slots` / `three_worker_nodes` to the pending values) in one
+    change;
+  - also for Anisha (items 2b and 3a): keep the second-opinion search near its node.
