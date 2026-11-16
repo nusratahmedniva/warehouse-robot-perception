@@ -298,8 +298,8 @@ namespace WarehouseRobot.EditorTools
             if (!controlsOk) { md.Append("\n**The negative control failed: the reachable counts above are not trustworthy.**\n"); }
             md.Append("\n## Where the beside workers stand along each road (live layout, section 3 slots)\n\n");
             md.Append("Lateral side as seen driving the road from its first node to its second; s = distance along the road from the first node. " +
-                      "The clear side near a node is the side without a worker. The pending corner layout (addendum 1, item 3b) puts slot 1 2.5 m before and " +
-                      "2.5 m left of each junction, slot 2 4.5 m ahead and 3.5 m right, slot 3 (J1 in A3, B3) 5.0 m ahead and 3.5 m left.\n\n");
+                      "The clear side near a node is the side without a worker. The pending corner layout (addendum 1, item 3b, as built) puts slot 1 3.5 m before and " +
+                      "2.5 m left of each junction, slot 2 4.5 m ahead and 3.5 m right, slot 3 (J1 in A3, B3) 5.0 m ahead and 4.0 m left.\n\n");
             foreach (var l in workerLines) md.Append(l + "\n");
             md.Append($"\nAll {rows.Count} samples: samples.csv.\n");
             File.WriteAllText(Path.Combine(outDir, "samples.csv"), csv.ToString(), new UTF8Encoding(false));
