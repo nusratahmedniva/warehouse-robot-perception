@@ -57,6 +57,15 @@ def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
     return json.loads((p if p.is_absolute() else HERE / p).read_text(encoding="utf-8"))
 
 
+def live_reader_config(path: str | Path | None = None) -> dict:
+    """gesture_motion's config with the two STOP keys of 2026-11-16 (hand.stop_requires_raised, hand.stop_fingertip_spread_min; AUDIT.md 16.18.2)
+    switched OFF: the reader as it ran live when the logs of 2026-11-12 to 2026-11-15 were recorded. The analyses here replay those logs, so their
+    baseline is that reader whatever gesture_reader.json now says; the candidate cues are then applied on top, in the script only."""
+    rc = gm.load_config() if path is None else gm.load_config(path)
+    rc["hand"] = {**rc["hand"], "stop_requires_raised": False, "stop_fingertip_spread_min": None}
+    return rc
+
+
 # ---------------------------------------------------------------- the candidate cues (pure functions of the 21 pixel landmarks)
 
 def palm_facing(lm, side: str) -> float:
@@ -521,7 +530,7 @@ def main(argv=None) -> None:
     a = ap.parse_args(argv)
     cfg_path = dio.resolve(a.config)
     cfg = load_config(cfg_path)
-    rc, cc = gm.load_config(), cm.load_config()
+    rc, cc = live_reader_config(), cm.load_config()
     logs = Logs(Path(a.zip).expanduser())
     rep = analyse(logs, cfg, rc, cc, progress=lambda n: print("  done:", n, flush=True))
     out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "false_stop_analysis_v4")

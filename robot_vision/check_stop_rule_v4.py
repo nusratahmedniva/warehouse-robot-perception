@@ -199,6 +199,8 @@ def check(logs: fs.Logs, cfg: dict, rc: dict, cc: dict, progress=None) -> dict:
     report["decision"] = decide(scored, cfg)
     report["live_robot_stop_runs"] = live_robot(logs, cfg, kinds)
     report["reader_changed"] = False
+    report["reader_replayed"] = ("the reader as it ran live when the logs were recorded: the STOP keys of 2026-11-16 (stop_requires_raised, stop_fingertip_spread_min) "
+                                 "are off in the replayed config, the rules are applied on top of it in this script only")
     return report
 
 
@@ -302,7 +304,7 @@ def main(argv=None) -> None:
     a = ap.parse_args(argv)
     cfg_path = dio.resolve(a.config)
     cfg = load_config(cfg_path)
-    rc, cc = gm.load_config(), cm.load_config()
+    rc, cc = fs.live_reader_config(), cm.load_config()
     logs = fs.Logs(Path(a.zip).expanduser())
     rep = check(logs, cfg, rc, cc, progress=lambda n: print("  done:", n, flush=True))
     out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "stop_rule_check_v4")

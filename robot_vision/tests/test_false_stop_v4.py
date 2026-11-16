@@ -22,7 +22,7 @@ import gesture_motion as gm  # noqa: E402
 import v4_synth as vs  # noqa: E402
 
 CFG = fs.load_config()
-RC, CC = gm.load_config(), cm.load_config()
+RC, CC = fs.live_reader_config(), cm.load_config()      # the reader as it ran live (AUDIT.md 16.18.2)
 
 
 def lm(index=(10.0, -20.0), pinky=(-10.0, -20.0), index_tip=(14.0, -60.0), pinky_tip=(-14.0, -50.0)):

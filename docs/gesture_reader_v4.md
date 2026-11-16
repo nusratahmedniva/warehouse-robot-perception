@@ -174,7 +174,7 @@ cue below, MediaPipe's label, is read and logged but no longer required** (see D
 2. **Finger extension from the 21 landmarks.** A finger is *extended* when its tip is farther from the wrist than its
    MCP joint by at least `finger_extended_ratio` (tip distance over MCP distance, from the wrist). WAIT: index extended,
    middle, ring and pinky curled (ratio under `finger_curled_ratio`). STOP: the four fingers extended, and the hand
-   open (`palm_spread_min`: the angle between the index and pinky directions, or the spread of the four fingertips).
+   open (`palm_spread_min`: the angle between the index and pinky directions, or the spread of the four fingertips). Since 2026-11-16 also the fingertip spread and a raised arm (see Decided).
 3. **Pose of the arm.** WAIT: hand raised near head height (wrist above the shoulder line by `wait_raise_margin`) with the
    forearm roughly vertical (elbow to wrist within `wait_forearm_vertical_tol_deg` of straight up) and the index
    direction (MCP to tip) within `index_up_tol_deg` of up. STOP: arm bent or extended toward the robot, palm facing the
@@ -287,6 +287,16 @@ proposals for Anisha to confirm or replace. No value is chosen from test data or
   MediaPipe said Open_Palm in 5 per cent of the STOP frames although the geometry passed in 66 to 97 per cent, and Pointing_Up in 13 per cent of the WAIT frames of
   look f2; the gesture classifier was trained on real hands, and a false STOP is safe (a missed STOP is not). A v3 difference for RQ1 (v3 STOP was the Open_Palm label at
   score 0.5): listed in `configs/v4/analysis.json`.
+- 2026-11-16 (decided by Anisha after the STOP-session results, disclosed in `AUDIT.md` 16.18.2; development only, before the freeze): **a STOP also needs a raised arm and spread fingertips**, and no
+  stillness cue. STOP = open-palm finger geometry (above) AND the fingertip spread (distance index tip to pinky tip over distance index knuckle to pinky knuckle,
+  `gesture_motion.fingertip_spread`) at least `hand.stop_fingertip_spread_min` (1.3) AND the arm raised (the reader's own `arm_raised` flag: wrist at least `arm_raised_margin` above the
+  hip line, the arm within `raised_max_abs_deg` of vertical; an arm that is not valid is not raised) when `hand.stop_requires_raised` is true. Two keys switch it (absent or null = the earlier reader, still
+  available; `gesture_motion.stop_extra_ok`). Reasons: the avatar's flat PROCEED hand and a hanging open hand passed the wrist-angle spread and read STOP (16.14: 98 stop episodes on PROCEED, 2 of a hanging hand while driving); in the
+  STOP sessions (16.18.1) the rule removes most of them (36 negatives: 32 frames / 17 episodes against 321 / 27; POINT and WAIT 0) and loses no STOP the old reader read within 1.0 s, but it reads 21 of 39 STOPs later (median +0.21 s, at most +0.60 s).
+  It reverses the part of the decision of 2026-11-08 that STOP needs no arm keypoints. **Not adopted:** the stillness (static) cue, which removed every false STOP but read true STOPs late (0 of 40 within 1.0 s, median 1.29 s);
+  the palm direction, which the landmark order does not give reliably (16.14). **Known limitation:** a raised, open, spread hand held without stillness still reads STOP, so the PROCEED hand still gives false STOPs (66 frames,
+  28 episodes over every PROCEED frame of the STOP sessions against 535 and 56); the finals report their effect (safety stops, timeouts) per setting. The analysis tools `analyse_false_stop_v4.py` and `check_stop_rule_v4.py` replay the
+  logs with these two keys off (`live_reader_config`), because the logs were recorded with the earlier reader.
 - 2026-11-08: **the arm ratio** (`point.arm_length_in_shoulder_widths`, 1.4) is set in the development evaluation as the median YOLO keypoint ratio (shoulder to wrist over
   shoulder width) on the development looks only (`sunbox_m1`, `sunbox_f1`), never on the test look. The value is not changed now. The look check measured 1.87 to 2.00
   (the bones give 1.587).

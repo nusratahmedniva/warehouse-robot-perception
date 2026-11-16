@@ -106,14 +106,27 @@ class ProceedReaderTests(unittest.TestCase):
         short = [x for x in s if x.t >= s[-1].t - CFG["window"]["window_s"]]
         self.assertNotEqual(gm.read_window(short, CFG, s[-1].t).command, "PROCEED")   # fewer valid frames than 2 s needs
 
-    def test_an_open_palm_still_overrides(self):
+    def test_an_open_palm_still_overrides_with_the_reader_as_it_was(self):
+        """The reader before 2026-11-16: an open palm during the PROCEED stroke reads STOP, the arm at waist height or not."""
         def hands_for(i):
             kp, _ = project(body3d(right=(0.0, 1.0, -0.3), right_fore=(0.0, -0.5, -0.8)))
             return {"right": vs.hand(kp[gm.R_WRIST])}
         s = swing_samples()
         for i, x in enumerate(s):
             x.hands = hands_for(i)
-        self.assertEqual(gm.read_window(s, CFG, s[-1].t).command, "STOP")
+        off = json.loads(json.dumps(CFG))
+        off["hand"].update(stop_requires_raised=False, stop_fingertip_spread_min=None)
+        self.assertEqual(gm.read_window(s, off, s[-1].t).command, "STOP")
+
+    def test_an_open_hand_at_waist_height_no_longer_overrides_a_proceed(self):
+        """AUDIT.md 16.18.2: a STOP needs a raised arm; the open, flat PROCEED hand at waist height is read as the PROCEED it is."""
+        def hands_for(i):
+            kp, _ = project(body3d(right=(0.0, 1.0, -0.3), right_fore=(0.0, -0.5, -0.8)))
+            return {"right": vs.hand(kp[gm.R_WRIST])}
+        s = swing_samples()
+        for i, x in enumerate(s):
+            x.hands = hands_for(i)
+        self.assertNotEqual(gm.read_window(s, CFG, s[-1].t).command, "STOP")
 
     def test_the_other_classes_still_read_from_the_longer_buffer(self):
         """POINT, WAIT and STOP from a buffer of read_span_s (2 s) read as from the 1 s window alone."""

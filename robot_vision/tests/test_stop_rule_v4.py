@@ -23,7 +23,7 @@ import gesture_motion as gm  # noqa: E402
 import v4_synth as vs  # noqa: E402
 
 CFG = ck.load_config()
-RC, CC = gm.load_config(), cm.load_config()
+RC, CC = fs.live_reader_config(), cm.load_config()      # the reader as it ran live (AUDIT.md 16.18.2)
 
 
 def row(t, cmd, phase="holding", worker=1, look="sunbox_m1", clip=None, arm="right"):
