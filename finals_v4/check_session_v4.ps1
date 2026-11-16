@@ -9,6 +9,9 @@ param(
 # updated the same day: AUDIT.md section 15). Validity only, no performance threshold. A watchdog stop is a RESULT (a stop, or the
 # failure, of its run), never a reason for invalidity: it is printed, not checked. Read-only; works from any folder (relative
 # paths are taken from the current folder). Exit 0 = every criterion PASS (the session is valid); 2 = refused (wrong arguments).
+# 2026-11-16 (step 5): Continue in this script's own scope. Called from run_session_v4.ps1 (Stop) it inherited Stop, so a native
+# command's stderr (criterion 2's "not frozen" in development) ended the check after criterion 1 (Windows PowerShell 5.1).
+$ErrorActionPreference = "Continue"
 $rv = Join-Path (Split-Path $PSScriptRoot -Parent) "robot_vision"
 $py = Join-Path $rv ".venv\Scripts\python.exe"
 function Full($p) { if ([System.IO.Path]::IsPathRooted($p)) { $p } else { [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $p)) } }

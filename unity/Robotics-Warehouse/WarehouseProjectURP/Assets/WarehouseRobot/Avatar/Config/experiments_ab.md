@@ -1629,3 +1629,91 @@ decision 3: **20 STOPs per look (10 per arm), part of them while driving**. Sess
 - **Checks:** `zipfile.testzip` clean; Anisha's `analyse_false_stop_v4.Logs` reads both sessions as they are (S1: 64 runs, 11,236 decision
   rows, 16,819 model-output lines; S2: 14 runs, 3,650 decision rows, 4,774 model-output lines); every run passes her split guard as
   development.
+
+## 2026-11-16, section 15: step 5, development runs of the final matrix (STOPPED by the Set A wrong-branch rule after A3)
+
+Branch `nusrat/v4-step5-dev` = main 8848a7a (PR #39: Anisha's STOP rule, `gesture_reader.json` `stop_requires_raised` true,
+`stop_fingertip_spread_min` 1.3). Unity side only: nothing under `robot_vision/`, `docs/` or `external/` changed, nothing frozen, no final
+run, nothing tuned. **Development data, not a result.**
+
+**Plan (Nusrat's task):** the 13 final settings, 3 runs each, with `finals_v4/run_session_v4.ps1 -Rehearsal -Trials 3`. That means the final
+settings' maps, routes, lie switches and control files, with the dev seed (1), development looks and clips, and the development timeout
+(420 s, `trial_plan_v4.json`). Each B setting runs next to its `_off` partner; the session runs in the Unity Editor window. Stop rule: a
+wrong-branch decision in Set A ends the step after that setting's 3 runs.
+
+**Preconditions:**
+- branch = origin/main 8848a7a, clean;
+- Python 1163 OK (2 skipped), Unity Edit Mode 319/319;
+- free memory 3,317 MB of 14,226 MB, power mode Best performance on mains;
+- still running and not closed: Chrome x9 (about 620 MB) and the Claude / VS Code session. "Other apps closed" was therefore NOT fully met;
+  disclosed.
+
+**Run (one Unity start and one server per session):**
+- Sitting 1 (21:28 to 22:22): A1, B1, B1_off, A2_right, B2_right, B2_right_off, A2_left.
+- Sitting 2 (22:23): A3.
+- Then STOPPED. Not run: B3, B3_off, A4, B4, B4_off, and the avatar-experiment rehearsal.
+- Free memory before each session: 3.3 to 4.6 GB, never under 2 GB. Minimum during the sessions (bridge `resources.csv`): 293 to 637 MB.
+
+**Checks, every session:**
+- launcher B11 check REHEARSAL VALID;
+- leak test passed in Unity (`session.json` `leak_test.passed`) and in Python (`gt_path.py session`);
+- every `run_###/truth.jsonl` accepted by `gesture_data.py --messages`;
+- `export_csv_v4.py --session` (development) written.
+
+**Outcomes:**
+
+| setting | SUCCESS | failures | longest run (s) | dialogs: correct / wrong branch / asked again / abort | accepted STOPs (true / false) | watchdog | round trip max (ms) | loop lag max (ms) |
+|---|---|---|---|---|---|---|---|---|
+| A1 | 3/3 | - | 84.7 | 6 / 0 / 0 / 0 | 0 / 19 | 0 | 70.7 | 68 |
+| B1 | 3/3 | - | 93.0 | 5 / 0 / 1 / 0 (1 rejected) | 0 / 15 | 0 | 61.3 | 68 |
+| B1_off | 3/3 | - | 68.9 | 3 / 0 / 0 / 0 | 0 / 10 | 0 | 97.1 | 115 |
+| A2_right | 2/3 | run 3 aborted at A | 139.4 | 7 / 0 / 5 / 3 | 0 / 21 | 0 | 58.9 | 68 |
+| B2_right | 3/3 | - | 138.7 | 8 / 0 / 6 / 2 (2 rejected) | 0 / 32 | 0 | 215.5 | 225 |
+| B2_right_off | 1/3 | run 1 aborted at B, run 2 at A | 99.9 | 3 / 0 / 3 / 2 | 0 / 19 | 0 | 42.8 | 83 |
+| A2_left | 1/3 | runs 1 and 3 aborted at A | 164.7 | 2 / 0 / 7 / 6 (1 rejected) | 0 / 27 | 0 | 65.0 | 84 |
+| A3 | 1/3 | runs 1 and 2 timed out (420 s) | 420.0 | 9 / 2 / 6 / 5 | 0 / 23 | 0 | 46.0 | 52 |
+
+- **Every abort:** "gesture unclear after 2 asks" (PROCEED unread at A or B).
+- **False STOPs:**
+  - all 166 accepted STOPs were false; no worker shows STOP in the experiments;
+  - 154 came while the commander swung PROCEED (phase holding), 12 right after it (phase returning);
+  - all came in the states read, approach or execute, none while navigating;
+  - each episode lasted at most about 0.4 s;
+  - the counts equal Python's own `safety_stops` per run.
+- **Set B lies (given / detected / corrected / fooled):** B1 2/2/2/0, B1_off 0/0/0/0, B2_right 4/3/3/0, B2_right_off 2/0/0/0.
+  - Without a second opinion the liar at A is seldom asked, so `_off` gives fewer lies.
+  - Mean time minus the matching A setting: B1 +3.2 s, B1_off -15.5 s, B2_right +31.7 s, B2_right_off -40.0 s. These means mix in
+    failures; the per-run pairs are in the report.
+- **Closest person:** at least 1.10 m in every setting except A3 (0.38 and 0.41 m, both while stopped; no collision).
+
+**The stop (A3 run 1, goal E2, J1 true branch LEFT):**
+- J1's three workers pointed LEFT. Their answers were ambiguous (second view) or unread.
+- Looking for a second opinion, the robot approached the next person: J2's workers (w7 at (-0.75, 2.0), w6 at (-3.25, -2.0)). It drove
+  about 3.7 m from J1 toward J2 to ask them.
+- Unity's answer rule ("the active worker within 3.5 m nearest the pan-tilt axis answers") let them answer for THEIR node. Unity's
+  `truth_run001.json` `shown` says junction J2, RIGHT (north, toward E2).
+- Python, still at J1 heading north, resolved that pointing as FORWARD. The reader read what was shown; the export marks it truthful.
+- Two answers agreed, so the controller decided "go FORWARD" at J1 (t 160.99 s): a wrong-branch decision.
+- The robot never drove that branch: it stood "stopped: person in path" next to w7 until the timeout.
+- Run 2 timed out the same way after a correct "go RIGHT": stopped next to a worker beside J3.
+- **Cause, as found:** a scenario fault in the multi-node "beside" layout (like the R3 bystander finding of Stage D2, `upgrade_design.md`). It is not a reader
+  error. Fix options are for Nusrat and Anisha, not chosen here:
+  - Unity: a worker answers only an ask at its own node;
+  - Python: the second-opinion search stays near the junction;
+  - placement: wider slots.
+
+**Tools (new, `finals_v4/`):**
+- `step5_session_checks.ps1`: the extra checks, the export and the session list `robot_vision/outputs/step5_sessions.json`. It also rewrites
+  the launcher's console transcript (`outputs/step5_launcher_<setting>.txt`) with repository-relative paths. The first transcripts held
+  absolute paths, and the Python test `test_run_paths` (no absolute path under `outputs/`) failed on them. They were rewritten the same
+  way; nothing else changed.
+- `step5_report.py`: the per-setting report, `step5_durations_<time>.csv` and `step5_stops_<time>.csv`. Evaluation only.
+- `avatar_rehearsal_check.py`: the blind format check of the avatar rehearsal. No model; tested read-only on an old Edit-mode folder; not
+  yet used.
+- **Fix in `check_session_v4.ps1`:** it inherited `$ErrorActionPreference = "Stop"` from the launcher, so the stderr of criterion 2 ("not
+  frozen") ended the check after criterion 1. It now sets Continue in its own scope. A1's check was run by hand: VALID.
+
+**Outputs (`robot_vision/outputs/`, git-ignored):**
+- `step5_report_20261116_224356.md`, `step5_durations_20261116_224356.csv`, `step5_stops_20261116_224356.csv`;
+- `step5_launcher_<setting>.txt`;
+- `run_protocol_rehearsal_<setting>_*.txt`.
