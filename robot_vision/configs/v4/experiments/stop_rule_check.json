@@ -1,0 +1,41 @@
+{
+  "label": "Settings of check_stop_rule_v4.py (AUDIT.md 16.18): the candidate false-STOP rule and its declared fallbacks checked against the criteria (a) to (c) of 16.16 on Nusrat's STOP sessions. Analysis only: nothing here is a reader value and nothing here changes the reader.",
+  "declared": "2026-11-16, before the data was analysed (AUDIT.md 16.18). Every number is the reader's own or one that existed before this data; the one value 16.17 left open, the fingertip-spread threshold, is fixed here at 1.3 (the display value of false_stop_analysis.json, set on the old pose, before this session existed). No other value is tried.",
+  "base_config": "configs/v4/experiments/false_stop_analysis.json",
+  "base_config_why": "match_bearing_deg, truth_join_max_s, shown_phases and episode_gap_s are those of the 16.14 analysis (themselves those of eval_dev.json), unchanged.",
+  "sessions": {
+    "S1": {
+      "bridge": "bridge_guide_20261115_151856",
+      "unity": "trials_development_Task2_20261115_152104",
+      "what": "STOP session S1 (experiments_ab.md section 13 part B), 64 runs, seed 1, 2026-11-15"
+    },
+    "S2": {
+      "bridge": "bridge_guide_20261115_191520",
+      "unity": "trials_development_Task2_20261115_191700",
+      "what": "STOP session S2 (experiments_ab.md section 14), 14 runs, seed 3, 2026-11-15"
+    }
+  },
+  "plan": {
+    "S1": {"held_stop": 20, "driving_stop": 6, "negative_POINT": 12, "negative_PROCEED": 12, "negative_WAIT": 12, "idle_pass": 2},
+    "S2": {"held_stop": 8, "driving_stop": 6},
+    "why": "Nusrat's declared counts per session (experiments_ab.md sections 13 and 14). The kind of a run is read from its truth rows; a count that differs from the plan is reported, not hidden."
+  },
+  "rules": {
+    "current": {},
+    "candidate": {"spread": 1.3, "static": "arm_moving", "raised": true},
+    "fallback_i": {"spread": 1.3, "static": "speed_stop_window", "raised": true},
+    "fallback_ii": {"spread": 1.3, "raised": true}
+  },
+  "rules_why": {
+    "current": "The live reader as it is (gesture_reader.json on main, byte-identical to the commits of the recordings).",
+    "candidate": "Open hand AND fingertip spread >= 1.3 AND static (the reader's own 'moving' flag) AND raised arm (the reader's own flag). Palm direction not used (AUDIT.md 16.17 item 3).",
+    "fallback_i": "The static cue as the short window: mean wrist speed over the 0.3 s STOP window at most motion.still_speed_max; open hand, spread and raised arm kept (16.16.2 item 2).",
+    "fallback_ii": "The static cue dropped: open hand + spread + raised arm (16.16.2 item 2)."
+  },
+  "order": ["candidate", "fallback_i", "fallback_ii"],
+  "order_why": "The candidate first; a fallback is tried only when the previous rule fails (a) (16.16 decision 2). If (a) is met and (b) or (c) is not, no fallback is declared and none is tried.",
+  "within_s": 1.0,
+  "within_s_why": "Criterion (a): every true STOP read within 1.0 s of the first shown truth row of that STOP (16.15 decision 3, 16.16 decision 5).",
+  "stop_gap_s": 0.5,
+  "stop_gap_s_why": "Truth rows of one STOP segment are 0.05 s apart; a gap longer than this starts a new STOP segment."
+}

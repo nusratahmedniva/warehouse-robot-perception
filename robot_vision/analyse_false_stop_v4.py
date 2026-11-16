@@ -312,15 +312,18 @@ def variants(cfg: dict) -> list[dict]:
     return out
 
 
-def analyse(logs: Logs, cfg: dict, rc: dict, cc: dict, progress=None) -> dict:
-    report: dict = {"zip": {"name": logs.path.name, "sha256": logs.sha256()}, "sessions": {}, "guard": {}}
-    runs_data: dict = {}                                                            # (session, run) -> {"frames", "truth"}
+def load_runs(logs: Logs, cfg: dict) -> tuple[dict, dict, dict]:
+    """(runs_data {(session, run): {"frames", "truth"}}, guard {session/run_###: split}, sessions {name: {what, runs, pan_tilt_frames}}) of every session in
+    cfg["sessions"]. The split guard runs on every run before anything else is computed (SystemExit on a test look or clip, an unlisted name or a mix)."""
+    guard_out: dict = {}
+    sessions: dict = {}
+    runs_data: dict = {}
     for sname, sc in cfg["sessions"].items():
         spans = {}
         truths = {}
         for run in logs.runs(sc["unity"]):
             tr = logs.truth(sc["unity"], run)
-            report["guard"][f"{sname}/run_{run:03d}"] = guard(tr)                      # refuses anything but development looks and clips
+            guard_out[f"{sname}/run_{run:03d}"] = guard(tr)                           # refuses anything but development looks and clips
             truths[run] = tr
             ts = [r["time_s"] for rs in tr.values() for r in rs]
             spans[run] = (min(ts), max(ts))
@@ -334,7 +337,13 @@ def analyse(logs: Logs, cfg: dict, rc: dict, cc: dict, progress=None) -> dict:
                     break
         for run in truths:
             runs_data[(sname, run)] = {"frames": per_run.get(run, []), "truth": truths[run]}
-        report["sessions"][sname] = {"what": sc["what"], "runs": len(truths), "pan_tilt_frames": sum(len(v) for v in per_run.values())}
+        sessions[sname] = {"what": sc["what"], "runs": len(truths), "pan_tilt_frames": sum(len(v) for v in per_run.values())}
+    return runs_data, guard_out, sessions
+
+
+def analyse(logs: Logs, cfg: dict, rc: dict, cc: dict, progress=None) -> dict:
+    report: dict = {"zip": {"name": logs.path.name, "sha256": logs.sha256()}, "sessions": {}, "guard": {}}
+    runs_data, report["guard"], report["sessions"] = load_runs(logs, cfg)
 
     # ---- the baseline replay: categories, the replay check, the cue values, the cause of the stops with nothing shown
     cats: dict = {}                                                                 # (session, run, frame index, track) -> category
