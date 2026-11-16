@@ -1679,7 +1679,11 @@ wrong-branch decision in Set A ends the step after that setting's 3 runs.
   - 154 came while the commander swung PROCEED (phase holding), 12 right after it (phase returning);
   - all came in the states read, approach or execute, none while navigating;
   - each episode lasted at most about 0.4 s;
-  - the counts equal Python's own `safety_stops` per run.
+  - these are STOP-gesture episodes in `decisions.csv`. Python's own `safety_stops` counts every safety stop (STOP gesture and person in
+    path), so it is a different count. It equals the STOP episodes only in A1 (19) and B1 (15). A3: 58 against 23 STOP and 34
+    person-in-path episodes. B1_off, A2_right, B2_right, B2_right_off, A2_left: 1 to 3 more than the STOP episodes (`decisions.csv`
+    has one row per 0.1 s, so a shorter stop may not show). *Corrected 2026-11-17 (addendum 1, item 3e); the sentence first said the
+    counts equal Python's `safety_stops` per run.*
 - **Set B lies (given / detected / corrected / fooled):** B1 2/2/2/0, B1_off 0/0/0/0, B2_right 4/3/3/0, B2_right_off 2/0/0/0.
   - Without a second opinion the liar at A is seldom asked, so `_off` gives fewer lies.
   - Mean time minus the matching A setting: B1 +3.2 s, B1_off -15.5 s, B2_right +31.7 s, B2_right_off -40.0 s. These means mix in
