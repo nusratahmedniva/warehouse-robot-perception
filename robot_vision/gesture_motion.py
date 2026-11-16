@@ -57,6 +57,7 @@ L_SHOULDER, R_SHOULDER, L_ELBOW, R_ELBOW, L_WRIST, R_WRIST, L_HIP, R_HIP = 5, 6,
 ARMS = {"right": (R_SHOULDER, R_ELBOW, R_WRIST), "left": (L_SHOULDER, L_ELBOW, L_WRIST)}
 FINGERS = {"index": (5, 8), "middle": (9, 12), "ring": (13, 16), "pinky": (17, 20)}   # (MCP, tip) of MediaPipe's 21 landmarks
 WRIST_LM, INDEX_MCP, INDEX_TIP, MIDDLE_MCP, PINKY_TIP = 0, 5, 8, 9, 20
+PINKY_MCP = 17
 COMMANDS = ("POINT", "WAIT", "STOP", "PROCEED")
 
 
@@ -257,6 +258,29 @@ def open_palm_geometry(cues: dict, cfg: dict) -> bool:
     return bool(all(cues["extended"].values()) and cues["spread_deg"] >= cfg["hand"]["palm_spread_min_deg"])
 
 
+def fingertip_spread(lm) -> float:
+    """Distance from the index fingertip to the pinky fingertip over the distance from the index knuckle to the pinky knuckle (both from the 21 pixel
+    landmarks): about 1 for fingers held together (the knuckle width), larger for a fan. The reader's own `spread_deg` is an angle measured at the WRIST,
+    which already contains the knuckle width (AUDIT.md 16.14); this one is measured between the fingertips."""
+    lm = np.asarray(lm, float)
+    knuckles = float(np.linalg.norm(lm[INDEX_MCP] - lm[PINKY_MCP]))
+    return float(np.linalg.norm(lm[INDEX_TIP] - lm[PINKY_TIP]) / knuckles) if knuckles > 1e-9 else 0.0
+
+
+def stop_extra_ok(hand, af, cfg: dict) -> bool:
+    """The two requirements added to the open hand for a STOP by the decision of 2026-11-16 (AUDIT.md 16.18.2): the arm is raised (the reader's own
+    flag, from the body keypoints; an arm that is not valid is not raised) and the fingertips are spread (fingertip_spread >= stop_fingertip_spread_min).
+    Each is switched by its own key of the `hand` block: stop_requires_raised (true) and stop_fingertip_spread_min (a number); absent, false or null =
+    that requirement is off, which is the reader as it was before. There is NO static cue (AUDIT.md 16.18.2 item 4)."""
+    h = cfg["hand"]
+    if h.get("stop_requires_raised") and not (af.valid and af.raised):
+        return False
+    smin = h.get("stop_fingertip_spread_min")
+    if smin is not None and fingertip_spread(hand.landmarks_px) < smin:
+        return False
+    return True
+
+
 def index_up_geometry(cues: dict, cfg: dict) -> bool:
     """Index finger extended and pointing up, the other three curled: the hand geometry of WAIT."""
     return bool(cues["extended"]["index"] and all(cues["curled"][n] for n in ("middle", "ring", "pinky"))
@@ -279,13 +303,15 @@ def frame_flags(s: Sample, side: str, af: ArmFrame, cfg: dict) -> dict:
 
     Since 2026-11-08 STOP and WAIT are decided by the finger geometry of the 21 landmarks and the arm pose only: MediaPipe's gesture
     label and its score are NOT required (in the look check the label said Open_Palm in 5 per cent of STOP frames although the
-    geometry passed in 66 to 97 per cent). They are still read and reported per frame (hand_cues, Reading.hand_label)."""
+    geometry passed in 66 to 97 per cent). They are still read and reported per frame (hand_cues, Reading.hand_label).
+    Since 2026-11-16 (AUDIT.md 16.18.2) a STOP also needs a raised arm and spread fingertips (stop_extra_ok), when the `hand` keys of
+    configs/v4/gesture_reader.json say so: the arm-pose requirement of 2026-11-08 is back for STOP, in the form of the raised flag."""
     p, h = cfg["point"], cfg["hand"]
     out = {"point_ok": False, "wait_ok": False, "stop_ok": False, "why": ""}
     hand = s.hands.get(side)
     cues = hand_cues(hand, cfg) if hand is not None else None
     if cues is not None:
-        out["stop_ok"] = open_palm_geometry(cues, cfg)
+        out["stop_ok"] = bool(open_palm_geometry(cues, cfg) and stop_extra_ok(hand, af, cfg))
     if not af.valid:
         out["why"] = af.reason
         return out
