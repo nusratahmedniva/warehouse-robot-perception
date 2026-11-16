@@ -296,6 +296,29 @@ namespace WarehouseHRI.V4
             return list;
         }
 
+        /// <summary>
+        /// Section 15 addendum 1, item 3c (development only): the goals of TrialPlayV4 -experimentGoals "E5,E6,...", one per run, in place of
+        /// the seeded goals. Null and no error when <paramref name="spec"/> is empty (no override). Refused (null with the reason) in a final,
+        /// on a fixed-goal map, for a name that is not an endpoint of the map, or for a list whose length is not the number of runs.
+        /// </summary>
+        public List<string> GoalsOverride(string spec, bool final, int runs, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(spec)) return null;
+            if (final) { error = "-experimentGoals is for development sessions only; a final takes its goals from the seed"; return null; }
+            if (Goal != "random_endpoint") { error = $"-experimentGoals: experiment {Def.name} has the fixed goal {Goal} (map {MapName}); only a random-endpoint map takes goals"; return null; }
+            var eps = Endpoints(Map);
+            var list = new List<string>();
+            foreach (var part in spec.Split(','))
+            {
+                string g = part.Trim();
+                if (eps.IndexOf(g) < 0) { error = $"-experimentGoals: '{g}' is not an endpoint of map {MapName} ({string.Join(", ", eps)})"; return null; }
+                list.Add(g);
+            }
+            if (list.Count != runs) { error = $"-experimentGoals: {list.Count} goal(s) for {runs} run(s); give exactly one per run"; return null; }
+            return list;
+        }
+
         /// <summary>The map of one run: A2 draws its side (right / left) from the seeded stream when both are listed.</summary>
         public RoadmapV4 RunMap(int seed, int run, out string name)
         {

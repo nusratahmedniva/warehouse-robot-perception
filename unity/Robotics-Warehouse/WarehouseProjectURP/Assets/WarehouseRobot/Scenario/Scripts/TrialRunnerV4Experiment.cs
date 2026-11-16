@@ -18,6 +18,9 @@ namespace WarehouseRobot.Scenario
         public string experiment, set, map, layout, lie_rule, answer_rule, activation_rule;
         /// <summary>Smoke check only (experiments_ab.md section 3): the male|female looks that replaced the navigation looks; "" otherwise.</summary>
         public string navigation_looks_override = "";
+        /// <summary>Development only (section 15 addendum 1, item 3c): the -experimentGoals text that replaced the seeded goals (goal_order
+        /// holds the goals used); "" otherwise.</summary>
+        public string goals_override = "";
         public float lie_probability;
         public List<string> placement = new List<string>();
         public List<string> workers_plan = new List<string>();
@@ -43,9 +46,12 @@ namespace WarehouseRobot.Scenario
         /// <summary>Editor session key: development only (TrialPlayV4 -experimentSide right|left): the A2 / B2 turn side instead of
         /// experiments_ab_unity.json a2_sides; "" = a2_sides. A final takes its side from its final config.</summary>
         public const string ExperimentSideKey = "WarehouseRobot.TrialRunnerV4.ExperimentSide";
+        /// <summary>Editor session key: development only (TrialPlayV4 -experimentGoals E5,E6,...): one goal per run instead of the seeded
+        /// goals, random-endpoint maps only, refused in a final (experiments_ab.md section 15 addendum 1, item 3c); "" = the seeded goals.</summary>
+        public const string ExperimentGoalsKey = "WarehouseRobot.TrialRunnerV4.ExperimentGoals";
 #endif
         const string ExperimentsAsset = "Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json";
-        string experimentName = "", expText = "", scenariosText = "", looksAbText = "", looksOverride = "";
+        string experimentName = "", expText = "", scenariosText = "", looksAbText = "", looksOverride = "", goalsOverride = "";
         ExperimentsUnityConfig ecfg;
         ExperimentPlanAB eplan;
         ExperimentLooksFile elooks;
@@ -127,6 +133,17 @@ namespace WarehouseRobot.Scenario
             eSeed = Final ? fplan.FinalSeed : cfg.dev_seed;
             eGoals.Clear();
             eGoals.AddRange(eplan.Goals(eSeed, TrialTotal));
+#if UNITY_EDITOR
+            goalsOverride = UnityEditor.SessionState.GetString(ExperimentGoalsKey, "");
+#endif
+            var given = eplan.GoalsOverride(goalsOverride, Final, TrialTotal, out error);
+            if (error != null) return Fail(out error, $"experiment {experimentName}: {error}");
+            if (given != null)
+            {
+                Debug.LogWarning($"[TrialRunnerV4] development goal override (-experimentGoals): {string.Join(", ", given)} instead of the seeded {string.Join(", ", eGoals)}");
+                eGoals.Clear();
+                eGoals.AddRange(given);
+            }
             return true;
         }
 
@@ -332,6 +349,7 @@ namespace WarehouseRobot.Scenario
                               "(NONE; experiments_ab.md section 15 addendum 1, item 3a)",
                 activation_rule = $"active within {ecfg.activation_radius_m.ToString("0.0", Inv)} m of the robot or while gesturing; max {ecfg.max_active_avatars}",
                 navigation_looks_override = looksOverride,
+                goals_override = goalsOverride ?? "",
             };
             foreach (var r in eRuns)
             {
