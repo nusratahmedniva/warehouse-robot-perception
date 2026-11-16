@@ -1847,3 +1847,31 @@ nothing is pushed. Development work, not a result.
   - `make_step5_zip.py`;
   - `README.md`: a table naming each setting (experiment, map, A2 side, lie detection on/off, goals, folders) and every file's size and
     SHA-256.
+
+*Item 2, answers for Anisha's recovery (2026-11-17).* Tools: `Robot/PlayCheck/ReverseDriveCheck.cs`, `Robot/Editor/RecoveryChecksMenu.cs`
+(Tools > Warehouse v4 > Recovery). Report only; no behaviour changed.
+- **(a) Reversing: yes.** `robot_vision/outputs/reverse_drive_check_20261117_022117/` (`report.md`, `samples.csv`; batch-mode Play, 0 errors).
+  - `DiffDriveController` takes a negative v: v = -0.20 m/s was reached in 0.40 s (the 0.5 m/s^2 ramp).
+  - v = 0 was commanded at 1.002 m; the robot stood at 1.040 m. The overshoot of 0.038 m is the braking distance at 0.5 m/s^2.
+  - Lateral drift 0.0000 m, heading change 0.000 deg, no collision.
+  - The worker (`sunbox_m_shirt_white`, a development look) stood 1.20 m ahead; 2.24 m after the move.
+  - Telemetry's `v` is the signed `drive.V`, so Python sees -0.20.
+  - The check's PASS rule (within 0.1 m, drift under 0.02 m, heading under 0.5 deg, no collision) was set in the check's code before it
+    ran, not in this addendum.
+- **(b) Side waypoints: yes on every road, but the NavMesh cannot tell.** Final run: `robot_vision/outputs/navmesh_side_waypoints_20261117_021955/`.
+  - Earlier runs `_021708` and `_021805` were the same tool without, then with a first negative control; kept, superseded.
+  - All 1220 points (every road of `corridor`, `turn`, `turn_left`, `roadmap`, every 0.5 m, both sides) passed: a waypoint 1.0 m to the side
+    on the AMR NavMesh, with a complete straight path of 1.00 m.
+  - **Negative control failed: the baked AMR NavMesh does not contain the racks.** From the aisle at (6.25, -5) the NavMesh gives a complete,
+    straight 6.25 m path to the rack centre (0, -5), and the same at two other rack centres. The ground-truth grid marks those cells
+    blocked. Only the point beyond the south wall is off the NavMesh.
+    - So a NavMesh path or snap test cannot vouch for a recovery waypoint.
+    - The bridge's NavMesh targets are not checked against racks either: worth knowing for Anisha's recovery and for any target off the
+      roads.
+    - Not investigated further: why the racks are missing from the bake.
+  - **Independent check against the ground-truth grid** (`grid_check.md` in the same folder; the v4 grid of
+    `trials_development_Task2_A3_20261116_222448/run_001/grid.json`, colliders widened by 0.40 m). The road point, the waypoint and the
+    straight 1.0 m move to it are free for **1220 of 1220** samples, on both sides of every road.
+  - The aisles are about 10 m wide, so 1.0 m to either side is clear of static obstacles everywhere. **"The clear side" is decided by the
+    workers only.** `report.md` lists, per road, which side and how far along each beside worker stands (live slots). In the live layout
+    the junction workers stand 2.0 m beside the arrival road, slot 1 on the left 3.0 m before the node, slot 2 on the right 5.5 m before it.
