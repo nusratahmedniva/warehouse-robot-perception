@@ -58,7 +58,7 @@ import gesture_motion as gm
 import hri_control as hc
 
 DIRECTIONS = hc.DIRECTIONS
-LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3}
+LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3, "second_opinion_radius_m": None}
 V4_ROADMAP = "configs/v4/roadmap.json"
 START = "start"                          # roadmap kind of the start node in the v4 map (it asks, P8)
 
@@ -381,6 +381,7 @@ class ControllerV4(hc.Controller):
         self.commander_since: float | None = None
         self.votes: list[dict] = []                           # valid answers of this visit: {person_360, branch, serial}
         self.asked_360: set[int] = set()                      # 360 track ids already asked at this visit
+        self.skipped_360: set[int] = set()                    # 360 track ids not asked because they belong to another junction (logged once)
         self.dialogs_started = 0                              # dialogs (people asked) at this visit
         self.tie_used = False                                 # the tie rule's re-ask of the first person was used
         self.rejections: list[str] = []                       # reasons of the answers rejected at this visit
@@ -521,10 +522,34 @@ class ControllerV4(hc.Controller):
     def _voter(self) -> int | None:
         return self.commander_360 if self.commander_360 is not None else self.approached_360
 
+    def _belongs_here(self, q: dict) -> tuple[bool, float, str]:
+        """AUDIT.md 16.19 item 2: may this person give a second opinion at this node? Only a person within lie_detection.second_opinion_radius_m of the
+        node whose NEAREST node of the roadmap is this one (the robot never drives toward another junction to ask). Returns (yes, distance to this node,
+        nearest node). A radius that is absent or null = everybody (the earlier behaviour)."""
+        r = self.ld.get("second_opinion_radius_m")
+        x0, z0 = self.road.pos(self.node)
+        d = math.hypot(q["x"] - x0, q["z"] - z0)
+        if r is None:
+            return True, d, self.node
+        nearest = min(self.road.nodes, key=lambda n: math.hypot(q["x"] - self.road.pos(n)[0], q["z"] - self.road.pos(n)[1]))
+        near_d = math.hypot(q["x"] - self.road.pos(nearest)[0], q["z"] - self.road.pos(nearest)[1])
+        return bool(d <= r + 1e-9 and d <= near_d + 1e-9), d, nearest
+
     def _unasked(self, inp: TickInputV4) -> list:
-        """Fresh 360 people with a track id not asked yet at this visit, nearest first (without track ids nobody can be told
-        apart: no second opinion)."""
-        out = [q for q in self._fresh_people(inp) if q.get("track_id", -1) >= 0 and q["track_id"] not in self.asked_360]
+        """Fresh 360 people with a track id not asked yet at this visit and belonging to this junction (_belongs_here), nearest first (without track
+        ids nobody can be told apart: no second opinion). A person of another junction is skipped and logged once per visit (second_opinion_skipped)."""
+        out = []
+        for q in self._fresh_people(inp):
+            tid = q.get("track_id", -1)
+            if tid < 0 or tid in self.asked_360:
+                continue
+            ok, d, nearest = self._belongs_here(q)
+            if ok:
+                out.append(q)
+            elif tid not in self.skipped_360:
+                self.skipped_360.add(tid)
+                self._log(inp.time_s, "second_opinion_skipped", "belongs to another junction or is too far: not asked", person_360=tid,
+                          distance_to_node_m=round(d, 2), nearest_node=nearest, radius_m=self.ld.get("second_opinion_radius_m"))
         return sorted(out, key=lambda q: q["distance_m"])
 
     def _tally(self, inp: TickInputV4, exhausted: bool) -> tuple:
