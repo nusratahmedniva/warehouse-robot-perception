@@ -1937,3 +1937,19 @@ nothing is pushed. Development work, not a result.
   - then Nusrat sets `clearance_layout.active` true (and the live `junction_slots` / `three_worker_nodes` to the pending values) in one
     change;
   - also for Anisha (items 2b and 3a): keep the second-opinion search near its node.
+
+*Item 3d, made (2026-11-17).*
+- `GestureGeometryDriver` measures the PROCEED palm and writes `proceed_palm_table.md`. The other checks and the pass are unchanged.
+- **Run:** `robot_vision/outputs/gesture_geometry_proceed_palm_20261117_034140/` (batch mode, all 15 looks, no perception).
+  - `run_info.json` names HEAD 89d7cd1: the run used the uncommitted 3b and 3d edits; 3b does not touch the geometry check.
+  - Arms 15/15, skinning 15/15, hand 13/15 (anime_f_01 and anime_f_03: the known sleeve artefact of section 12), as before.
+- **PROCEED palm (bones):**
+  - It faces the camera within 60 deg only on Boxo with `proceed_ik_01` (20 of 695 frames, minimum 56.7 deg). On every other look it
+    stays at least 61.8 deg from the camera.
+  - Mean angle to the camera: 110 to 133 deg by clip. The camera mostly sees the back or the edge of the hand, as MediaPipe did in the
+    diagnosis.
+  - Mean angle to the torso centre: 77 to 88 deg, i.e. palm up or toward the chest, as designed.
+  - Frames with the palm nearer the camera direction than the body direction: 9 to 12 % per look (Boxo 28 %). By clip: `proceed_ik_01`
+    30 %, `proceed_ik_02` 4 %, `proceed_ik_03` 2 %. The low part of `proceed_ik_01` again (as the diagnosis said).
+- Read with the diagnosis: the pose does not show the palm to the camera. The false STOPs come from the reader's open-hand cues on the
+  back of a hand with closed fingers, not from a palm turned toward the robot.
