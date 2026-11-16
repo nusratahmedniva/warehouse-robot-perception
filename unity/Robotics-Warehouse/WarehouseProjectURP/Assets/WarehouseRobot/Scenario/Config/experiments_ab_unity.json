@@ -25,6 +25,8 @@
   "random_note": "PENDING ANISHA AND NUSRAT (experiments_ab.md section 3, conflict found by the first test): with Anisha's 6 m x 6 m square (scenarios_ab.json half_size_m 3.0) and the 1.0 m bystander margin, 3 workers at J1 can practically never be placed (0 of 200 000 draws) and 2 need about 11 800; the random layout uses a 0.25 m margin (every other worker still strictly farther than the first along the approach; about 114 draws for 2 workers, 2 900 for 3), up to 100 000 seeded draws. Alternatives: 1.0 m with a 10 m square, or no third worker at J1 in A4 and B4.",
   "ask_max_distance_m": 3.5,
   "ask_note": "The worker who answers a new ask: the active worker within 3.5 m of the pan-tilt camera (approach 2.0 m + margin; workers stand at least 3.0 m apart) with the smallest horizontal angle between the camera's forward axis and the direction to the worker (Python pans the camera to the person it asks).",
+  "answer_zone_radius_m": 6.0,
+  "answer_zone_note": "2026-11-17, experiments_ab.md section 15 addendum 1, item 3a (declared before the change): the worker chosen by the rule above answers only while the robot's centre is within 6.0 m of the worker's own node; outside it the worker is the commander but shows nothing (truth NONE). 6.0 m: zones of two asking nodes never overlap (2 x 6.0 < 12.5 m, the shortest node spacing of any map) and the modelled ask positions of a node's own workers (first ask and second opinions) lie within 5.5 m (live slots: up to 5.40 m at J1). It does not cover a robot that Python drives into another node's zone (A3 run 1 at 159 s, 4.7 m from J2): that needs Python's second-opinion search to stay near its node.",
   "activation_radius_m": 8.0,
   "activation_sample_step_m": 0.5,
   "max_active_avatars": 6,

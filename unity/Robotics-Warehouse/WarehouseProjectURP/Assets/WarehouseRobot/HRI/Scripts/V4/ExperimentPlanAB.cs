@@ -60,6 +60,8 @@ namespace WarehouseHRI.V4
         public MapProposal[] proposals = new MapProposal[0];
         public float[] truthful_rgb = new float[0];
         public float[] liar_rgb = new float[0];
+        /// <summary>Section 15 addendum 1, item 3a: a worker answers only while the robot's centre is this close to the worker's own node.</summary>
+        public float answer_zone_radius_m;
 
         public static ExperimentsUnityConfig Parse(string json) =>
             JsonUtility.FromJson<ExperimentsUnityConfig>(json ?? "") ?? throw new FormatException("experiments_ab_unity.json: not a JSON object");
@@ -82,6 +84,7 @@ namespace WarehouseHRI.V4
             if (a2_sides == null || a2_sides.Length == 0) e.Add("a2_sides: right and/or left");
             else foreach (var s in a2_sides) if (s != "right" && s != "left") e.Add("a2_sides: right and/or left");
             if (truthful_rgb == null || truthful_rgb.Length != 3 || liar_rgb == null || liar_rgb.Length != 3) e.Add("truthful_rgb and liar_rgb: three numbers each");
+            if (!(answer_zone_radius_m > 0f)) e.Add("answer_zone_radius_m must be > 0");
             return e;
         }
     }
@@ -502,6 +505,19 @@ namespace WarehouseHRI.V4
                 if (a < bestAngle) { bestAngle = a; best = h.Key; }
             }
             return best;
+        }
+
+        /// <summary>Section 15 addendum 1, item 3a: a worker answers only while the robot's centre is within <paramref name="radius"/> of the
+        /// worker's own node (horizontal); outside it the asked worker shows nothing (NONE).</summary>
+        public static bool InAnswerZone(Vector3 robot, Vector3 node, float radius) => Flat(robot - node) <= radius;
+
+        /// <summary>Where Python stands to ask a worker (hri_control dialog.approach_distance_m): <paramref name="standoff"/> from the
+        /// worker toward <paramref name="from"/> (the node, or the previous ask position), horizontal.</summary>
+        public static Vector3 AskPosition(Vector3 worker, Vector3 from, float standoff)
+        {
+            var d = new Vector3(from.x - worker.x, 0f, from.z - worker.z);
+            if (d.sqrMagnitude < 1e-12f) d = Vector3.right;
+            return new Vector3(worker.x, 0f, worker.z) + d.normalized * standoff;
         }
 
         public static float Flat(Vector3 v) => new Vector2(v.x, v.z).magnitude;

@@ -58,6 +58,8 @@ namespace WarehouseRobot.Scenario
         RunPlanAB eRun;
         RoadmapV4 eMap;
         WorkerV4 eAsked;
+        /// <summary>The current ask came while the robot was outside the asked worker's zone: it shows nothing (item 3a).</summary>
+        bool eSilent;
         Transform eGoalMarker;
         string eSplit = "", eLimit = "", eSide = "";
         /// <summary>The session seed of the experiment: final_plan.json final_seed in a final, trials.json dev_seed otherwise.</summary>
@@ -184,6 +186,7 @@ namespace WarehouseRobot.Scenario
             eRun = eRuns[run - 1];
             eMap = eplan.RunMap(eSeed, run, out _);
             eAsked = null;
+            eSilent = false;
             eLimit = "";
             eWorkers.Clear();
             float y = start.workerStand != null ? start.workerStand.position.y : start.Position.y;
@@ -229,6 +232,7 @@ namespace WarehouseRobot.Scenario
             eRings.Clear();
             eWorkers.Clear();
             eAsked = null;
+            eSilent = false;
         }
 
         /// <summary>Every frame of an experiment trial: the activation window, then who answers a new ask and what it shows.</summary>
@@ -256,7 +260,7 @@ namespace WarehouseRobot.Scenario
             {
                 foreach (var w in eWorkers.Keys)
                     if (w != null && w.gameObject.activeSelf) { w.SetQuestionVisible(false); w.CancelPending(); }
-                if (eAsked != null && !eAsked.Busy) { eAsked.IsCommander = false; eAsked = null; }
+                if (eAsked != null && !eAsked.Busy) { eAsked.IsCommander = false; eAsked = null; eSilent = false; }
                 return;
             }
             if (eAsked != null) eAsked.SetQuestionVisible(true);
@@ -283,6 +287,17 @@ namespace WarehouseRobot.Scenario
             eAsked.IsCommander = true;
             eAsked.SetQuestionVisible(true);
             var pw = eWorkers[eAsked];
+            // section 15 addendum 1, item 3a: outside its own node's zone the asked worker shows nothing (NONE in truth.jsonl)
+            var own = ExperimentPlanAB.Pos(eMap.Node(pw.Node));
+            eSilent = !ExperimentPlanAB.InAnswerZone(robot.transform.position, own, ecfg.answer_zone_radius_m);
+            if (eSilent)
+            {
+                float d = ExperimentPlanAB.Flat(robot.transform.position - own);
+                eAskRecords.Add(new ShownRecord { junction = pw.Node, shown = $"NONE (outside the {pw.Node} zone)", t_placed = Time.time });
+                Debug.Log($"[TrialRunnerV4] ask {question.Ask} (\"{bridge.ScreenText}\"): worker {pw.Id} {pw.Look} of {pw.Node} is asked {d.ToString("0.00", Inv)} m " +
+                          $"from {pw.Node} (zone {ecfg.answer_zone_radius_m.ToString("0.0", Inv)} m): it answers NONE");
+                return;
+            }
             string gesture = pw.ShownCommand == ExperimentPlanAB.Forward && !string.IsNullOrEmpty(wcfg.forward_command) ? wcfg.forward_command : wcfg.commander_command;
             var dir = ExperimentPlanAB.Direction(eMap, pw.Node, pw.ShownCommand);
             var req = new GestureRequest { Command = gesture, AllowedClips = eClips[gesture], PointDirection = dir, Lie = pw.Liar };
@@ -302,7 +317,7 @@ namespace WarehouseRobot.Scenario
         string ExperimentAskNode() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? pw.Node : "";
         string ExperimentTrueCommand() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? pw.TrueCommand : "NONE";
         int ExperimentLie() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? (pw.Liar ? 1 : 0) : -1;
-        string ExperimentShown() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? pw.ShownCommand : "-";
+        string ExperimentShown() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? (eSilent ? "NONE" : pw.ShownCommand) : "-";
 
         SessionV4 NewSessionRecord()
         {
@@ -312,7 +327,9 @@ namespace WarehouseRobot.Scenario
                 experiment = experimentName, set = eplan.Def.set, lie_probability = eplan.LieProbability, map = eplan.MapName, layout = eplan.LayoutKind,
                 lie_rule = "per worker per run (seeded by session seed, run, worker id), consistent when asked again; a wrong valid branch, else (no other branch) " +
                            "another of LEFT/FORWARD/RIGHT/BACK (AUDIT.md 16.2 decision 2); experiments_ab.md section 4",
-                answer_rule = $"the active worker within {ecfg.ask_max_distance_m.ToString("0.0", Inv)} m nearest the pan-tilt camera axis answers a new ask",
+                answer_rule = $"the active worker within {ecfg.ask_max_distance_m.ToString("0.0", Inv)} m nearest the pan-tilt camera axis answers a new ask; " +
+                              $"only while the robot is within {ecfg.answer_zone_radius_m.ToString("0.0", Inv)} m of that worker's own node, else it shows nothing " +
+                              "(NONE; experiments_ab.md section 15 addendum 1, item 3a)",
                 activation_rule = $"active within {ecfg.activation_radius_m.ToString("0.0", Inv)} m of the robot or while gesturing; max {ecfg.max_active_avatars}",
                 navigation_looks_override = looksOverride,
             };
