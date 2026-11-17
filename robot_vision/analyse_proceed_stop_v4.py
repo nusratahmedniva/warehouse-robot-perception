@@ -90,8 +90,8 @@ def variant_wrap(v: dict, rc: dict, ctx: dict):
                     out["stop_ok"] = False
         return out
 
-    def window(samples, side, cfg, t_now):
-        info = orig_window(samples, side, cfg, t_now)
+    def window(samples, side, cfg, t_now, **kw):
+        info = orig_window(samples, side, cfg, t_now, **kw)
         mode = v.get("static_when_stopped")
         if mode and ctx.get("stopped"):
             if mode == "speed":            # C2s (AUDIT.md 16.19.5): the mean wrist speed over the short stop window, while the robot is stopped
@@ -196,9 +196,12 @@ def run_variant(ds: Dataset, variant: dict, rc: dict, cc: dict, cfg: dict) -> li
                     if cat is None:
                         continue
                     row = truth_row(d["truth"], w, f["time_s"]) if w is not None else None
-                    recs.append((sname, run, f["time_s"], cat, w, p.reading.command, is_stopped(idx, run, f["time_s"], cfg["stopped_speed_mps"]),
+                    stopped_now = is_stopped(idx, run, f["time_s"], cfg["stopped_speed_mps"])
+                    # the real C2s reader switch (AUDIT.md 16.19.7): while the robot is stopped the controller uses the reading with the short-window stillness rule
+                    r_used = p.reading_stopped if (variant.get("reader_switch") and stopped_now and p.reading_stopped is not None) else p.reading
+                    recs.append((sname, run, f["time_s"], cat, w, r_used.command, stopped_now,
                                  row["look"] if row else None, row.get("arm") if row else None, row.get("clip") if row else None, len(prs),
-                                 p.reading.valid_frames))
+                                 r_used.valid_frames))
     return recs
 
 
@@ -460,9 +463,16 @@ def variants_round2(cfg: dict) -> list[dict]:
     ]
 
 
-def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None, round2: bool = False) -> dict:
+def variants_switch(cfg: dict) -> list[dict]:
+    """AUDIT.md 16.19.7: the current reader and the REAL C2s reader switch (hand.stop_still_when_robot_stopped on; the controller's choice of reading_stopped while stopped)."""
+    return [{"name": "current reader", "key": "current", "v": {}},
+            {"name": "C2s: the real reader switch", "key": "switch", "v": {"reader_switch": True}, "reader": "switch"}]
+
+
+def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None, round2=False) -> dict:
     cc = cm.load_config()
     rc_now, rc_prev = gm.load_config(), fs.live_reader_config()
+    rc_now["hand"] = {**rc_now["hand"], "stop_still_when_robot_stopped": False}      # 'current' = the reader's own reading; the C2s switch is the variant 'switch' below
     sets = {"S5": Dataset("S5", step5, cfg["sessions"]["S5"], cfg), "STOP": Dataset("STOP", stop, cfg["sessions"]["STOP"], cfg),
             "D4*": Dataset("D4*", d4, cfg["sessions"]["D4*"], cfg)}
     rep: dict = {"zips": {k: {"name": Path(p).name, "sha256": sets[k].logs.sha256()} for k, p in (("S5", step5), ("STOP", stop), ("D4*", d4))},
@@ -477,8 +487,9 @@ def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None, round2: bo
     segs = {k: proceed_segments(d) for k, d in sets.items()}
     res: dict = {}
     base_recs: dict = {}
-    for var in (variants_round2(cfg) if round2 else variants(cfg, palm)):
-        rc = rc_prev if var.get("reader") == "previous" else rc_now
+    rc_switch = {**rc_now, "hand": {**rc_now["hand"], "stop_still_when_robot_stopped": True}}
+    for var in (variants_switch(cfg) if round2 == "switch" else variants_round2(cfg) if round2 else variants(cfg, palm)):
+        rc = rc_prev if var.get("reader") == "previous" else rc_switch if var.get("reader") == "switch" else rc_now
         res[var["key"]] = {"name": var["name"]}
         for k, d in sets.items():
             recs = run_variant(d, var["v"], rc, cc, cfg)
@@ -487,7 +498,7 @@ def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None, round2: bo
             sc = score_variant(d, recs, segs[k], cfg)
             base_a = res.get("current", {}).get("STOP", {}).get("a")
             sc["a"] = criterion_a(d, recs, base_a if k == "STOP" else None, cfg) if k == "STOP" else {"stops": 0, "note": "no true STOP in this dataset: criterion (a) not evaluable"}
-            if var["key"] in ("c2", "c2s", "c1c2", "all", "c2_b1", "c2s_b1") and k in base_recs:
+            if var["key"] in ("c2", "c2s", "c1c2", "all", "c2_b1", "c2s_b1", "switch") and k in base_recs:
                 sc["moving_identical_to_current"] = moving_identical(recs, base_recs[k])
             if var["key"] == "current" and k == "S5" and not round2:
                 sc["aborted_asks"] = aborted_asks(d, recs, cfg)
@@ -539,7 +550,7 @@ def markdown2(rep: dict, cfg: dict) -> str:
     a = V["current"]["STOP"]["a"]
     L += ["", f"STOPs in the STOP sessions: {a['stops']} ({a['by_robot_state']['moving']['stops']} given while the robot moved, {a['by_robot_state']['stopped']['stops']} while it stood still).", "",
           "## C2 and C2s: the readings while the robot moves equal the current reader's", ""]
-    for key in ("c2", "c2s", "c2_b1", "c2s_b1"):
+    for key in [x for x in V if x != "current"]:
         for k in ("S5", "STOP", "D4*"):
             x = V[key][k].get("moving_identical_to_current")
             if x:
@@ -606,12 +617,13 @@ def main(argv=None) -> None:
     ap.add_argument("--d4", required=True)
     ap.add_argument("--config", default=DEFAULT_CONFIG)
     ap.add_argument("--round2", action="store_true", help="the second table of AUDIT.md 16.19.5: C2 and C2s, with and without B1 floor 10 (no palm cue)")
+    ap.add_argument("--switch", action="store_true", help="AUDIT.md 16.19.7: the current reader against the REAL C2s reader switch")
     a = ap.parse_args(argv)
     cfg_path = dio.resolve(a.config)
     cfg = load_config(cfg_path)
-    rep = analyse(*(str(Path(x).expanduser()) for x in (a.step5, a.stop, a.d4)), cfg, progress=lambda n: print("  done:", n, flush=True), round2=a.round2)
-    md = markdown2 if a.round2 else markdown
-    out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "proceed_stop_v4_round2" if a.round2 else "proceed_stop_v4")
+    rep = analyse(*(str(Path(x).expanduser()) for x in (a.step5, a.stop, a.d4)), cfg, progress=lambda n: print("  done:", n, flush=True), round2="switch" if a.switch else a.round2)
+    md = markdown2 if (a.round2 or a.switch) else markdown
+    out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "proceed_stop_v4_switch" if a.switch else "proceed_stop_v4_round2" if a.round2 else "proceed_stop_v4")
     (out / "config_used").mkdir()
     for p in (cfg_path, dio.resolve(gm.DEFAULT_CONFIG), dio.resolve(cm.DEFAULT_CONFIG)):
         (out / "config_used" / p.name).write_bytes(p.read_bytes())

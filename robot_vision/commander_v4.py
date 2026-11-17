@@ -80,6 +80,7 @@ class PersonReading:
     reading: gm.Reading
     box: tuple | None = None
     distance_m: float | None = None
+    reading_stopped: gm.Reading | None = None   # AUDIT.md 16.19.7: the reading to use while the robot stands still (None = the reader's switch is off)
 
     def raised_path(self) -> float:
         """Wrist path (torso lengths) of the raised arm with the most motion."""

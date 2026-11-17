@@ -30,6 +30,12 @@
     "reapproach_commander": true,
     "return_to_junction": true
   },
+  "stop_rule": {
+    "still_when_robot_stopped": true,
+    "robot_stopped_speed_mps": 0.05,
+    "states": ["read", "approach"],
+    "why": "DECIDED 2026-11-17 (AUDIT.md 16.19.7; chosen after the replay of 16.19.6, disclosed there). While the robot is stopped (|v| below robot_stopped_speed_mps, the value Nusrat's README uses for driving, in these controller states; the wait mode is the read state) the controller uses each person's reading_stopped (the reader's STOP rule with the 0.3 s stillness window, gesture_reader.json hand.stop_still_when_robot_stopped); while the robot moves it uses the reader's own reading, exactly as before. Absent or false = always the reader's own reading."
+  },
   "recovery": {
     "enabled": true,
     "blocked_s": 15.0,

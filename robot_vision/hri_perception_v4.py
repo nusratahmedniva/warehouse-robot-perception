@@ -103,9 +103,12 @@ class PersonsPipeline:
                           float(meta.get("tilt_deg", 0.0)))
             buf = self.buffers.setdefault(tid, gm.PersonBuffer(self.keep_s))
             buf.add(s)
-            reading = gm.read_window(buf.window(meta["t"], self.span_s), self.rc, meta["t"])
+            window = buf.window(meta["t"], self.span_s)
+            reading = gm.read_window(window, self.rc, meta["t"])
+            reading_stopped = (gm.read_window(window, self.rc, meta["t"], robot_stopped=True)
+                               if self.rc["hand"].get("stop_still_when_robot_stopped") else None)       # 16.19.7: for the controller while the robot stands still
             facing, why = cm.facing_check(s, self.cc, thr)
-            out.append(cm.PersonReading(tid, cm.body_bearing_deg(s, thr), facing, why, reading, tuple(d["box"])))
+            out.append(cm.PersonReading(tid, cm.body_bearing_deg(s, thr), facing, why, reading, tuple(d["box"]), reading_stopped=reading_stopped))
         for tid in [k for k, b in self.buffers.items() if b.last_t is not None and meta["t"] - b.last_t > self.keep_s]:
             del self.buffers[tid]
         return out

@@ -45,7 +45,8 @@ class ConfigTests(unittest.TestCase):
         h = json.loads((ROOT / "configs/v4/gesture_reader.json").read_text(encoding="utf-8"))["hand"]
         self.assertIs(h["stop_requires_raised"], True)
         self.assertEqual(h["stop_fingertip_spread_min"], 1.3)                       # fixed in AUDIT.md 16.18 before the data was read, never varied
-        self.assertFalse([k for k in h if "static" in k or "still" in k or "palm_facing" in k])   # no static cue, no palm direction (16.18.2)
+        # no static cue and no palm direction in the STOP rule (16.18.2); the only "still" key is the C2s switch of 16.19.7, which acts while the robot stands still
+        self.assertEqual([k for k in h if "static" in k or "still" in k or "palm_facing" in k], ["stop_still_when_robot_stopped"])
         self.assertIs(h["stop_requires_push"], False)                                  # unchanged
         for k in ("stop_requires_raised", "stop_fingertip_spread_min"):
             self.assertIn("DECIDED 2026-11-16", h["why"][k])
@@ -54,8 +55,9 @@ class ConfigTests(unittest.TestCase):
 
     def test_the_analysis_baseline_is_the_reader_as_it_was(self):
         self.assertEqual((OLD["hand"]["stop_requires_raised"], OLD["hand"]["stop_fingertip_spread_min"]), (False, None))
-        self.assertEqual({k: v for k, v in OLD["hand"].items() if k not in ("stop_requires_raised", "stop_fingertip_spread_min")},
-                         {k: v for k, v in NEW["hand"].items() if k not in ("stop_requires_raised", "stop_fingertip_spread_min")})
+        keys = ("stop_requires_raised", "stop_fingertip_spread_min", "stop_still_when_robot_stopped")
+        self.assertEqual({k: v for k, v in OLD["hand"].items() if k not in keys}, {k: v for k, v in NEW["hand"].items() if k not in keys})
+        self.assertIs(OLD["hand"]["stop_still_when_robot_stopped"], False)
         self.assertTrue(NEW["hand"]["stop_requires_raised"])                           # live_reader_config returns a copy: the loaded config is not changed
 
 

@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import commander_v4 as cm
 import gesture_motion as gm
@@ -937,6 +937,11 @@ class ControllerV4(hc.Controller):
 
     # -- the tick --
     def step(self, inp: TickInputV4) -> CommandV4:
+        sr = self.v4.get("stop_rule", {})
+        if sr.get("still_when_robot_stopped") and self.state in sr.get("states", ()) and abs(inp.v) < sr["robot_stopped_speed_mps"]:
+            # C2s (AUDIT.md 16.19.7): the robot stands still, so every person's reading is the one with the short-window stillness rule for STOP; while it
+            # moves the readings are the reader's own, exactly as before
+            inp.persons = [replace(p, reading=p.reading_stopped) if p.reading_stopped is not None else p for p in inp.persons]
         # STOP of anybody in view stops the robot (the v3 rule reads TickInput.gesture)
         self._track_onsets(inp)
         persons = self._fresh_persons(inp)

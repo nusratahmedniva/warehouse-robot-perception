@@ -62,7 +62,7 @@ def live_reader_config(path: str | Path | None = None) -> dict:
     switched OFF: the reader as it ran live when the logs of 2026-11-12 to 2026-11-15 were recorded. The analyses here replay those logs, so their
     baseline is that reader whatever gesture_reader.json now says; the candidate cues are then applied on top, in the script only."""
     rc = gm.load_config() if path is None else gm.load_config(path)
-    rc["hand"] = {**rc["hand"], "stop_requires_raised": False, "stop_fingertip_spread_min": None}
+    rc["hand"] = {**rc["hand"], "stop_requires_raised": False, "stop_fingertip_spread_min": None, "stop_still_when_robot_stopped": False}
     return rc
 
 
@@ -89,21 +89,9 @@ def fingertip_spread(lm) -> float:
 
 
 def wrist_speed(samples, side: str, cfg: dict, t_now: float, window_s: float) -> float | None:
-    """Mean speed of the wrist landmark over the last window_s (torso lengths per second); None when fewer than two samples with the
-    hand linked or no torso."""
-    pts = []
-    for s in samples:
-        h = s.hands.get(side)
-        if h is None or s.t < t_now - window_s - 1e-9:
-            continue
-        tf = gm.torso_frame(s.kp, s.conf, cfg["keypoints"]["body_kp_conf_min"])
-        if tf is None:
-            return None
-        pts.append((s.t, np.asarray(h.landmarks_px, float)[gm.WRIST_LM], tf[0]))
-    if len(pts) < 2 or pts[-1][0] - pts[0][0] < 1e-6:
-        return None
-    path = sum(float(np.linalg.norm(b[1] - a[1])) / (0.5 * (a[2] + b[2])) for a, b in zip(pts, pts[1:]))
-    return path / (pts[-1][0] - pts[0][0])
+    """Mean speed of the wrist landmark over the last window_s (torso lengths per second); None when fewer than two samples with the hand linked or no torso.
+    Since 2026-11-17 (AUDIT.md 16.19.7) the one implementation lives in gesture_motion, where the C2s reader switch uses it."""
+    return gm.wrist_speed(samples, side, cfg, t_now, window_s)
 
 
 @contextlib.contextmanager
@@ -126,8 +114,8 @@ def candidate(variant: dict, rc: dict):
                 out["stop_ok"] = False
         return out
 
-    def window(samples, side, cfg, t_now):
-        info = orig_window(samples, side, cfg, t_now)
+    def window(samples, side, cfg, t_now, **kw):
+        info = orig_window(samples, side, cfg, t_now, **kw)
         mode = variant.get("static")
         if mode == "arm_moving" and info["moving"]:
             info["stop_share"] = 0.0
