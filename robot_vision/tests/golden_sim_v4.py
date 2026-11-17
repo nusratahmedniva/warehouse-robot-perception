@@ -27,6 +27,10 @@ NEARER = dict(bystander_offsets_m=[(1.2, 0.3), (-1.95, -0.7)], bystander_looks=[
 
 def run(goal, road="configs/roadmap.json", spec=None, gcfg=None, cfg=None, seed=1, tiebreak=False, two_view=True, shift=None):
     base, v4 = hv.load_control()
+    # The baseline is the behaviour of commit 808f028. AUDIT.md 16.19.2 (2026-11-17) added two v4 behaviours on by default in the control files: the return to the
+    # junction point before a branch (D) and the person-in-path recovery (E). They are switched off here so that the golden cases still pin the earlier behaviour.
+    v4["dialog"]["return_to_junction"] = False
+    v4.setdefault("recovery", {})["enabled"] = False
     v4["dialog"]["use_hand_crosscheck_as_tiebreak"] = tiebreak
     v4["dialog"]["two_view_enabled"] = two_view
     if shift is not None:

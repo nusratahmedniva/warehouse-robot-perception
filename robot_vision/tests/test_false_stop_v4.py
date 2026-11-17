@@ -210,7 +210,7 @@ class IsolationTests(unittest.TestCase):
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)
             # check_stop_rule_v4.py (AUDIT.md 16.18) is evaluation code and reuses the analysis; the rule is unchanged for every other file
-            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("analyse_false_stop_v4.py", "check_stop_rule_v4.py"):
+            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("analyse_false_stop_v4.py", "check_stop_rule_v4.py", "analyse_proceed_stop_v4.py"):
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

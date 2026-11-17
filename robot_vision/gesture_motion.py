@@ -563,8 +563,27 @@ def proceed_features(samples: list[Sample], side: str, cfg: dict, t_now: float) 
     return out
 
 
-def _arm_window(samples: list[Sample], side: str, cfg: dict, t_now: float) -> dict:
-    """Features of one arm over the window."""
+def wrist_speed(samples: list[Sample], side: str, cfg: dict, t_now: float, window_s: float) -> float | None:
+    """Mean speed of the wrist landmark of one hand over the last window_s, in torso lengths per second; None when fewer than two samples have the hand linked, or
+    a sample has no torso (AUDIT.md 16.19.7: the short-window stillness of a STOP while the robot is stopped)."""
+    pts = []
+    for s in samples:
+        h = s.hands.get(side)
+        if h is None or s.t < t_now - window_s - 1e-9:
+            continue
+        tf = torso_frame(s.kp, s.conf, cfg["keypoints"]["body_kp_conf_min"])
+        if tf is None:
+            return None
+        pts.append((s.t, np.asarray(h.landmarks_px, float)[WRIST_LM], tf[0]))
+    if len(pts) < 2 or pts[-1][0] - pts[0][0] < 1e-6:
+        return None
+    path = sum(float(np.linalg.norm(b[1] - a[1])) / (0.5 * (a[2] + b[2])) for a, b in zip(pts, pts[1:]))
+    return path / (pts[-1][0] - pts[0][0])
+
+
+def _arm_window(samples: list[Sample], side: str, cfg: dict, t_now: float, robot_stopped: bool = False) -> dict:
+    """Features of one arm over the window. robot_stopped (AUDIT.md 16.19.7, v4 only, switch hand.stop_still_when_robot_stopped): the robot stands still, so a STOP
+    also needs the hand to be still over the short stop window (wrist_speed over stop_window_s at most motion.still_speed_max); False = the rule as it was."""
     m, w = cfg["motion"], cfg["window"]
     rows = []
     for s in samples:
@@ -579,6 +598,10 @@ def _arm_window(samples: list[Sample], side: str, cfg: dict, t_now: float) -> di
                  for af in [arm_frame(s, side, cfg)] if s.hands.get(side) is not None]
     info["stop_n"] = len(stop_rows)
     info["stop_share"] = _share([f["stop_ok"] for _, f in stop_rows])
+    if robot_stopped and cfg["hand"].get("stop_still_when_robot_stopped"):
+        sp = wrist_speed(samples, side, cfg, t_now, w["stop_window_s"])
+        if sp is None or sp > m["still_speed_max"]:
+            info["stop_share"] = 0.0
     boxes = [s.hands[side].box for s in samples if s.hands.get(side) is not None]     # the whole window
     if cfg["hand"]["stop_requires_push"] and len(boxes) >= 2:
         h0, h1 = boxes[0][3] - boxes[0][1], boxes[-1][3] - boxes[-1][1]
@@ -603,9 +626,10 @@ def _arm_window(samples: list[Sample], side: str, cfg: dict, t_now: float) -> di
     return info
 
 
-def read_window(samples: list[Sample], cfg: dict, t_now: float | None = None) -> Reading:
+def read_window(samples: list[Sample], cfg: dict, t_now: float | None = None, robot_stopped: bool = False) -> Reading:
     """Classify one person's samples. The held classes and STOP use the last window_s; PROCEED uses the last
-    proceed.window_s (the caller passes at least that much: PersonBuffer.window with read_span_s(cfg))."""
+    proceed.window_s (the caller passes at least that much: PersonBuffer.window with read_span_s(cfg)).
+    robot_stopped: the reading the controller uses while the robot stands still (see _arm_window); the default is the reading as it was."""
     w, d = cfg["window"], cfg["decision"]
     t_now = t_now if t_now is not None else (samples[-1].t if samples else 0.0)
     long_samples = samples
@@ -616,7 +640,7 @@ def read_window(samples: list[Sample], cfg: dict, t_now: float | None = None) ->
     if last is None:
         r.command, r.why = "insufficient_history", "no samples"
         return r
-    arms = {side: _arm_window(samples, side, cfg, t_now) for side in ARMS}
+    arms = {side: _arm_window(samples, side, cfg, t_now, **({"robot_stopped": True} if robot_stopped else {})) for side in ARMS}
     valid_frames = sum(1 for s in samples if any(arm_frame(s, side, cfg).valid for side in ARMS))
     r.valid_frames, r.frame_wh = valid_frames, (last.width, last.height)
     r.fov_deg = math.degrees(2.0 * math.atan((last.height / 2.0) / last.fy))

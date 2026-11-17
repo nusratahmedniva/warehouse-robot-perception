@@ -107,7 +107,7 @@ class SwitchesOffUnchanged(unittest.TestCase):
         for d in ev:
             self.assertEqual({"t", "node", "event", "reason", "serial"} <= set(d), True)
             self.assertTrue(d["reason"])
-        self.assertEqual({d["event"] for d in ev} <= {"answer_accepted", "go", "second_view"}, True)
+        self.assertEqual({d["event"] for d in ev} <= {"answer_accepted", "go", "second_view", "returned_to_junction"}, True)   # D (16.19.2) logs its return
         json.dumps(r["v4"])                                              # serialisable
 
 

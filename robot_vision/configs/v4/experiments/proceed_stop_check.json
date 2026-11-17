@@ -1,0 +1,99 @@
+{
+  "label": "Settings of analyse_proceed_stop_v4.py (AUDIT.md 16.19.2): B1, C1, C2 replayed on the step-5 logs, the STOP sessions and the old-pose stand-in for D4. Analysis only: nothing here is a reader value.",
+  "declared": "2026-11-17, before any frame was replayed for these candidates (AUDIT.md 16.19.2). The values are those declared there; the palm limit is derived from the true STOPs by the rule there.",
+  "base": {
+    "match_bearing_deg": 10.0,
+    "truth_join_max_s": 0.06,
+    "shown_phases": [
+      "gesturing",
+      "holding"
+    ],
+    "episode_gap_s": 0.5,
+    "stop_gap_s": 0.5
+  },
+  "sessions": {
+    "S5": {
+      "A1": {
+        "bridge": "bridge_guide_20261116_212810",
+        "unity": "trials_development_Task2_A1_20261116_213201",
+        "what": "step-5 development session A1"
+      },
+      "B1": {
+        "bridge": "bridge_guide_20261116_214136",
+        "unity": "trials_development_Task2_B1_20261116_214305",
+        "what": "step-5 development session B1"
+      },
+      "B1_off": {
+        "bridge": "bridge_guide_20261116_214800",
+        "unity": "trials_development_Task2_B1_20261116_214945",
+        "what": "step-5 development session B1_off"
+      },
+      "A2_right": {
+        "bridge": "bridge_guide_20261116_215339",
+        "unity": "trials_development_Task2_A2_20261116_215503",
+        "what": "step-5 development session A2_right"
+      },
+      "B2_right": {
+        "bridge": "bridge_guide_20261116_220115",
+        "unity": "trials_development_Task2_B2_20261116_220247",
+        "what": "step-5 development session B2_right"
+      },
+      "B2_right_off": {
+        "bridge": "bridge_guide_20261116_221018",
+        "unity": "trials_development_Task2_B2_20261116_221205",
+        "what": "step-5 development session B2_right_off"
+      },
+      "A2_left": {
+        "bridge": "bridge_guide_20261116_221600",
+        "unity": "trials_development_Task2_A2_20261116_221743",
+        "what": "step-5 development session A2_left"
+      },
+      "A3": {
+        "bridge": "bridge_guide_20261116_222326",
+        "unity": "trials_development_Task2_A3_20261116_222448",
+        "what": "step-5 development session A3"
+      }
+    },
+    "STOP": {
+      "S1": {
+        "bridge": "bridge_guide_20261115_151856",
+        "unity": "trials_development_Task2_20261115_152104",
+        "what": "STOP session S1 (experiments_ab.md section 13 part B), 64 runs, seed 1, 2026-11-15"
+      },
+      "S2": {
+        "bridge": "bridge_guide_20261115_191520",
+        "unity": "trials_development_Task2_20261115_191700",
+        "what": "STOP session S2 (experiments_ab.md section 14), 14 runs, seed 3, 2026-11-15"
+      }
+    },
+    "D4*": {
+      "R1": {
+        "bridge": "bridge_guide_20261112_163011",
+        "unity": "trials_development_Task2_20261112_163710",
+        "what": "R1, the Stage C session (recording plan D1), 20 runs, 2026-11-12"
+      },
+      "V13": {
+        "bridge": "bridge_guide_20261113_193706",
+        "unity": "trials_development_Task2_20261113_194012",
+        "what": "the 13 Nov video session, 3 runs"
+      }
+    }
+  },
+  "stopped_speed_mps": 0.05,
+  "stopped_speed_mps_why": "Declared 2026-11-17: the value Nusrat's README uses for 'driving' (speed above 0.05 m/s); stopped = below it in the states read, approach or wait.",
+  "dialog_hold_s": 0.5,
+  "dialog_max_none_gap_s": 0.3,
+  "ask_window_s": 5.0,
+  "dialog_why": "The v4 dialog: gesture_hold_s 0.5 (control.json), max_none_gap_s 0.3 (hri_control.json), gesture_window_s 5.0.",
+  "b1": {
+    "frac": 0.6,
+    "floor": 10,
+    "floor_sensitivity": 8,
+    "why": "Declared 2026-11-17: valid arm frames >= max(floor, frac x the frames received for the person in the 2 s window). frac is the existing min_valid_fraction 0.6; floor 10 = 5 Hz; 8 is the declared sensitivity line."
+  },
+  "palm_limit_step_deg": 5,
+  "palm_limit_cap_deg": 90,
+  "palm_why": "Declared 2026-11-17: the limit is the smallest multiple of 5 degrees at or above the 99th percentile of the palm-to-camera angle over all frames of the true STOPs, at most 90.",
+  "within_s": 1.0,
+  "stop_gap_s": 0.5
+}

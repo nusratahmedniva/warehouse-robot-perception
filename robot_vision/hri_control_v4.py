@@ -51,14 +51,17 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import commander_v4 as cm
 import gesture_motion as gm
 import hri_control as hc
 
 DIRECTIONS = hc.DIRECTIONS
-LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3}
+LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3, "second_opinion_radius_m": None}
+# AUDIT.md 16.19.2 item E: person-in-path recovery (v4 only; the v3 stop itself is unchanged). Absent block or enabled false = the v3 behaviour.
+RECOVERY_DEFAULTS = {"enabled": False, "blocked_s": 15.0, "person_moved_max_m": 0.3, "back_m": 1.0, "back_speed_mps": 0.2,
+                     "side_m": 1.0, "beyond_m": 1.0, "max_attempts": 2}
 V4_ROADMAP = "configs/v4/roadmap.json"
 START = "start"                          # roadmap kind of the start node in the v4 map (it asks, P8)
 
@@ -329,6 +332,7 @@ class ControllerV4(hc.Controller):
         self.ld = {**LIE_DEFAULTS, **{k: v for k, v in v4_cfg.get("lie_detection", {}).items() if k in LIE_DEFAULTS}}
         if self.ld["backtrack"] and not self.ld["reject_impossible"]:
             raise ValueError("lie_detection.backtrack needs lie_detection.reject_impossible (the rejections are its evidence)")
+        self.rc = {**RECOVERY_DEFAULTS, **{k: v for k, v in v4_cfg.get("recovery", {}).items() if k in RECOVERY_DEFAULTS}}
         super().__init__(base_cfg, roadmap)
 
     # -- bookkeeping --
@@ -366,6 +370,13 @@ class ControllerV4(hc.Controller):
         self.reject: tuple | None = None                      # (reason, detail) of the newest frame's answer, if it is impossible
         self.rej_since: float | None = None
         self.rej_key: str | None = None
+        self._returned = True                                 # D: the robot is at the junction point (or needs not return to it)
+        self._blk: dict | None = None                         # E: the person-in-path stop being timed
+        self._rec: dict | None = None                         # E: the recovery in progress (stage "back")
+        self.detour: list[tuple[float, float]] = []           # E: the waypoints the path goes through before the target
+        self.rec_attempts: dict = {}                          # E: blocking person -> recoveries started
+        self.recoveries = 0
+        self._rec_noted: set = set()
         self._new_junction()
         if hasattr(self, "zoom"):
             self.zoom.reset()
@@ -381,6 +392,7 @@ class ControllerV4(hc.Controller):
         self.commander_since: float | None = None
         self.votes: list[dict] = []                           # valid answers of this visit: {person_360, branch, serial}
         self.asked_360: set[int] = set()                      # 360 track ids already asked at this visit
+        self.skipped_360: set[int] = set()                    # 360 track ids not asked because they belong to another junction (logged once)
         self.dialogs_started = 0                              # dialogs (people asked) at this visit
         self.tie_used = False                                 # the tie rule's re-ask of the first person was used
         self.rejections: list[str] = []                       # reasons of the answers rejected at this visit
@@ -395,7 +407,33 @@ class ControllerV4(hc.Controller):
         self._log(t, "abort", reason)
         super()._abort(reason, t)
 
+    def _set(self, state: str, t: float):
+        super()._set(state, t)
+        if state == "execute":
+            self._returned = False                            # D: not yet back at the junction point
+        if state not in ("navigate", "approach", "execute"):
+            self.detour = []                                  # E: a detour belongs to one drive
+
+    def _target(self):
+        if self.state == "execute" and self.next_node and self._return_pending():
+            return self.road.pos(self.node)                   # D: first the junction point
+        return super()._target()
+
+    def _return_pending(self) -> bool:
+        return bool(self.v4["dialog"].get("return_to_junction") and not self._returned and self.node in self.road.nodes)
+
+    def _path(self, inp, tx, tz):
+        base = super()._path(inp, tx, tz)
+        if not self.detour:
+            return base
+        while self.detour and math.hypot(self.detour[0][0] - inp.x, self.detour[0][1] - inp.z) < 0.3:
+            self.detour.pop(0)
+        if not self.detour:
+            return base
+        return [(inp.x, inp.z)] + list(self.detour) + [(tx, tz)]      # E: through the waypoints, ignoring the NavMesh corners
+
     def _arrive(self, node, t):
+        self.detour = []
         self.route.append(node)
         if self.backtrack_target == node:
             self._arrive_backtrack(node, t)
@@ -521,10 +559,34 @@ class ControllerV4(hc.Controller):
     def _voter(self) -> int | None:
         return self.commander_360 if self.commander_360 is not None else self.approached_360
 
+    def _belongs_here(self, q: dict) -> tuple[bool, float, str]:
+        """AUDIT.md 16.19 item 2: may this person give a second opinion at this node? Only a person within lie_detection.second_opinion_radius_m of the
+        node whose NEAREST node of the roadmap is this one (the robot never drives toward another junction to ask). Returns (yes, distance to this node,
+        nearest node). A radius that is absent or null = everybody (the earlier behaviour)."""
+        r = self.ld.get("second_opinion_radius_m")
+        x0, z0 = self.road.pos(self.node)
+        d = math.hypot(q["x"] - x0, q["z"] - z0)
+        if r is None:
+            return True, d, self.node
+        nearest = min(self.road.nodes, key=lambda n: math.hypot(q["x"] - self.road.pos(n)[0], q["z"] - self.road.pos(n)[1]))
+        near_d = math.hypot(q["x"] - self.road.pos(nearest)[0], q["z"] - self.road.pos(nearest)[1])
+        return bool(d <= r + 1e-9 and d <= near_d + 1e-9), d, nearest
+
     def _unasked(self, inp: TickInputV4) -> list:
-        """Fresh 360 people with a track id not asked yet at this visit, nearest first (without track ids nobody can be told
-        apart: no second opinion)."""
-        out = [q for q in self._fresh_people(inp) if q.get("track_id", -1) >= 0 and q["track_id"] not in self.asked_360]
+        """Fresh 360 people with a track id not asked yet at this visit and belonging to this junction (_belongs_here), nearest first (without track
+        ids nobody can be told apart: no second opinion). A person of another junction is skipped and logged once per visit (second_opinion_skipped)."""
+        out = []
+        for q in self._fresh_people(inp):
+            tid = q.get("track_id", -1)
+            if tid < 0 or tid in self.asked_360:
+                continue
+            ok, d, nearest = self._belongs_here(q)
+            if ok:
+                out.append(q)
+            elif tid not in self.skipped_360:
+                self.skipped_360.add(tid)
+                self._log(inp.time_s, "second_opinion_skipped", "belongs to another junction or is too far: not asked", person_360=tid,
+                          distance_to_node_m=round(d, 2), nearest_node=nearest, radius_m=self.ld.get("second_opinion_radius_m"))
         return sorted(out, key=lambda q: q["distance_m"])
 
     def _tally(self, inp: TickInputV4, exhausted: bool) -> tuple:
@@ -765,6 +827,16 @@ class ControllerV4(hc.Controller):
         if self.state == "read":
             self._read_tick(inp, cmd)
             return
+        if self.state == "execute" and self._return_pending():     # D (AUDIT.md 16.19.2): back to the junction point, then the branch
+            nx, nz = self.road.pos(self.node)
+            if math.hypot(nx - inp.x, nz - inp.z) <= self.d["arrive_junction_m"] and abs(inp.v) < self.d["stopped_speed_mps"]:
+                self._returned = True
+                self._log(inp.time_s, "returned_to_junction", "at the junction point: now the branch",
+                          distance_m=round(math.hypot(nx - inp.x, nz - inp.z), 2))
+            else:
+                cmd.v, cmd.omega, _ = hc.pure_pursuit(inp.x, inp.z, inp.yaw_deg, self._path(inp, nx, nz), self.d, self.d["approach_speed_mps"],
+                                                      self.d["arrive_junction_m"])
+                return
         before = self.state
         super()._tick(inp, cmd)
         if before == "scan" and self.state == "approach":      # remember whom the robot goes to (360-camera track id)
@@ -865,12 +937,18 @@ class ControllerV4(hc.Controller):
 
     # -- the tick --
     def step(self, inp: TickInputV4) -> CommandV4:
+        sr = self.v4.get("stop_rule", {})
+        if sr.get("still_when_robot_stopped") and self.state in sr.get("states", ()) and abs(inp.v) < sr["robot_stopped_speed_mps"]:
+            # C2s (AUDIT.md 16.19.7): the robot stands still, so every person's reading is the one with the short-window stillness rule for STOP; while it
+            # moves the readings are the reader's own, exactly as before
+            inp.persons = [replace(p, reading=p.reading_stopped) if p.reading_stopped is not None else p for p in inp.persons]
         # STOP of anybody in view stops the robot (the v3 rule reads TickInput.gesture)
         self._track_onsets(inp)
         persons = self._fresh_persons(inp)
         stop = any(p.reading.command == "STOP" for p in persons)
         inp.gesture, inp.gesture_time_s = ("STOP" if stop else "NONE"), inp.persons_time_s
         base = super().step(inp)
+        self._recovery(inp, base)
         stopped = bool(self.safety_reason)
         if stopped and not self._was_stopped:
             self.safety_stops += 1
@@ -896,6 +974,90 @@ class ControllerV4(hc.Controller):
         out.hud = self.hud_fields(persons)
         return out
 
+    # -- E: person-in-path recovery (AUDIT.md 16.19.2) --
+    def _blocker(self, inp) -> dict | None:
+        """The person the v3 person-in-path stop is about (the same test as hri_control.Controller._safety)."""
+        for q in self._fresh_people(inp):
+            if hc.in_path(inp.x, inp.z, inp.yaw_deg, q["x"], q["z"], hc.stop_distance(inp.v, self.s), self.s["corridor_half_width_m"]):
+                return q
+        return None
+
+    def _rear_clear(self, inp) -> bool:
+        """Nobody within the stop distance behind the robot at the back-up speed plus the back-up distance (the robot has no rear bumper logic)."""
+        rc = self.rc
+        reach = rc["back_m"] + hc.stop_distance(rc["back_speed_mps"], self.s)
+        return not any(hc.in_path(inp.x, inp.z, inp.yaw_deg + 180.0, q["x"], q["z"], reach, self.s["corridor_half_width_m"]) for q in self._fresh_people(inp))
+
+    def _plan_detour(self, inp, person: dict, others: list) -> tuple[str, list] | None:
+        """Waypoints past the blocking person on the clear side: W1 side_m to the side and beyond_m BEFORE them, W2 side_m to the side and beyond_m
+        AFTER them (the leg W1 to W2 runs parallel to the road at side_m from them), then the normal path to the target. The right side unless
+        somebody is within side_m of a waypoint or of the leg, else the left, else None. Never toward the person: every point of the path keeps
+        about side_m from them (pure pursuit cuts the corners a little)."""
+        rc, a = self.rc, math.radians(inp.yaw_deg)
+        f, right = (math.sin(a), math.cos(a)), (math.cos(a), -math.sin(a))
+        px, pz = person["x"], person["z"]
+        for name, sgn in (("right", 1.0), ("left", -1.0)):
+            lat = (px + sgn * right[0] * rc["side_m"], pz + sgn * right[1] * rc["side_m"])
+            w1 = (lat[0] - f[0] * rc["beyond_m"], lat[1] - f[1] * rc["beyond_m"])
+            w2 = (lat[0] + f[0] * rc["beyond_m"], lat[1] + f[1] * rc["beyond_m"])
+            if all(math.hypot(q[0] - o["x"], q[1] - o["z"]) >= rc["side_m"] for o in others for q in (w1, lat, w2)):
+                return name, [w1, w2]
+        return None
+
+    def _recovery(self, inp, cmd) -> None:
+        rc, t = self.rc, inp.time_s
+        if not rc["enabled"]:
+            return
+        if self._rec is not None:                                  # backing up
+            r = self._rec
+            if math.hypot(inp.x - r["x0"], inp.z - r["z0"]) >= rc["back_m"] - 1e-9:
+                self.detour = list(r["waypoints"])
+                self._log(t, "recovery_detour", f"backed {rc['back_m']:g} m: around the person on the {r['side']} side", side=r["side"],
+                          waypoints=[[round(x, 2), round(z, 2)] for x, z in r["waypoints"]])
+                self._rec = self._blk = None
+                return
+            if not self._rear_clear(inp):
+                self._log(t, "recovery_interrupted", "somebody behind the robot: stopped backing")
+                self._rec = None
+                return
+            cmd.v, cmd.omega = -rc["back_speed_mps"], 0.0
+            cmd.state = f"{self.state} (recovery: backing)"
+            return
+        q = self._blocker(inp) if self.safety_reason == "person in path" and self.state in ("navigate", "approach", "execute") else None
+        if q is None:
+            self._blk = None
+            return
+        pos = (q["x"], q["z"])
+        if self._blk is None or math.hypot(pos[0] - self._blk["last"][0], pos[1] - self._blk["last"][1]) > 0.5:
+            self._blk = {"since": t, "p0": pos, "last": pos, "moved": 0.0, "pid": q.get("track_id", -1)}
+        b = self._blk
+        b["last"] = pos
+        b["moved"] = max(b["moved"], math.hypot(pos[0] - b["p0"][0], pos[1] - b["p0"][1]))
+        key = b["pid"] if b["pid"] is not None and b["pid"] >= 0 else (round(b["p0"][0], 1), round(b["p0"][1], 1))
+        if (t - b["since"] < rc["blocked_s"] - 1e-9 or b["moved"] >= rc["person_moved_max_m"] or abs(inp.v) >= self.d["stopped_speed_mps"]
+                or self.rec_attempts.get(key, 0) >= rc["max_attempts"]):
+            return
+        if not self._rear_clear(inp):
+            if ("rear", key) not in self._rec_noted:
+                self._rec_noted.add(("rear", key))
+                self._log(t, "recovery_waiting", "somebody behind the robot: not backing up", person=list(map(lambda v: round(v, 2), pos)))
+            return
+        others = [o for o in self._fresh_people(inp) if math.hypot(o["x"] - pos[0], o["z"] - pos[1]) > 0.3]
+        plan = self._plan_detour(inp, q, others)
+        if plan is None:
+            if ("side", key) not in self._rec_noted:
+                self._rec_noted.add(("side", key))
+                self._log(t, "recovery_waiting", "no clear side around the person: not backing up", person=list(map(lambda v: round(v, 2), pos)))
+            return
+        side, waypoints = plan
+        self.rec_attempts[key] = self.rec_attempts.get(key, 0) + 1
+        self.recoveries += 1
+        self._rec = {"x0": inp.x, "z0": inp.z, "side": side, "waypoints": waypoints}
+        self._log(t, "recovery_started", f"stopped {t - b['since']:.1f} s behind a person who moved {b['moved']:.2f} m: back {rc['back_m']:g} m",
+                  attempt=self.rec_attempts[key], person=[round(pos[0], 2), round(pos[1], 2)], side=side)
+        cmd.v, cmd.omega = -rc["back_speed_mps"], 0.0
+        cmd.state = f"{self.state} (recovery: backing)"
+
     def hud_fields(self, persons: list) -> dict:
         """The Phase 1 HUD fields that were left at -1 / NONE: commander, gesture reading, accepted gesture, pointed angle."""
         cmdr = next((p for p in persons if p.track_id == self.commander_pt), None)
@@ -913,7 +1075,7 @@ class ControllerV4(hc.Controller):
         s = super().summary()
         s["v4"] = {"zoom_enabled": self.zoom.z["enabled"], "commander_changes": list(self.commander_changes),
                    "waited_s": round(self.waited_s, 3), "decisions": list(self.decisions), "route": list(self.route),
-                   "safety_stops": self.safety_stops, "lie_detection": dict(self.ld)}
+                   "safety_stops": self.safety_stops, "lie_detection": dict(self.ld), "recoveries": self.recoveries}
         return s
 
 
