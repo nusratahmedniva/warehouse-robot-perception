@@ -156,6 +156,62 @@ class VariantTests(unittest.TestCase):
         self.assertIn("STOP", [prs[0].reading.command for _, prs, _ in res if prs])      # the synthetic hands carry no world landmarks: the cue is not applied
 
 
+class ShortWindowAndSplitTests(unittest.TestCase):
+    """C2s (AUDIT.md 16.19.5) and the split of criterion (a) by the robot's state when the STOP was given."""
+
+    def run_frames(self, swing, mode, stopped):
+        frames = [tsr.frame(i * 0.1, i, True, swing) for i in range(25)]
+        ctx = {"stopped": stopped}
+        with ap.variant_wrap({"static_when_stopped": mode}, RC, ctx):
+            res = ap.replay_hooked(frames, RC, CC, lambda f: None)
+        return [prs[0].reading.command for _, prs, _ in res if prs]
+
+    def test_c2s_uses_the_0_3_s_window_and_only_while_stopped(self):
+        self.assertEqual((RC["window"]["stop_window_s"], RC["motion"]["still_speed_max"]), (0.3, 0.4))      # the reader's own values, no new number
+        base = [prs[0].reading.command for _, prs, _ in fs.replay([tsr.frame(i * 0.1, i, True, True) for i in range(25)], RC, CC) if prs]
+        self.assertEqual(self.run_frames(True, "speed", False), base)                      # moving: exactly the current reader (a swinging raised hand is a STOP)
+        self.assertIn("STOP", base)
+        self.assertNotIn("STOP", self.run_frames(True, "speed", True))                    # stopped and swinging: not a STOP
+        still = self.run_frames(False, "speed", True)
+        self.assertIn("STOP", still)                                                       # stopped and still: a STOP ...
+        first_c2s = next(k for k, c in enumerate(still) if c == "STOP")
+        first_c2 = next((k for k, c in enumerate(self.run_frames(False, True, True)) if c == "STOP"), None)
+        self.assertLessEqual(first_c2s, 4)                                                 # ... within a few frames, with no wait for a second of stillness
+        self.assertTrue(first_c2 is None or first_c2s <= first_c2)
+
+    def test_the_second_round_has_the_declared_variants_and_no_palm_cue(self):
+        vs_ = ap.variants_round2(CFG)
+        self.assertEqual([v["key"] for v in vs_], ["current", "c2", "c2s", "current_b1", "c2_b1", "c2s_b1"])
+        self.assertTrue(all(v["v"].get("palm_limit_deg") is None for v in vs_))
+        self.assertEqual(vs_[2]["v"], {"static_when_stopped": "speed"})
+        self.assertEqual(vs_[5]["v"]["b1"], {"frac": 0.6, "floor": 10})
+
+    def test_criterion_a_is_split_by_the_robot_state_at_the_onset(self):
+        from types import SimpleNamespace
+
+        def rows(worker, t0):
+            return [{"time_s": t0 + 0.05 * k, "worker_id": worker, "look": "sunbox_m1", "x": 0.0, "z": 5.0, "true_command": "STOP", "arm": "right", "phase": "holding",
+                     "clip": "stop_ik_01"} for k in range(30)]
+        truth = {1: rows(1, 10.0) + rows(1, 50.0)}                                           # one STOP while the robot stands (v 0), one while it drives (v 0.5)
+        ds = SimpleNamespace(runs={("S", 1): {"truth": truth}}, cfg={**CFG["base"], "sessions": {}},
+                             dec={"S": {1: ([0.0, 9.0, 40.0, 49.0], [(0.5, "navigate"), (0.0, "read"), (0.5, "navigate"), (0.5, "navigate")])}})
+        # the reader says STOP 0.3 s after the first, and 1.2 s after the second STOP onset (the segment lasts 1.45 s)
+        recs = [("S", 1, 10.3, "STOP", 1, "STOP", True, "sunbox_m1", "right", "stop_ik_01", 1, 12),
+                ("S", 1, 51.2, "STOP", 1, "STOP", False, "sunbox_m1", "right", "stop_ik_01", 1, 12)]
+        a = ap.criterion_a(ds, recs, None, CFG)
+        self.assertEqual(a["stops"], 2)
+        self.assertEqual(a["by_robot_state"]["stopped"], {"stops": 1, "within_1s": 1, "lost_altogether": 0})
+        self.assertEqual(a["by_robot_state"]["moving"], {"stops": 1, "within_1s": 0, "lost_altogether": 0})      # read, but after 1.2 s
+        base = a
+        slower = [("S", 1, 11.3, "STOP", 1, "STOP", True, "sunbox_m1", "right", "stop_ik_01", 1, 12)]        # the first STOP read at 1.3 s (inside its 1.45 s segment), the second never
+        b = ap.criterion_a(ds, slower, base, CFG)
+        self.assertEqual(b["by_robot_state"]["stopped"], {"stops": 1, "within_1s": 0, "lost_altogether": 0, "lost_vs_current": 0, "lost_from_the_1s_set": 1,
+                                                         "read_later_than_current": 1, "later_median_s": 1.0})
+        self.assertEqual(b["by_robot_state"]["moving"]["lost_altogether"], 1)
+        self.assertEqual(b["by_robot_state"]["moving"]["lost_vs_current"], 1)
+        self.assertEqual(b["lost_vs_current"], 1)
+
+
 class ConfigAndIsolationTests(unittest.TestCase):
     def test_the_declared_values(self):
         self.assertEqual((CFG["b1"]["frac"], CFG["b1"]["floor"], CFG["b1"]["floor_sensitivity"]), (0.6, 10, 8))

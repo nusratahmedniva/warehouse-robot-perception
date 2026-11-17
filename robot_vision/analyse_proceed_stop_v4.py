@@ -92,8 +92,14 @@ def variant_wrap(v: dict, rc: dict, ctx: dict):
 
     def window(samples, side, cfg, t_now):
         info = orig_window(samples, side, cfg, t_now)
-        if v.get("static_when_stopped") and ctx.get("stopped") and info["moving"]:
-            info["stop_share"] = 0.0
+        mode = v.get("static_when_stopped")
+        if mode and ctx.get("stopped"):
+            if mode == "speed":            # C2s (AUDIT.md 16.19.5): the mean wrist speed over the short stop window, while the robot is stopped
+                sp = fs.wrist_speed(samples, side, cfg, t_now, cfg["window"]["stop_window_s"])
+                if sp is None or sp > cfg["motion"]["still_speed_max"]:
+                    info["stop_share"] = 0.0
+            elif info["moving"]:           # C2 (16.19.2): the reader's own `moving` flag (wrist path over the last 1.0 s)
+                info["stop_share"] = 0.0
         return info
 
     def proceed(samples, side, cfg, t_now):
@@ -293,7 +299,8 @@ def criterion_a(ds: Dataset, recs: list[tuple], base: dict | None, cfg: dict) ->
         mine = sorted((r for r in recs if r[0] == s["session"] and r[1] == s["run"] and r[4] == s["worker"] and r[2] >= s["onset"] - 1e-9), key=lambda r: r[2])
         first = next((r[2] - s["onset"] for r in mine if r[5] == "STOP" and r[3] == "STOP" and r[2] <= s["onset"] + cfg["within_s"] + 1e-9), None)
         later = next((r[2] - s["onset"] for r in mine if r[5] == "STOP" and r[2] <= s["end"] + 1e-9), None)
-        res.append({"session": s["session"], "run": s["run"], "kind": s["kind"], "look": s["look"], "arm": s["arm"], "within": first, "any": later})
+        res.append({"session": s["session"], "run": s["run"], "kind": s["kind"], "look": s["look"], "arm": s["arm"], "within": first, "any": later,
+                    "robot_stopped_at_onset": is_stopped(ds.dec[s["session"]], s["run"], s["onset"], cfg["stopped_speed_mps"])})
     n = len(res)
     out = {"stops": n, "within_1s": sum(1 for r in res if r["within"] is not None), "read_at_all": sum(1 for r in res if r["any"] is not None),
            "held": [sum(1 for r in res if r["kind"] == "held_stop" and r["within"] is not None), sum(1 for r in res if r["kind"] == "held_stop")],
@@ -307,6 +314,18 @@ def criterion_a(ds: Dataset, recs: list[tuple], base: dict | None, cfg: dict) ->
         out["read_later_than_current"] = sum(1 for d in later if d > 1e-9)
         out["later_median_s"] = round(st.median([d for d in later if d > 1e-9]), 2) if any(d > 1e-9 for d in later) else 0.0
         out["non_inferior"] = bool(out["lost_vs_current"] == 0 and out["lost_from_the_1s_set"] == 0)
+    out["by_robot_state"] = {}
+    for label, flag in (("moving", False), ("stopped", True)):
+        idx = [i for i, r in enumerate(res) if r["robot_stopped_at_onset"] == flag]
+        part = {"stops": len(idx), "within_1s": sum(1 for i in idx if res[i]["within"] is not None), "lost_altogether": sum(1 for i in idx if res[i]["any"] is None)}
+        if base is not None:
+            b = base["detail"]
+            part["lost_vs_current"] = sum(1 for i in idx if b[i]["any"] is not None and res[i]["any"] is None)
+            part["lost_from_the_1s_set"] = sum(1 for i in idx if b[i]["within"] is not None and res[i]["within"] is None)
+            lat = [res[i]["any"] - b[i]["any"] for i in idx if res[i]["any"] is not None and b[i]["any"] is not None]
+            part["read_later_than_current"] = sum(1 for d in lat if d > 1e-9)
+            part["later_median_s"] = round(st.median([d for d in lat if d > 1e-9]), 2) if any(d > 1e-9 for d in lat) else 0.0
+        out["by_robot_state"][label] = part
     return out
 
 
@@ -426,7 +445,22 @@ def variants(cfg: dict, palm: dict | None) -> list[dict]:
     ]
 
 
-def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None) -> dict:
+def variants_round2(cfg: dict) -> list[dict]:
+    """The second table (AUDIT.md 16.19.5, declared before it was computed): the current reader, C2 (the `moving` flag) and C2s (the 0.3 s window), each without and with B1
+    floor 10. C1 is dropped."""
+    b1 = {"frac": cfg["b1"]["frac"], "floor": cfg["b1"]["floor"]}
+    c2, c2s = {"static_when_stopped": True}, {"static_when_stopped": "speed"}
+    return [
+        {"name": "current reader", "key": "current", "v": {}},
+        {"name": "C2 (moving flag, 1.0 s), while stopped", "key": "c2", "v": c2},
+        {"name": "C2s (0.3 s window), while stopped", "key": "c2s", "v": c2s},
+        {"name": "current + B1 floor 10", "key": "current_b1", "v": {"b1": b1}},
+        {"name": "C2 + B1 floor 10", "key": "c2_b1", "v": {"b1": b1, **c2}},
+        {"name": "C2s + B1 floor 10", "key": "c2s_b1", "v": {"b1": b1, **c2s}},
+    ]
+
+
+def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None, round2: bool = False) -> dict:
     cc = cm.load_config()
     rc_now, rc_prev = gm.load_config(), fs.live_reader_config()
     sets = {"S5": Dataset("S5", step5, cfg["sessions"]["S5"], cfg), "STOP": Dataset("STOP", stop, cfg["sessions"]["STOP"], cfg),
@@ -434,14 +468,16 @@ def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None) -> dict:
     rep: dict = {"zips": {k: {"name": Path(p).name, "sha256": sets[k].logs.sha256()} for k, p in (("S5", step5), ("STOP", stop), ("D4*", d4))},
                  "guard_all_development": all(set(d.guard.values()) == {"development"} for d in sets.values()),
                  "datasets": {k: {"runs": len(d.runs), "frames": sum(len(x["frames"]) for x in d.runs.values())} for k, d in sets.items()}}
-    palm = true_stop_palm_angles(sets["STOP"], rc_now, cc, cfg)
-    rep["palm_true_stops"] = palm
-    if progress:
-        progress("palm angles")
+    palm = None
+    if not round2:
+        palm = true_stop_palm_angles(sets["STOP"], rc_now, cc, cfg)
+        rep["palm_true_stops"] = palm
+        if progress:
+            progress("palm angles")
     segs = {k: proceed_segments(d) for k, d in sets.items()}
     res: dict = {}
     base_recs: dict = {}
-    for var in variants(cfg, palm):
+    for var in (variants_round2(cfg) if round2 else variants(cfg, palm)):
         rc = rc_prev if var.get("reader") == "previous" else rc_now
         res[var["key"]] = {"name": var["name"]}
         for k, d in sets.items():
@@ -449,18 +485,18 @@ def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None) -> dict:
             if var["key"] == "current":
                 base_recs[k] = recs
             sc = score_variant(d, recs, segs[k], cfg)
-            if k == "STOP":
-                base_a = res.get("current", {}).get("STOP", {}).get("a")
-                sc["a"] = criterion_a(d, recs, base_a, cfg)
-            if var["key"] in ("c2", "c1c2", "all") and k in base_recs:
+            base_a = res.get("current", {}).get("STOP", {}).get("a")
+            sc["a"] = criterion_a(d, recs, base_a if k == "STOP" else None, cfg) if k == "STOP" else {"stops": 0, "note": "no true STOP in this dataset: criterion (a) not evaluable"}
+            if var["key"] in ("c2", "c2s", "c1c2", "all", "c2_b1", "c2s_b1") and k in base_recs:
                 sc["moving_identical_to_current"] = moving_identical(recs, base_recs[k])
-            if var["key"] == "current" and k == "S5":
+            if var["key"] == "current" and k == "S5" and not round2:
                 sc["aborted_asks"] = aborted_asks(d, recs, cfg)
             res[var["key"]][k] = sc
         if progress:
             progress(var["name"])
     rep["variants"] = res
-    rep["b2"] = {k: b2_counts(sets[k]) for k in ("S5", "D4*")}
+    if not round2:
+        rep["b2"] = {k: b2_counts(sets[k]) for k in ("S5", "D4*")}
     return rep
 
 
@@ -478,6 +514,37 @@ def _cell_a(a: dict) -> str:
     if "lost_vs_current" in a:
         s += f"; lost {a['lost_vs_current']}, lost from the 1.0 s set {a['lost_from_the_1s_set']}, later {a['read_later_than_current']} (median +{a['later_median_s']} s)"
     return s
+
+
+def _cell_state(a: dict, state: str) -> str:
+    x = a["by_robot_state"][state]
+    s = f"{x['within_1s']}/{x['stops']} within 1.0 s; lost altogether {x['lost_altogether']}"
+    if "lost_from_the_1s_set" in x:
+        s += f"; lost from the 1.0 s set {x['lost_from_the_1s_set']}, later {x['read_later_than_current']} (median +{x['later_median_s']} s)"
+    return s
+
+
+def markdown2(rep: dict, cfg: dict) -> str:
+    V = rep["variants"]
+    L = ["# C2 and C2s against the current reader, with and without B1 floor 10 (AUDIT.md 16.19.5)", "",
+         "Zips (read in place): " + "; ".join(f"{k} `{v['name']}` (SHA-256 `{v['sha256'][:16]}...`)" for k, v in rep["zips"].items()) +
+         f". Development looks and clips only (guard passed: {rep['guard_all_development']}). **No reader value was changed.** D4* = R1 and V13 of the 14 Nov zip (old pose).", "",
+         "Criterion (a) is split by the robot's state at the first shown truth row of each STOP (stopped = v < 0.05 m/s in read, approach, wait). S5 and D4* hold no true STOP: (a) is not evaluable there. "
+         "False STOPs = frames / episodes (while moving / stopped) on PROCEED, POINT, WAIT and nothing.", "",
+         "| reader | (a) STOPs given while the robot MOVED | (a) STOPs given while it STOOD STILL | STOP sessions false STOPs | STOP sessions PROCEED | S5 false STOPs | S5 PROCEED | D4* false STOPs | D4* PROCEED |",
+         "|---|---|---|---|---|---|---|---|---|"]
+    for v in V.values():
+        L.append(f"| {v['name']} | {_cell_state(v['STOP']['a'], 'moving')} | {_cell_state(v['STOP']['a'], 'stopped')} | {_cell_fs(v['STOP'])} | {_cell_prc(v['STOP'])} | "
+                 f"{_cell_fs(v['S5'])} | {_cell_prc(v['S5'])} | {_cell_fs(v['D4*'])} | {_cell_prc(v['D4*'])} |")
+    a = V["current"]["STOP"]["a"]
+    L += ["", f"STOPs in the STOP sessions: {a['stops']} ({a['by_robot_state']['moving']['stops']} given while the robot moved, {a['by_robot_state']['stopped']['stops']} while it stood still).", "",
+          "## C2 and C2s: the readings while the robot moves equal the current reader's", ""]
+    for key in ("c2", "c2s", "c2_b1", "c2s_b1"):
+        for k in ("S5", "STOP", "D4*"):
+            x = V[key][k].get("moving_identical_to_current")
+            if x:
+                L.append(f"- {V[key]['name']}, {k}: {x['different_readings']} different readings in {x['moving_frames']} moving frames")
+    return "\n".join(L) + "\n"
 
 
 def markdown(rep: dict, cfg: dict) -> str:
@@ -538,18 +605,20 @@ def main(argv=None) -> None:
     ap.add_argument("--stop", required=True)
     ap.add_argument("--d4", required=True)
     ap.add_argument("--config", default=DEFAULT_CONFIG)
+    ap.add_argument("--round2", action="store_true", help="the second table of AUDIT.md 16.19.5: C2 and C2s, with and without B1 floor 10 (no palm cue)")
     a = ap.parse_args(argv)
     cfg_path = dio.resolve(a.config)
     cfg = load_config(cfg_path)
-    rep = analyse(*(str(Path(x).expanduser()) for x in (a.step5, a.stop, a.d4)), cfg, progress=lambda n: print("  done:", n, flush=True))
-    out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "proceed_stop_v4")
+    rep = analyse(*(str(Path(x).expanduser()) for x in (a.step5, a.stop, a.d4)), cfg, progress=lambda n: print("  done:", n, flush=True), round2=a.round2)
+    md = markdown2 if a.round2 else markdown
+    out = dio.new_run_dir({"paths": {"output_root": "outputs"}}, "proceed_stop_v4_round2" if a.round2 else "proceed_stop_v4")
     (out / "config_used").mkdir()
     for p in (cfg_path, dio.resolve(gm.DEFAULT_CONFIG), dio.resolve(cm.DEFAULT_CONFIG)):
         (out / "config_used" / p.name).write_bytes(p.read_bytes())
     dio.write_json(out / "report.json", rep)
-    (out / "report.md").write_text(markdown(rep, cfg), encoding="utf-8")
+    (out / "report.md").write_text(md(rep, cfg), encoding="utf-8")
     dio.write_json(out / "run.json", {"git": dio.git_info(), "zips": rep["zips"]})
-    print(markdown(rep, cfg))
+    print(md(rep, cfg))
     print(f"Folder: {out}")
 
 
