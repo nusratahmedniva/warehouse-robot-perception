@@ -3267,3 +3267,46 @@ Folder: /Users/anishamehajabin/warehouse-robot-perception/robot_vision/outputs/r
 - **Who lied decides:** in B3 on, 40 of the 49 lying asks are the first-asked worker's: 6 are caught by `reject_impossible`, **19 fooled**, 15 neither (not read, or read as the true branch); of the 9 later-asked liars 4 are caught by `reject_impossible`, 2 outvoted, 1 fooled, 2 neither. **A second opinion outvotes a lie only 2 times in B3 on and 2 in B4 on (both by later-asked liars); every other detected lie is a rejection of an impossible direction** (6 + 4 in B3 on and B4 on; 20 + 12 in B2 on, 6 + 4 in B1 on). The first worker's lie is followed 19 times in each of B3 on and B4 on because a tie re-asks and counts him twice (16.13.1), as 16.21 item 2 said.
 - **Durations (420 s runs):** longest successful run in the table 271.2 s (A3 on and B3 on, E5); A4 on and B4 on 253.0 s (previous layout 239.7 s); the E5 / E6 columns give the per-row durations. **What the declared rule would give from these simulator durations (information only; the real value comes from Unity's runs on the new NavMesh): 420 s** (`timeout_from_development(271.2)`: 1.5 x 271.2 = 406.8, rounded up to a multiple of 30; the previous layout gave 480 s from B3 on E5 at 308.1 s). Fed with the 270 s runs the rule would give 390 s from 253.0 s, wrongly: the long routes are timeouts there and cannot count (16.20.5).
 - **A3 / B3 and A4 / B4 against the previous layout (16.20.6 runs):** the tables above. A3 off and A4 off are as before (longest 177.3 s against 184.5 s, 170.9 s against 171.3 s), A3 on 20/20 at 420 s both times; A4 on takes longer (253.0 s against 239.7 s); B3 on is the row that changed, for the reason above; B4 rows are unchanged in successes.
+
+### 16.22 The tie rule with two workers: three variants declared (2026-11-18, Anisha, from the request of 16.21.3); recorded BEFORE any computation
+
+Branch `anisha/v4-tie-rule`, from main after PR #42 (layout (i), 1e89dcd). Simulator only. No existing value of any config changes.
+
+**Finding (16.21.3).** With two workers per node the tie rule (re-ask the first, who counts twice) always follows the first-asked worker, because the liars are consistent since 16.12 (`lie_mode` per_worker). B3 on 11/20 against off 10/20; the first-asked liar fooled 19 of 40 lying asks in B3 on, the second opinion outvoted 2.
+
+**Why this is asked.** The faculty plan requires the robot to detect lies from evidence and to correct itself. Backtrack was turned off in 16.10 because it never triggered with three workers at J1; with two workers and a consistent first liar the situation is different, so it is looked at again before anything is decided.
+
+**Variants (the "on" rows only; the "off" rows have every switch false, so they are identical in all three variants and are run only to show that):**
+
+| variant | lie_detection of the "on" rows |
+|---|---|
+| T0 | the current "on": second_opinion true, reject_impossible true, backtrack false |
+| T1 | T0 with backtrack true (the existing switch, unchanged code path: back to the last decision junction when every answer at a junction was rejected) |
+| T2 | T1 with a new optional key `lie_detection.backtrack_scope`: "any" (default, = T1) or "disagreed". With "disagreed" a backtrack goes only to a decision junction at which the accepted answers of the visit named more than one branch (the two workers disagreed; the first, counted twice, does not change that); otherwise `backtrack_blocked` with that reason is logged. The disagreement is recorded in `last_choice` when the robot leaves the junction. |
+
+The new key defaults to "any" in `LIE_DEFAULTS`; control.json and every other config are not edited; the runner sets the variant for a run (`run_experiments_ab_v4.py --tie-variant T0|T1|T2`, default T0 = what it does today). Nothing is tuned: the variants are run once as declared.
+
+**Pass criteria, declared now.** B rows: successes and wrong goals against T0; lies fooled split by first-asked / later-asked liar and by caught by `reject_impossible`, as in 16.21.3. A rows: no success lost against T0 and no backtrack in any truthful run. Longest successful durations are reported for the timeout rule, for information only (the real value comes from Unity's runs on the new NavMesh). All 16 rows at 420 s, 20 runs, seeds as before, for T0, T1 and T2; one table; no decision is taken here, the table goes to review.
+
+**Also in this branch.** The stale A3 note in `final_plan.json` ("2 per node and 3 at J1 (beside)") is corrected to layout (i) (two workers at every node, 16.21.2). The file is not frozen (`frozen.json` frozen false), so no pinned hash changes. Reported, not edited: `test_assignment_note` in the same file still speaks of a third worker at J1 (16.15).
+
+#### 16.22.1 Result of the three variants (2026-11-18, simulator, 420 s, 20 runs per row, seeds as before); the declared criteria applied, nothing tuned
+
+Code (after the declaration above): `lie_detection.backtrack_scope` ("any" default / "disagreed") in `hri_control_v4.py` (`last_choice["disagreed"]`, `_start_backtrack`), `--tie-variant T0|T1|T2` in `run_experiments_ab_v4.py` (default T0), `report_tie_variants_v4.py`, `tests/test_tie_variants_v4.py`. Folders (git-ignored): `experiments_ab_v4_tie_T0_420_20261118_004956`, `..._tie_T1_420_20261118_005026`, `..._tie_T2_420_20261118_005058`; table `report_tie_variants_v4_20261118_005157_420`.
+
+- **T0 is the 16.21.3 "on" exactly:** all 320 runs equal run for run (outcome, reason, duration, collisions, lies fooled). The "off" rows are identical in the three variants (16 rows, 320 runs).
+- **A rows (all 8): no success lost against T0, no backtrack in any truthful run** (0 backtracks in A1-A4 off and on, T1 and T2). 0 collisions in all 16 rows of all three variants.
+- **B1, B2 (on): unchanged** (20/20 and 19/20, no backtrack).
+- **B3 on and B4 on, the rows that matter** (successes / wrong goals / aborted / timeout; longest successful; lies fooled first-asked / later-asked; caught by `reject_impossible`):
+
+| row | T0 | T1 = T2 |
+|---|---|---|
+| B3 on | 11/20, 7, 2, 0; 271.2 s; 19 / 1; 10 | 12/20, 7, 0, 1; 344.4 s; 17 / 1; 12; 2 backtracks (2 runs) |
+| B4 on | 11/20, 7, 2, 0; 253.0 s; 19 / 1; 10 | 12/20, 7, 0, 1; 311.6 s; 17 / 1; 12; 2 backtracks (2 runs) |
+
+- **T1 and T2 are identical in all 320 runs.** Every backtrack T1 made was at a junction where the two answers had disagreed, so the scope restriction of T2 never bit; it also blocked none.
+- **What changed:** in each of B3 on and B4 on two runs, run_001 (goal E2) and run_012 (goal E5), had been aborts in T0 and now backtrack once. Run_001 reaches the goal (SUCCESS, +53 s and +53 s: 344.4 s and 311.6 s, the new longest successful runs); run_012 does not and ends in a timeout at 420 s instead of an abort at 225 s / 215 s. Successes 11 -> 12 in each row. **Wrong goals stay 7 and 7: a lie that is a valid branch is followed on to the wrong goal and no rejection ever follows, so the backtrack has no evidence to act on.** The first-asked liar's fooled count falls 19 -> 17 only because the two backtracked runs no longer count their lies as followed.
+- **Not independent:** B3 and B4 use the same seeds and the same liars at J1, so the four changed runs are two cases counted twice; one success is a difference of one run in 20.
+- **For the timeout rule (information only):** 1.5 x 344.4 = 516.6, rounded up to 30 s = 540 s with T1 / T2 (420 s with T0); the real value comes from Unity's runs.
+- **Reading, no decision taken:** backtrack as it exists recovers 2 aborts into 1 success per B3 / B4 on and costs longer runs; it does not address the finding (a consistent first liar at a tie is followed to the wrong goal: 7 wrong goals per row in all three variants). Detecting that case needs evidence the robot does not have after a valid-but-wrong branch (a second look at the same junction or a check against the route taken), which is a design question for Nusrat and Anisha, not something to tune here. The variants go to review.
+- **Also done:** the A3 note in `final_plan.json` now reads "layout (i) of slot_table.csv: two workers at every node (AUDIT.md 16.21.2)"; `test_assignment_note` (16.15) still mentions a third worker at J1 and is reported, not edited.

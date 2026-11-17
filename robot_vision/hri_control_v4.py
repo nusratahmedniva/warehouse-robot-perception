@@ -58,7 +58,8 @@ import gesture_motion as gm
 import hri_control as hc
 
 DIRECTIONS = hc.DIRECTIONS
-LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3, "second_opinion_radius_m": None}
+LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3, "second_opinion_radius_m": None,
+                "backtrack_scope": "any"}          # AUDIT.md 16.22: "disagreed" = backtrack only to a junction where the accepted answers named more than one branch
 # AUDIT.md 16.19.2 item E: person-in-path recovery (v4 only; the v3 stop itself is unchanged). Absent block or enabled false = the v3 behaviour.
 RECOVERY_DEFAULTS = {"enabled": False, "blocked_s": 15.0, "person_moved_max_m": 0.3, "back_m": 1.0, "back_speed_mps": 0.2,
                      "side_m": 1.0, "beyond_m": 1.0, "max_attempts": 2}
@@ -332,6 +333,8 @@ class ControllerV4(hc.Controller):
         self.ld = {**LIE_DEFAULTS, **{k: v for k, v in v4_cfg.get("lie_detection", {}).items() if k in LIE_DEFAULTS}}
         if self.ld["backtrack"] and not self.ld["reject_impossible"]:
             raise ValueError("lie_detection.backtrack needs lie_detection.reject_impossible (the rejections are its evidence)")
+        if self.ld["backtrack_scope"] not in ("any", "disagreed"):
+            raise ValueError(f"lie_detection.backtrack_scope must be 'any' or 'disagreed' (got {self.ld['backtrack_scope']!r})")
         self.rc = {**RECOVERY_DEFAULTS, **{k: v for k, v in v4_cfg.get("recovery", {}).items() if k in RECOVERY_DEFAULTS}}
         super().__init__(base_cfg, roadmap)
         rs = v4_cfg.get("dialog", {}).get("return_speed_mps")
@@ -663,7 +666,8 @@ class ControllerV4(hc.Controller):
 
     def _decide_go(self, t: float, branch: str, reason: str) -> None:
         self.tried.setdefault(self.node, set()).add(branch)
-        self.last_choice = {"node": self.node, "branch": branch, "serial": self.ask_serial}
+        self.last_choice = {"node": self.node, "branch": branch, "serial": self.ask_serial,
+                            "disagreed": len({v["branch"] for v in self.votes}) > 1}      # 16.22: did the accepted answers of this visit name more than one branch
         self._log(t, "go", reason, branch=branch, votes=[dict(v) for v in self.votes])
         self.next_node = self.road.next(self.node, branch)
         self._set("execute", t)
@@ -716,6 +720,8 @@ class ControllerV4(hc.Controller):
             why_not = f"{here} does not follow {lc['node']}"
         elif lc["node"] in self.backtracked:
             why_not = f"{lc['node']} has used its one backtrack"
+        elif self.ld["backtrack_scope"] == "disagreed" and not lc.get("disagreed"):
+            why_not = f"the answers at {lc['node']} did not disagree (backtrack_scope disagreed)"
         elif not self._untried(lc["node"]):
             why_not = f"{lc['node']} has no other branch"
         if why_not:

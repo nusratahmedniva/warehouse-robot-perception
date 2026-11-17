@@ -56,7 +56,7 @@
       "map": "roadmap",
       "roadmap": "configs/v4/roadmap.json",
       "lie_detection": "on",
-      "note": "Experiment A3: v4 map, GoalSequence(2) over E1..E6, truthful workers, 2 per node and 3 at J1 (beside)."
+      "note": "Experiment A3: v4 map, GoalSequence(2) over E1..E6, truthful workers, layout (i) of slot_table.csv: two workers at every node (AUDIT.md 16.21.2)."
     },
     "A4": {
       "zoom": null,
