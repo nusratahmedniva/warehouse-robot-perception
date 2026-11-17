@@ -466,13 +466,16 @@ def variants_round2(cfg: dict) -> list[dict]:
 def variants_switch(cfg: dict) -> list[dict]:
     """AUDIT.md 16.19.7: the current reader and the REAL C2s reader switch (hand.stop_still_when_robot_stopped on; the controller's choice of reading_stopped while stopped)."""
     return [{"name": "current reader", "key": "current", "v": {}},
-            {"name": "C2s: the real reader switch", "key": "switch", "v": {"reader_switch": True}, "reader": "switch"}]
+            {"name": "C2s: the real reader switch", "key": "switch", "v": {"reader_switch": True}, "reader": "switch"},
+            {"name": "C2s + B1 floor 10: the real reader (both keys, AUDIT.md 16.21)", "key": "final", "v": {"reader_switch": True}, "reader": "final"}]
 
 
 def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None, round2=False) -> dict:
     cc = cm.load_config()
     rc_now, rc_prev = gm.load_config(), fs.live_reader_config()
     rc_now["hand"] = {**rc_now["hand"], "stop_still_when_robot_stopped": False}      # 'current' = the reader's own reading; the C2s switch is the variant 'switch' below
+    floor_live = rc_now["proceed"].get("min_valid_floor")
+    rc_now["proceed"] = {k: v for k, v in rc_now["proceed"].items() if k != "min_valid_floor"}   # B1 (AUDIT.md 16.21) off for 'current': the nominal valid-frame rule the logs were read with
     sets = {"S5": Dataset("S5", step5, cfg["sessions"]["S5"], cfg), "STOP": Dataset("STOP", stop, cfg["sessions"]["STOP"], cfg),
             "D4*": Dataset("D4*", d4, cfg["sessions"]["D4*"], cfg)}
     rep: dict = {"zips": {k: {"name": Path(p).name, "sha256": sets[k].logs.sha256()} for k, p in (("S5", step5), ("STOP", stop), ("D4*", d4))},
@@ -488,8 +491,9 @@ def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None, round2=Fal
     res: dict = {}
     base_recs: dict = {}
     rc_switch = {**rc_now, "hand": {**rc_now["hand"], "stop_still_when_robot_stopped": True}}
+    rc_final = {**rc_switch, "proceed": {**rc_now["proceed"], "min_valid_floor": floor_live}}     # both real switches, as gesture_reader.json now says (16.21)
     for var in (variants_switch(cfg) if round2 == "switch" else variants_round2(cfg) if round2 else variants(cfg, palm)):
-        rc = rc_prev if var.get("reader") == "previous" else rc_switch if var.get("reader") == "switch" else rc_now
+        rc = rc_prev if var.get("reader") == "previous" else rc_final if var.get("reader") == "final" else rc_switch if var.get("reader") == "switch" else rc_now
         res[var["key"]] = {"name": var["name"]}
         for k, d in sets.items():
             recs = run_variant(d, var["v"], rc, cc, cfg)
@@ -498,7 +502,7 @@ def analyse(step5: str, stop: str, d4: str, cfg: dict, progress=None, round2=Fal
             sc = score_variant(d, recs, segs[k], cfg)
             base_a = res.get("current", {}).get("STOP", {}).get("a")
             sc["a"] = criterion_a(d, recs, base_a if k == "STOP" else None, cfg) if k == "STOP" else {"stops": 0, "note": "no true STOP in this dataset: criterion (a) not evaluable"}
-            if var["key"] in ("c2", "c2s", "c1c2", "all", "c2_b1", "c2s_b1", "switch") and k in base_recs:
+            if var["key"] in ("c2", "c2s", "c1c2", "all", "c2_b1", "c2s_b1", "switch", "final") and k in base_recs:
                 sc["moving_identical_to_current"] = moving_identical(recs, base_recs[k])
             if var["key"] == "current" and k == "S5" and not round2:
                 sc["aborted_asks"] = aborted_asks(d, recs, cfg)

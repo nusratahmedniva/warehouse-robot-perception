@@ -32,7 +32,8 @@
     "Avatar looks: v4 uses several looks and clips, split into development and test (the test look and clips were never used in development); v3 used one Mixamo worker.",
     "Protocol and scene: v4 speaks protocol 3 (HUD, zoom, truth files) in the v4 scene; v3 spoke protocol 2 in the v3 scene.",
     "Truth: v4 scores against per-frame truth (truth.jsonl) and the optimal path on a grid; v3 scored against the command shown at each junction.",
-    "Runs and seeds: the number of runs per setting, the seed and the machine are those of configs/v4/final_plan.json and the session records; v3 used 10 runs per task, seed 2. Inference times, stale-perception stops and total times depend on the machine and are not comparable across machines."
+    "Runs and seeds: the number of runs per setting, the seed and the machine are those of configs/v4/final_plan.json and the session records; v3 used 10 runs per task, seed 2. Inference times, stale-perception stops and total times depend on the machine and are not comparable across machines.",
+    "PROCEED valid frames (v4 only, AUDIT.md 16.21, adopted 2026-11-17 before Nusrat's strict-protocol rerun): the reader reads PROCEED (the forearm swing, a v4 gesture; v3 has none) when the arm is valid in at least max(10, 0.6 x the frames it received for the person in the 2.0 s window) frames (configs/v4/gesture_reader.json proceed.min_valid_floor); the earlier v4 rule was 0.6 x the nominal 20 = 12. At the nominal 10 Hz the two are the same; at a lower frame rate the rule follows what arrived. In the replay of 16.19.6 no STOP reading changed and the step-5 PROCEED holds rose from 35/62 to 58/62 (59/62 with C2s)."
   ],
   "comparability": {
     "comparable": ["success", "junction reads at the first ask (with coverage)", "collisions", "closest approach to a person", "final distance to B", "travelled / straight line", "time excluding stale-perception stops", "time in motion"],

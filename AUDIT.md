@@ -2773,6 +2773,7 @@ A frame is matched to a worker and categorised as in 16.14 / 16.18 (PROCEED, POI
   Nusrat checked them on that grid (free on every road, 1220 of 1220), which is evaluation, not an input.
 - **Tests** (`tests/test_step5_fixes_v4.py`, 13, on the simulator's own speed ramp): D reaches the junction point and goes on along the branch, off it leaves from where it stands, the target sent to Unity is the node first; E without recovery holds for good, with it backs 1.0 m at no more than 0.2 m/s only after 15 s, never gets nearer than 0.85 m while going around, reaches J1, uses the left side when the right is taken, does not back with somebody behind, waits for a person who moves, does not start with no clear side, stops after two attempts for the same person, and the controller never imports a ground-truth module.
   `tests/golden_sim_v4.py` and one test of `test_lie_detection_v4.py` switch D and E off or allow the new event, so that the golden cases still pin the behaviour of commit 808f028.
+- **"STOP before PROCEED" (added 2026-11-17, agreed with Nusrat): mechanism confirmed, no measurable effect, not changed.** The mechanism exists: in `hri_control.py` `Controller.step`, lines 387 to 391 (`if reason is not None: ... return cmd`) return before the dialog's tick at line 393, so a frame that arrives during a safety stop does not reach the dialog. **No measurable effect in the step-5 replay: 0 of the 26 unaccepted asks of S5 would be recovered** by feeding the STOP frames to the dialog (16.19.4 item 5). **Nothing is changed** (the v3 file is untouched and the v4 code that fed the dialog during a STOP stop stays removed).
 
 #### 16.19.4 Result of the replay of B1, C1 and C2 (2026-11-17), analysed after 16.19.2 was written; NO reader value is changed and nothing is chosen
 
@@ -2867,3 +2868,402 @@ Tool `analyse_proceed_stop_v4.py --round2` (tests `tests/test_proceed_stop_v4.py
 - **Tests** (`tests/test_c2s_switch_v4.py`, 17): the values and both switches; the v3 path and the defaults untouched; switch off = the current reader (the `reading` never depends on the switch, `reading_stopped` is None when off); a swinging raised hand is a STOP but not while the robot is stopped; a still one is a STOP in both readings within 4 frames; the controller uses the short-window reading below 0.05 m/s in read / approach, the reader's own reading above it (also backing up), in other states, with the switch off or without a second reading;
   the declared difference and its disclosure in `analysis.json`. **Opt-in tests (4; they need the three zips or a report, about 10 minutes to compute): the real reader switch reproduces the 16.19.6 numbers exactly** (run on `outputs/proceed_stop_v4_switch_20261117_170008/report.json` with `C2S_REPORT=...`, 4 passed): S5 false STOPs 73 frames / 65 episodes (moving 20 / 15, stopped 53 / 50), STOP sessions 21 / 13 (stopped 0 / 0), D4 stand-in 28 / 19; PROCEED holds 37/62, 26/26, 38/38; criterion (a): moving 15/22 (1 lost from the 1.0 s set, 10 later, median +0.25 s, 1 lost altogether as for the current reader), stopped 17/18 (1, 15, +0.21 s), 32 of 40 within 1.0 s, no STOP lost that the current reader reads; the readings while the robot moves are identical to the current reader's (0, 0 and 3 of 7,309 in the D4 stand-in).
   Without the zips or the variable the 4 are skipped (so the plain suite does not depend on data outside the repository); the unit tests above run always.
+
+### 16.20 Nusrat's clearance layout taken into the simulator (2026-11-17, Anisha); recorded BEFORE any change
+
+Branch `anisha/v4-clearance-layout` (from main `29510ff` = origin/main, clean). Read as **data** from `origin/nusrat/v4-step5-dev` (PR #40), commits `8375ba8` (item 3a) and `ed4e000` (item 3b): `Scenario/Config/experiments_ab_unity.json`
+(`answer_zone_radius_m`, `clearance_layout`, `path_clearance_m`, `ask_standoff_m`, `reask_shift_m`), `ExperimentPlanAB.cs` (`DrivableSegments`, `ReaskPosition`, `ClearanceProblem`) and `Avatar/Config/experiments_ab.md`. Nothing under `unity/` is changed or copied.
+
+**1. Her layout (Unity values; `clearance_layout.active` is false in Unity until Python carries it).**
+- Junction slots (`before_m` back along the arrival road, negative = ahead; `right_m` to the right of the arrival direction, negative = left): slot 1 `{3.5, -2.5}` (3.5 m before, 2.5 m left); slot 2 `{-4.5, 3.5}` (4.5 m ahead, 3.5 m right);
+  slot 3 `{-5.0, -4.0}` (5.0 m ahead, 4.0 m left). Live slots today: `{3.0, -2.0}`, `{5.5, 2.0}`, `{6.0, -2.0}`. Start slots unchanged.
+- A4 and B4 (`two_worker_experiments`) have two workers at J1 (three random workers in the 6 m square cannot keep the clearance); A3 and B3 keep three at J1.
+- Her rules while the block is active: no worker within `path_clearance_m` 1.0 m (the corridor half-width 0.6 m + 0.4 m) of any segment the robot can drive (the roads of the run's map and of the physical v4 map; per asking node the segment from the node to the ask position of each
+  worker in every order, the return to the first worker of an order (the tie rule), and from every ask position and re-ask point to the next node of every branch); every ask position within `answer_zone_radius_m` - `answer_zone_margin_m` = 5.5 m of its node.
+  Ask position = `ask_standoff_m` 2.0 m from the worker toward where the robot comes from; re-ask point = `reask_shift_m` 0.4 m to the robot's right, back on that circle (copies of `hri_control.json` `dialog.approach_distance_m` and `dialog.reask_shift_m`).
+
+**2. Its disclosure (hers, kept as she wrote it).** The slot search before her declaration left out one declared segment, the return to the first worker (tie). Under the full declared model the declared choice (slot 1 2.5 m before, slot 3 3.5 m left) failed at A3 J1 seed 1 run 1
+by 0.03 m (worker 3 stood 0.97 m from the segment from its own tie ask position to E1). The search was rerun with the tie, with the same rules and the same declared choice rule (meets every rule; smallest largest own-ask distance, 5.19 m; then least movement from the section 3 slots).
+Nothing else changed. **Not checked by her:** free cells and colliders for the pending slots at Play (Unity does at Play once the block is active).
+
+**3. The two distances are different quantities.** Unity's answer zone (item 3a, 6.0 m) is the distance from the **robot** to the **worker's node**: a worker answers only while the robot's centre is within 6.0 m of the node the worker belongs to. My second-opinion radius (16.19, 6.5 m) is the
+distance from the **person** to the **node**: the robot asks only people who stand within 6.5 m of the node and for whom it is the nearest node. A robot that stands 2.0 m from a person 6.3 m from the node can be 8 m from the node; it then gets no answer in Unity although Python still chose that person.
+They are not made equal and 6.5 m is **not changed** here (unchanged since 16.19: the value is held until Nusrat's new maximum placement distance is known). What is checked here is that the clearance layout keeps every worker inside my 6.5 m and nearest to their own node (see 4), and, as an extra figure, the largest distance from each worker's own ask positions to the node
+(her 5.5 m rule), computed with the model of 1.
+
+**4. What I do (declared before any change; pass criteria fixed here).**
+- (a) `scenarios_ab.json`: `junction_slots` of scenarios 1, 2, 3 = her slots exactly; `people_by_node` J1 3 removed from scenario 4 (A4, B4: 2 at J1); everything else (start slots, margins, placement rule, random layout) unchanged. **`MatchesUnity` keeps pinning** the slots: to her `clearance_layout` block (her values, quoted from `ed4e000`), to the live
+  `junction_slots` too as soon as her file carries `clearance_layout.active` true; main's `unity/` file does not carry the block until PR #40 is merged, so the test pins the values as constants quoted from `ed4e000` and checks them against the block whenever it is present.
+- (b) **Every worker of every scenario, seed (1-20) and node** (A1 to A4; beside and random layouts; every asking node): within 6.5 m of the node and the nearest node of the physical roadmap to be that node (the rule of `_belongs_here`). Pass = all. The largest distance is reported (per layout).
+- (c) **Clearance in the simulator geometry:** an independent model (test code, `tests/`) of the segments of 1 built from the simulator's own roadmap and positions; for every scenario, seed and node no worker is closer than 1.0 m (minus 1e-4) to any segment or road, and the ask positions are within 5.5 m of the node. Pass = all. The `random` layout (A4, B4) is **checked and reported**; if its draws
+  violate the clearance I report the count and do **not** change the random placement without asking (the sim placement has no clearance rule today; making it reject draws like her `ClearanceProblem` is a change to what the simulator does).
+- (d) **Rerun of the 16.13 tables** (`run_experiments_ab_v4.py --runs 20 --timeout-s 270`, detection off and on, valid-branch liar): the **baseline is rerun first with the old layout on the current main code** (`outputs/experiments_ab_v4_baseline_old_layout_main_29510ff_*`), because the code changed since 16.13 (16.19: return to the junction point,
+  person-in-path recovery, C2s, second-opinion radius, ...), so the old table is not comparable; then the new layout (`outputs/experiments_ab_v4_clearance_layout_*`). Both are reported next to the 16.13 numbers; the change of the layout alone is new minus baseline. Simulator only; nothing here is a measurement.
+- Not done here: Unity's activation window and who answers a new ask (no counterpart in the simulator, as in 16.13); free cells and colliders (Unity at Play). `clearance_layout.active` is Nusrat's to switch after this branch is merged.
+
+#### 16.20.1 Built and results (2026-11-17)
+
+**Built (Python only; nothing under `unity/` is changed or copied).** `scenarios_ab.json`: `junction_slots` of scenarios 1, 2, 3 = her clearance slots exactly (`{3.5, -2.5}`, `{-4.5, 3.5}`, `{-5.0, -4.0}`), `people_by_node` J1 3 removed from scenario 4 (A4, B4: two at J1), the `why` entries say so; start slots and every other value unchanged
+(`scenarios_ab.json` is in the frozen list of `freeze_v4.py` and `frozen.json` is not touched: it pins the files only once `frozen` is true, which it is not). New: `layout_check_v4.py` (the three checks of 4 for every scenario, seed and node; writes `outputs/layout_check_v4_<time>/`, with the git commit) and `tests/test_clearance_layout_v4.py` (14 tests).
+`tests/test_lie_detection_v4.py`: `MatchesUnity` keeps pinning the slots, now to her quoted values (`CLEARANCE_SLOTS`, checked against her block whenever main's `unity/` file carries it; today it does not, PR #40 is not merged) and to the live slots as soon as her block says `active`; the J1, J2 slot positions, the "third worker at J1 in A3, A4, B3, B4 only"
+test (now A3, B3 only) and the people_by_node config test were updated for the new layout, each keeping its intent. I verified once, by `git show` of `origin/nusrat/v4-step5-dev` (`3f0422c`), that my constants equal her slots, her two-worker list (A4, B4), 1.0 / 2.0 / 0.4 / 6.0 / 0.5 and that `active` is false there.
+
+**(b) Every worker belongs to its node (6.5 m, nearest node): all 540 worker placements of A1 to A4, seeds 1 to 20, every asking node pass.** Largest distance worker to own node: A1 5.00 m (A, worker 2), A2 5.70 m (B, worker 2), **A3 6.40 m (J1, worker 3: 5.0 m ahead, 4.0 m left)**, A4 (random) 4.21 m. The margin to 6.5 m is 0.10 m (old layout: 6.32 m, 0.18 m).
+A4 has 200 placements (two at J1); A1 40, A2 80, A3 220; B1 to B4 use the same placements as A1 to A4.
+
+**(c) Clearance and ask zone, at her model's re-ask shift 0.4 m (`layout_check_v4.py`, an independent model of her segments: every order, the tie return, the branches; every road of the run's map and of the physical map):**
+
+| experiment | layout | smallest worker-to-segment distance | largest ask-position distance from the node | plans (of 20) violating 1.0 m or 5.5 m |
+|---|---|---|---|---|
+| A1 | beside | 2.00 m | 3.72 m | 0 |
+| A2 | beside | 1.76 m | 3.77 m | 0 |
+| **A3** | beside | **1.01 m** | **5.19 m** (her figure 5.19 m) | **0** |
+| A4 | random | 0.01 m | 3.00 m | **20** |
+
+The same check on the old slots: A3 20 of 20 plans violate (smallest 0.03 m, largest ask distance 5.40 m, her figure for the live slots), so the check does catch the live layout.
+
+**Two findings that are NOT fixed (reported; the decision is yours):**
+1. **Her model's re-ask shift is 0.4 m (a copy of the v3 value in `hri_control.json`); the v4 controller really uses 0.8 m** (`configs/v4/control.json` `dialog.reask_shift_m`, "INITIAL v4 value, decided 2026-10-24 by Anisha"; it is also the shift of the second view of an ambiguous POINT). I added the 0.8 m check after noticing this during the build (it is not in the pre-declaration of 4; both values are reported). With 0.8 m, **A3 at J1 fails her rules in all 20 seeds: worker 3
+   (2.25, 5.0) is 0.74 m from the segment from the re-ask point (4.24, 5.15) to J2 (LEFT), and the re-ask point is 5.53 m from J1 (her rule 5.5 m; still inside Unity's 6.0 m zone, and 0.74 m is outside the 0.6 m person-in-path corridor).** A1 and A2 pass at 0.8 m (1.96 m and 1.76 m; 4.06 m). Nothing is changed: `reask_shift_m` is a v4 value (not mine to change here) and the layout is hers; options: (a) accept 0.74 m, (b) Nusrat sets `reask_shift_m` 0.8 in her model and searches the slots again, (c) a v4 re-ask shift of 0.4 m.
+2. **The random layout (A4, B4) has no clearance rule in the simulator.** 62 of the 100 asking nodes of A4 (seeds 1 to 20) have a worker closer than 1.0 m to their own node's segments or a road (all 20 plans violate). Unity's random placement rejects draws that break it (her 400 plans pass), so the simulator's A4 and B4 do not do what Unity does. As declared in 4(c) I did **not** change the random placement; making `place_random` reject draws like her `ClearanceProblem` (and the 5.5 m ask zone) is a change of what the simulator does and waits for your decision.
+
+**(d) The 16.13 tables rerun (simulator; 20 seeds, 270 s, valid-branch liar; `outputs/experiments_ab_v4_baseline_old_layout_main_29510ff_20261117_181934` and `outputs/experiments_ab_v4_clearance_layout_20261117_182155`).** The 16.13 table is **not** reproduced by the current main even with the old slots, so the layout effect is new minus baseline:
+
+| experiment | detection | 16.13: SUCCESS | median s | fooled/given | **baseline (old slots, current code): SUCCESS** | failures | median s | collisions | safety stops | fooled/given | **clearance layout: SUCCESS** | failures | median s | collisions | safety stops | fooled/given |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | off | 20/20 | 68.0 | - | **20/20** | - | 70.8 | 0 | 0 | - | **20/20** | - | 70.8 | 0 | 0 | - |
+| A1 | on | 20/20 | 82.3 | - | **20/20** | - | 88.5 | 0 | 0 | - | **20/20** | - | 88.5 | 0 | 0 | - |
+| A2 | off | 20/20 | 86.1 | - | **20/20** | - | 93.8 | 0 | 20 | - | **20/20** | - | 96.8 | 0 | 20 | - |
+| A2 | on | 20/20 | 118.1 | - | **20/20** | - | 137.8 | 0 | 0 | - | **20/20** | - | 156.3 | 0 | 0 | - |
+| A3 | off | 20/20 | 122.0 | - | **20/20** | - | 137.2 | 0 | 27 | - | **20/20** | - | 143.3 | 0 | 20 | - |
+| A3 | on | 20/20 | 185.7 | - | **14/20** | timeout 6 | 217.4 | 0 | 7 | - | **13/20** | timeout 7 | 228.4 | 0 | 0 | - |
+| A4 | off | 20/20 | 116.1 | - | **20/20** | - | 132.9 | 0 | 5 | - | **20/20** | - | 131.1 | 0 | 6 | - |
+| A4 | on | 20/20 | 165.6 | - | **20/20** | - | 182.7 | 0 | 0 | - | **20/20** | - | 189.7 | 0 | 0 | - |
+| B1 | off | 19/20 | 68.0 | 0/5 | **19/20** | aborted 1 | 70.8 | 0 | 0 | 0/5 | **19/20** | aborted 1 | 70.8 | 0 | 0 | 0/5 |
+| B1 | on | 20/20 | 82.3 | 0/12 | **20/20** | - | 88.5 | 0 | 0 | 0/12 | **20/20** | - | 88.5 | 0 | 0 | 0/12 |
+| B2 | off | 13/20 | 86.1 | 0/18 | **13/20** | aborted 7 | 93.8 | 0 | 18 | 0/18 | **13/20** | aborted 7 | 96.8 | 0 | 18 | 0/18 |
+| B2 | on | 19/20 | 118.1 | 0/35 | **19/20** | aborted 1 | 137.8 | 0 | 0 | 0/35 | **19/20** | aborted 1 | 156.3 | 0 | 0 | 0/36 |
+| B3 | off | 10/20 | 119.7 | 10/15 | **10/20** | wrong_goal 9, aborted 1 | 132.8 | 0 | 22 | 10/15 | **10/20** | wrong_goal 9, aborted 1 | 138.9 | 0 | 18 | 10/15 |
+| B3 | on | 15/20 | 195.7 | 8/40 | **11/20** | timeout 5, wrong_goal 3, aborted 1 | 224.9 | 0 | 5 | 8/40 | **11/20** | timeout 5, wrong_goal 3, aborted 1 | 247.2 | 0 | 0 | 8/40 |
+| B4 | off | 11/20 | 110.6 | 8/14 | **11/20** | aborted 2, wrong_goal 7 | 126.3 | 0 | 4 | 8/14 | **11/20** | aborted 2, wrong_goal 7 | 125.7 | 0 | 6 | 8/14 |
+| B4 | on | 15/20 | 170.2 | 8/37 | **15/20** | aborted 2, wrong_goal 3 | 191.2 | 0 | 0 | 8/37 | **11/20** | aborted 2, wrong_goal 7 | 189.9 | 0 | 3 | 20/42 |
+
+
+Read (simulator, not a measurement):
+- **Code since 16.13, not the layout (baseline against 16.13):** A3 detection on 20/20 -> 14/20 (timeout 6), B3 on 15/20 -> 11/20 (timeout 5), the medians are 3 to 32 s longer, and the detection-off rows show safety stops of 0.05 s (A2 20, A3 27, A4 5, B2 18, B3 22, B4 4; 16.13: 0). **Cause, checked:** with `dialog.return_to_junction` off the same A3 detection-on runs are 20/20 for both layouts (A4: 20/20 either way) and the 0.05 s stop is gone in A2 (seed 1 run: stop 0.05 s -> 0.0 s). The return to the junction point (16.19, switched on in the v4 control files) costs the simulator's
+  A3 and B3 runs their 270 s budget (three workers at J1, a drive back after every second opinion) and adds a stop on the return. Reported only; no value changed.
+- **The layout alone (clearance minus baseline):** Set A 74/80 -> 73/80: A1, A2, A4 unchanged at 20/20; A3 on 14/20 -> 13/20 (timeout 6 -> 7); the medians of A2 and A3 detection on are 18 s and 11 s longer (second workers stand 4.5 m ahead; the robot drives farther for second opinions: A2 on 137.8 -> 156.3 s). Collisions 0 in all 32 rows of both runs.
+  **B4 detection on 15/20 -> 11/20 (wrong goal 3 -> 7), lies fooled 8/37 -> 20/42:** A4 and B4 have two workers at J1 instead of three, so a disagreement at J1 is a tie (the first worker is asked again and counted twice, 16.13.1) instead of a vote of three: the effect of removing the third worker at J1 (her declared change), not of the slots. B3 on stays 11/20 and 8/40 fooled; B1, B2, B3 off and B4 off unchanged in SUCCESS.
+- **Not run / not covered:** Unity's activation window and who answers a new ask (16.13), free cells and colliders at Play (hers), the 6.0 m answer zone (Unity only; in the simulator the person asked always answers), Python driving into another node's zone.
+
+**Existing tests changed in this round (each keeps its intent).** `tests/test_lie_detection_v4.py` (the slots, the slot positions, A4 and B4 with two workers at J1); `tests/test_hri_sim_v4.py` (the isolation allow-list gets `layout_check_v4.py`, which imports the simulator like the experiments runner); `tests/test_export_csv_v4.py`: the sanity bound of `distance_m` 5.0 m -> 12.0 m. In the simulator the truth's commander is worker 1, so for a second opinion `distance_m` is the distance to worker 1 and not to the person asked (as before 16.20);
+with the clearance layout the second and third workers stand 4.5 to 5.0 m ahead of the node and the largest value in that test's runs is 7.9 m (J2, worker 2 asked, worker 1 the commander). The new bound is the ask zone plus the worker distance, 5.5 m + 6.5 m. The decisions table's `distance_m` of simulator runs is therefore not the standoff for second opinions (reported, not changed).
+
+**Open for you (nothing decided or changed):** (1) finding 1 (0.8 m against 0.4 m); (2) finding 2 (clearance rule for the random layout in the simulator); (3) the cost of the return to the junction point in A3 and B3 (A3 on 20/20 -> 14/20 in the simulator; the Unity runs have the same 270 s budget); (4) Nusrat sets `clearance_layout.active` after this branch is merged, as she wrote.
+
+#### 16.20.2 Decisions of 2026-11-17 (Anisha) on the findings of 16.20.1; recorded BEFORE any change
+
+Branch `anisha/v4-clearance-layout` (unchanged). `origin/nusrat/v4-step5-dev` is still `3f0422c` (read with `git show`; no `unity/` file copied).
+1. **Re-ask shift: the controller's 0.8 m stays** (`control.json` `dialog.reask_shift_m`). Nusrat re-searches her slots with 0.8 m by her same declared rule (her model used 0.4 m). Until then **the A3 J1 0.74 m finding of 16.20.1 stands as reported** (and the 5.53 m ask distance).
+2. **Random layout: the simulator adopts Unity's rejection rule exactly.** Declared here, before the code and before the rerun:
+   - **The rule is her `ClearanceProblem` as read from `ExperimentPlanAB.cs` (`NodeProblem` -> `ClearanceProblem`, `DrawRandom`)**: a draw of the workers of a node is redrawn (up to `max_draws` 100000, as now; then the run is refused) unless (a) every ask position of the node (node to the ask position of each worker in every order, the return to the first worker of an order, the re-ask point) lies within 5.5 m of the node (answer zone 6.0 m minus margin 0.5 m);
+     (b) every worker of this node and every worker already placed at another node is at least 1.0 m (`path_clearance_m`) from every drivable segment of this node (node to ask positions, and every ask position and re-ask point to the next node of every branch); (c) the workers of this node are at least 1.0 m from every road of the run's map and of the physical map and from the drivable segments of every node placed before.
+   - **Values (hers, read from `experiments_ab_unity.json` of the branch): `path_clearance_m` 1.0, `answer_zone_radius_m` 6.0 - `answer_zone_margin_m` 0.5 = 5.5, `ask_standoff_m` 2.0, `reask_shift_m` 0.4.** They go into `scenarios_ab.json` `placement_rule` (`path_clearance_m`, `ask_zone_m`, `ask_standoff_m`, `reask_shift_m`), with her reasons. **The re-ask shift in the simulator's rule is her 0.4 m, not the controller's 0.8 m**, so that the simulator keeps doing exactly what Unity's planner does; it changes to 0.8 when Nusrat's model does (a value of her file, not mine).
+   - It is applied to the draws of the **random** layout (A4, B4), the rest of the placement rule (3.0 m separation and turning points, `min_road_m` 1.0, the 0.25 m bystander margin, slot 0 = nearest to the node) unchanged and checked first, as in `NodeProblem`. **The beside slots are not enforced at planning** (Unity refuses fixed slots that break the rule; the simulator's A3/B3 slots pass at 0.4 m and fail at 0.8 m, 16.20.1): they stay checked by `layout_check_v4.py` and the tests, as before.
+   - The geometry model moves from `layout_check_v4.py` into `hri_sim_v4.py` (one implementation; `layout_check_v4.py` imports it). The random draws of A4 and B4 change (rejection continues drawing from the same seeded stream), so their results change: that is the purpose.
+   - **Pass criteria (fixed here):** every plan of A4 (and B4, same placements) seeds 1 to 20 passes the independent check of `layout_check_v4.py` at 0.4 m (0 of 20 plans violating, smallest clearance >= 1.0 m, largest ask distance <= 5.5 m); a draw that breaks any of (a) to (c) is rejected (tests on constructed cases); the existing placement tests still hold. **Rerun:** A4 and B4, detection off and on, 20 seeds, 270 s, next to the baseline of 16.20.1 (old slots) and the same layout without the rejection (`experiments_ab_v4_clearance_layout_20261117_182155`). Simulator only.
+3. **B4 has two workers at J1 instead of three** (Anisha asked Nusrat why). Reported (16.20.1: B4 on 15/20 -> 11/20, a tie instead of a vote of three), **not changed**.
+4. **Item 1 (analysis only, nothing changed): the A3 detection-on regression** (baseline of 16.20.1: 14/20 with 6 timeouts against 20/20 with `return_to_junction` off): for each timeout the timeline (positions, states, asks, safety stops) and the cause, then a proposal with reasons. **No fix is built.**
+
+#### 16.20.3 Item 1: the A3 detection-on regression investigated (analysis only; nothing changed; proposal, no fix built)
+
+Tool: `analyse_a3_timeouts_v4.py` (new; analysis only; hooks observe `step` and, for the counterfactual only, set the return speed on one run; the controller, the configs and the simulator are untouched). Output folders: `outputs/a3_timeouts_v4_20261117_185139_old_layout` (the baseline of 16.20.1: old slots, current code) and `outputs/a3_timeouts_v4_20261117_185242_clearance_layout` (scenarios_ab.json as it is now). Each run is the simulator, detection on (second opinion + reject impossible, backtrack off), 20 seeds, 270 s; the
+timeouts are repeated with the return on and a 600 s budget (the simulator is deterministic: the same run with a later clock limit) and with the return off.
+
+**What the 6 timeouts are.** Seeds 4, 6, 8, 12, 14 and 17 are **one and the same run six times**: the goal sequence of session seed 1 (`GoalSequence(1)`) draws E5 in 6 of the 20 runs, set A has truthful workers and the `beside` layout is deterministic, so the runs are identical (every number below is identical in all six). Route A > J1 > J2 > J4 > E5; two people asked at every node (A, J1, J2, J4), nothing rejected; second views (the ambiguous POINT, 0.8 m shift): old slots J1 2 and J4 1, clearance layout J1 1 and J4 2.
+
+**Timeline of the E5 run, old slots, return on (position in metres; the same in all six):**
+
+| node | arrives s (position) | people asked | second views | go s (position) | dialog s | return: distance, s, speed | back at the junction point s (position) | drive on to the next node s |
+|---|---|---|---|---|---|---|---|---|
+| A | 0.5 (6.2, -20.0) | 2 | 0 | 25.6 (8.3, -22.3) | 25.2 | 3.06 m, 10.1 s, 0.30 m/s | 35.75 (6.4, -20.2) | 30.4 |
+| J1 | 67.0 (6.3, -0.3) | 2 | 2 | 105.45 (4.8, -4.1) | 38.5 | 4.39 m, 14.2 s, 0.31 m/s | 119.7 (6.2, -0.2) | 20.6 |
+| J2 | 142.3 (-6.0, 0.0) | 2 | 0 | 166.15 (-2.5, 0.8) | 23.8 | 3.84 m, 12.2 s, 0.31 m/s | 178.4 (-6.0, 0.1) | 21.1 |
+| J4 | 199.7 (-18.5, 0.0) | 2 | 1 | 229.45 (-14.9, 0.7) | 29.8 | 3.92 m, 12.2 s, 0.32 m/s | 241.7 (-18.5, 0.1) | (to E5) |
+
+States: scan 1.7 s, approach 88.2 s, ask 5.7 s, read 23.3 s, **execute 54.0 s (return off: 8.0 s)**, navigate 97.1 s (off: 103.2 s). At 270.0 s the robot stands at E5 (-18.7, 20.0): the run ends **SUCCESS at 270.3 s with a 600 s budget, 0.3 s after the limit**; with the return off it ends at 230.3 s. Seed 15 (goal E6, the same route plus one leg) ends at 269.7 s, 0.3 s inside the limit. Safety stops: one of 0.05 s at J2 at 178.65 s (-6.01, 0.08), state navigate, reason "perception stale",
+0.25 s after the return ended and the drive resumed (7 such stops of 0.05 s in the 20 runs; none with the clearance layout); no stall, no loop, no collision, closest person 0.97 m.
+
+**Cause (checked).** A **time-budget effect of the return to the junction point (D, 16.19), not a stall:** the 20 runs make 65 returns of 3.06 to 4.51 m (median 3.92 m); each takes a median **12.2 s (10.1 s at A, 14.2 s at J1), 800.7 s in total, at a median 0.31 m/s**, because the return is driven at `approach_speed_mps` 0.4 m/s (it reuses the approach drive) with a full stop at the junction point (`stopped_speed_mps` 0.03).
+Four asking nodes on the E5 route cost 48.7 s, and A3 > E5 and E6 are the longest routes of the study (230.3 s and 232.6 s without the returns), so it has no margin left: the return takes the run over the 270 s budget. The other routes of A3 with the return end at E1 132.9 s, E2 222.2 s, E3 212.0 s, E4 212.6 s (old slots; E6 269.7 s) and keep their margin except E6. **With the clearance layout the same run needs 298.45 s (return off: 240.85 s), so seeds 4, 6, 8, 12, 14, 17 and also 15 (E6, 280.3 s) time out: 13/20 (7 timeouts).**
+
+**Counterfactual for the proposal (a hook for the analysis only):** the return at `cruise_speed_mps` 0.8 instead of 0.4:
+
+| layout | live return | return off | return at cruise speed | the E5 run needs | the E6 run needs |
+|---|---|---|---|---|---|
+| old slots (16.20.1 baseline) | 14/20 (timeouts 6), longest 270.0 s | 20/20, longest 232.6 s | **20/20, longest 254.7 s**, return median 8.4 s | 270.3 s live; cruise return finishes within 254.7 s | 269.7 s live |
+| clearance layout | 13/20 (timeouts 7) | 20/20, longest 240.9 s | **14/20 (timeouts 6)**, return median 8.6 s | live 298.45 s; **cruise return 283.9 s (still over)** | live 280.3 s; cruise return 265.8 s (inside) |
+
+Closest approach to a person (smallest of the 20 runs) and safety stops are unchanged by the faster return in both layouts (old 0.97 m, 7 stops of 0.05 s; clearance 1.89 m, 0).
+
+**Proposal (not built; yours to decide):**
+1. **A new v4 key `dialog.return_speed_mps` (control files; absent = the approach speed, the behaviour as it is), set to the cruise speed 0.8 m/s, used only for the return of D.** Reasons: (a) the return is the one drive of a dialog that the robot makes with nobody to read: it goes back the way it came, away from the worker it asked; (b) the return is the reverse of Nusrat's node-to-ask-position segment, which her clearance rule already keeps 1.0 m from every worker, and the person-in-path stop (corridor half width 0.6 m, stop distance 1.89 m at 0.8 m/s) stays active, so a worker is never in the corridor of the return;
+   (c) measured: the old-layout A3 returns to 20/20 with a 15 s margin (longest 254.7 s) and the safety numbers do not change; (d) one number, taken from the cruise speed already declared in `hri_control.json` (0.8 m/s), no new tuned value; (e) v3 is untouched.
+2. **It is not enough alone for the clearance layout:** E5 needs 283.9 s with it (13 s over). What remains is the budget or the route: (i) a trial budget of 300 s for the experiments whose route has four asking nodes (A3, B3: E5 and E6 only) instead of 270 s: a change of `trial_timeout_s` of `scenarios_ab.json` and of Nusrat's run protocol, to be decided by you; with 283.9 s the margin would be 16 s; (ii) or reporting the E5 run as a finding of the study (A3 > E5 does not fit the budget with returns and two second views at J4, 47.7 s of dialog).
+3. **Not proposed:** switching D off (it was decided on Unity's corner-cutting finding), a faster approach speed (changes every drive), a shorter second-view shift (a v4 value of its own decision).
+4. **For Nusrat:** the Unity runs have the same 270 s budget and slower real-time clocks; the step-5 A3 timeouts (2) are consistent with a route that has 29 to 43 s of margin before the returns.
+5. **No fix is built, nothing is changed, and the commit contains no behaviour change for item 1.**
+
+#### 16.20.4 Item 2: the random layout's clearance rejection built and rerun (as declared in 16.20.2)
+
+**Built (Python only).** `hri_sim_v4.py`: `ask_position`, `reask_position`, `drivable_segments` (the geometry moved from `layout_check_v4.py`, which now imports it: one implementation), `clearance_problem` (Unity's `ClearanceProblem`: ask positions within `ask_zone_m`, every worker of this node and of earlier nodes `path_clearance_m` from this node's drivable segments, this node's workers that far from every road of the map and of the physical map and from the drivable segments of every earlier node),
+`place_random(..., clearance=None, placed_by_node=None)` (a drawn set is also redrawn while `clearance_problem` names a problem; `None` = the earlier behaviour, and a rule that rejects nothing leaves every draw unchanged: tested), `SimulatorV4._positions_at` / `plan_workers` (the placed workers by node), `scenario_ab` (the four values into the spec).
+`scenarios_ab.json` `placement_rule`: `path_clearance_m` 1.0, `ask_zone_m` 5.5, `ask_standoff_m` 2.0, `reask_shift_m` 0.4 (hers, read from `origin/nusrat/v4-step5-dev` `3f0422c`; `why["placement_rule.clearance"]`). Applied to the random layout only, as declared; A3/B3 (beside) are unchanged and still only checked.
+
+**Pass criteria of 16.20.2: all met.** Every plan of A4 (= B4: same placements), seeds 1 to 20, passes the independent check of `layout_check_v4.py` at her 0.4 m shift: **0 of 20 plans violating (was 20 of 20), smallest worker-to-segment distance 1.008 m, largest ask-position distance 2.85 m (<= 5.5 m)**; every asking node of A4 on its own is clean (was 62 of 100 nodes violating); the 6.5 m / nearest-node check still holds for all 200 placements (largest 4.17 m); the 3.0 m separation, turning-point, road and bystander rules hold (tests); constructed cases are rejected (a worker on the drive to another worker, beside a road, beyond the ask zone, next to an earlier node's drive and the reverse, on a road of the physical map); an unsatisfiable rule refuses the run naming the clearance.
+
+**The 0.8 m finding extends to the random layout (reported, not changed).** At the controller's real re-ask shift 0.8 m, **19 of 20 A4 plans violate the 1.0 m clearance (smallest 0.73 m)**, as A3 does (16.20.1): the rule here is her 0.4 m model; it follows her file until Nusrat re-searches her slots with 0.8 m (decision 1 of 16.20.2), after which `reask_shift_m` in the placement rule changes to match.
+
+**Rerun (simulator, 20 seeds, 270 s, valid-branch liar, `outputs/experiments_ab_v4_clearance_rejection_A4_B4_20261117_185604`)** next to the baseline of 16.20.1 and the same layout without the rejection:
+
+| experiment | detection | baseline (old slots, 3 workers at J1, no rejection) | clearance layout, 2 at J1, no rejection | **clearance layout + rejection** |
+|---|---|---|---|---|
+| A4 | off | 20/20, 132.9 s, 0 collisions, 5 safety stops | 20/20, 131.1 s, 0, 6 | **20/20, 134.7 s, 0, 7** |
+| A4 | on | 20/20, 182.7 s, 0, 0 | 20/20, 189.7 s, 0, 0 | **20/20, 199.6 s, 0, 0** |
+| B4 | off | 11/20 (aborted 2, wrong goal 7), 126.3 s, 0, 4; fooled 8/14 | 11/20 (aborted 2, wrong goal 7), 125.7 s, 0, 6; fooled 8/14 | **10/20 (aborted 3, wrong goal 7), 126.3 s, 0, 6; fooled 8/14** |
+| B4 | on | 15/20 (aborted 2, wrong goal 3), 191.2 s, 0, 0; fooled 8/37 | 11/20 (aborted 2, wrong goal 7), 189.9 s, 0, 3; fooled 20/42 | **11/20 (aborted 2, wrong goal 7), 205.9 s, 0, 2; fooled 20/47** |
+
+Read: **the rejection changes the draws of A4 and B4, so their runs are different runs** (the median of A4 on is 9.9 s longer than without the rejection, B4 on 16.0 s; the reason was not investigated). Set A stays 40/40, there are 0 collisions in all eight rows. **B4 off 11/20 -> 10/20 (one more abort, a different draw) and B4 on 11/20 unchanged** (wrong goal 7, lies fooled 20 of 47): the drop of B4 on from 15/20 (baseline) to 11/20 comes from the second worker at J1 instead of three (decision 3 of 16.20.2, reported, not changed), not from the rejection. No statement about an effect of the rejection on success is made from 20 runs per row.
+No A4 run times out: the longest A4 detection-on run takes 245.05 s (the A3 timeouts of 16.20.3 are a property of the E5/E6 routes of A3).
+
+**Tests.** New `tests/test_clearance_rejection_v4.py` (20 tests, 1 skipped while main's `unity/` file lacks the values: the Unity values agree whenever it carries them), `tests/test_a3_timeouts_v4.py` (5, the analysis tool and the numbers quoted in 16.20.3; the hook changes nothing); `tests/test_clearance_layout_v4.py`: the random-layout known finding became the new expectation (0 of 20 at 0.4 m, 19 of 20 at 0.8 m); `tests/test_hri_sim_v4.py` isolation allow-list gets `analyse_a3_timeouts_v4.py`.
+
+### 16.20.5 Decisions of 2026-11-17 (Anisha) on the proposal of 16.20.3: the return speed adopted, no per-setting budget; recorded BEFORE any change
+
+1. **Adopted: `dialog.return_speed_mps` 0.8 m/s (the cruise speed of `hri_control.json`), used only for the return to the junction point (D, 16.19); absent = the current behaviour (the approach speed 0.4 m/s).** A v4 key in the 11 v4 control files; v3 and `hri_control.json` are untouched. Reason: the counterfactual of 16.20.3 (A3 detection on 20/20 on the old slots instead of 14/20, longest run 254.7 s, closest approach to a person 0.97 m and the number of safety stops unchanged). No new tuned number: 0.8 is the declared cruise speed.
+   The controller refuses a value that is not above 0 and at most the cruise speed (a construction error, not a silent clamp).
+2. **No per-setting time budget for A3 / B3.** The final timeout is **one value for all settings, from the declared rule** (`final_plan.json` `timeout_s_rule`, 16.15 decision 2 as corrected in 16.16 decision 4): `timeout_s` = 1.5 x the longest SUCCESSFUL development run, rounded UP to a multiple of 30 s, never below 270 s; applied to **Unity's step-5 rerun, which uses the 420 s development timeout and the development-only goal override, so that E5 and E6 are drawn.**
+   **Stated plainly: development runs that feed the rule must never use 270 s as their timeout.** A run that times out at 270 s is not a duration and does not count (16.16 decision 4); if the development timeout were 270 s the longest routes (A3 > E5 and E6) would all time out, could never count as successful, and the rule would give a value that does not fit them. The 270 s of the simulator and of `final_plan.json` is the **floor** of the rule, not the final value;
+   `timeout_s` in `final_plan.json` stays 270 until the rule is applied by a declared edit before the freeze (not touched here).
+3. **Then (this round):** the key is built in the 11 control files with tests; the simulator's A3/B3 and A4/B4 rows are rerun on the clearance layout, **at the 270 s floor (the rows reported before) and at a 420 s development timeout (the runs that feed the rule)**, and per row the successes, the longest successful duration and the E5 / E6 durations are reported, with what the declared rule would give from those simulator durations (`final_guard_v4.timeout_from_development`). **For information only: the simulator is not Unity (speeds, clocks and perception differ), and the real value comes from Unity's runs.**
+
+4. **Reported by Nusrat, 2026-11-17 (recorded here as her statements; nothing of it is checked by me, `unity/` is hers and read-only for me).**
+   - **Unity NavMesh fixed.** The agent had "Ignore NavMesh Obstacles" on; racks, pallets and stations are now obstacles. 13.2 million paths were checked, none goes through an obstacle. v4 now has **its own NavMesh asset** (it shared v3's before); **the v3 asset is unchanged, pending her confirmation.**
+     (This is the "NavMesh rack fix" that the Unity testing of the person-in-path recovery waited for, 16.19.2 item E; no decision about that testing is made here.)
+   - **Consequence for the timeout rule (declared here): every development session made before this fix used the old NavMesh, so only development runs on the new NavMesh may feed the timeout rule of item 2** (together with the 420 s development timeout and the development-only E5/E6 goal override). Durations of the earlier step-5 and other development sessions must not be used for it. The simulator durations of 16.20.6 are unaffected (the simulator has no NavMesh) and remain information only.
+   - **The reader decisions are unaffected:** B1 floor 10 stays pending Nusrat's strict-protocol rerun; C2s (16.19.7) stays adopted. The reader was replayed on logged frames, which the NavMesh does not change.
+   - **The slots are being re-searched by Nusrat with the 0.8 m re-ask shift and three workers at J1** (decisions 1 and 3 of 16.20.2). **The clearance switch (`clearance_layout.active`) stays off until her new slot table.** Until then `scenarios_ab.json` keeps the layout of 16.20 and the rejection of 16.20.4 with her 0.4 m model; the results of 16.20.1, 16.20.4 and 16.20.6 on the clearance layout are for that layout and are superseded when her table arrives, when the slots, `people_by_node` of scenario 4 and `reask_shift_m` of the placement rule are taken over from it (a change to be recorded then, not before).
+   - **"STOP before PROCEED" (16.19.3, bug A): she asks for the exact code line, otherwise it is withdrawn.** The line: `hri_control.py` `Controller.step`, lines 387 to 391 (`if reason is not None: ... return cmd`), which returns before `self._tick(inp, cmd)` at line 393, the call in which the dialog sees the frame; `ControllerV4.step` calls `super().step` (the safety stop is v3's, reason from `_safety`; the STOP gesture reaches it through `TickInput.gesture`).
+     What 16.19.3 recorded stands unchanged: the mechanism exists in the code (a frame during a safety stop never reaches the dialog), but **the replay did not reproduce an abort from it** (feeding the STOP frames to the dialog would accept none of the 26 unaccepted asks of S5; the code that fed them was removed again; no abort is removed by A alone). The v3 file is not touched.
+
+#### 16.20.6 `return_speed_mps` built; the simulator rows rerun on the clearance layout (2026-11-17)
+
+**Built (v4 only).** `dialog.return_speed_mps` 0.8 in the 11 v4 control files (`control.json`, `control_zoom_on/off.json`, `experiments/control_lie_{on,off}{,_a1,_a2_right,_a2_left}.json`) with its `why` (DECIDED 2026-11-17); `ControllerV4._tick` (the return branch) drives `pure_pursuit` at that speed, absent = the approach speed (the earlier behaviour, tested equal to an explicit 0.4); `ControllerV4.__init__` refuses a value that is not above 0 and at most the cruise speed (`ValueError`, no silent clamp). The approach to a person and the navigation are unchanged (a test compares the trails). `hri_control.py` and `configs/hri_control.json` are untouched.
+`analyse_a3_timeouts_v4.py` removes the key for its "live" runs (the code of 16.20.3) and sets it for the counterfactual, so the numbers of 16.20.3 stay reproducible. Tests: `tests/test_return_speed_v4.py` (the 11 files, v3 untouched, refusals, the return is faster and its peak speed follows the key, absent = 0.4, the branch is still taken, nothing else changes, the E5 run of A3 on the old slots 270.3 s without the key and 254.7 s with it), `tests/test_a3_timeouts_v4.py` (the live config is now the counterfactual).
+
+**Simulator rerun, clearance layout (with the rejection of 16.20.4), A3, B3, A4, B4, detection off and on, 20 seeds each, valid-branch liar.** Two timeouts, as decided: **270 s (the floor)** and **420 s (the development timeout of Unity's step-5 rerun; these are the runs that feed the rule)**. "Rule from this row" = `final_guard_v4.timeout_from_development(longest successful run)`: 1.5 x the longest SUCCESSFUL run, rounded up to a multiple of 30 s, never below 270 s. **For information only: the simulator is not Unity (speeds, clocks, perception); the real value comes from Unity's development runs.**
+
+### 270 s (the floor): experiments_ab_v4_return_speed_270_20261117_192542
+
+| experiment | detection | SUCCESS | failures | longest successful s | E5 runs: n, success, longest s | E6 runs: n, success, longest s | rule from this row |
+|---|---|---|---|---|---|---|---|
+| A3 | off | 20/20 | - | 184.45 | 6, 6, 183.55 | 1, 1, 184.45 | 300.0 |
+| A3 | on | 14/20 | timeout 6 | 265.8 | 6, 0, - | 1, 1, 265.8 | 420.0 |
+| B3 | off | 10/20 | wrong_goal 9, aborted 1 | 183.55 | 6, 3, 183.55 | 1, 0, - | 300.0 |
+| B3 | on | 11/20 | timeout 5, wrong_goal 3, aborted 1 | 252.0 | 6, 0, - | 1, 0, - | 390.0 |
+| A4 | off | 20/20 | - | 171.25 | 6, 6, 171.25 | 1, 1, 164.0 | 270.0 |
+| A4 | on | 20/20 | - | 239.7 | 6, 6, 239.7 | 1, 1, 234.4 | 360.0 |
+| B4 | off | 10/20 | aborted 3, wrong_goal 7 | 170.9 | 6, 3, 170.9 | 1, 0, - | 270.0 |
+| B4 | on | 11/20 | aborted 2, wrong_goal 7 | 239.7 | 6, 3, 239.7 | 1, 0, - | 360.0 |
+
+All 8 rows together: 116 successful runs, longest 265.8 s -> declared rule 420.0 s (floor 270 s).
+E5/E6 successful runs: 31, durations [161.4, 162.75, 164.0, 168.9, 170.2, 170.9, 171.25, 183.55, 184.45, 226.8, 230.4, 234.2, 234.4, 238.3, 239.0, 239.7, 265.8].
+
+### 420 s development timeout (feeds the rule): experiments_ab_v4_return_speed_420_dev_20261117_192605
+
+| experiment | detection | SUCCESS | failures | longest successful s | E5 runs: n, success, longest s | E6 runs: n, success, longest s | rule from this row |
+|---|---|---|---|---|---|---|---|
+| A3 | off | 20/20 | - | 184.45 | 6, 6, 183.55 | 1, 1, 184.45 | 300.0 |
+| A3 | on | 20/20 | - | 283.9 | 6, 6, 283.9 | 1, 1, 265.8 | 450.0 |
+| B3 | off | 10/20 | wrong_goal 9, aborted 1 | 183.55 | 6, 3, 183.55 | 1, 0, - | 300.0 |
+| B3 | on | 15/20 | aborted 2, wrong_goal 3 | 308.1 | 6, 4, 308.1 | 1, 0, - | 480.0 |
+| A4 | off | 20/20 | - | 171.25 | 6, 6, 171.25 | 1, 1, 164.0 | 270.0 |
+| A4 | on | 20/20 | - | 239.7 | 6, 6, 239.7 | 1, 1, 234.4 | 360.0 |
+| B4 | off | 10/20 | aborted 3, wrong_goal 7 | 170.9 | 6, 3, 170.9 | 1, 0, - | 270.0 |
+| B4 | on | 11/20 | aborted 2, wrong_goal 7 | 239.7 | 6, 3, 239.7 | 1, 0, - | 360.0 |
+
+All 8 rows together: 126 successful runs, longest 308.1 s -> declared rule 480.0 s (floor 270 s).
+E5/E6 successful runs: 41, durations [161.4, 162.75, 164.0, 168.9, 170.2, 170.9, 171.25, 183.55, 184.45, 226.8, 230.4, 234.2, 234.4, 238.3, 239.0, 239.7, 265.8, 283.9, 306.5, 308.1].
+
+
+**Before and after the key at 270 s (the same layout and rejection; before = 16.20.1 for A3 and B3, 16.20.4 for A4 and B4):**
+
+| experiment | detection | before: SUCCESS, median, collisions, safety stops | with the key: SUCCESS, median, collisions, safety stops |
+|---|---|---|---|
+| A3 | off | 20/20, 143.3 s, 0, 20 | 20/20, 138.8 s, 0, 0 |
+| A3 | on | 13/20, 228.4 s, 0, 0 | **14/20**, 217.2 s, 0, 0 |
+| B3 | off | 10/20, 138.9 s, 0, 18; fooled 10/15 | 10/20, 134.6 s, 0, 0; fooled 10/15 |
+| B3 | on | 11/20, 247.2 s, 0, 0; fooled 8/40 | 11/20, 237.0 s, 0, 0; fooled 8/40 |
+| A4 | off | 20/20, 134.7 s, 0, 7 | 20/20, 132.9 s, 0, 3 |
+| A4 | on | 20/20, 199.6 s, 0, 0 | 20/20, 195.5 s, 0, 2 |
+| B4 | off | 10/20, 126.3 s, 0, 6; fooled 8/14 | 10/20, 124.8 s, 0, 2; fooled 8/14 |
+| B4 | on | 11/20, 205.9 s, 0, 2; fooled 20/47 | 11/20, 201.5 s, 0, 4; fooled 20/47 |
+
+**Read.**
+- **The key helps but does not remove the A3 / B3 timeouts at 270 s on the clearance layout, as 16.20.3 predicted:** the E5 runs of A3 on (6 of 20) and of B3 on still time out; E6 of A3 on now fits (265.8 s). **At the 420 s development timeout they succeed: A3 on 20/20 (E5 283.9 s, E6 265.8 s, longest 283.9 s) and B3 on 15/20 (the five 270 s timeouts become four successes and one abort; E5 up to 308.1 s)**, so those timeouts were duration, not failures. The other rows (A3 off, B3 off, A4, B4) are identical at 270 s and 420 s: nothing in them is near the limit (longest 239.7 s).
+- **Set B successes do not change with the key:** B3 off 10/20, B3 on 11/20 at 270 s (15/20 at 420 s), B4 10/20 and 11/20, with the same lies fooled; the differences between rows come from the liars and the number of workers, not from the speed. 0 collisions in all 16 rows. The safety stops are short stops (0.05 to 0.25 s); most rows have fewer, A4 on and B4 on a few more (0 -> 2, 2 -> 4); not investigated.
+- **Longest durations in the simulator (420 s runs):** A3 on 283.9 s (E5), B3 on 308.1 s (E5), A4 on and B4 on 239.7 s, off rows 171 to 184 s. E5 / E6 per row are in the tables above (successful runs only; A3 on: E5 283.9 s, E6 265.8 s; B3 on: E5 up to 308.1 s; A4 / B4 on: E5 239.7 s, E6 234.4 s; off rows: E5 up to 183.6 s).
+- **What the declared rule would give from these simulator durations (information only):** from the 420 s development runs the longest successful run is 308.1 s (B3 on, E5) -> **480 s** (A3 on alone: 450 s; A4 and B4: 360 s; the off rows 270 to 300 s); one value for all settings is the maximum, 480 s. **From the 270 s runs the rule would wrongly give 420 s** (longest successful 265.8 s, because the E5 runs that need 284 to 308 s are timeouts and cannot count): the illustration of 16.20.5 that development runs feeding the rule must never use 270 s.
+  Unity's real durations differ from the simulator's (step 5 had A3 timeouts); the value comes from the rule applied to Unity's 420 s runs. A route that needs more than the development timeout times out there too and the rule cannot see it, so the development timeout must stay above the durations that are meant to count; 420 s covers successful durations up to 420 s (the simulator's longest is 308.1 s).
+- `final_plan.json` `timeout_s` stays 270 (not touched); the rule text there is already the one of 16.16 decision 4.
+
+### 16.21 Decisions of 2026-11-17 (Nusrat and Anisha): the layout with two workers at J1, the weaker lie detection in B4 disclosed, B1 floor 10 adopted; recorded BEFORE any change
+
+Branch `anisha/v4-clearance-layout` (from `279d252`). This round is done in two steps because of a missing file (see 3); the first step is item 2 (B1), the second the layout and the rerun.
+
+**1. Layout: option (i), two workers at J1 everywhere (Nusrat's re-search with the 0.8 m re-ask shift, agreed by Anisha).** **0 of 864,782 three-worker layouts meet the 1.0 m clearance with the controller's 0.8 m re-ask shift; the only three-worker option puts slot 3 at 0.60 m, inside the person-in-path corridor** (corridor half width 0.6 m, `hri_control.json`; so a worker there could trigger the person-in-path stop of the robot's own drive).
+   So A3 and B3 lose their third worker at J1 too (`people_by_node` J1 3 is removed from scenario 3, as it already is in scenario 4; this is a change of 16.12 item 3: "a third worker at J1 so that the majority vote of rule (a) has three voters"). The slots come from Nusrat's `slot_table.csv` (data, not instructions); the simulator takes them together with `placement_rule.reask_shift_m` 0.8 (the controller's value; 16.20.2 had her 0.4 m model there) in one change.
+**2. Correction to Nusrat's note, and the weaker lie detection that follows (disclosed).** **`backtrack` is OFF in the experiments (16.10).** With two workers who disagree and nobody else to ask, the tie rule of 16.2 decision 4 asks the **first worker again and counts the answer twice** (16.13.1), so **a lie by the FIRST worker at J1 is followed unless `reject_impossible` catches it** (a lie that shows a real wrong branch is not impossible, so rule (b) catches little: 16.13.1). **Expected: weaker lie detection at J1 in A3-type routes and in B3 and B4 (two voters instead of three), as 16.20.1 measured for B4 (on 15/20 -> 11/20, lies fooled 8/37 -> 20/42).** This is a property of the design with two workers, not of a code change, and is reported, not tuned.
+   The rerun therefore splits the lies fooled by whether the liar was the first-asked or a later-asked worker and by whether `reject_impossible` caught the lie (see 5).
+**3. B1 floor 10 adopted now, before Nusrat's strict-protocol rerun** (16.19.7 said "waits for the rerun"; Anisha decides to adopt it now). Reason: 16.19.6: **no STOP reading changes with B1 (false STOPs and criterion (a) identical with and without it), and the S5 PROCEED holds rise from 35/62 to 58/62 with the current reader, 59/62 with C2s** (the adopted reader: 664 of 1416 PROCEED frames, 47 %; D4 stand-in 38/38 and STOP sessions 26/26 unchanged). Nusrat's rerun reports the frames per window by the number of people in view; if it shows that the floor is wrong, the value is changed then and disclosed.
+   The rule (declared in 16.19.2 item B1, unchanged): PROCEED needs valid arm frames >= max(`proceed.min_valid_floor` 10, `window.min_valid_fraction` 0.6 x the frames the reader received for this person in the 2.0 s window), instead of 0.6 x the nominal 20; at the nominal 10 Hz this is the same 12. A v4 reader value in `configs/v4/gesture_reader.json` `proceed.min_valid_floor`; absent = the nominal rule as before. v3 is untouched. A declared difference of v3 and v4 is added to `analysis.json`.
+**4. What is missing: `~/Downloads/slot_table.csv` does not exist** (searched: Downloads, the home folder, the whole disk, `origin/nusrat/v4-step5-dev` at `3f0422c`, which holds no slot table). I do not invent slots. **Step 1 (now): this record and B1 floor 10** (gesture_reader.json, `gesture_motion.proceed_features`, tests, docs), committed on its own. **Step 2 (when the file is there): `scenarios_ab.json` slots, `people_by_node` of scenario 3 and `placement_rule.reask_shift_m` 0.8 together, `MatchesUnity` and the clearance tests, and the rerun.**
+**5. The rerun (declared now; step 2):** all simulator rows (the 13 of the request: to be confirmed whether they are the 16 rows of 16.13 (eight experiments, detection off and on) or the 13 final settings), 20 seeds, 270 s floor and a 420 s development timeout as in 16.20.6, on the new slots with B1 floor 10 and C2s live. Per row: successes, collisions, longest successful duration; for the B rows the lies fooled split by first-asked liar / later-asked liar and by caught by `reject_impossible` / not caught. Simulator only.
+
+#### 16.21.1 Step 1 built: B1 floor 10 (2026-11-17); the layout and the rerun wait for `slot_table.csv`
+
+**Built (v4 only; `hri_perception.py` and the v3 config are untouched).** `configs/v4/gesture_reader.json` `proceed.min_valid_floor` 10 (with its `why`, DECIDED 2026-11-17); `gesture_motion.proceed_features`: when the key is present the valid-frame requirement is max(floor, `window.min_valid_fraction` 0.6 x the frames received for the person in the 2.0 s window), else the nominal 0.6 x 20 as before (absent = the earlier rule);
+`docs/gesture_reader_v4.md` and `configs/v4/analysis.json` (a new declared v3-to-v4 difference "PROCEED valid frames"). The replay tools model the earlier reader (`live_reader_config` and the `current` reader drop the key) and get a variant `final` = the real reader with both keys (C2s + B1).
+
+**Replay of the real reader (both keys) on the three development datasets (S5, STOP sessions, D4 stand-in; guard passed, zips read in place; `outputs/proceed_stop_v4_switch_20261117_222619`): it reproduces the row "C2s + B1 floor 10" of 16.19.6.**
+
+| reader | S5 PROCEED holds | STOP sessions PROCEED holds | D4* PROCEED holds | false STOPs S5 / STOP sessions / D4* (frames / episodes) | criterion (a) |
+|---|---|---|---|---|---|
+| current reader (no key) | 35/62 (322 of 1416 fr, 23 %) | 26/26 (559 fr) | 38/38 (494 fr) | 216 / 150, 67 / 29, 80 / 44 | 34 of 40 within 1.0 s |
+| C2s (B1 off) | 37/62 (377 fr) | 26/26 (587 fr) | 38/38 (519 fr) | 73 / 65, 21 / 13, 28 / 19 | 32 of 40; none lost vs current |
+| **C2s + B1 floor 10 (the reader now)** | **59/62 (664 fr, 47 %)** | 26/26 (587 fr) | 38/38 (537 fr) | 73 / 65, 21 / 13, 28 / 19 (identical to C2s) | identical to C2s |
+
+**Read.** No STOP reading changes with B1 (false STOPs and criterion (a) are identical with and without the floor). The "58/62" of the request is the current reader with B1; with C2s already adopted the S5 PROCEED holds are **59/62**. The readings while the robot moves differ from the current reader's in 8 of 8138 (S5) and 8 of 7309 (D4*) moving frames, 0 in the STOP sessions: B1 reads more PROCEED (16.19.6 fact 2). Still not read: 3 of the 62 S5 holds and 53 % of the S5 PROCEED frames.
+**Tests:** `tests/test_b1_floor_v4.py` (12: the floor and its reason, v3 untouched, the difference declared, a 5 Hz stream is read with the floor and not without, below the floor never, the nominal 10 Hz rate is unchanged, a wave or one swing is not PROCEED, the real key equals the analysis model, the STOP and hanging-arm readings through the whole pipeline do not depend on the floor; 3 opt-in tests pin the replay numbers above with `B1_REPORT=<report.json>` or `B1_REPLAY=1`; run once, 3 passed);
+`tests/test_proceed_stop_v4.py` (the replay baseline has the key removed) and `tests/test_c2s_switch_v4.py` (the "B1 is not changed" pin of 16.19.7 became the adopted value). Nusrat's strict-protocol rerun still reports the frames per window by people in view; the floor is changed then only if it shows it is wrong, and disclosed.
+**Open for step 2:** `~/Downloads/slot_table.csv`, and which "13 rows" (the 16 rows of 16.13, or the 13 final settings).
+
+#### 16.21.2 Step 2: the slot table received; what is applied and how it is checked and rerun (2026-11-17); recorded BEFORE any change
+
+**Data (not instructions): `~/Downloads/slot_table.csv`, SHA-256 `a180e358f4ec476e31f362918435170d57254644012b97e38d592ab3921ed39f`, 61 rows, three layouts: `P` (the previous clearance layout of 16.20, evaluated with the 0.8 m shift), `i` (two workers at J1), `iii` (three workers at J1, slot 3 relaxed to 0.631 m).** Decision of 16.21: **option (i)**. Its rows: junction slots (the same at every junction of every scenario) **slot 1 `{before 3.0, right -2.0}`, slot 2 `{before -2.5 (2.5 m AHEAD), right 4.0}`**; start slots unchanged (3.0, -2.0) and (3.0, 4.0); every row `relaxed` False, nearest node = own node, largest distance to the node 5.00 m (start slot 2), smallest clearance with the 0.8 m re-ask shift **1.173 m** (A3 J1 slot 2), largest own ask distance 4.062 m (A) and 3.18 m (junctions).
+**Applied together in one change:** `scenarios_ab.json` `junction_slots` of scenarios 1, 2, 3 = the two slots of layout `i` (so no scenario can ask a third worker at a junction: `place_slots` refuses 3 workers with 2 slots); `people_by_node` J1 3 removed from scenario 3 (scenario 4 had none since 16.20); `placement_rule.reask_shift_m` 0.4 -> 0.8 (the controller's value; the random layout's rejection of 16.20.4 then uses 0.8 too).
+**Checked (pass criteria fixed here):** every worker of every scenario, seed and node within 6.5 m of its node and nearest to it (largest distance reported); the independent clearance check of `layout_check_v4.py` at **both** re-ask shifts (0.4 m and 0.8 m): 0 of 20 plans violating for A1 to A4, smallest clearance >= 1.0 m, largest ask distance <= 5.5 m; the 3.0 m separation, turning-point, road and bystander rules hold for all seeds. `MatchesUnity` pins the slots to the values of this table (quoted constants; checked against her `clearance_layout` block whenever main's `unity/` file carries it, which it does not yet).
+**Rerun (simulator, 20 seeds, valid-branch liar; B1 floor 10, C2s, `return_speed_mps` 0.8 live): the 16 rows of 16.13 (A1 to A4 and B1 to B4, detection off and on) at the 270 s floor and at the 420 s development timeout, with the 13 final settings marked** (the settings of `final_plan.json`: the rows that are final settings are marked from that file, not chosen here). Per row: successes, collisions, longest successful duration (at 420 s), E5 / E6 durations for A3 to B4; for the B rows the lies given, split by the liar being the first-asked worker of the visit or a later-asked one, and by what happened to the lie: caught by `reject_impossible` (decision `rejected:*`), outvoted, withdrawn, fooled (as `export_csv_v4`: accepted, acted on, not the true branch), neither (no reading / read as the true branch). A3/B3 and A4/B4 are shown against the previous layout (16.20.6 numbers, same code except the layout and `reask_shift_m`).
+**Declared before the numbers: the expected effect is a weaker lie detection at J1 (two voters), as 16.21 item 2 disclosed; nothing is tuned on these rows.**
+
+#### 16.21.3 Step 2 done: layout (i) applied, checked and the 16 rows rerun (2026-11-17)
+
+**Applied in one change (as declared in 16.21.2).** `scenarios_ab.json`: `junction_slots` of scenarios 1 to 3 = `{3.0, -2.0}`, `{-2.5, 4.0}` (layout (i) of `slot_table.csv`, SHA-256 `a180e358...ed39f`); `people_by_node` J1 3 removed from scenario 3; `placement_rule.reask_shift_m` 0.8; the `why` entries say so. Start slots unchanged. Two workers at every node of every experiment (the simulator refuses a third at a junction: "3 workers but 2 slots").
+**Checks (the pass criteria of 16.21.2; `layout_check_v4.py`, `outputs/layout_check_v4_20261117_223805_layout_i`): all met.** Every worker of A1 to A4, seeds 1 to 20, every node (40 / 80 / 200 / 200 placements) is within 6.5 m of its node and nearest to it: **largest distance 5.00 m** (the start node's second slot; A4 4.21 m). Clearance, **0 of 20 plans violating at both re-ask shifts**: A1 2.00 m / 1.96 m, A2 and A3 1.19 m / 1.17 m (the table's 1.173 m), A4 1.00 m (the random layout's rejection), largest ask distance 4.06 m (at 0.8 m), all <= 5.5 m. The 16.20 layout fails at 0.8 m (0.74 m, 5.53 m) as recorded; it stays reproducible in `analyse_a3_timeouts_v4.py --layout clearance16`.
+**Tests.** `MatchesUnity` pins the slots to the table's values (quoted constants, against her `clearance_layout` block whenever main's `unity/` file carries it, which it does not yet) and J1 / J2 positions; `test_clearance_layout_v4.py` (layout (i), both shifts, the 16.20 layout and the old slots caught); `test_clearance_rejection_v4.py` (rule value 0.8; A4 clean at both shifts); the "three workers at J1" tests became "two workers at every node"; the rule tests that need three voters (`run(..., people=3)` in `test_lie_detection_v4.py` and `test_export_csv_v4.py`) now set their own three slots (the 16.13 ones), because the controller's three-voter rule is unchanged but the layout has two; `analyse_a3_timeouts_v4.py` has the layouts `old`, `clearance16`, `current`; new `report_rows_ab_v4.py` + `tests/test_report_rows_ab_v4.py` (5: the five outcomes, first / later asker and the tie re-ask, visits are separate, the 13 final settings give 12 rows of the 16, and the split agrees with `runs.csv` on a simulated B3 session).
+
+**Rerun (simulator, 20 seeds per row, valid-branch liar; B1 floor 10, C2s and `return_speed_mps` 0.8 live): the 16 rows of 16.13 at the 270 s floor and at the 420 s development timeout** (`outputs/experiments_ab_v4_layout_i_270_20261117_224233` and `..._layout_i_420_dev_20261117_224306`; report `outputs/report_rows_ab_v4_20261117_224407_layout_i`). **Final setting = one of the 13 final settings of `final_plan.json`: 12 of the 16 rows are (A1, A2, A3, A4, B1 to B4 with detection on; B1 to B4 with detection off); the 13th, A2 with the left turn, is not a row of this table and was not run.** (The `final_plan.json` note of A3, "2 per node and 3 at J1", is stale since 16.21: reported, not edited.)
+The definitions of the lie columns are those of `export_csv_v4` (caught by reject_impossible = decision `rejected:*`; fooled = accepted, acted on, not the true branch); the totals agree with `runs.csv` in all eight B rows. "First-asked liar" = the worker asked first at that visit (including the tie re-ask of him), "later-asked" = any other.
+
+##### 270 s (the floor): `experiments_ab_v4_layout_i_270_20261117_224233`
+
+| experiment | detection | final setting | SUCCESS | failures | collisions | longest successful s | E5: runs, successes, longest s | E6: runs, successes, longest s |
+|---|---|---|---|---|---|---|---|---|
+| A1 | off | - | 20/20 | - | 0 | 70.05 | 0 | 0 |
+| A1 | on | **final** | 20/20 | - | 0 | 85.6 | 0 | 0 |
+| A2 | off | - | 20/20 | - | 0 | 91.8 | 0 | 0 |
+| A2 | on | **final** | 20/20 | - | 0 | 142.85 | 0 | 0 |
+| A3 | off | - | 20/20 | - | 0 | 177.25 | 6, 6, 176.5 | 1, 1, 177.25 |
+| A3 | on | **final** | 14/20 | timeout 6 | 0 | 251.85 | 6, 0, - | 1, 1, 251.85 |
+| A4 | off | - | 20/20 | - | 0 | 170.9 | 6, 6, 170.9 | 1, 1, 162.8 |
+| A4 | on | **final** | 20/20 | - | 0 | 253.0 | 6, 6, 253.0 | 1, 1, 244.4 |
+| B1 | off | **final** | 19/20 | aborted 1 | 0 | 79.95 | 0 | 0 |
+| B1 | on | **final** | 20/20 | - | 0 | 103.25 | 0 | 0 |
+| B2 | off | **final** | 13/20 | aborted 7 | 0 | 101.65 | 0 | 0 |
+| B2 | on | **final** | 19/20 | aborted 1 | 0 | 163.75 | 0 | 0 |
+| B3 | off | **final** | 10/20 | wrong_goal 9, aborted 1 | 0 | 176.5 | 6, 3, 176.5 | 1, 0, - |
+| B3 | on | **final** | 8/20 | timeout 4, wrong_goal 7, aborted 1 | 0 | 215.5 | 6, 0, - | 1, 0, - |
+| B4 | off | **final** | 10/20 | aborted 3, wrong_goal 7 | 0 | 170.9 | 6, 3, 170.9 | 1, 0, - |
+| B4 | on | **final** | 11/20 | aborted 2, wrong_goal 7 | 0 | 253.0 | 6, 3, 253.0 | 1, 0, - |
+
+Lies by who lied and what became of the lie (lying asks of the dialogue table):
+
+| experiment | detection | lying asks | first-asked liar: asks / caught by reject_impossible / outvoted / withdrawn / fooled / neither | later-asked liar: asks / caught by reject_impossible / outvoted / withdrawn / fooled / neither | runs.csv: given / detected / fooled | totals agree |
+|---|---|---|---|---|---|---|
+| B1 | off | 5 | 5 / 0 / 0 / 0 / 0 / 5 | 0 / 0 / 0 / 0 / 0 / 0 | 5 / 0 / 0 | yes |
+| B1 | on | 12 | 8 / 6 / 0 / 0 / 0 / 2 | 4 / 4 / 0 / 0 / 0 / 0 | 12 / 10 / 0 | yes |
+| B2 | off | 18 | 18 / 0 / 0 / 0 / 0 / 18 | 0 / 0 / 0 / 0 / 0 / 0 | 18 / 0 / 0 | yes |
+| B2 | on | 36 | 23 / 20 / 0 / 0 / 0 / 3 | 13 / 12 / 0 / 0 / 0 / 1 | 36 / 32 / 0 | yes |
+| B3 | off | 15 | 15 / 0 / 0 / 0 / 10 / 5 | 0 / 0 / 0 / 0 / 0 / 0 | 15 / 0 / 10 | yes |
+| B3 | on | 49 | 40 / 6 / 0 / 0 / 19 / 15 | 9 / 4 / 2 / 0 / 1 / 2 | 49 / 12 / 20 | yes |
+| B4 | off | 14 | 14 / 0 / 0 / 0 / 8 / 6 | 0 / 0 / 0 / 0 / 0 / 0 | 14 / 0 / 8 | yes |
+| B4 | on | 47 | 37 / 6 / 0 / 0 / 19 / 12 | 10 / 4 / 2 / 0 / 1 / 3 | 47 / 12 / 20 | yes |
+
+Against the previous layout (`experiments_ab_v4_return_speed_270_20261117_192542`):
+
+| experiment | detection | previous: SUCCESS, collisions, longest s | now: SUCCESS, collisions, longest s | previous fooled (first / later) | now fooled (first / later) |
+|---|---|---|---|---|---|
+| A3 | off | 20/20, 0, 184.45 | 20/20, 0, 177.25 | - | - |
+| A3 | on | 14/20, 0, 265.8 | 14/20, 0, 251.85 | - | - |
+| A4 | off | 20/20, 0, 171.25 | 20/20, 0, 170.9 | - | - |
+| A4 | on | 20/20, 0, 239.7 | 20/20, 0, 253.0 | - | - |
+| B3 | off | 10/20, 0, 183.55 | 10/20, 0, 176.5 | 10 / 0 | 10 / 0 |
+| B3 | on | 11/20, 0, 252.0 | 8/20, 0, 215.5 | 8 / 0 | 19 / 1 |
+| B4 | off | 10/20, 0, 170.9 | 10/20, 0, 170.9 | 8 / 0 | 8 / 0 |
+| B4 | on | 11/20, 0, 239.7 | 11/20, 0, 253.0 | 19 / 1 | 19 / 1 |
+
+##### 420 s development timeout: `experiments_ab_v4_layout_i_420_dev_20261117_224306`
+
+| experiment | detection | final setting | SUCCESS | failures | collisions | longest successful s | E5: runs, successes, longest s | E6: runs, successes, longest s |
+|---|---|---|---|---|---|---|---|---|
+| A1 | off | - | 20/20 | - | 0 | 70.05 | 0 | 0 |
+| A1 | on | **final** | 20/20 | - | 0 | 85.6 | 0 | 0 |
+| A2 | off | - | 20/20 | - | 0 | 91.8 | 0 | 0 |
+| A2 | on | **final** | 20/20 | - | 0 | 142.85 | 0 | 0 |
+| A3 | off | - | 20/20 | - | 0 | 177.25 | 6, 6, 176.5 | 1, 1, 177.25 |
+| A3 | on | **final** | 20/20 | - | 0 | 271.2 | 6, 6, 271.2 | 1, 1, 251.85 |
+| A4 | off | - | 20/20 | - | 0 | 170.9 | 6, 6, 170.9 | 1, 1, 162.8 |
+| A4 | on | **final** | 20/20 | - | 0 | 253.0 | 6, 6, 253.0 | 1, 1, 244.4 |
+| B1 | off | **final** | 19/20 | aborted 1 | 0 | 79.95 | 0 | 0 |
+| B1 | on | **final** | 20/20 | - | 0 | 103.25 | 0 | 0 |
+| B2 | off | **final** | 13/20 | aborted 7 | 0 | 101.65 | 0 | 0 |
+| B2 | on | **final** | 19/20 | aborted 1 | 0 | 163.75 | 0 | 0 |
+| B3 | off | **final** | 10/20 | wrong_goal 9, aborted 1 | 0 | 176.5 | 6, 3, 176.5 | 1, 0, - |
+| B3 | on | **final** | 11/20 | aborted 2, wrong_goal 7 | 0 | 271.2 | 6, 3, 271.2 | 1, 0, - |
+| B4 | off | **final** | 10/20 | aborted 3, wrong_goal 7 | 0 | 170.9 | 6, 3, 170.9 | 1, 0, - |
+| B4 | on | **final** | 11/20 | aborted 2, wrong_goal 7 | 0 | 253.0 | 6, 3, 253.0 | 1, 0, - |
+
+Lies by who lied and what became of the lie (lying asks of the dialogue table):
+
+| experiment | detection | lying asks | first-asked liar: asks / caught by reject_impossible / outvoted / withdrawn / fooled / neither | later-asked liar: asks / caught by reject_impossible / outvoted / withdrawn / fooled / neither | runs.csv: given / detected / fooled | totals agree |
+|---|---|---|---|---|---|---|
+| B1 | off | 5 | 5 / 0 / 0 / 0 / 0 / 5 | 0 / 0 / 0 / 0 / 0 / 0 | 5 / 0 / 0 | yes |
+| B1 | on | 12 | 8 / 6 / 0 / 0 / 0 / 2 | 4 / 4 / 0 / 0 / 0 / 0 | 12 / 10 / 0 | yes |
+| B2 | off | 18 | 18 / 0 / 0 / 0 / 0 / 18 | 0 / 0 / 0 / 0 / 0 / 0 | 18 / 0 / 0 | yes |
+| B2 | on | 36 | 23 / 20 / 0 / 0 / 0 / 3 | 13 / 12 / 0 / 0 / 0 / 1 | 36 / 32 / 0 | yes |
+| B3 | off | 15 | 15 / 0 / 0 / 0 / 10 / 5 | 0 / 0 / 0 / 0 / 0 / 0 | 15 / 0 / 10 | yes |
+| B3 | on | 49 | 40 / 6 / 0 / 0 / 19 / 15 | 9 / 4 / 2 / 0 / 1 / 2 | 49 / 12 / 20 | yes |
+| B4 | off | 14 | 14 / 0 / 0 / 0 / 8 / 6 | 0 / 0 / 0 / 0 / 0 / 0 | 14 / 0 / 8 | yes |
+| B4 | on | 47 | 37 / 6 / 0 / 0 / 19 / 12 | 10 / 4 / 2 / 0 / 1 / 3 | 47 / 12 / 20 | yes |
+
+Against the previous layout (`experiments_ab_v4_return_speed_420_dev_20261117_192605`):
+
+| experiment | detection | previous: SUCCESS, collisions, longest s | now: SUCCESS, collisions, longest s | previous fooled (first / later) | now fooled (first / later) |
+|---|---|---|---|---|---|
+| A3 | off | 20/20, 0, 184.45 | 20/20, 0, 177.25 | - | - |
+| A3 | on | 20/20, 0, 283.9 | 20/20, 0, 271.2 | - | - |
+| A4 | off | 20/20, 0, 171.25 | 20/20, 0, 170.9 | - | - |
+| A4 | on | 20/20, 0, 239.7 | 20/20, 0, 253.0 | - | - |
+| B3 | off | 10/20, 0, 183.55 | 10/20, 0, 176.5 | 10 / 0 | 10 / 0 |
+| B3 | on | 15/20, 0, 308.1 | 11/20, 0, 271.2 | 8 / 0 | 19 / 1 |
+| B4 | off | 10/20, 0, 170.9 | 10/20, 0, 170.9 | 8 / 0 | 8 / 0 |
+| B4 | on | 11/20, 0, 239.7 | 11/20, 0, 253.0 | 19 / 1 | 19 / 1 |
+
+Folder: /Users/anishamehajabin/warehouse-robot-perception/robot_vision/outputs/report_rows_ab_v4_20261117_224407_layout_i
+
+**Read (simulator, not a measurement).**
+- **0 collisions in all 32 rows.** Set A: A1, A2, A4 20/20 in both detection settings and A3 off 20/20 at both budgets; **A3 on is 14/20 at 270 s (the six E5 runs time out: E5 needs 271.2 s, 1.2 s over the floor) and 20/20 at 420 s (longest 271.2 s)**, against 283.9 s on the 16.20 layout.
+- **The weaker lie detection that 16.21 disclosed is there, and it is B3.** B3 on (two voters at J1 instead of three): **SUCCESS 15/20 -> 11/20 at 420 s (8/20 at 270 s, where four E5 runs time out), wrong goal 3 -> 7, lies fooled 8 -> 20 (first-asked liars 8 -> 19, later-asked 0 -> 1)**. B4 on is unchanged (11/20, 19 + 1 fooled): it already had two workers at J1 in 16.20.4. The detection-off rows do not change (B3 off 10 fooled by the first-asked liar, B4 off 8). B1 on 20/20, B2 on 19/20 as before.
+- **Who lied decides:** in B3 on, 40 of the 49 lying asks are the first-asked worker's: 6 are caught by `reject_impossible`, **19 fooled**, 15 neither (not read, or read as the true branch); of the 9 later-asked liars 4 are caught by `reject_impossible`, 2 outvoted, 1 fooled, 2 neither. **A second opinion outvotes a lie only 2 times in B3 on and 2 in B4 on (both by later-asked liars); every other detected lie is a rejection of an impossible direction** (6 + 4 in B3 on and B4 on; 20 + 12 in B2 on, 6 + 4 in B1 on). The first worker's lie is followed 19 times in each of B3 on and B4 on because a tie re-asks and counts him twice (16.13.1), as 16.21 item 2 said.
+- **Durations (420 s runs):** longest successful run in the table 271.2 s (A3 on and B3 on, E5); A4 on and B4 on 253.0 s (previous layout 239.7 s); the E5 / E6 columns give the per-row durations. **What the declared rule would give from these simulator durations (information only; the real value comes from Unity's runs on the new NavMesh): 420 s** (`timeout_from_development(271.2)`: 1.5 x 271.2 = 406.8, rounded up to a multiple of 30; the previous layout gave 480 s from B3 on E5 at 308.1 s). Fed with the 270 s runs the rule would give 390 s from 253.0 s, wrongly: the long routes are timeouts there and cannot count (16.20.5).
+- **A3 / B3 and A4 / B4 against the previous layout (16.20.6 runs):** the tables above. A3 off and A4 off are as before (longest 177.3 s against 184.5 s, 170.9 s against 171.3 s), A3 on 20/20 at 420 s both times; A4 on takes longer (253.0 s against 239.7 s); B3 on is the row that changed, for the reason above; B4 rows are unchanged in successes.

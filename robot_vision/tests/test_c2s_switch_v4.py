@@ -49,8 +49,8 @@ class ConfigTests(unittest.TestCase):
         self.assertIs(inspect.signature(gm.read_window).parameters["robot_stopped"].default, False)
         self.assertIs(inspect.signature(gm._arm_window).parameters["robot_stopped"].default, False)
 
-    def test_b1_is_not_changed(self):
-        self.assertEqual(ON["proceed"].get("min_valid_floor"), None)                                           # B1 floor 10 still waits for Nusrat's strict-protocol rerun
+    def test_b1_floor_10_was_adopted_after_16_19_7(self):                                                      # AUDIT.md 16.21 (it waited for the rerun in 16.19.7)
+        self.assertEqual(ON["proceed"].get("min_valid_floor"), 10)
         self.assertNotIn("min_valid_relative", ON["proceed"])
 
     def test_the_analysis_declares_the_difference_with_the_disclosure(self):

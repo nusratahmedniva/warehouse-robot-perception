@@ -547,6 +547,10 @@ def proceed_features(samples: list[Sample], side: str, cfg: dict, t_now: float) 
         if af.valid:
             rows.append((s.t, np.array(af.wrist_rel, float)))
     need = math.ceil(w["min_valid_fraction"] * max(1, round(pc["window_s"] * cfg["frame_hz"])) - 1e-9)
+    floor = pc.get("min_valid_floor")
+    if floor:                                                  # B1 (AUDIT.md 16.19.2 item B1, adopted 16.21; v4): max(floor, fraction x the frames RECEIVED in the window)
+        received = sum(1 for s in samples if s.t >= t_now - pc["window_s"] - 1e-9)
+        need = max(int(floor), math.ceil(w["min_valid_fraction"] * received - 1e-9))
     out = {"valid": len(rows), "enough": len(rows) >= need, "strokes": 0, "cycles": 0.0, "path": 0.0,
            "vertical_share": 0.0, "ok": False}
     if len(rows) < 2:

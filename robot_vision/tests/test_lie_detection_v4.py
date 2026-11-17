@@ -47,6 +47,9 @@ EAST_AT_J1 = {"kind": "fixed", "points": {**NORTH["points"], "J1": [[8.75, 0.0]]
 WALL_AT_J3 = {"kind": "fixed", "points": {**NORTH["points"], "J3": [[18.75, 2.5], [17.0, 3.5]]}}
 
 
+THREE_SLOTS = [{"before_m": 3.0, "right_m": -2.0}, {"before_m": 5.5, "right_m": 2.0}, {"before_m": 6.0, "right_m": -2.0}]   # the slots of 16.13: the rule tests that need three voters (the layout has two since 16.21)
+
+
 def run(name, goal, script=None, detection=None, layout=None, seed=1, people=None, p=None, xcheck=False):
     """One scenario run; xcheck = the simulator's perfect MediaPipe hand cross-check as the tie-break (an ambiguous honest gesture
     then reads as shown whatever the viewpoint; the rule tests are about the rules, not about the mirror ambiguity)."""
@@ -61,6 +64,8 @@ def run(name, goal, script=None, detection=None, layout=None, seed=1, people=Non
     if people is not None:                                   # an explicit head count replaces the per-node counts of the config (J1 has 3, 16.12)
         sc["spec"].layout["people"] = people
         sc["spec"].layout.pop("people_by_node", None)
+        if people > 2 and "junction_slots" in sc["spec"].layout:
+            sc["spec"].layout["junction_slots"] = [dict(x) for x in THREE_SLOTS]
     if p is not None:
         sc["spec"].lie_probability = p
     return sc["sim"].run(goal or sc["goal"])
@@ -619,23 +624,20 @@ class ThirdWorkerAndMargin(unittest.TestCase):
 
     def test_the_config(self):
         scen = sv.load_scenarios()
-        for k in ("3", "4"):
-            self.assertEqual(scen["scenarios"][k]["layout"]["people_by_node"], {"J1": 3})
-        for k in ("1", "2"):
-            self.assertNotIn("people_by_node", scen["scenarios"][k]["layout"])
+        for k in ("1", "2", "3", "4"):                                                       # AUDIT.md 16.21: two workers at J1 everywhere (16.12 item 3 had a third in A3, A4, B3, B4)
+            self.assertNotIn("people_by_node", scen["scenarios"][k]["layout"], k)
         lay = scen["scenarios"]["4"]["layout"]
         self.assertEqual((lay["nearer_margin_m"], lay["approach_m"], lay["max_draws"]), (0.25, 3.0, 100000))
         self.assertEqual(scen["placement_rule"]["min_worker_separation_m"], 3.0)             # the 3.0 m rule is unchanged
         self.assertEqual(lay["approach_m"], hc.load_json("configs/hri_control.json")["drive"]["junction_slow_radius_m"])
 
-    def test_three_workers_at_j1_and_two_elsewhere_in_a3_a4_b3_b4(self):
+    def test_two_workers_at_every_node_of_every_experiment(self):                          # AUDIT.md 16.21 (was: three at J1 in A3, A4, B3, B4)
         for name in ("A3", "A4", "B3", "B4"):
             for seed in (1, 2, 3):
                 sc = sv.scenario_ab(name, seed)
                 for node, v in sc["road"].nodes.items():
                     if v["kind"] in ("start", "junction"):
-                        n = len(sc["sim"]._scene_at(node).people)
-                        self.assertEqual(n, 3 if node == "J1" else 2, (name, seed, node))
+                        self.assertEqual(len(sc["sim"]._scene_at(node).people), 2, (name, seed, node))
         for name in ("A1", "A2", "B1", "B2"):
             sc = sv.scenario_ab(name, 1)
             self.assertTrue(all(len(sc["sim"]._scene_at(n).people) == 2 for n, v in sc["road"].nodes.items() if v["kind"] in ("start", "junction")))
@@ -755,14 +757,21 @@ class ExperimentFiles(unittest.TestCase):
                          {"scenarios_ab.json"} | {p.name for p in self.EXP.glob("control_lie_*.json")} | {p.name for p in self.EXP.glob("roadmap_a*.json")})
 
 
+# Nusrat's clearance layout (experiments_ab_unity.json clearance_layout, commit ed4e000 of origin/nusrat/v4-step5-dev; before_m negative = AHEAD, right_m negative = LEFT)
+# Since AUDIT.md 16.21.2: layout (i) of Nusrat's slot_table.csv (SHA-256 a180e358...ed39f), her re-search with the 0.8 m re-ask shift; two workers at every node
+CLEARANCE_SLOTS = [{"before_m": 3.0, "right_m": -2.0}, {"before_m": -2.5, "right_m": 4.0}]
+TWO_WORKER_EXPERIMENTS = ["A3", "A4", "B3", "B4"]
 UNITY_CFG = ROOT.parent / "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json"
 
 
 class MatchesUnity(unittest.TestCase):
-    """AUDIT.md 16.13: the simulator does what Unity's ExperimentPlanAB does (the beside slots, the goal generator, the valid-branch liar)."""
+    """AUDIT.md 16.13: the simulator does what Unity's ExperimentPlanAB does (the beside slots, the goal generator, the valid-branch liar).
+    Since AUDIT.md 16.20 (2026-11-17) the beside junction slots are Nusrat's clearance layout (experiments_ab_unity.json clearance_layout, commit ed4e000): her
+    values are quoted below because main's unity/ file carries the block only once PR #40 is merged, and the pins go to her block whenever it is present."""
 
     def setUp(self):
         self.u = json.loads(UNITY_CFG.read_text(encoding="utf-8"))
+        self.cl = self.u.get("clearance_layout")
         self.scen = sv.load_scenarios()
         self.road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
 
@@ -770,25 +779,30 @@ class MatchesUnity(unittest.TestCase):
     def test_the_slots_and_margins_are_unitys(self):
         for k in ("1", "2", "3"):
             lay = self.scen["scenarios"][k]["layout"]
-            self.assertEqual(lay["junction_slots"], self.u["junction_slots"], k)
+            self.assertEqual(lay["junction_slots"], CLEARANCE_SLOTS, k)                  # Nusrat's clearance layout (16.20), pending in Unity until she activates it
             self.assertEqual(lay["start_slots"], self.u["start_slots"], k)
             self.assertEqual((lay["nearer_margin_m"], lay["approach_m"]), (self.u["nearer_margin_m"], self.u["approach_m"]), k)
         self.assertEqual(self.scen["scenarios"]["4"]["layout"]["nearer_margin_m"], self.u["random_nearer_margin_m"])
         self.assertEqual(self.scen["scenarios"]["4"]["layout"]["max_draws"], self.u["random_max_draws"])
-        for e in self.u["experiments"]:                                                  # the third worker at J1 in A3, A4, B3, B4 only
+        if self.cl is not None:                                                          # her block, whenever the file carries it
+            self.assertEqual(self.cl["junction_slots"][:2], CLEARANCE_SLOTS)
+            if self.cl["active"]:                                                        # switched on: the live slots are the same
+                self.assertEqual(self.u["junction_slots"], CLEARANCE_SLOTS)
+        for e in self.u["experiments"]:                                                  # the third worker at J1 in A3 and B3 only (A4, B4: two, 16.20)
             lay = self.scen["scenarios"][e["scenario"]]["layout"]
-            self.assertEqual(sorted(lay.get("people_by_node", {})), e["three_worker_nodes"], e["name"])
+            want = [] if e["name"] in TWO_WORKER_EXPERIMENTS else e["three_worker_nodes"]
+            self.assertEqual(sorted(lay.get("people_by_node", {})), want, e["name"])
         self.assertEqual(self.scen["placement_rule"]["min_worker_separation_m"], 3.0)
 
     def test_slot_positions(self):
-        js, ss = self.u["junction_slots"], self.u["start_slots"]
-        pts = [tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "J1", 3, js)]
-        self.assertEqual(pts, [(4.25, -3.0), (8.25, -5.5), (4.25, -6.0)])                   # the first worker stands on the LEFT, 3.0 m back
+        js, ss = CLEARANCE_SLOTS, self.u["start_slots"]
+        pts = [tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "J1", 2, js)]
+        self.assertEqual(pts, [(4.25, -3.0), (10.25, 2.5)])                                 # layout (i): the first worker on the LEFT, 3.0 m back; the second 2.5 m AHEAD of J1, 4.0 m right
         self.assertEqual([tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "A", 2, ss)], [(4.25, -23.0), (10.25, -23.0)])
         j2 = [tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "J2", 2, js)]
-        self.assertEqual(j2, [(-3.25, -2.0), (-0.75, 2.0)])                                  # arrival heading west: back = east, right = north
-        with self.assertRaisesRegex(ValueError, "4 workers but 3 slots"):
-            sv.place_slots(self.road, "J1", 4, js)
+        self.assertEqual(j2, [(-3.25, -2.0), (-8.75, 4.0)])                                  # arrival heading west: back = east, right = north
+        with self.assertRaisesRegex(ValueError, "3 workers but 2 slots"):
+            sv.place_slots(self.road, "J1", 3, js)
 
     def test_every_scene_of_the_beside_experiments_obeys_the_rules_including_the_bystander_margin(self):
         for name in ("A1", "A2", "A3", "B3"):

@@ -63,6 +63,7 @@ def live_reader_config(path: str | Path | None = None) -> dict:
     baseline is that reader whatever gesture_reader.json now says; the candidate cues are then applied on top, in the script only."""
     rc = gm.load_config() if path is None else gm.load_config(path)
     rc["hand"] = {**rc["hand"], "stop_requires_raised": False, "stop_fingertip_spread_min": None, "stop_still_when_robot_stopped": False}
+    rc["proceed"] = {k: v for k, v in rc["proceed"].items() if k != "min_valid_floor"}          # B1 (AUDIT.md 16.21) off too: the nominal valid-frame rule
     return rc
 
 
