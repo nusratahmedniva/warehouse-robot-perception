@@ -46,6 +46,10 @@ Unity's slots (layout.junction_slots / start_slots), the bystander margin and th
 every layout, workers of the random layout are sorted by distance to the node (slot 0 = nearest), the goal of a run is the k-th value of
 GoalSequence(session_seed) (hri_trials.goal_order), and a liar shows only a real wrong branch (SceneSpec.lie_directions "valid_branch": the node's
 branches other than the true command; the compass directions only where the node has no other branch).
+
+Added 2026-11-17 (AUDIT.md 16.20.2): the random layout adopts Unity's clearance rejection (ExperimentPlanAB.ClearanceProblem, read from
+origin/nusrat/v4-step5-dev): a draw is redrawn unless every ask position of the node lies within placement_rule.ask_zone_m of it and no worker
+is closer than placement_rule.path_clearance_m to a road or to a segment the robot can drive (clearance_problem). The values are hers.
 """
 
 from __future__ import annotations
@@ -331,6 +335,106 @@ def _seg_dist(px: float, pz: float, seg) -> float:
     return math.hypot(px - (ax + f * dx), pz - (az + f * dz))
 
 
+def ask_position(worker, frm, standoff: float = 2.0) -> tuple[float, float]:
+    """Where the robot stands to ask a worker (hri_control dialog.approach_distance_m; Unity ExperimentPlanAB.AskPosition): `standoff` from the worker
+    toward `frm` (the node, or the previous ask position)."""
+    dx, dz = frm[0] - worker[0], frm[1] - worker[1]
+    n = math.hypot(dx, dz)
+    if n < 1e-6:
+        dx, dz, n = 1.0, 0.0, 1.0
+    return (worker[0] + dx / n * standoff, worker[1] + dz / n * standoff)
+
+
+def reask_position(worker, ask, standoff: float = 2.0, shift: float = 0.4) -> tuple[float, float]:
+    """The re-ask point (hri_control._reposition; Unity ReaskPosition): `shift` to the robot's right as it faces the worker (right of heading (hx, hz) is
+    (hz, -hx)), back onto the standoff circle."""
+    if shift <= 0:
+        return ask
+    hx, hz = worker[0] - ask[0], worker[1] - ask[1]
+    n = math.hypot(hx, hz)
+    if n < 1e-6:
+        return ask
+    hx, hz = hx / n, hz / n
+    return ask_position(worker, (ask[0] + hz * shift, ask[1] - hx * shift), standoff)
+
+
+def drivable_segments(road: hc.Roadmap, node: str, workers: list, standoff: float = 2.0, shift: float = 0.4):
+    """Unity's DrivableSegments for one asking node with its workers in slot order: ([(ax, az, bx, bz, label)], ask points). From the node to the ask
+    position of each worker in every order (second opinions), including the return to the first worker of an order (the tie rule), and from every ask
+    position and re-ask point to the next node of every branch of the node. Roads are not included (_road_segments)."""
+    import itertools
+    c = road.pos(node)
+    segs: list = []
+    asks: list = []
+
+    def add(p):
+        if all(math.dist(p, q) >= 1e-3 for q in asks):
+            asks.append(p)
+    for perm in itertools.permutations(range(len(workers))):
+        prev, frm = c, node
+        for k in range(len(perm) + 1):
+            if k == len(perm) and len(perm) < 2:
+                break
+            i = perm[k] if k < len(perm) else perm[0]               # after the last: back to the first (tie)
+            a = ask_position(workers[i], prev, standoff)
+            segs.append((prev[0], prev[1], a[0], a[1], f"{frm} to the ask position of worker {i + 1}{' (again)' if k == len(perm) else ''}"))
+            add(a)
+            add(reask_position(workers[i], a, standoff, shift))
+            prev, frm = a, f"the ask position of worker {i + 1}"
+    for a in list(asks):
+        for cmd, nxt in road.branches.get(node, {}).items():
+            n = road.pos(nxt)
+            segs.append((a[0], a[1], n[0], n[1], f"{node}: ask position ({a[0]:.2f}, {a[1]:.2f}) to {nxt} ({cmd})"))
+    return segs, asks
+
+
+CLEARANCE_KEYS = ("path_clearance_m", "ask_zone_m", "ask_standoff_m", "reask_shift_m")
+
+
+def clearance_problem(road: hc.Roadmap, node: str, pos: list, placed_by_node: dict, physical: hc.Roadmap | None, rule: dict) -> str | None:
+    """Unity's ClearanceProblem (AUDIT.md 16.20.2): the first clearance or ask-zone rule the workers `pos` of `node` break with the workers already
+    placed at other nodes (`placed_by_node`: {node: [(x, z), ...]} in placement order), or None. Every ask position of this node within
+    rule["ask_zone_m"] of it; every worker (here and placed) rule["path_clearance_m"] from this node's drivable segments; this node's workers that far
+    from every road of the map and of the physical map and from the drivable segments of every node placed before."""
+    standoff, shift = rule["ask_standoff_m"], rule["reask_shift_m"]
+    segs, asks = drivable_segments(road, node, pos, standoff, shift)
+    nx, nz = road.pos(node)
+    zone = rule.get("ask_zone_m", 0.0)
+    if zone > 0:
+        for a in asks:
+            d = math.hypot(a[0] - nx, a[1] - nz)
+            if d > zone + 1e-4:
+                return f"an ask position ({a[0]:.2f}, {a[1]:.2f}) is {d:.2f} m from {node} (> {zone:.2f})"
+    clr = rule.get("path_clearance_m", 0.0)
+    if not clr > 0:
+        return None
+    clr -= 1e-4
+    roads = _road_segments(road, physical)
+    for i, q in enumerate(pos):
+        for r in roads:
+            d = _seg_dist(q[0], q[1], r)
+            if d < clr:
+                return f"worker {i + 1} is {d:.2f} m from a road (< {rule['path_clearance_m']})"
+        for sg in segs:
+            d = _seg_dist(q[0], q[1], sg[:4])
+            if d < clr:
+                return f"worker {i + 1} is {d:.2f} m from {sg[4]} (< {rule['path_clearance_m']})"
+    for other, pts in placed_by_node.items():
+        for q in pts:
+            for sg in segs:
+                d = _seg_dist(q[0], q[1], sg[:4])
+                if d < clr:
+                    return f"a worker of {other} is {d:.2f} m from {sg[4]} (< {rule['path_clearance_m']})"
+    for other, pts in placed_by_node.items():
+        theirs, _ = drivable_segments(road, other, pts, standoff, shift)
+        for sg in theirs:
+            for i, q in enumerate(pos):
+                d = _seg_dist(q[0], q[1], sg[:4])
+                if d < clr:
+                    return f"worker {i + 1} is {d:.2f} m from {sg[4]} (< {rule['path_clearance_m']})"
+    return None
+
+
 def place_beside(road: hc.Roadmap, node: str, n: int, lateral_m: float, before_m: float) -> list[tuple[float, float]]:
     """People beside the arriving road: before_m before the node along the arrival direction, lateral_m to the side; one on
     each side (right first), alternating; n = 2 gives one on each side."""
@@ -433,12 +537,15 @@ def approach_points(road: hc.Roadmap, node: str, approach_m: float, step_m: floa
 def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_road_m: float, min_sep_m: float,
                  seed: int | str, min_turning_m: float = 0.0, nearer_margin_m: float = 0.0, approach_m: float = 3.0,
                  max_draws: int = 10000, physical: hc.Roadmap | None = None,
-                 placed: list[tuple[float, float]] | tuple = ()) -> list[tuple[float, float]]:
+                 placed: list[tuple[float, float]] | tuple = (), clearance: dict | None = None,
+                 placed_by_node: dict | None = None) -> list[tuple[float, float]]:
     """n people uniform in a square of side 2 * half_size_m centred on the node, at least min_road_m from every road centre line
     (of the map and of the physical map), min_sep_m apart (also from `placed`, the workers of other nodes) and min_turning_m from every
     turning point (rejection sampling, seeded by run and node). The drawn set is sorted by distance to the node (the first = the one the
     robot reaches first, Unity's DrawRandom); with nearer_margin_m > 0 every other person is at least that much farther from the robot than
-    the first along the last approach_m of the arrival road (Unity's bystander rule). The whole set is redrawn until every rule holds."""
+    the first along the last approach_m of the arrival road (Unity's bystander rule). The whole set is redrawn until every rule holds.
+    clearance (AUDIT.md 16.20.2; None = off, the earlier behaviour): the dict of CLEARANCE_KEYS; a drawn set is also redrawn while clearance_problem(...)
+    names a problem (Unity's rejection of ClearanceProblem), with `placed_by_node` the workers of the nodes placed before."""
     rng = random.Random(f"{seed}|place|{node}")
     nx, nz = road.pos(node)
     segs = _road_segments(road, physical)
@@ -458,9 +565,11 @@ def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_ro
             continue
         if nearer_margin_m > 0 and any(nearer_margin(road, node, o, out[0], approach_m) < nearer_margin_m for o in out[1:]):
             continue
+        if clearance is not None and clearance_problem(road, node, out, placed_by_node or {}, physical, clearance) is not None:
+            continue
         return out
     raise ValueError(f"cannot place {n} people at {node} in {max_draws} draws (half_size {half_size_m}, road {min_road_m}, "
-                     f"separation {min_sep_m}, turning points {min_turning_m}, nearer margin {nearer_margin_m})")
+                     f"separation {min_sep_m}, turning points {min_turning_m}, nearer margin {nearer_margin_m}{', clearance ' + str(clearance) if clearance else ''})")
 
 
 def detour_corners(x: float, z: float, target: tuple[float, float], people: list[tuple[float, float]], clearance_m: float,
@@ -591,8 +700,9 @@ class SimulatorV4:
         self._plan: dict = {}
         self.gestures: list[dict] = []                          # every gesture staged: node, worker, correct, shown, truthful
 
-    def _positions_at(self, junction: str, placed: list) -> list[tuple[float, float]]:
-        """Where the workers of one asking node stand, under the rules of 16.11 and 16.13 (the workers already placed at other nodes in `placed`)."""
+    def _positions_at(self, junction: str, placed: list, placed_by_node: dict | None = None) -> list[tuple[float, float]]:
+        """Where the workers of one asking node stand, under the rules of 16.11 and 16.13 (the workers already placed at other nodes in `placed`, by node in `placed_by_node`).
+        With the clearance values in the placement rule (AUDIT.md 16.20.2) the random layout also rejects a draw that breaks Unity's clearance rule."""
         sp = self.spec
         lay, rule = sp.layout, sp.placement_rule or {}
         n = lay.get("people_by_node", {}).get(junction, lay.get("people"))
@@ -606,7 +716,8 @@ class SimulatorV4:
                 pts = place_beside(self.road, junction, n, lay["lateral_m"], lay["before_m"])
         elif lay["kind"] == "random":
             pts = place_random(self.road, junction, n, lay["half_size_m"], lay["min_road_m"], sep, self.seed, turn, margin, approach,
-                               lay.get("max_draws", 10000), sp.physical_map, placed)
+                               lay.get("max_draws", 10000), sp.physical_map, placed,
+                               {k: rule[k] for k in CLEARANCE_KEYS} if all(k in rule for k in CLEARANCE_KEYS) else None, placed_by_node)
         elif lay["kind"] == "fixed":                       # tests / demonstrations: explicit (x, z) per node
             return [tuple(q) for q in lay["points"][junction]]
         else:
@@ -623,7 +734,7 @@ class SimulatorV4:
             return plan
         placed: list = []
         for node in ask_nodes(self.road):
-            plan[node] = self._positions_at(node, placed)
+            plan[node] = self._positions_at(node, placed, dict(plan))
             placed += plan[node]
         return plan
 
@@ -1055,8 +1166,8 @@ def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict 
                      lie_directions=p.get("lie_directions", "compass"), layout=dict(sc["layout"]),
                      physical_map=hc.Roadmap(hc.load_json(hv.roadmap_path(v4))) if scen.get("physical_map_is_v4") else None,
                      avoid_people_m=clearance,
-                     placement_rule={k: float(scen["placement_rule"][k]) for k in ("min_worker_separation_m", "min_turning_point_m")}
-                     if "placement_rule" in scen else None)
+                     placement_rule={k: float(scen["placement_rule"][k]) for k in ("min_worker_separation_m", "min_turning_point_m", *CLEARANCE_KEYS)
+                                     if k in scen["placement_rule"]} if "placement_rule" in scen else None)
     cfg = sim_cfg or SimConfig(timeout_s=float(scen["trial_timeout_s"]))
     sim = SimulatorV4(ctrl, cfg, gcfg or GestureSimConfig(), spec, seed)
     return {"sim": sim, "goal": goal, "road": road, "v4": v4, "spec": spec, "experiment": name, "set": which, "seed": seed,

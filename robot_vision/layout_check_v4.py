@@ -5,7 +5,8 @@ Three questions, asked of every worker of every scenario, seed and asking node o
 
 1. Does the worker belong to its node? Within `lie_detection.second_opinion_radius_m` (6.5 m, 16.19) of it AND that node is the nearest node of the roadmap
    (the rule of ControllerV4._belongs_here, used directly).
-2. Is the worker clear of every segment the robot can drive? An independent model of Nusrat's clearance rule (experiments_ab.md section 15 addendum 1,
+2. Is the worker clear of every segment the robot can drive? Nusrat's clearance rule (the geometry lives in hri_sim_v4 since AUDIT.md 16.20.2, where the random layout
+   uses it to reject draws; the distances are measured here, in evaluate_plan) (experiments_ab.md section 15 addendum 1,
    item 3b, commit ed4e000): per asking node the segment from the node to the ask position of each worker in every order (second opinions), the return to
    the first worker of an order (the tie rule), and from every ask position and re-ask point to the next node of every branch; plus every road of the run's
    map and of the physical v4 map. Ask position = `standoff` from the worker toward where the robot comes from; re-ask point = `shift` to the robot's right,
@@ -21,7 +22,6 @@ Usage (from robot_vision/): python layout_check_v4.py [--seeds 20] [--label x]  
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import math
 import sys
@@ -43,53 +43,9 @@ EPS = 1e-4
 EXPERIMENTS = ("A1", "A2", "A3", "A4")      # B has the same placements as A (same seed); the layout does not depend on the set
 
 
-def ask_position(worker, frm, standoff: float = UNITY_STANDOFF_M):
-    """`standoff` from the worker toward `frm` (the node, or the previous ask position)."""
-    dx, dz = frm[0] - worker[0], frm[1] - worker[1]
-    n = math.hypot(dx, dz)
-    if n < 1e-6:
-        dx, dz, n = 1.0, 0.0, 1.0
-    return (worker[0] + dx / n * standoff, worker[1] + dz / n * standoff)
-
-
-def reask_position(worker, ask, standoff: float = UNITY_STANDOFF_M, shift: float = UNITY_RESHIFT_M):
-    """`shift` to the robot's right as it faces the worker (right of heading (hx, hz) = (hz, -hx)), back onto the standoff circle."""
-    if shift <= 0:
-        return ask
-    hx, hz = worker[0] - ask[0], worker[1] - ask[1]
-    n = math.hypot(hx, hz)
-    if n < 1e-6:
-        return ask
-    hx, hz = hx / n, hz / n
-    return ask_position(worker, (ask[0] + hz * shift, ask[1] - hx * shift), standoff)
-
-
-def _add(points: list, p) -> None:
-    if all(math.dist(p, q) >= 1e-3 for q in points):
-        points.append(p)
-
-
-def drivable_segments(road: hc.Roadmap, node: str, workers: list, standoff: float = UNITY_STANDOFF_M, shift: float = UNITY_RESHIFT_M):
-    """(segments [(ax, az, bx, bz, label)], ask points) of one asking node with its workers in slot order."""
-    c = road.pos(node)
-    segs, asks = [], []
-    idx = list(range(len(workers)))
-    for perm in itertools.permutations(idx):
-        prev, frm = c, node
-        for k in range(len(perm) + 1):
-            if k == len(perm) and len(perm) < 2:
-                break
-            i = perm[k] if k < len(perm) else perm[0]               # after the last: back to the first (tie)
-            a = ask_position(workers[i], prev, standoff)
-            segs.append((prev[0], prev[1], a[0], a[1], f"{frm} to the ask position of worker {i + 1}{' (again)' if k == len(perm) else ''}"))
-            _add(asks, a)
-            _add(asks, reask_position(workers[i], a, standoff, shift))
-            prev, frm = a, f"the ask position of worker {i + 1}"
-    for a in asks:
-        for cmd, nxt in road.branches.get(node, {}).items():
-            n = road.pos(nxt)
-            segs.append((a[0], a[1], n[0], n[1], f"{node}: ask position ({a[0]:.2f}, {a[1]:.2f}) to {nxt} ({cmd})"))
-    return segs, asks
+ask_position = sv.ask_position                 # one implementation of the geometry (moved into hri_sim_v4, AUDIT.md 16.20.2)
+reask_position = sv.reask_position
+drivable_segments = sv.drivable_segments
 
 
 def evaluate_plan(road: hc.Roadmap, physical: hc.Roadmap | None, plan: dict, standoff: float = UNITY_STANDOFF_M, shift: float = UNITY_RESHIFT_M) -> dict:

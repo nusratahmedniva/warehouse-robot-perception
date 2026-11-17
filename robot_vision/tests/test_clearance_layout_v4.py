@@ -3,8 +3,9 @@
 What is pinned: the slots of scenarios 1 to 3 are her clearance layout and A4/B4 have two workers at J1; every worker of every scenario, seed and node is
 within 6.5 m of its node and has it as the nearest node (largest distance reported: 6.40 m, A3 J1 worker 3); no worker is within 1.0 m of any segment the
 robot can drive (an independent model, layout_check_v4.py) and every ask position is within 5.5 m of its node, at her model's re-ask shift of 0.4 m.
-Known findings that are pinned as facts and NOT fixed (AUDIT.md 16.20.1): with the shift the v4 controller really uses (0.8 m) A3's third worker at J1 is
-0.74 m from a drivable segment and the re-ask point is 5.53 m from J1; the random layout (A4, B4) has no clearance rule in the simulator."""
+Known finding that is pinned as a fact and NOT fixed (AUDIT.md 16.20.1, decided 16.20.2: Nusrat re-searches her slots with 0.8 m): with the shift the v4 controller
+really uses (0.8 m) A3's third worker at J1 is 0.74 m from a drivable segment and the re-ask point is 5.53 m from J1. The random layout (A4, B4) keeps the
+clearance since 16.20.2 (tests/test_clearance_rejection_v4.py)."""
 
 import copy
 import json
@@ -148,16 +149,22 @@ class Survey(unittest.TestCase):
         for name in ("A1", "A2"):
             self.assertEqual(self.res[name]["by_shift"]["0.8"]["plans_violating"], 0, name)
 
-    def test_known_finding_the_random_layout_has_no_clearance_rule(self):
-        for s in ("0.4", "0.8"):
-            self.assertEqual(self.res["A4"]["by_shift"][s]["plans_violating"], 20, s)
-            self.assertLess(self.res["A4"]["by_shift"][s]["min_clearance_m"], 0.1, s)
+    def test_the_random_layout_now_keeps_the_clearance_at_her_shift_and_not_at_the_v4_shift(self):
+        """AUDIT.md 16.20.2: the simulator's random layout rejects the draws that break Unity's clearance rule (her 0.4 m re-ask model); the controller's own
+        0.8 m shift is a finding that waits for Nusrat's re-search (reported, not changed)."""
+        b4 = self.res["A4"]["by_shift"]["0.4"]
+        self.assertEqual(b4["plans_violating"], 0)
+        self.assertGreaterEqual(b4["min_clearance_m"], lc.CLEARANCE_M - lc.EPS)
+        self.assertLessEqual(b4["max_ask_distance_m"], lc.ASK_ZONE_M + lc.EPS)
+        v4 = self.res["A4"]["by_shift"]["0.8"]
+        self.assertEqual(v4["plans_violating"], 19)                                          # of 20 plans, at the shift the controller really uses
+        self.assertAlmostEqual(v4["min_clearance_m"], 0.73, places=2)
         own = 0
         for seed in range(1, 21):
             sc = sv.scenario_ab("A4", seed)
             for node, pts in sc["sim"].plan_workers().items():
                 own += lc.evaluate_plan(sc["road"], sc["spec"].physical_map, {node: pts})["min_clearance_m"] < lc.CLEARANCE_M - lc.EPS
-        self.assertEqual(own, 62)                                                           # of 100 asking nodes
+        self.assertEqual(own, 0)                                                            # every asking node of A4 on its own, at 0.4 m (was 62 of 100)
 
 
 if __name__ == "__main__":
