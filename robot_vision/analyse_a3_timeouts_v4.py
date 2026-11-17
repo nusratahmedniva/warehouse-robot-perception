@@ -1,4 +1,5 @@
-"""Why A3 with detection on times out when the return to the junction point is on (AUDIT.md 16.20.3, 2026-11-17). ANALYSIS ONLY: nothing is changed.
+"""Why A3 with detection on times out when the return to the junction point is on (AUDIT.md 16.20.3, 2026-11-17). ANALYSIS ONLY: nothing is changed. Since AUDIT.md 16.20.5 the live control files carry dialog.return_speed_mps 0.8; this tool removes the key for its "live" runs
+(the code of 16.20.3, the return at the approach speed) and sets it for the "cruise return" counterfactual, so its numbers stay reproducible.
 
 For every seed of A3 (detection on = second opinion + reject impossible, backtrack off, valid-branch liar) it runs the simulator four ways: return_to_junction
 on (the live setting) and off, each with the 270 s budget; the runs that time out are repeated with the return on and a 600 s budget to see when they would have
@@ -57,19 +58,11 @@ def run_one(seed: int, scen: dict, return_to_junction: bool, timeout_s: float, c
             state["on"] = now
             return out
         c.step = step
-        if cruise_return:                                       # COUNTERFACTUAL (a hook on this one run; no code or config is changed): the return drives at cruise_speed_mps
-            tick = c._tick
-
-            def _tick(inp, cmd):
-                if c.state == "execute" and c._return_pending():
-                    saved = c.d["approach_speed_mps"]
-                    c.d["approach_speed_mps"] = c.d["cruise_speed_mps"]
-                    try:
-                        return tick(inp, cmd)
-                    finally:
-                        c.d["approach_speed_mps"] = saved
-                return tick(inp, cmd)
-            c._tick = _tick
+        # the analysis models the code of 16.20.3, before dialog.return_speed_mps (AUDIT.md 16.20.5) existed: the key is removed ("live" = the return at the approach speed);
+        # cruise_return sets it to the cruise speed, which is what the counterfactual was (and what the control files now say)
+        c.v4["dialog"].pop("return_speed_mps", None)
+        if cruise_return:
+            c.v4["dialog"]["return_speed_mps"] = c.d["cruise_speed_mps"]
     sc = sv.scenario_ab("A3", seed, sv.DETECTION_ON, scen=scen, hook=hook, sim_cfg=sv.SimConfig(timeout_s=timeout_s))
     r = sc["sim"].run(sc["goal"])
     r["_safety"] = stops

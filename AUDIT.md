@@ -3036,3 +3036,73 @@ Read: **the rejection changes the draws of A4 and B4, so their runs are differen
 No A4 run times out: the longest A4 detection-on run takes 245.05 s (the A3 timeouts of 16.20.3 are a property of the E5/E6 routes of A3).
 
 **Tests.** New `tests/test_clearance_rejection_v4.py` (20 tests, 1 skipped while main's `unity/` file lacks the values: the Unity values agree whenever it carries them), `tests/test_a3_timeouts_v4.py` (5, the analysis tool and the numbers quoted in 16.20.3; the hook changes nothing); `tests/test_clearance_layout_v4.py`: the random-layout known finding became the new expectation (0 of 20 at 0.4 m, 19 of 20 at 0.8 m); `tests/test_hri_sim_v4.py` isolation allow-list gets `analyse_a3_timeouts_v4.py`.
+
+### 16.20.5 Decisions of 2026-11-17 (Anisha) on the proposal of 16.20.3: the return speed adopted, no per-setting budget; recorded BEFORE any change
+
+1. **Adopted: `dialog.return_speed_mps` 0.8 m/s (the cruise speed of `hri_control.json`), used only for the return to the junction point (D, 16.19); absent = the current behaviour (the approach speed 0.4 m/s).** A v4 key in the 11 v4 control files; v3 and `hri_control.json` are untouched. Reason: the counterfactual of 16.20.3 (A3 detection on 20/20 on the old slots instead of 14/20, longest run 254.7 s, closest approach to a person 0.97 m and the number of safety stops unchanged). No new tuned number: 0.8 is the declared cruise speed.
+   The controller refuses a value that is not above 0 and at most the cruise speed (a construction error, not a silent clamp).
+2. **No per-setting time budget for A3 / B3.** The final timeout is **one value for all settings, from the declared rule** (`final_plan.json` `timeout_s_rule`, 16.15 decision 2 as corrected in 16.16 decision 4): `timeout_s` = 1.5 x the longest SUCCESSFUL development run, rounded UP to a multiple of 30 s, never below 270 s; applied to **Unity's step-5 rerun, which uses the 420 s development timeout and the development-only goal override, so that E5 and E6 are drawn.**
+   **Stated plainly: development runs that feed the rule must never use 270 s as their timeout.** A run that times out at 270 s is not a duration and does not count (16.16 decision 4); if the development timeout were 270 s the longest routes (A3 > E5 and E6) would all time out, could never count as successful, and the rule would give a value that does not fit them. The 270 s of the simulator and of `final_plan.json` is the **floor** of the rule, not the final value;
+   `timeout_s` in `final_plan.json` stays 270 until the rule is applied by a declared edit before the freeze (not touched here).
+3. **Then (this round):** the key is built in the 11 control files with tests; the simulator's A3/B3 and A4/B4 rows are rerun on the clearance layout, **at the 270 s floor (the rows reported before) and at a 420 s development timeout (the runs that feed the rule)**, and per row the successes, the longest successful duration and the E5 / E6 durations are reported, with what the declared rule would give from those simulator durations (`final_guard_v4.timeout_from_development`). **For information only: the simulator is not Unity (speeds, clocks and perception differ), and the real value comes from Unity's runs.**
+
+#### 16.20.6 `return_speed_mps` built; the simulator rows rerun on the clearance layout (2026-11-17)
+
+**Built (v4 only).** `dialog.return_speed_mps` 0.8 in the 11 v4 control files (`control.json`, `control_zoom_on/off.json`, `experiments/control_lie_{on,off}{,_a1,_a2_right,_a2_left}.json`) with its `why` (DECIDED 2026-11-17); `ControllerV4._tick` (the return branch) drives `pure_pursuit` at that speed, absent = the approach speed (the earlier behaviour, tested equal to an explicit 0.4); `ControllerV4.__init__` refuses a value that is not above 0 and at most the cruise speed (`ValueError`, no silent clamp). The approach to a person and the navigation are unchanged (a test compares the trails). `hri_control.py` and `configs/hri_control.json` are untouched.
+`analyse_a3_timeouts_v4.py` removes the key for its "live" runs (the code of 16.20.3) and sets it for the counterfactual, so the numbers of 16.20.3 stay reproducible. Tests: `tests/test_return_speed_v4.py` (the 11 files, v3 untouched, refusals, the return is faster and its peak speed follows the key, absent = 0.4, the branch is still taken, nothing else changes, the E5 run of A3 on the old slots 270.3 s without the key and 254.7 s with it), `tests/test_a3_timeouts_v4.py` (the live config is now the counterfactual).
+
+**Simulator rerun, clearance layout (with the rejection of 16.20.4), A3, B3, A4, B4, detection off and on, 20 seeds each, valid-branch liar.** Two timeouts, as decided: **270 s (the floor)** and **420 s (the development timeout of Unity's step-5 rerun; these are the runs that feed the rule)**. "Rule from this row" = `final_guard_v4.timeout_from_development(longest successful run)`: 1.5 x the longest SUCCESSFUL run, rounded up to a multiple of 30 s, never below 270 s. **For information only: the simulator is not Unity (speeds, clocks, perception); the real value comes from Unity's development runs.**
+
+### 270 s (the floor): experiments_ab_v4_return_speed_270_20261117_192542
+
+| experiment | detection | SUCCESS | failures | longest successful s | E5 runs: n, success, longest s | E6 runs: n, success, longest s | rule from this row |
+|---|---|---|---|---|---|---|---|
+| A3 | off | 20/20 | - | 184.45 | 6, 6, 183.55 | 1, 1, 184.45 | 300.0 |
+| A3 | on | 14/20 | timeout 6 | 265.8 | 6, 0, - | 1, 1, 265.8 | 420.0 |
+| B3 | off | 10/20 | wrong_goal 9, aborted 1 | 183.55 | 6, 3, 183.55 | 1, 0, - | 300.0 |
+| B3 | on | 11/20 | timeout 5, wrong_goal 3, aborted 1 | 252.0 | 6, 0, - | 1, 0, - | 390.0 |
+| A4 | off | 20/20 | - | 171.25 | 6, 6, 171.25 | 1, 1, 164.0 | 270.0 |
+| A4 | on | 20/20 | - | 239.7 | 6, 6, 239.7 | 1, 1, 234.4 | 360.0 |
+| B4 | off | 10/20 | aborted 3, wrong_goal 7 | 170.9 | 6, 3, 170.9 | 1, 0, - | 270.0 |
+| B4 | on | 11/20 | aborted 2, wrong_goal 7 | 239.7 | 6, 3, 239.7 | 1, 0, - | 360.0 |
+
+All 8 rows together: 116 successful runs, longest 265.8 s -> declared rule 420.0 s (floor 270 s).
+E5/E6 successful runs: 31, durations [161.4, 162.75, 164.0, 168.9, 170.2, 170.9, 171.25, 183.55, 184.45, 226.8, 230.4, 234.2, 234.4, 238.3, 239.0, 239.7, 265.8].
+
+### 420 s development timeout (feeds the rule): experiments_ab_v4_return_speed_420_dev_20261117_192605
+
+| experiment | detection | SUCCESS | failures | longest successful s | E5 runs: n, success, longest s | E6 runs: n, success, longest s | rule from this row |
+|---|---|---|---|---|---|---|---|
+| A3 | off | 20/20 | - | 184.45 | 6, 6, 183.55 | 1, 1, 184.45 | 300.0 |
+| A3 | on | 20/20 | - | 283.9 | 6, 6, 283.9 | 1, 1, 265.8 | 450.0 |
+| B3 | off | 10/20 | wrong_goal 9, aborted 1 | 183.55 | 6, 3, 183.55 | 1, 0, - | 300.0 |
+| B3 | on | 15/20 | aborted 2, wrong_goal 3 | 308.1 | 6, 4, 308.1 | 1, 0, - | 480.0 |
+| A4 | off | 20/20 | - | 171.25 | 6, 6, 171.25 | 1, 1, 164.0 | 270.0 |
+| A4 | on | 20/20 | - | 239.7 | 6, 6, 239.7 | 1, 1, 234.4 | 360.0 |
+| B4 | off | 10/20 | aborted 3, wrong_goal 7 | 170.9 | 6, 3, 170.9 | 1, 0, - | 270.0 |
+| B4 | on | 11/20 | aborted 2, wrong_goal 7 | 239.7 | 6, 3, 239.7 | 1, 0, - | 360.0 |
+
+All 8 rows together: 126 successful runs, longest 308.1 s -> declared rule 480.0 s (floor 270 s).
+E5/E6 successful runs: 41, durations [161.4, 162.75, 164.0, 168.9, 170.2, 170.9, 171.25, 183.55, 184.45, 226.8, 230.4, 234.2, 234.4, 238.3, 239.0, 239.7, 265.8, 283.9, 306.5, 308.1].
+
+
+**Before and after the key at 270 s (the same layout and rejection; before = 16.20.1 for A3 and B3, 16.20.4 for A4 and B4):**
+
+| experiment | detection | before: SUCCESS, median, collisions, safety stops | with the key: SUCCESS, median, collisions, safety stops |
+|---|---|---|---|
+| A3 | off | 20/20, 143.3 s, 0, 20 | 20/20, 138.8 s, 0, 0 |
+| A3 | on | 13/20, 228.4 s, 0, 0 | **14/20**, 217.2 s, 0, 0 |
+| B3 | off | 10/20, 138.9 s, 0, 18; fooled 10/15 | 10/20, 134.6 s, 0, 0; fooled 10/15 |
+| B3 | on | 11/20, 247.2 s, 0, 0; fooled 8/40 | 11/20, 237.0 s, 0, 0; fooled 8/40 |
+| A4 | off | 20/20, 134.7 s, 0, 7 | 20/20, 132.9 s, 0, 3 |
+| A4 | on | 20/20, 199.6 s, 0, 0 | 20/20, 195.5 s, 0, 2 |
+| B4 | off | 10/20, 126.3 s, 0, 6; fooled 8/14 | 10/20, 124.8 s, 0, 2; fooled 8/14 |
+| B4 | on | 11/20, 205.9 s, 0, 2; fooled 20/47 | 11/20, 201.5 s, 0, 4; fooled 20/47 |
+
+**Read.**
+- **The key helps but does not remove the A3 / B3 timeouts at 270 s on the clearance layout, as 16.20.3 predicted:** the E5 runs of A3 on (6 of 20) and of B3 on still time out; E6 of A3 on now fits (265.8 s). **At the 420 s development timeout they succeed: A3 on 20/20 (E5 283.9 s, E6 265.8 s, longest 283.9 s) and B3 on 15/20 (the five 270 s timeouts become four successes and one abort; E5 up to 308.1 s)**, so those timeouts were duration, not failures. The other rows (A3 off, B3 off, A4, B4) are identical at 270 s and 420 s: nothing in them is near the limit (longest 239.7 s).
+- **Set B successes do not change with the key:** B3 off 10/20, B3 on 11/20 at 270 s (15/20 at 420 s), B4 10/20 and 11/20, with the same lies fooled; the differences between rows come from the liars and the number of workers, not from the speed. 0 collisions in all 16 rows. The safety stops are short stops (0.05 to 0.25 s); most rows have fewer, A4 on and B4 on a few more (0 -> 2, 2 -> 4); not investigated.
+- **Longest durations in the simulator (420 s runs):** A3 on 283.9 s (E5), B3 on 308.1 s (E5), A4 on and B4 on 239.7 s, off rows 171 to 184 s. E5 / E6 per row are in the tables above (successful runs only; A3 on: E5 283.9 s, E6 265.8 s; B3 on: E5 up to 308.1 s; A4 / B4 on: E5 239.7 s, E6 234.4 s; off rows: E5 up to 183.6 s).
+- **What the declared rule would give from these simulator durations (information only):** from the 420 s development runs the longest successful run is 308.1 s (B3 on, E5) -> **480 s** (A3 on alone: 450 s; A4 and B4: 360 s; the off rows 270 to 300 s); one value for all settings is the maximum, 480 s. **From the 270 s runs the rule would wrongly give 420 s** (longest successful 265.8 s, because the E5 runs that need 284 to 308 s are timeouts and cannot count): the illustration of 16.20.5 that development runs feeding the rule must never use 270 s.
+  Unity's real durations differ from the simulator's (step 5 had A3 timeouts); the value comes from the rule applied to Unity's 420 s runs. A route that needs more than the development timeout times out there too and the rule cannot see it, so the development timeout must stay above the durations that are meant to count; 420 s covers successful durations up to 420 s (the simulator's longest is 308.1 s).
+- `final_plan.json` `timeout_s` stays 270 (not touched); the rule text there is already the one of 16.16 decision 4.

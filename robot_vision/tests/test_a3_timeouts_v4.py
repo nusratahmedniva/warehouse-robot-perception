@@ -36,9 +36,18 @@ class OneRun(unittest.TestCase):
         cls.off = a3.run_one(4, cls.scen, False, 270.0)
 
     def test_the_observing_hook_changes_nothing(self):
-        plain = sv.scenario_ab("A3", 4, sv.DETECTION_ON, scen=self.scen, sim_cfg=sv.SimConfig(timeout_s=270.0))
+        def drop_key(c):                                                    # only what the tool does to the live config, without the observing wrapper
+            c.v4["dialog"].pop("return_speed_mps", None)
+        plain = sv.scenario_ab("A3", 4, sv.DETECTION_ON, scen=self.scen, hook=drop_key, sim_cfg=sv.SimConfig(timeout_s=270.0))
         r = plain["sim"].run(plain["goal"])
         self.assertEqual((r["outcome"], r["time_s"], r["safety_stop_s"]), (self.on["outcome"], self.on["time_s"], self.on["safety_stop_s"]))
+
+    def test_the_live_config_now_is_the_counterfactual(self):                 # AUDIT.md 16.20.5: dialog.return_speed_mps 0.8 in the control files
+        live = sv.scenario_ab("A3", 4, sv.DETECTION_ON, scen=self.scen, sim_cfg=sv.SimConfig(timeout_s=270.0))
+        r = live["sim"].run(live["goal"])
+        cf = a3.run_one(4, self.scen, True, 270.0, cruise_return=True)
+        self.assertEqual((r["outcome"], r["time_s"]), ("SUCCESS", 254.7))
+        self.assertEqual((r["outcome"], r["time_s"]), (cf["outcome"], cf["time_s"]))
 
     def test_the_timeout_is_a_budget_effect_of_the_returns(self):
         self.assertEqual((self.on["_goal"], self.on["outcome"], self.on["failure_reason"], self.on["time_s"]), ("E5", "FAILURE", "timeout", 270.0))
