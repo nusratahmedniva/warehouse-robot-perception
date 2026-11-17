@@ -2205,3 +2205,25 @@ example showing the restart; if it cannot be shown, it is withdrawn.
 
 **Commits:** (1) this declaration; (2) the search tool, the config copy, the block and the tests; (3) the results and the slot table;
 (4) item 4's tool and record. Each after both suites pass.
+
+*Amendment, 2026-11-17, after the first search run and before anything further is computed: no beside layout with three workers at J1.*
+- **What happened** (`finals_v4/layout_search_v4.py`, run `robot_vision/outputs/layout_search_v4_20261117_202249/`, uncommitted tool on 1e56271):
+  - addendum 1's pending slots fail with the 0.8 m shift: at J1 of `roadmap` an ask point lies beyond 5.5 m (the ask zone);
+  - **no slot set with 3 workers at J1 meets every rule**: 0 at 1.0 m with the NavMesh requirement, 0 at 1.0 m without it, 0 at the
+    report-only 1.4 m. The start slots pass unchanged; 2989 slot pairs pass on `corridor`, `turn` and `turn_left` (1.0 m, NavMesh);
+  - item 2's lattice: 0 valid triples at J1 (its declared analysis continues in the same run);
+  - the port was checked first against addendum 1: with the 0.4 m shift and no NavMesh requirement it returns addendum 1's choice
+    (3.5 / -2.5, -4.5 / 3.5, -5.0 / -4.0; largest own-ask distance 5.193 m) as the first of 10 valid sets.
+  - A diagnostic script was started and stopped before it printed anything; no result of it was seen.
+- **So item 1 has no choice under the declared rules.** Added now, the same treatment as declared for item 2 (nothing is chosen, nothing
+  is switched on; the pending block keeps addendum 1's slots, marked as failing at 0.8 m):
+  - **binding rule(s) at J1** (3 beside workers, A's workers placed, the 1.0 m clearance and the NavMesh requirement): over every slot
+    triple whose slots 1 and 2 are one of the 2989 valid pairs and whose three J1 positions are 3.0 m apart, the set of rules each
+    triple breaks, and the number of triples valid when one rule alone is dropped;
+  - **the closest alternatives, each checked on every map under every other rule:**
+    - (i) 2 workers at J1 in A3 and B3 too: the first pair by the declared choice rule (all four maps, 2 per asking node);
+    - (ii) a larger ask zone: the smallest largest own-ask distance of a 3-at-J1 set valid with the zone rule dropped, and the zone
+      radius it needs (that distance + the 0.5 m margin), against 6.25 m (beyond it two zones overlap: 12.5 m / 2);
+    - (iii) a smaller clearance for slot 3 only: the largest value (0.05 m steps) at which a set exists whose other workers keep 1.0 m
+      from every drive and road.
+  - Committed as `finals_v4/layout_search_v4_j1.py` (it imports the search tool's model).
