@@ -2123,3 +2123,85 @@ Each commit is made after both suites pass.
 - **Suites:** Python 1163 OK (2 skipped), Unity Edit Mode 339/339.
 - **Not done:** no Play-mode session on the new NavMesh yet. The bridge paths at Play have not been observed; the step-5 rerun will be
   the first.
+
+### 2026-11-17, section 15 addendum 3: the layout with the controller's re-ask shift, three workers at J1, the slot table, Anisha's question (declared before any change below)
+
+Nusrat's task of 2026-11-17. Branch `nusrat/v4-layout-2` = `main` 29510ff (PR #41, Anisha's step-5 fixes) with `nusrat/v4-step5-dev`
+(0ee553a: addenda 1 and 2, the NavMesh fix) merged in, because that branch is not on `main` yet. Nothing under `robot_vision/`, `docs/` or
+`external/` changes; nothing is frozen, no final is run, nothing is pushed; `clearance_layout` stays `"active": false`. Development work,
+not a result.
+
+**Already done before this declaration (read only; no tracked file changed):** item 4's replay of the step-5 logs. It touches no layout
+value and shaped nothing in items 1 to 3; it is recorded with its result under item 4.
+
+**Item 1, the clearance search with the controller's real re-ask shift.**
+- **The correction.** Item 3b's ask-position model took `reask_shift_m` 0.4 m from v3's `hri_control.json` `dialog`. The v4 controller
+  uses **0.8 m**: `configs/v4/control.json` `dialog.reask_shift_m`, merged over the v3 dialog by `hri_control_v4.load_control` (the
+  step-5 sessions ran with 0.8 m, `config_used/control_lie_*.json`). Unity's copy in `experiments_ab_unity.json` becomes 0.8, its note
+  names `configs/v4/control.json`, and an Edit Mode test pins the copy to that file. The copy is used only by the clearance model and by
+  the NavMesh verification's point set; nothing at Play changes while the block is inactive.
+- **Rules unchanged** (item 3b as built, `ExperimentPlanAB.NodeProblem` / `ClearanceProblem`):
+  - no worker within **1.0 m** of a drivable segment: every road of the run's map and of the physical v4 map; per asking node, from the
+    node to the ask position of each of its workers in every order, with the return to the first (tie); from every ask position and
+    re-ask point to the next node of every branch of the node;
+  - ask position = 2.0 m from the worker toward where the robot comes from; re-ask point = 0.8 m to the robot's right, back on the
+    2.0 m circle; every ask position and re-ask point within 5.5 m of its node (zone 6.0 m minus margin 0.5 m);
+  - workers at least 3.0 m apart and 3.0 m from every asking node of the run's map and of the physical map; bystander margin 1.0 m over
+    the last 3.0 m of the arrival road (beside) or 0.25 m (random); `min_road_m` 1.0 (random); at most 6 active avatars (8.0 m); the
+    worker's cell free on the ground-truth grid.
+- **The clearance value is not changed.** Item 3b's reason read "0.6 m corridor + 0.4 m (the re-ask shift, ...)", written with the v3
+  shift. With 0.8 m the same sum is **1.4 m**; that would be a rule change and is not made here. The search also runs at 1.4 m and is
+  **reported only** (does a layout exist, and its first choice), for Nusrat and Anisha to decide.
+- **The new NavMesh.** Addendum 2 did not change the ground-truth grid (V2: the Edit-mode grid equals the saved Play grid cell for cell),
+  so the worker cells are checked on it as before. **Added requirement, new here:** every modelled ask position and re-ask point lies in
+  a cell that is on the new AMR NavMesh, by V2's cell classification in `navmesh_v4_check_20261117_053355/` (grid-free cells minus
+  `grid_free_navmesh_off`, plus `grid_blocked_navmesh_on`). The report says whether it changes the choice. The chosen layout is then
+  verified on the real NavMesh with addendum 2's tool (V1 to V4, rules unchanged; its point set takes the shift from the config).
+- **The search** (as item 3b's, now a committed tool `finals_v4/layout_search_v4.py`, a Python port of the Unity model; it reads the
+  config and map files, the saved grid and the V2 classification, and no trial result):
+  - slot candidates: `before_m` -8.0 to 10.0 and `right_m` -4.5 to 4.5 in 0.5 m steps, at least 3.0 m from the node;
+  - pairs (slots 1 and 2) with 2 workers at every asking node of `corridor`, `turn`, `turn_left` and `roadmap`; then slot 3 with 3 at J1
+    of `roadmap`; each set checked on all maps together;
+  - start slots unchanged; if they break a rule, the start slots are searched over the same candidates by the same choice rule, reported;
+  - **choice rule unchanged:** meets every rule; then the smallest largest own-ask distance; then the least movement from the section 3
+    slots (sum of the slot shifts).
+- **Checks of the choice:** `ExperimentClearanceTests` with the new block (every plan of seeds 1 and 2, 20 runs, of the 10 Unity
+  settings; the independent re-check reads the standoff and the shift from the config instead of fixed numbers); then the NavMesh
+  verification. The block stays inactive.
+
+**Item 2, three workers at J1 in A4 and B4** (random layout, scenario 4: a 6 m square around the node, `half_size_m` 3.0). With 2 at J1 a
+single lie in B4 is a tie; 3 give a majority. Every rule of item 1 for the random layout applies.
+- **Existence:** every triple of points of a 0.25 m lattice over J1's square, ordered by distance to J1 as Unity sorts a draw, checked
+  against J1's rules (roads, its own segments, separation, turning points, bystander margin, ask zone, free cell, the NavMesh requirement).
+  Reported: the number of valid triples, and the acceptance rate of Unity's draw estimated from them (valid ordered triples / all
+  ordered lattice triples), with the chance that 100,000 draws (`random_max_draws`) all fail.
+- **Practical:** with the block applied and A4 and B4 given 3 at J1, Unity's own planner for every run of seeds 1 and 2.
+- **If no triple exists, or Unity cannot plan every run,** it is reported as impossible under the rules, with:
+  - **the binding constraint(s):** which single rule, when dropped alone, lets lattice triples pass (and how many); and the closest
+    triple (the largest smallest margin to any rule) with the rule it breaks and by how much;
+  - **the closest alternatives, each under every other rule, none switched on:**
+    - (a) the third worker at item 1's slot 3, a fixed spot on the other side of the road, and two random in the square;
+    - (b) a smaller clearance for one worker only: the largest value (0.05 m steps) at which a valid triple exists, the other two keeping
+      1.0 m from everything;
+    - (c) a larger square: the smallest `half_size_m` (0.5 m steps, up to 5.0) at which the estimated acceptance rate leaves less than a
+      1 in 1,000 chance that 100,000 draws all fail;
+  - A4 and B4 then stay with 2 at J1 in the pending block. A3 and B3 (beside) keep 3 at J1 through item 1's slot 3.
+
+**Item 3, the slot table for Anisha** (her `scenarios_ab.json`; nothing of hers changes here). For the chosen layout, and for the 1.4 m
+report: per scenario (1 `corridor`; 2 `turn` and `turn_left`; 3 `roadmap`), per asking node and worker: slot, `before_m` / `right_m`,
+world position, distance to its node, and the largest own-ask distance. Scenario 4: the random rule (square, margins, `people_by_node`).
+Also for her `second_opinion_radius_m` (6.5 m, waiting for the largest placement distance, AUDIT.md 16.19.3 D): the largest
+worker-to-node distance and whether every worker's nearest node of the v4 map is its own node. Written to a new output folder and here.
+
+**Item 4, Anisha's question (report only).** The diagnosis said: "whenever STOP fires, the reader returns before evaluating PROCEED,
+restarting the 0.5 s PROCEED hold". Asked: the exact file, function and line in her reader and in the dialog code path, and a replayed
+example showing the restart; if it cannot be shown, it is withdrawn.
+- **Method (already run, read only):** the live dialog class `hri_control.GestureDialog` replayed on the frames the dialog saw in every
+  ask of the 8 step-5 sessions (the `v4_log.jsonl` rows, which `_log_frame` writes only inside `_read_tick`), with each session's
+  `config_used` values, under three models: S, the code as written (a frame read STOP is never given to the dialog); R1, the claim (a
+  STOP frame restarts the hold); R2, a STOP frame given to the dialog as a no-direction reading (the change Anisha tried, AUDIT.md
+  16.19.3). STOP frames are the `decisions.csv` rows "STOP gesture" in the read state. Each model's acceptance is compared with the
+  logged one. The tool becomes `finals_v4/replay_dialog_hold.py`.
+
+**Commits:** (1) this declaration; (2) the search tool, the config copy, the block and the tests; (3) the results and the slot table;
+(4) item 4's tool and record. Each after both suites pass.
