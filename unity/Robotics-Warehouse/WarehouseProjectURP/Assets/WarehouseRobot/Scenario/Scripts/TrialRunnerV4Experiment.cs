@@ -18,6 +18,11 @@ namespace WarehouseRobot.Scenario
         public string experiment, set, map, layout, lie_rule, answer_rule, activation_rule;
         /// <summary>Smoke check only (experiments_ab.md section 3): the male|female looks that replaced the navigation looks; "" otherwise.</summary>
         public string navigation_looks_override = "";
+        /// <summary>Development only (section 15 addendum 1, item 3c): the -experimentGoals text that replaced the seeded goals (goal_order
+        /// holds the goals used); "" otherwise.</summary>
+        public string goals_override = "";
+        /// <summary>Section 15 addendum 1, item 3b: whether the path clearance and the ask-zone check were applied to the placement.</summary>
+        public string clearance_rule = "";
         public float lie_probability;
         public List<string> placement = new List<string>();
         public List<string> workers_plan = new List<string>();
@@ -43,9 +48,12 @@ namespace WarehouseRobot.Scenario
         /// <summary>Editor session key: development only (TrialPlayV4 -experimentSide right|left): the A2 / B2 turn side instead of
         /// experiments_ab_unity.json a2_sides; "" = a2_sides. A final takes its side from its final config.</summary>
         public const string ExperimentSideKey = "WarehouseRobot.TrialRunnerV4.ExperimentSide";
+        /// <summary>Editor session key: development only (TrialPlayV4 -experimentGoals E5,E6,...): one goal per run instead of the seeded
+        /// goals, random-endpoint maps only, refused in a final (experiments_ab.md section 15 addendum 1, item 3c); "" = the seeded goals.</summary>
+        public const string ExperimentGoalsKey = "WarehouseRobot.TrialRunnerV4.ExperimentGoals";
 #endif
         const string ExperimentsAsset = "Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json";
-        string experimentName = "", expText = "", scenariosText = "", looksAbText = "", looksOverride = "";
+        string experimentName = "", expText = "", scenariosText = "", looksAbText = "", looksOverride = "", goalsOverride = "";
         ExperimentsUnityConfig ecfg;
         ExperimentPlanAB eplan;
         ExperimentLooksFile elooks;
@@ -58,6 +66,8 @@ namespace WarehouseRobot.Scenario
         RunPlanAB eRun;
         RoadmapV4 eMap;
         WorkerV4 eAsked;
+        /// <summary>The current ask came while the robot was outside the asked worker's zone: it shows nothing (item 3a).</summary>
+        bool eSilent;
         Transform eGoalMarker;
         string eSplit = "", eLimit = "", eSide = "";
         /// <summary>The session seed of the experiment: final_plan.json final_seed in a final, trials.json dev_seed otherwise.</summary>
@@ -125,6 +135,17 @@ namespace WarehouseRobot.Scenario
             eSeed = Final ? fplan.FinalSeed : cfg.dev_seed;
             eGoals.Clear();
             eGoals.AddRange(eplan.Goals(eSeed, TrialTotal));
+#if UNITY_EDITOR
+            goalsOverride = UnityEditor.SessionState.GetString(ExperimentGoalsKey, "");
+#endif
+            var given = eplan.GoalsOverride(goalsOverride, Final, TrialTotal, out error);
+            if (error != null) return Fail(out error, $"experiment {experimentName}: {error}");
+            if (given != null)
+            {
+                Debug.LogWarning($"[TrialRunnerV4] development goal override (-experimentGoals): {string.Join(", ", given)} instead of the seeded {string.Join(", ", eGoals)}");
+                eGoals.Clear();
+                eGoals.AddRange(given);
+            }
             return true;
         }
 
@@ -184,6 +205,7 @@ namespace WarehouseRobot.Scenario
             eRun = eRuns[run - 1];
             eMap = eplan.RunMap(eSeed, run, out _);
             eAsked = null;
+            eSilent = false;
             eLimit = "";
             eWorkers.Clear();
             float y = start.workerStand != null ? start.workerStand.position.y : start.Position.y;
@@ -229,6 +251,7 @@ namespace WarehouseRobot.Scenario
             eRings.Clear();
             eWorkers.Clear();
             eAsked = null;
+            eSilent = false;
         }
 
         /// <summary>Every frame of an experiment trial: the activation window, then who answers a new ask and what it shows.</summary>
@@ -256,7 +279,7 @@ namespace WarehouseRobot.Scenario
             {
                 foreach (var w in eWorkers.Keys)
                     if (w != null && w.gameObject.activeSelf) { w.SetQuestionVisible(false); w.CancelPending(); }
-                if (eAsked != null && !eAsked.Busy) { eAsked.IsCommander = false; eAsked = null; }
+                if (eAsked != null && !eAsked.Busy) { eAsked.IsCommander = false; eAsked = null; eSilent = false; }
                 return;
             }
             if (eAsked != null) eAsked.SetQuestionVisible(true);
@@ -283,6 +306,17 @@ namespace WarehouseRobot.Scenario
             eAsked.IsCommander = true;
             eAsked.SetQuestionVisible(true);
             var pw = eWorkers[eAsked];
+            // section 15 addendum 1, item 3a: outside its own node's zone the asked worker shows nothing (NONE in truth.jsonl)
+            var own = ExperimentPlanAB.Pos(eMap.Node(pw.Node));
+            eSilent = !ExperimentPlanAB.InAnswerZone(robot.transform.position, own, ecfg.answer_zone_radius_m);
+            if (eSilent)
+            {
+                float d = ExperimentPlanAB.Flat(robot.transform.position - own);
+                eAskRecords.Add(new ShownRecord { junction = pw.Node, shown = $"NONE (outside the {pw.Node} zone)", t_placed = Time.time });
+                Debug.Log($"[TrialRunnerV4] ask {question.Ask} (\"{bridge.ScreenText}\"): worker {pw.Id} {pw.Look} of {pw.Node} is asked {d.ToString("0.00", Inv)} m " +
+                          $"from {pw.Node} (zone {ecfg.answer_zone_radius_m.ToString("0.0", Inv)} m): it answers NONE");
+                return;
+            }
             string gesture = pw.ShownCommand == ExperimentPlanAB.Forward && !string.IsNullOrEmpty(wcfg.forward_command) ? wcfg.forward_command : wcfg.commander_command;
             var dir = ExperimentPlanAB.Direction(eMap, pw.Node, pw.ShownCommand);
             var req = new GestureRequest { Command = gesture, AllowedClips = eClips[gesture], PointDirection = dir, Lie = pw.Liar };
@@ -302,7 +336,7 @@ namespace WarehouseRobot.Scenario
         string ExperimentAskNode() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? pw.Node : "";
         string ExperimentTrueCommand() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? pw.TrueCommand : "NONE";
         int ExperimentLie() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? (pw.Liar ? 1 : 0) : -1;
-        string ExperimentShown() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? pw.ShownCommand : "-";
+        string ExperimentShown() => eAsked != null && eWorkers.TryGetValue(eAsked, out var pw) ? (eSilent ? "NONE" : pw.ShownCommand) : "-";
 
         SessionV4 NewSessionRecord()
         {
@@ -312,9 +346,15 @@ namespace WarehouseRobot.Scenario
                 experiment = experimentName, set = eplan.Def.set, lie_probability = eplan.LieProbability, map = eplan.MapName, layout = eplan.LayoutKind,
                 lie_rule = "per worker per run (seeded by session seed, run, worker id), consistent when asked again; a wrong valid branch, else (no other branch) " +
                            "another of LEFT/FORWARD/RIGHT/BACK (AUDIT.md 16.2 decision 2); experiments_ab.md section 4",
-                answer_rule = $"the active worker within {ecfg.ask_max_distance_m.ToString("0.0", Inv)} m nearest the pan-tilt camera axis answers a new ask",
+                answer_rule = $"the active worker within {ecfg.ask_max_distance_m.ToString("0.0", Inv)} m nearest the pan-tilt camera axis answers a new ask; " +
+                              $"only while the robot is within {ecfg.answer_zone_radius_m.ToString("0.0", Inv)} m of that worker's own node, else it shows nothing " +
+                              "(NONE; experiments_ab.md section 15 addendum 1, item 3a)",
                 activation_rule = $"active within {ecfg.activation_radius_m.ToString("0.0", Inv)} m of the robot or while gesturing; max {ecfg.max_active_avatars}",
                 navigation_looks_override = looksOverride,
+                goals_override = goalsOverride ?? "",
+                clearance_rule = eplan.Rule.PathClearanceM > 0f
+                    ? $"active: no worker within {eplan.Rule.PathClearanceM.ToString("0.0#", Inv)} m of a drivable segment; ask positions within {eplan.Rule.AskZoneM.ToString("0.0#", Inv)} m of their node (clearance_layout slots)"
+                    : "pending (clearance_layout inactive): section 3 slots, no clearance or ask-zone check (experiments_ab.md section 15 addendum 1, item 3b)",
             };
             foreach (var r in eRuns)
             {

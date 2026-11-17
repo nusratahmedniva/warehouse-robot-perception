@@ -548,7 +548,7 @@ namespace WarehouseRobot.Scenario
             session.data_splits = wcfg.data_splits; session.data_splits_sha256_lf = Sha256(splitsText.Replace("\r\n", "\n"));
             session.data_split = Experiment ? eSplit : plans[0].Split;
             session.commander_command = wcfg.commander_command;
-            session.worker_layout = Experiment ? $"experiment {experimentName}: {eplan.LayoutKind} layout, workers at every asking node, anyone asked answers (experiments_ab.md section 3)" : Layout;
+            session.worker_layout = Experiment ? $"experiment {experimentName}: {eplan.LayoutKind} layout, workers at every asking node, anyone asked answers (experiments_ab.md section 3) while the robot is in that worker's node zone (section 15 addendum 1, item 3a)" : Layout;
             session.bystanders = Experiment ? 0 : wcfg.bystanders.count; session.max_active_avatars = Experiment ? ecfg.max_active_avatars : wcfg.max_active_avatars;
             session.v3_workers_hidden = new List<string>(hiddenV3);
             session.ground_truth_layer = robot.Config.Unity.v4.ground_truth.layer; session.final_setting = finalSetting;

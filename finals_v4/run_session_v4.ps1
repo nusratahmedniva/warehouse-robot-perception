@@ -6,6 +6,7 @@ param(
     [switch]$Rehearsal,                               # development rehearsal of a final setting (TrialPlayV4 -experiment, development looks and clips)
     [switch]$DryRun,                                  # print every command without running it (only read-only lookups run)
     [int]$Trials = 3,                                 # rehearsal only: the number of runs (launch_prep --trials)
+    [string]$ExperimentGoals = "",                    # rehearsal only, random-endpoint maps (A3, A4, B3, B4): one goal per run, e.g. "E5,E6,E5" (TrialPlayV4 -experimentGoals; experiments_ab.md section 15 addendum 1, item 3c)
     [string]$UnityExe = ""                            # default: Unity Hub's editor of ProjectSettings/ProjectVersion.txt
 )
 # One v4 session, end to end (2026-11-13; Avatar/Config/final_procedure_v4.md). Since 2026-11-14 the finals are the experiments A/B
@@ -75,9 +76,17 @@ if ($Rehearsal) {
     $timeout = (Json (Join-Path $assets "Scenario\Config\trial_plan_v4.json")).development_timeout_s
     $runs = $Trials
     $unityMode = @("-experiment", $Experiment) + $(if ($Side) { @("-experimentSide", $Side) } else { @() })
+    if ($ExperimentGoals) {
+        $goalScen = (Json (Join-Path $repo $ecfg.scenarios_ab)).scenarios.($edef[0].scenario)
+        if ($goalScen.goal -ne "random_endpoint") { Say "REFUSED: -ExperimentGoals is for the random-endpoint experiments (A3, A4, B3, B4); $Experiment has the fixed goal $($goalScen.goal)"; exit 2 }
+        $goalList = @($ExperimentGoals -split "," | ForEach-Object { $_.Trim() })
+        if ($goalList.Count -ne $Trials) { Say "REFUSED: -ExperimentGoals gives $($goalList.Count) goal(s) for -Trials $Trials (one per run)"; exit 2 }
+        $unityMode += @("-experimentGoals", ($goalList -join ","))
+    }
     $sessionPattern = "trials_development_$($trialsCfg.task)_${Experiment}_*"
 } else {
     if ($PSBoundParameters.ContainsKey("Trials")) { Say "REFUSED: -Trials is for a rehearsal only (a final runs runs_per_setting = $($plan.runs_per_setting))"; exit 2 }
+    if ($ExperimentGoals) { Say "REFUSED: -ExperimentGoals is for a rehearsal only (a final takes its goals from final_seed)"; exit 2 }
     $timeout = $plan.timeout_s
     $runs = [int]$plan.runs_per_setting
     $unityMode = @("-finalSetting", $name)
