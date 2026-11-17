@@ -154,7 +154,10 @@ class Tables(unittest.TestCase):
         for d in self.dr:
             if d["decision"] != "unclear":
                 self.assertGreater(d["time_to_read_s"], 0.5)
-            self.assertTrue(1.0 < d["distance_m"] < 5.0, d["distance_m"])
+            # in the simulator the truth's commander is worker 1, so for a second opinion this is the distance to worker 1, not to the person asked (as before); with the clearance
+            # layout (AUDIT.md 16.20) the second and third workers stand 4.5 to 5.0 m ahead of the node and the robot asks them from there: 7.9 m in these runs (16.13.2: 4.0 -> 5.0).
+            # The bound is the ask zone plus the worker distance: 5.5 m + 6.5 m
+            self.assertTrue(1.0 < d["distance_m"] < 12.0, d["distance_m"])
         self.assertEqual(len({(d["run"], d["serial"]) for d in self.dr}), len(self.dr))
 
 

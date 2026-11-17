@@ -619,8 +619,8 @@ class ThirdWorkerAndMargin(unittest.TestCase):
 
     def test_the_config(self):
         scen = sv.load_scenarios()
-        for k in ("3", "4"):
-            self.assertEqual(scen["scenarios"][k]["layout"]["people_by_node"], {"J1": 3})
+        self.assertEqual(scen["scenarios"]["3"]["layout"]["people_by_node"], {"J1": 3})
+        self.assertNotIn("people_by_node", scen["scenarios"]["4"]["layout"])        # AUDIT.md 16.20: A4 and B4 have two workers at J1 (Unity's clearance layout)
         for k in ("1", "2"):
             self.assertNotIn("people_by_node", scen["scenarios"][k]["layout"])
         lay = scen["scenarios"]["4"]["layout"]
@@ -635,7 +635,7 @@ class ThirdWorkerAndMargin(unittest.TestCase):
                 for node, v in sc["road"].nodes.items():
                     if v["kind"] in ("start", "junction"):
                         n = len(sc["sim"]._scene_at(node).people)
-                        self.assertEqual(n, 3 if node == "J1" else 2, (name, seed, node))
+                        self.assertEqual(n, 3 if node == "J1" and name in ("A3", "B3") else 2, (name, seed, node))
         for name in ("A1", "A2", "B1", "B2"):
             sc = sv.scenario_ab(name, 1)
             self.assertTrue(all(len(sc["sim"]._scene_at(n).people) == 2 for n, v in sc["road"].nodes.items() if v["kind"] in ("start", "junction")))
@@ -755,14 +755,20 @@ class ExperimentFiles(unittest.TestCase):
                          {"scenarios_ab.json"} | {p.name for p in self.EXP.glob("control_lie_*.json")} | {p.name for p in self.EXP.glob("roadmap_a*.json")})
 
 
+# Nusrat's clearance layout (experiments_ab_unity.json clearance_layout, commit ed4e000 of origin/nusrat/v4-step5-dev; before_m negative = AHEAD, right_m negative = LEFT)
+CLEARANCE_SLOTS = [{"before_m": 3.5, "right_m": -2.5}, {"before_m": -4.5, "right_m": 3.5}, {"before_m": -5.0, "right_m": -4.0}]
+TWO_WORKER_EXPERIMENTS = ["A4", "B4"]
 UNITY_CFG = ROOT.parent / "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json"
 
 
 class MatchesUnity(unittest.TestCase):
-    """AUDIT.md 16.13: the simulator does what Unity's ExperimentPlanAB does (the beside slots, the goal generator, the valid-branch liar)."""
+    """AUDIT.md 16.13: the simulator does what Unity's ExperimentPlanAB does (the beside slots, the goal generator, the valid-branch liar).
+    Since AUDIT.md 16.20 (2026-11-17) the beside junction slots are Nusrat's clearance layout (experiments_ab_unity.json clearance_layout, commit ed4e000): her
+    values are quoted below because main's unity/ file carries the block only once PR #40 is merged, and the pins go to her block whenever it is present."""
 
     def setUp(self):
         self.u = json.loads(UNITY_CFG.read_text(encoding="utf-8"))
+        self.cl = self.u.get("clearance_layout")
         self.scen = sv.load_scenarios()
         self.road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
 
@@ -770,23 +776,29 @@ class MatchesUnity(unittest.TestCase):
     def test_the_slots_and_margins_are_unitys(self):
         for k in ("1", "2", "3"):
             lay = self.scen["scenarios"][k]["layout"]
-            self.assertEqual(lay["junction_slots"], self.u["junction_slots"], k)
+            self.assertEqual(lay["junction_slots"], CLEARANCE_SLOTS, k)                  # Nusrat's clearance layout (16.20), pending in Unity until she activates it
             self.assertEqual(lay["start_slots"], self.u["start_slots"], k)
             self.assertEqual((lay["nearer_margin_m"], lay["approach_m"]), (self.u["nearer_margin_m"], self.u["approach_m"]), k)
         self.assertEqual(self.scen["scenarios"]["4"]["layout"]["nearer_margin_m"], self.u["random_nearer_margin_m"])
         self.assertEqual(self.scen["scenarios"]["4"]["layout"]["max_draws"], self.u["random_max_draws"])
-        for e in self.u["experiments"]:                                                  # the third worker at J1 in A3, A4, B3, B4 only
+        if self.cl is not None:                                                          # her block, whenever the file carries it
+            self.assertEqual(self.cl["junction_slots"], CLEARANCE_SLOTS)
+            self.assertEqual(sorted(self.cl["two_worker_experiments"]), sorted(TWO_WORKER_EXPERIMENTS))
+            if self.cl["active"]:                                                        # switched on: the live slots are the same
+                self.assertEqual(self.u["junction_slots"], CLEARANCE_SLOTS)
+        for e in self.u["experiments"]:                                                  # the third worker at J1 in A3 and B3 only (A4, B4: two, 16.20)
             lay = self.scen["scenarios"][e["scenario"]]["layout"]
-            self.assertEqual(sorted(lay.get("people_by_node", {})), e["three_worker_nodes"], e["name"])
+            want = [] if e["name"] in TWO_WORKER_EXPERIMENTS else e["three_worker_nodes"]
+            self.assertEqual(sorted(lay.get("people_by_node", {})), want, e["name"])
         self.assertEqual(self.scen["placement_rule"]["min_worker_separation_m"], 3.0)
 
     def test_slot_positions(self):
-        js, ss = self.u["junction_slots"], self.u["start_slots"]
+        js, ss = CLEARANCE_SLOTS, self.u["start_slots"]
         pts = [tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "J1", 3, js)]
-        self.assertEqual(pts, [(4.25, -3.0), (8.25, -5.5), (4.25, -6.0)])                   # the first worker stands on the LEFT, 3.0 m back
+        self.assertEqual(pts, [(3.75, -3.5), (9.75, 4.5), (2.25, 5.0)])                     # the clearance layout: the first worker on the LEFT, 3.5 m back; the others AHEAD of J1
         self.assertEqual([tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "A", 2, ss)], [(4.25, -23.0), (10.25, -23.0)])
         j2 = [tuple(round(c, 6) for c in q) for q in sv.place_slots(self.road, "J2", 2, js)]
-        self.assertEqual(j2, [(-3.25, -2.0), (-0.75, 2.0)])                                  # arrival heading west: back = east, right = north
+        self.assertEqual(j2, [(-2.75, -2.5), (-10.75, 3.5)])                                 # arrival heading west: back = east, right = north
         with self.assertRaisesRegex(ValueError, "4 workers but 3 slots"):
             sv.place_slots(self.road, "J1", 4, js)
 

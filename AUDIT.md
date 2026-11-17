@@ -2867,3 +2867,95 @@ Tool `analyse_proceed_stop_v4.py --round2` (tests `tests/test_proceed_stop_v4.py
 - **Tests** (`tests/test_c2s_switch_v4.py`, 17): the values and both switches; the v3 path and the defaults untouched; switch off = the current reader (the `reading` never depends on the switch, `reading_stopped` is None when off); a swinging raised hand is a STOP but not while the robot is stopped; a still one is a STOP in both readings within 4 frames; the controller uses the short-window reading below 0.05 m/s in read / approach, the reader's own reading above it (also backing up), in other states, with the switch off or without a second reading;
   the declared difference and its disclosure in `analysis.json`. **Opt-in tests (4; they need the three zips or a report, about 10 minutes to compute): the real reader switch reproduces the 16.19.6 numbers exactly** (run on `outputs/proceed_stop_v4_switch_20261117_170008/report.json` with `C2S_REPORT=...`, 4 passed): S5 false STOPs 73 frames / 65 episodes (moving 20 / 15, stopped 53 / 50), STOP sessions 21 / 13 (stopped 0 / 0), D4 stand-in 28 / 19; PROCEED holds 37/62, 26/26, 38/38; criterion (a): moving 15/22 (1 lost from the 1.0 s set, 10 later, median +0.25 s, 1 lost altogether as for the current reader), stopped 17/18 (1, 15, +0.21 s), 32 of 40 within 1.0 s, no STOP lost that the current reader reads; the readings while the robot moves are identical to the current reader's (0, 0 and 3 of 7,309 in the D4 stand-in).
   Without the zips or the variable the 4 are skipped (so the plain suite does not depend on data outside the repository); the unit tests above run always.
+
+### 16.20 Nusrat's clearance layout taken into the simulator (2026-11-17, Anisha); recorded BEFORE any change
+
+Branch `anisha/v4-clearance-layout` (from main `29510ff` = origin/main, clean). Read as **data** from `origin/nusrat/v4-step5-dev` (PR #40), commits `8375ba8` (item 3a) and `ed4e000` (item 3b): `Scenario/Config/experiments_ab_unity.json`
+(`answer_zone_radius_m`, `clearance_layout`, `path_clearance_m`, `ask_standoff_m`, `reask_shift_m`), `ExperimentPlanAB.cs` (`DrivableSegments`, `ReaskPosition`, `ClearanceProblem`) and `Avatar/Config/experiments_ab.md`. Nothing under `unity/` is changed or copied.
+
+**1. Her layout (Unity values; `clearance_layout.active` is false in Unity until Python carries it).**
+- Junction slots (`before_m` back along the arrival road, negative = ahead; `right_m` to the right of the arrival direction, negative = left): slot 1 `{3.5, -2.5}` (3.5 m before, 2.5 m left); slot 2 `{-4.5, 3.5}` (4.5 m ahead, 3.5 m right);
+  slot 3 `{-5.0, -4.0}` (5.0 m ahead, 4.0 m left). Live slots today: `{3.0, -2.0}`, `{5.5, 2.0}`, `{6.0, -2.0}`. Start slots unchanged.
+- A4 and B4 (`two_worker_experiments`) have two workers at J1 (three random workers in the 6 m square cannot keep the clearance); A3 and B3 keep three at J1.
+- Her rules while the block is active: no worker within `path_clearance_m` 1.0 m (the corridor half-width 0.6 m + 0.4 m) of any segment the robot can drive (the roads of the run's map and of the physical v4 map; per asking node the segment from the node to the ask position of each
+  worker in every order, the return to the first worker of an order (the tie rule), and from every ask position and re-ask point to the next node of every branch); every ask position within `answer_zone_radius_m` - `answer_zone_margin_m` = 5.5 m of its node.
+  Ask position = `ask_standoff_m` 2.0 m from the worker toward where the robot comes from; re-ask point = `reask_shift_m` 0.4 m to the robot's right, back on that circle (copies of `hri_control.json` `dialog.approach_distance_m` and `dialog.reask_shift_m`).
+
+**2. Its disclosure (hers, kept as she wrote it).** The slot search before her declaration left out one declared segment, the return to the first worker (tie). Under the full declared model the declared choice (slot 1 2.5 m before, slot 3 3.5 m left) failed at A3 J1 seed 1 run 1
+by 0.03 m (worker 3 stood 0.97 m from the segment from its own tie ask position to E1). The search was rerun with the tie, with the same rules and the same declared choice rule (meets every rule; smallest largest own-ask distance, 5.19 m; then least movement from the section 3 slots).
+Nothing else changed. **Not checked by her:** free cells and colliders for the pending slots at Play (Unity does at Play once the block is active).
+
+**3. The two distances are different quantities.** Unity's answer zone (item 3a, 6.0 m) is the distance from the **robot** to the **worker's node**: a worker answers only while the robot's centre is within 6.0 m of the node the worker belongs to. My second-opinion radius (16.19, 6.5 m) is the
+distance from the **person** to the **node**: the robot asks only people who stand within 6.5 m of the node and for whom it is the nearest node. A robot that stands 2.0 m from a person 6.3 m from the node can be 8 m from the node; it then gets no answer in Unity although Python still chose that person.
+They are not made equal and 6.5 m is **not changed** here (unchanged since 16.19: the value is held until Nusrat's new maximum placement distance is known). What is checked here is that the clearance layout keeps every worker inside my 6.5 m and nearest to their own node (see 4), and, as an extra figure, the largest distance from each worker's own ask positions to the node
+(her 5.5 m rule), computed with the model of 1.
+
+**4. What I do (declared before any change; pass criteria fixed here).**
+- (a) `scenarios_ab.json`: `junction_slots` of scenarios 1, 2, 3 = her slots exactly; `people_by_node` J1 3 removed from scenario 4 (A4, B4: 2 at J1); everything else (start slots, margins, placement rule, random layout) unchanged. **`MatchesUnity` keeps pinning** the slots: to her `clearance_layout` block (her values, quoted from `ed4e000`), to the live
+  `junction_slots` too as soon as her file carries `clearance_layout.active` true; main's `unity/` file does not carry the block until PR #40 is merged, so the test pins the values as constants quoted from `ed4e000` and checks them against the block whenever it is present.
+- (b) **Every worker of every scenario, seed (1-20) and node** (A1 to A4; beside and random layouts; every asking node): within 6.5 m of the node and the nearest node of the physical roadmap to be that node (the rule of `_belongs_here`). Pass = all. The largest distance is reported (per layout).
+- (c) **Clearance in the simulator geometry:** an independent model (test code, `tests/`) of the segments of 1 built from the simulator's own roadmap and positions; for every scenario, seed and node no worker is closer than 1.0 m (minus 1e-4) to any segment or road, and the ask positions are within 5.5 m of the node. Pass = all. The `random` layout (A4, B4) is **checked and reported**; if its draws
+  violate the clearance I report the count and do **not** change the random placement without asking (the sim placement has no clearance rule today; making it reject draws like her `ClearanceProblem` is a change to what the simulator does).
+- (d) **Rerun of the 16.13 tables** (`run_experiments_ab_v4.py --runs 20 --timeout-s 270`, detection off and on, valid-branch liar): the **baseline is rerun first with the old layout on the current main code** (`outputs/experiments_ab_v4_baseline_old_layout_main_29510ff_*`), because the code changed since 16.13 (16.19: return to the junction point,
+  person-in-path recovery, C2s, second-opinion radius, ...), so the old table is not comparable; then the new layout (`outputs/experiments_ab_v4_clearance_layout_*`). Both are reported next to the 16.13 numbers; the change of the layout alone is new minus baseline. Simulator only; nothing here is a measurement.
+- Not done here: Unity's activation window and who answers a new ask (no counterpart in the simulator, as in 16.13); free cells and colliders (Unity at Play). `clearance_layout.active` is Nusrat's to switch after this branch is merged.
+
+#### 16.20.1 Built and results (2026-11-17)
+
+**Built (Python only; nothing under `unity/` is changed or copied).** `scenarios_ab.json`: `junction_slots` of scenarios 1, 2, 3 = her clearance slots exactly (`{3.5, -2.5}`, `{-4.5, 3.5}`, `{-5.0, -4.0}`), `people_by_node` J1 3 removed from scenario 4 (A4, B4: two at J1), the `why` entries say so; start slots and every other value unchanged
+(`scenarios_ab.json` is in the frozen list of `freeze_v4.py` and `frozen.json` is not touched: it pins the files only once `frozen` is true, which it is not). New: `layout_check_v4.py` (the three checks of 4 for every scenario, seed and node; writes `outputs/layout_check_v4_<time>/`, with the git commit) and `tests/test_clearance_layout_v4.py` (14 tests).
+`tests/test_lie_detection_v4.py`: `MatchesUnity` keeps pinning the slots, now to her quoted values (`CLEARANCE_SLOTS`, checked against her block whenever main's `unity/` file carries it; today it does not, PR #40 is not merged) and to the live slots as soon as her block says `active`; the J1, J2 slot positions, the "third worker at J1 in A3, A4, B3, B4 only"
+test (now A3, B3 only) and the people_by_node config test were updated for the new layout, each keeping its intent. I verified once, by `git show` of `origin/nusrat/v4-step5-dev` (`3f0422c`), that my constants equal her slots, her two-worker list (A4, B4), 1.0 / 2.0 / 0.4 / 6.0 / 0.5 and that `active` is false there.
+
+**(b) Every worker belongs to its node (6.5 m, nearest node): all 540 worker placements of A1 to A4, seeds 1 to 20, every asking node pass.** Largest distance worker to own node: A1 5.00 m (A, worker 2), A2 5.70 m (B, worker 2), **A3 6.40 m (J1, worker 3: 5.0 m ahead, 4.0 m left)**, A4 (random) 4.21 m. The margin to 6.5 m is 0.10 m (old layout: 6.32 m, 0.18 m).
+A4 has 200 placements (two at J1); A1 40, A2 80, A3 220; B1 to B4 use the same placements as A1 to A4.
+
+**(c) Clearance and ask zone, at her model's re-ask shift 0.4 m (`layout_check_v4.py`, an independent model of her segments: every order, the tie return, the branches; every road of the run's map and of the physical map):**
+
+| experiment | layout | smallest worker-to-segment distance | largest ask-position distance from the node | plans (of 20) violating 1.0 m or 5.5 m |
+|---|---|---|---|---|
+| A1 | beside | 2.00 m | 3.72 m | 0 |
+| A2 | beside | 1.76 m | 3.77 m | 0 |
+| **A3** | beside | **1.01 m** | **5.19 m** (her figure 5.19 m) | **0** |
+| A4 | random | 0.01 m | 3.00 m | **20** |
+
+The same check on the old slots: A3 20 of 20 plans violate (smallest 0.03 m, largest ask distance 5.40 m, her figure for the live slots), so the check does catch the live layout.
+
+**Two findings that are NOT fixed (reported; the decision is yours):**
+1. **Her model's re-ask shift is 0.4 m (a copy of the v3 value in `hri_control.json`); the v4 controller really uses 0.8 m** (`configs/v4/control.json` `dialog.reask_shift_m`, "INITIAL v4 value, decided 2026-10-24 by Anisha"; it is also the shift of the second view of an ambiguous POINT). I added the 0.8 m check after noticing this during the build (it is not in the pre-declaration of 4; both values are reported). With 0.8 m, **A3 at J1 fails her rules in all 20 seeds: worker 3
+   (2.25, 5.0) is 0.74 m from the segment from the re-ask point (4.24, 5.15) to J2 (LEFT), and the re-ask point is 5.53 m from J1 (her rule 5.5 m; still inside Unity's 6.0 m zone, and 0.74 m is outside the 0.6 m person-in-path corridor).** A1 and A2 pass at 0.8 m (1.96 m and 1.76 m; 4.06 m). Nothing is changed: `reask_shift_m` is a v4 value (not mine to change here) and the layout is hers; options: (a) accept 0.74 m, (b) Nusrat sets `reask_shift_m` 0.8 in her model and searches the slots again, (c) a v4 re-ask shift of 0.4 m.
+2. **The random layout (A4, B4) has no clearance rule in the simulator.** 62 of the 100 asking nodes of A4 (seeds 1 to 20) have a worker closer than 1.0 m to their own node's segments or a road (all 20 plans violate). Unity's random placement rejects draws that break it (her 400 plans pass), so the simulator's A4 and B4 do not do what Unity does. As declared in 4(c) I did **not** change the random placement; making `place_random` reject draws like her `ClearanceProblem` (and the 5.5 m ask zone) is a change of what the simulator does and waits for your decision.
+
+**(d) The 16.13 tables rerun (simulator; 20 seeds, 270 s, valid-branch liar; `outputs/experiments_ab_v4_baseline_old_layout_main_29510ff_20261117_181934` and `outputs/experiments_ab_v4_clearance_layout_20261117_182155`).** The 16.13 table is **not** reproduced by the current main even with the old slots, so the layout effect is new minus baseline:
+
+| experiment | detection | 16.13: SUCCESS | median s | fooled/given | **baseline (old slots, current code): SUCCESS** | failures | median s | collisions | safety stops | fooled/given | **clearance layout: SUCCESS** | failures | median s | collisions | safety stops | fooled/given |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | off | 20/20 | 68.0 | - | **20/20** | - | 70.8 | 0 | 0 | - | **20/20** | - | 70.8 | 0 | 0 | - |
+| A1 | on | 20/20 | 82.3 | - | **20/20** | - | 88.5 | 0 | 0 | - | **20/20** | - | 88.5 | 0 | 0 | - |
+| A2 | off | 20/20 | 86.1 | - | **20/20** | - | 93.8 | 0 | 20 | - | **20/20** | - | 96.8 | 0 | 20 | - |
+| A2 | on | 20/20 | 118.1 | - | **20/20** | - | 137.8 | 0 | 0 | - | **20/20** | - | 156.3 | 0 | 0 | - |
+| A3 | off | 20/20 | 122.0 | - | **20/20** | - | 137.2 | 0 | 27 | - | **20/20** | - | 143.3 | 0 | 20 | - |
+| A3 | on | 20/20 | 185.7 | - | **14/20** | timeout 6 | 217.4 | 0 | 7 | - | **13/20** | timeout 7 | 228.4 | 0 | 0 | - |
+| A4 | off | 20/20 | 116.1 | - | **20/20** | - | 132.9 | 0 | 5 | - | **20/20** | - | 131.1 | 0 | 6 | - |
+| A4 | on | 20/20 | 165.6 | - | **20/20** | - | 182.7 | 0 | 0 | - | **20/20** | - | 189.7 | 0 | 0 | - |
+| B1 | off | 19/20 | 68.0 | 0/5 | **19/20** | aborted 1 | 70.8 | 0 | 0 | 0/5 | **19/20** | aborted 1 | 70.8 | 0 | 0 | 0/5 |
+| B1 | on | 20/20 | 82.3 | 0/12 | **20/20** | - | 88.5 | 0 | 0 | 0/12 | **20/20** | - | 88.5 | 0 | 0 | 0/12 |
+| B2 | off | 13/20 | 86.1 | 0/18 | **13/20** | aborted 7 | 93.8 | 0 | 18 | 0/18 | **13/20** | aborted 7 | 96.8 | 0 | 18 | 0/18 |
+| B2 | on | 19/20 | 118.1 | 0/35 | **19/20** | aborted 1 | 137.8 | 0 | 0 | 0/35 | **19/20** | aborted 1 | 156.3 | 0 | 0 | 0/36 |
+| B3 | off | 10/20 | 119.7 | 10/15 | **10/20** | wrong_goal 9, aborted 1 | 132.8 | 0 | 22 | 10/15 | **10/20** | wrong_goal 9, aborted 1 | 138.9 | 0 | 18 | 10/15 |
+| B3 | on | 15/20 | 195.7 | 8/40 | **11/20** | timeout 5, wrong_goal 3, aborted 1 | 224.9 | 0 | 5 | 8/40 | **11/20** | timeout 5, wrong_goal 3, aborted 1 | 247.2 | 0 | 0 | 8/40 |
+| B4 | off | 11/20 | 110.6 | 8/14 | **11/20** | aborted 2, wrong_goal 7 | 126.3 | 0 | 4 | 8/14 | **11/20** | aborted 2, wrong_goal 7 | 125.7 | 0 | 6 | 8/14 |
+| B4 | on | 15/20 | 170.2 | 8/37 | **15/20** | aborted 2, wrong_goal 3 | 191.2 | 0 | 0 | 8/37 | **11/20** | aborted 2, wrong_goal 7 | 189.9 | 0 | 3 | 20/42 |
+
+
+Read (simulator, not a measurement):
+- **Code since 16.13, not the layout (baseline against 16.13):** A3 detection on 20/20 -> 14/20 (timeout 6), B3 on 15/20 -> 11/20 (timeout 5), the medians are 3 to 32 s longer, and the detection-off rows show safety stops of 0.05 s (A2 20, A3 27, A4 5, B2 18, B3 22, B4 4; 16.13: 0). **Cause, checked:** with `dialog.return_to_junction` off the same A3 detection-on runs are 20/20 for both layouts (A4: 20/20 either way) and the 0.05 s stop is gone in A2 (seed 1 run: stop 0.05 s -> 0.0 s). The return to the junction point (16.19, switched on in the v4 control files) costs the simulator's
+  A3 and B3 runs their 270 s budget (three workers at J1, a drive back after every second opinion) and adds a stop on the return. Reported only; no value changed.
+- **The layout alone (clearance minus baseline):** Set A 74/80 -> 73/80: A1, A2, A4 unchanged at 20/20; A3 on 14/20 -> 13/20 (timeout 6 -> 7); the medians of A2 and A3 detection on are 18 s and 11 s longer (second workers stand 4.5 m ahead; the robot drives farther for second opinions: A2 on 137.8 -> 156.3 s). Collisions 0 in all 32 rows of both runs.
+  **B4 detection on 15/20 -> 11/20 (wrong goal 3 -> 7), lies fooled 8/37 -> 20/42:** A4 and B4 have two workers at J1 instead of three, so a disagreement at J1 is a tie (the first worker is asked again and counted twice, 16.13.1) instead of a vote of three: the effect of removing the third worker at J1 (her declared change), not of the slots. B3 on stays 11/20 and 8/40 fooled; B1, B2, B3 off and B4 off unchanged in SUCCESS.
+- **Not run / not covered:** Unity's activation window and who answers a new ask (16.13), free cells and colliders at Play (hers), the 6.0 m answer zone (Unity only; in the simulator the person asked always answers), Python driving into another node's zone.
+
+**Existing tests changed in this round (each keeps its intent).** `tests/test_lie_detection_v4.py` (the slots, the slot positions, A4 and B4 with two workers at J1); `tests/test_hri_sim_v4.py` (the isolation allow-list gets `layout_check_v4.py`, which imports the simulator like the experiments runner); `tests/test_export_csv_v4.py`: the sanity bound of `distance_m` 5.0 m -> 12.0 m. In the simulator the truth's commander is worker 1, so for a second opinion `distance_m` is the distance to worker 1 and not to the person asked (as before 16.20);
+with the clearance layout the second and third workers stand 4.5 to 5.0 m ahead of the node and the largest value in that test's runs is 7.9 m (J2, worker 2 asked, worker 1 the commander). The new bound is the ask zone plus the worker distance, 5.5 m + 6.5 m. The decisions table's `distance_m` of simulator runs is therefore not the standoff for second opinions (reported, not changed).
+
+**Open for you (nothing decided or changed):** (1) finding 1 (0.8 m against 0.4 m); (2) finding 2 (clearance rule for the random layout in the simulator); (3) the cost of the return to the junction point in A3 and B3 (A3 on 20/20 -> 14/20 in the simulator; the Unity runs have the same 270 s budget); (4) Nusrat sets `clearance_layout.active` after this branch is merged, as she wrote.
