@@ -2227,3 +2227,98 @@ example showing the restart; if it cannot be shown, it is withdrawn.
     - (iii) a smaller clearance for slot 3 only: the largest value (0.05 m steps) at which a set exists whose other workers keep 1.0 m
       from every drive and road.
   - Committed as `finals_v4/layout_search_v4_j1.py` (it imports the search tool's model).
+
+*Items 1 to 3, made (2026-11-17). Nothing is chosen or switched on: under the declared rules there is no layout to choose.*
+- **Tools** (`finals_v4/`, inputs in `layout_search_v4.json`; geometry only):
+  - `layout_search_v4.py`, the search (a Python port of Unity's placement model);
+  - `layout_search_v4_j1.py`, the amendment's analysis;
+  - `layout_alternatives_v4.py`, the slot tables and item 2's alternative (a).
+  - The search run used the tool before one refactor (the pair stage moved into `beside_pairs` for the J1 script, same code); it was not
+    rerun (45 min).
+- **Port check:** with the 0.4 m shift and no NavMesh requirement the port returns addendum 1's choice first (largest own-ask distance
+  5.193 m).
+- **The correction:** `experiments_ab_unity.json` `reask_shift_m` 0.4 -> 0.8. Its note names `configs/v4/control.json`, and
+  `ExperimentClearanceTests.ReaskShift_IsTheV4ControllersValue` pins it to that file.
+
+**Item 1** (`robot_vision/outputs/layout_search_v4_20261117_202249/`, `layout_search_v4_j1_20261117_204024/`):
+- **Search space:** 594 slot candidates; 404 pass roads, turning points and free cells at every junction; 2989 pairs pass `corridor`,
+  `turn` and `turn_left` (1.0 m, NavMesh requirement). The start slots pass unchanged.
+- **No slot set with 3 workers at J1 meets every rule:** 0 at 1.0 m with the NavMesh requirement, 0 without it, 0 at the report-only
+  1.4 m. The NavMesh requirement changes nothing: there is no choice either way.
+- **Addendum 1's pending slots fail with 0.8 m:**
+  - 3 at J1: an ask position 5.51 m from J1 (Unity: A3 seed 1 run 1);
+  - 2 at J1 on `roadmap`: slot 2 (4.5 m ahead, 3.5 m right) stands 0.84 m from J1's drive at the closest (Unity's first find:
+    0.85 m, from the line "ask position (9.22, 2.57) to E1").
+  - With 2 at J1 they still plan every A1, A2, A4, B1, B2, B4 run (Unity test). A4 and B4 are random, so their junction slots are not
+    used there.
+- **The binding rule, at J1** (864,782 triples: slots 1 and 2 a valid pair, the J1 positions 3.0 m apart, A's workers placed):
+  - **every triple breaks "worker clearance from J1's own drive"**. Dropping that rule alone leaves 103,212 valid at J1. Dropping any
+    other single rule leaves 0: ask zone, bystander margin, NavMesh requirement, clearance from A's drive.
+  - Most frequent sets of broken rules: own drive + ask zone 283,305; own drive + bystander margin 270,923; own drive alone 103,212.
+  - The four clearance rules dropped together leave 111,725.
+- **Closest alternatives** (none chosen):
+
+| alternative | result | what it costs |
+|---|---|---|
+| (i) 2 workers at J1 in A3 and B3 too | 215 pairs valid on every map. First by the declared choice rule: slot 1 = 3.0 m before, 2.0 m left (the live slot 1); slot 2 = 2.5 m ahead, 4.0 m right; largest own-ask distance 4.06 m. **Unity's planner: all 400 plans of seeds 1 and 2 pass every rule** (`Addendum3_TwoAtJ1_AlternativeIPlans_...`) | B3, like B4, has no majority at J1: one lie is a tie |
+| (ii) a larger ask zone | 0 sets even with the zone rule dropped | does not help |
+| (iii) a smaller clearance for slot 3 only | largest **0.631 m (0.60 m in 0.05 m steps)**: slot 1 = 3.5 m before, 2.5 m left; slot 2 = 4.0 m ahead, 4.0 m right; slot 3 = 4.5 m ahead, 3.0 m left (3.25, 4.50); largest own-ask distance 4.73 m; every other worker at least 1.0 m | 0.63 m is barely above Python's person-in-path corridor half-width (0.6 m): the robot on that line passes the worker at the edge of its stop corridor. Not checked at Play |
+
+**Item 2, three random workers at J1** (A4 and B4, the 6 m square):
+- **Lattice:** 625 points, 160 pass the point rules, 247,360 triples keep the separation, **0 valid**.
+  - Binding rule: the clearance from J1's own drive. Dropping it alone leaves 29,388 valid; dropping the separation alone 1,226; any
+    other single rule 0.
+  - Broken sets: bystander margin + own drive 217,972; own drive alone 29,388.
+  - The closest triple, (7.25, -3.00), (9.25, 1.75), (4.25, -3.00), misses the clearance by 0.124 m (0.876 m).
+- **Unity's planner:** every run of seeds 1 and 2 of A4 and B4 with 3 at J1 is refused at J1 ("no placement within 100000 draws").
+  Pinned by `ThreeRandomWorkersAtJ1_InA4AndB4_CannotBePlaced`.
+- **Alternatives** (none switched on):
+  - **(a) a third worker fixed on the other side of the road, two random:** 0 of 2,000,000 draws accepted, both for the pending slot 3
+    (2.25, 5.00) and for (iii)'s slot 3 (3.25, 4.50). Item 1 has no slot 3 of its own, so these two stand in for it.
+    (`robot_vision/outputs/layout_alternatives_v4_20261117_211023/`)
+  - **(b) one worker closer to J1's drive:** at most 0.215 m (0.20 m in steps). That worker would stand inside the 0.6 m stop corridor of
+    a drive line, so this is not usable.
+  - **(c) a larger square:** half size 3.0 to 4.5 m, 0 of 2,000,000 draws each; 5.0 m, 1 of 2,000,000 (rate 5e-7, so 100,000 draws all
+    fail with a chance of 0.95). No size up to 5.0 m works.
+  - So with the 1.0 m clearance and the 0.8 m shift, three random workers at J1 cannot be placed. A4 and B4 stay with 2 at J1 in the
+    pending block.
+  - The only 3-at-J1 placement found anywhere is (iii), a fixed beside layout with slot 3 at 0.60 m. Using it for A4 and B4 too would
+    change Anisha's random layout of scenario 4.
+
+**Item 3, the slot tables** (`layout_alternatives_v4_20261117_211023/slot_table.csv`: candidates P = the pending block with 2 at J1, (i)
+and (iii); per scenario, node and worker). The two usable candidates on the v4 map; the start slots are unchanged in both:
+
+(i), 2 at J1 in every setting:
+
+| node | slot | before_m | right_m | x, z | to node (m) | own-ask max (m) | clearance (m) |
+|---|---|---|---|---|---|---|---|
+| A | 1 | 3.0 | -2.0 | 4.25, -23.00 | 3.61 | 4.06 | 2.00 |
+| A | 2 | 3.0 | 4.0 | 10.25, -23.00 | 5.00 | 4.06 | 1.97 |
+| J1 | 1 | 3.0 | -2.0 | 4.25, -3.00 | 3.61 | 3.18 | 1.57 |
+| J1 | 2 | -2.5 | 4.0 | 10.25, 2.50 | 4.72 | 3.18 | 1.17 |
+| J2 | 1 | 3.0 | -2.0 | -3.25, -2.00 | 3.61 | 3.18 | 1.58 |
+| J2 | 2 | -2.5 | 4.0 | -8.75, 4.00 | 4.72 | 3.18 | 1.19 |
+| J3 | 1 | 3.0 | -2.0 | 15.75, 2.00 | 3.61 | 3.18 | 1.50 |
+| J3 | 2 | -2.5 | 4.0 | 21.25, -4.00 | 4.72 | 3.18 | 1.19 |
+| J4 | 1 | 3.0 | -2.0 | -15.75, -2.00 | 3.61 | 3.18 | 1.50 |
+| J4 | 2 | -2.5 | 4.0 | -21.25, 4.00 | 4.72 | 3.18 | 1.19 |
+
+(iii), 3 at J1 in A3 and B3, slot 3 relaxed:
+
+| node | slot | before_m | right_m | x, z | to node (m) | own-ask max (m) | clearance (m) |
+|---|---|---|---|---|---|---|---|
+| J1 | 1 | 3.5 | -2.5 | 3.75, -3.50 | 4.30 | 4.73 | 1.73 |
+| J1 | 2 | -4.0 | 4.0 | 10.25, 4.00 | 5.66 | 4.73 | 1.01 |
+| J1 | 3 | -4.5 | -3.0 | 3.25, 4.50 | 5.41 | 4.73 | 0.63 (relaxed) |
+| J2 | 1 / 2 | 3.5 / -4.0 | -2.5 / 4.0 | -2.75, -2.50 / -10.25, 4.00 | 4.30 / 5.66 | 3.95 | 1.86 / 1.21 |
+| J3 | 1 / 2 | 3.5 / -4.0 | -2.5 / 4.0 | 15.25, 2.50 / 22.75, -4.00 | 4.30 / 5.66 | 3.95 | 1.22 / 1.61 |
+| J4 | 1 / 2 | 3.5 / -4.0 | -2.5 / 4.0 | -15.25, -2.50 / -22.75, 4.00 | 4.30 / 5.66 | 3.95 | 1.65 / 1.61 |
+
+- `turn` and `turn_left` (B) use the same junction slots, and `corridor` only the start slots. Every one of those rows passes; the
+  values are in the CSV.
+- **For Anisha's `second_opinion_radius_m` (6.5 m):** the largest worker-to-node distance is 5.00 m in (i), 5.66 m in (iii) and 5.70 m
+  in P. Every worker's nearest node of its map is its own node in all three, so 6.5 m keeps every worker of every candidate.
+- **Scenario 4:** the random rule stays as it is (6 m square, bystander margin 0.25 m, `min_road_m` 1.0), with **2** at J1
+  (`people_by_node` J1 3 cannot be met; item 2).
+- **Not run:** the NavMesh verification (addendum 2's tool). There is no chosen layout, and the tool stops at the first plan the
+  pending layout refuses (A3). It will run once a layout is decided.
