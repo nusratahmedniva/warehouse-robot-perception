@@ -33,6 +33,9 @@ def session(results, tmp, name, extra=None):
                                             "lie_probability": results[0].get("lie_probability"), **(extra or {})})
 
 
+THREE_SLOTS = [{"before_m": 3.0, "right_m": -2.0}, {"before_m": 5.5, "right_m": 2.0}, {"before_m": 6.0, "right_m": -2.0}]   # 16.13 slots: three voters (the layout has two since 16.21)
+
+
 def scripted(name, goal, script, detection, layout=None, xcheck=False, people=None):
     """A scripted run packaged like run_scenario's result so that export_session can write it."""
     sc = sv.scenario_ab(name, 1, detection)
@@ -42,6 +45,8 @@ def scripted(name, goal, script, detection, layout=None, xcheck=False, people=No
     if people is not None:
         sc["spec"].layout["people"] = people
         sc["spec"].layout.pop("people_by_node", None)
+        if people > 2 and "junction_slots" in sc["spec"].layout:
+            sc["spec"].layout["junction_slots"] = [dict(x) for x in THREE_SLOTS]
     if xcheck:
         sc["sim"].g.crosscheck_accuracy = 1.0
         sc["sim"].c.v4["dialog"]["use_hand_crosscheck_as_tiebreak"] = True

@@ -8,8 +8,9 @@ finished (the simulator is deterministic: the same run, only the clock limit dif
 controller state, on against off.
 
 Usage (from robot_vision/): python analyse_a3_timeouts_v4.py [--layout old|clearance] [--label x]
-  old       = the live slots before 16.20 (the baseline of 16.20.1: 14/20 with 6 timeouts)
-  clearance = scenarios_ab.json as it is now (Nusrat's clearance layout)
+  old         = the live slots before 16.20 (the baseline of 16.20.1: 14/20 with 6 timeouts)
+  clearance16 = Nusrat's clearance layout of 16.20 (three workers at J1 in A3)
+  current     = scenarios_ab.json as it is now (layout (i) of 16.21.2, two workers at J1 everywhere)
 Writes outputs/a3_timeouts_v4_<time>[_label]/ (report.md, report.json, config_used.json, run.json with the git commit); never overwrites.
 """
 
@@ -31,14 +32,20 @@ sys.path.insert(0, str(ROOT))
 import hri_sim_v4 as sv  # noqa: E402
 
 OLD_SLOTS = [{"before_m": 3.0, "right_m": -2.0}, {"before_m": 5.5, "right_m": 2.0}, {"before_m": 6.0, "right_m": -2.0}]   # live slots before AUDIT.md 16.20
+CLEARANCE16_SLOTS = [{"before_m": 3.5, "right_m": -2.5}, {"before_m": -4.5, "right_m": 3.5}, {"before_m": -5.0, "right_m": -4.0}]   # Nusrat's layout of 16.20 (0.4 m model)
 
 
 def scenarios(layout: str) -> dict:
+    """The scenarios of one layout: "old" (before 16.20: the old slots, three workers at J1 in A3 and A4, no rejection model), "clearance16" (16.20: her 0.4 m-model slots, three at
+    J1 in A3, two in A4) and "current" (scenarios_ab.json as it is: layout (i) of 16.21.2, two workers at J1 everywhere, re-ask shift 0.8 m)."""
     scen = copy.deepcopy(sv.load_scenarios())
-    if layout == "old":
+    if layout in ("old", "clearance16"):
         for k in ("1", "2", "3"):
-            scen["scenarios"][k]["layout"]["junction_slots"] = copy.deepcopy(OLD_SLOTS)
-        scen["scenarios"]["4"]["layout"]["people_by_node"] = {"J1": 3}
+            scen["scenarios"][k]["layout"]["junction_slots"] = copy.deepcopy(OLD_SLOTS if layout == "old" else CLEARANCE16_SLOTS)
+        scen["scenarios"]["3"]["layout"]["people_by_node"] = {"J1": 3}
+        if layout == "old":
+            scen["scenarios"]["4"]["layout"]["people_by_node"] = {"J1": 3}
+        scen["placement_rule"]["reask_shift_m"] = 0.4
     return scen
 
 
@@ -196,7 +203,7 @@ def markdown(res: dict) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--layout", choices=("old", "clearance"), default="old")
+    ap.add_argument("--layout", choices=("old", "clearance16", "current"), default="old")
     ap.add_argument("--label", default="")
     a = ap.parse_args(argv)
     res = analyse(a.layout)

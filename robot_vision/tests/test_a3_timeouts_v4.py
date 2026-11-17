@@ -18,7 +18,8 @@ class Setup(unittest.TestCase):
         for k in ("1", "2", "3"):
             self.assertEqual(old[k]["layout"]["junction_slots"], a3.OLD_SLOTS)
         self.assertEqual(old["4"]["layout"]["people_by_node"], {"J1": 3})
-        self.assertEqual(a3.scenarios("clearance")["scenarios"], sv.load_scenarios()["scenarios"])
+        self.assertEqual(a3.scenarios("current")["scenarios"], sv.load_scenarios()["scenarios"])
+        self.assertEqual(a3.scenarios("clearance16")["scenarios"]["3"]["layout"]["junction_slots"], a3.CLEARANCE16_SLOTS)
 
     def test_state_times_add_up_to_the_run(self):
         r = {"trace": ["0.00:scan", "1.50:approach", "4.00:ask", "5.00:done"], "time_s": 7.0}
@@ -70,7 +71,7 @@ class OneRun(unittest.TestCase):
         self.assertLess(cf["time_s"], 260.0)
         self.assertLess(max(x["return_s"] for x in a3.visits(cf)), 10.0)
         self.assertEqual(cf["closest_person_m"], self.on["closest_person_m"])
-        new = a3.run_one(4, a3.scenarios("clearance"), True, 600.0, cruise_return=True)
+        new = a3.run_one(4, a3.scenarios("clearance16"), True, 600.0, cruise_return=True)
         self.assertEqual((new["outcome"], new["time_s"]), ("SUCCESS", 283.9))                   # still over 270 s
 
 

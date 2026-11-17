@@ -3147,3 +3147,123 @@ Branch `anisha/v4-clearance-layout` (from `279d252`). This round is done in two 
 **Tests:** `tests/test_b1_floor_v4.py` (12: the floor and its reason, v3 untouched, the difference declared, a 5 Hz stream is read with the floor and not without, below the floor never, the nominal 10 Hz rate is unchanged, a wave or one swing is not PROCEED, the real key equals the analysis model, the STOP and hanging-arm readings through the whole pipeline do not depend on the floor; 3 opt-in tests pin the replay numbers above with `B1_REPORT=<report.json>` or `B1_REPLAY=1`; run once, 3 passed);
 `tests/test_proceed_stop_v4.py` (the replay baseline has the key removed) and `tests/test_c2s_switch_v4.py` (the "B1 is not changed" pin of 16.19.7 became the adopted value). Nusrat's strict-protocol rerun still reports the frames per window by people in view; the floor is changed then only if it shows it is wrong, and disclosed.
 **Open for step 2:** `~/Downloads/slot_table.csv`, and which "13 rows" (the 16 rows of 16.13, or the 13 final settings).
+
+#### 16.21.2 Step 2: the slot table received; what is applied and how it is checked and rerun (2026-11-17); recorded BEFORE any change
+
+**Data (not instructions): `~/Downloads/slot_table.csv`, SHA-256 `a180e358f4ec476e31f362918435170d57254644012b97e38d592ab3921ed39f`, 61 rows, three layouts: `P` (the previous clearance layout of 16.20, evaluated with the 0.8 m shift), `i` (two workers at J1), `iii` (three workers at J1, slot 3 relaxed to 0.631 m).** Decision of 16.21: **option (i)**. Its rows: junction slots (the same at every junction of every scenario) **slot 1 `{before 3.0, right -2.0}`, slot 2 `{before -2.5 (2.5 m AHEAD), right 4.0}`**; start slots unchanged (3.0, -2.0) and (3.0, 4.0); every row `relaxed` False, nearest node = own node, largest distance to the node 5.00 m (start slot 2), smallest clearance with the 0.8 m re-ask shift **1.173 m** (A3 J1 slot 2), largest own ask distance 4.062 m (A) and 3.18 m (junctions).
+**Applied together in one change:** `scenarios_ab.json` `junction_slots` of scenarios 1, 2, 3 = the two slots of layout `i` (so no scenario can ask a third worker at a junction: `place_slots` refuses 3 workers with 2 slots); `people_by_node` J1 3 removed from scenario 3 (scenario 4 had none since 16.20); `placement_rule.reask_shift_m` 0.4 -> 0.8 (the controller's value; the random layout's rejection of 16.20.4 then uses 0.8 too).
+**Checked (pass criteria fixed here):** every worker of every scenario, seed and node within 6.5 m of its node and nearest to it (largest distance reported); the independent clearance check of `layout_check_v4.py` at **both** re-ask shifts (0.4 m and 0.8 m): 0 of 20 plans violating for A1 to A4, smallest clearance >= 1.0 m, largest ask distance <= 5.5 m; the 3.0 m separation, turning-point, road and bystander rules hold for all seeds. `MatchesUnity` pins the slots to the values of this table (quoted constants; checked against her `clearance_layout` block whenever main's `unity/` file carries it, which it does not yet).
+**Rerun (simulator, 20 seeds, valid-branch liar; B1 floor 10, C2s, `return_speed_mps` 0.8 live): the 16 rows of 16.13 (A1 to A4 and B1 to B4, detection off and on) at the 270 s floor and at the 420 s development timeout, with the 13 final settings marked** (the settings of `final_plan.json`: the rows that are final settings are marked from that file, not chosen here). Per row: successes, collisions, longest successful duration (at 420 s), E5 / E6 durations for A3 to B4; for the B rows the lies given, split by the liar being the first-asked worker of the visit or a later-asked one, and by what happened to the lie: caught by `reject_impossible` (decision `rejected:*`), outvoted, withdrawn, fooled (as `export_csv_v4`: accepted, acted on, not the true branch), neither (no reading / read as the true branch). A3/B3 and A4/B4 are shown against the previous layout (16.20.6 numbers, same code except the layout and `reask_shift_m`).
+**Declared before the numbers: the expected effect is a weaker lie detection at J1 (two voters), as 16.21 item 2 disclosed; nothing is tuned on these rows.**
+
+#### 16.21.3 Step 2 done: layout (i) applied, checked and the 16 rows rerun (2026-11-17)
+
+**Applied in one change (as declared in 16.21.2).** `scenarios_ab.json`: `junction_slots` of scenarios 1 to 3 = `{3.0, -2.0}`, `{-2.5, 4.0}` (layout (i) of `slot_table.csv`, SHA-256 `a180e358...ed39f`); `people_by_node` J1 3 removed from scenario 3; `placement_rule.reask_shift_m` 0.8; the `why` entries say so. Start slots unchanged. Two workers at every node of every experiment (the simulator refuses a third at a junction: "3 workers but 2 slots").
+**Checks (the pass criteria of 16.21.2; `layout_check_v4.py`, `outputs/layout_check_v4_20261117_223805_layout_i`): all met.** Every worker of A1 to A4, seeds 1 to 20, every node (40 / 80 / 200 / 200 placements) is within 6.5 m of its node and nearest to it: **largest distance 5.00 m** (the start node's second slot; A4 4.21 m). Clearance, **0 of 20 plans violating at both re-ask shifts**: A1 2.00 m / 1.96 m, A2 and A3 1.19 m / 1.17 m (the table's 1.173 m), A4 1.00 m (the random layout's rejection), largest ask distance 4.06 m (at 0.8 m), all <= 5.5 m. The 16.20 layout fails at 0.8 m (0.74 m, 5.53 m) as recorded; it stays reproducible in `analyse_a3_timeouts_v4.py --layout clearance16`.
+**Tests.** `MatchesUnity` pins the slots to the table's values (quoted constants, against her `clearance_layout` block whenever main's `unity/` file carries it, which it does not yet) and J1 / J2 positions; `test_clearance_layout_v4.py` (layout (i), both shifts, the 16.20 layout and the old slots caught); `test_clearance_rejection_v4.py` (rule value 0.8; A4 clean at both shifts); the "three workers at J1" tests became "two workers at every node"; the rule tests that need three voters (`run(..., people=3)` in `test_lie_detection_v4.py` and `test_export_csv_v4.py`) now set their own three slots (the 16.13 ones), because the controller's three-voter rule is unchanged but the layout has two; `analyse_a3_timeouts_v4.py` has the layouts `old`, `clearance16`, `current`; new `report_rows_ab_v4.py` + `tests/test_report_rows_ab_v4.py` (5: the five outcomes, first / later asker and the tie re-ask, visits are separate, the 13 final settings give 12 rows of the 16, and the split agrees with `runs.csv` on a simulated B3 session).
+
+**Rerun (simulator, 20 seeds per row, valid-branch liar; B1 floor 10, C2s and `return_speed_mps` 0.8 live): the 16 rows of 16.13 at the 270 s floor and at the 420 s development timeout** (`outputs/experiments_ab_v4_layout_i_270_20261117_224233` and `..._layout_i_420_dev_20261117_224306`; report `outputs/report_rows_ab_v4_20261117_224407_layout_i`). **Final setting = one of the 13 final settings of `final_plan.json`: 12 of the 16 rows are (A1, A2, A3, A4, B1 to B4 with detection on; B1 to B4 with detection off); the 13th, A2 with the left turn, is not a row of this table and was not run.** (The `final_plan.json` note of A3, "2 per node and 3 at J1", is stale since 16.21: reported, not edited.)
+The definitions of the lie columns are those of `export_csv_v4` (caught by reject_impossible = decision `rejected:*`; fooled = accepted, acted on, not the true branch); the totals agree with `runs.csv` in all eight B rows. "First-asked liar" = the worker asked first at that visit (including the tie re-ask of him), "later-asked" = any other.
+
+##### 270 s (the floor): `experiments_ab_v4_layout_i_270_20261117_224233`
+
+| experiment | detection | final setting | SUCCESS | failures | collisions | longest successful s | E5: runs, successes, longest s | E6: runs, successes, longest s |
+|---|---|---|---|---|---|---|---|---|
+| A1 | off | - | 20/20 | - | 0 | 70.05 | 0 | 0 |
+| A1 | on | **final** | 20/20 | - | 0 | 85.6 | 0 | 0 |
+| A2 | off | - | 20/20 | - | 0 | 91.8 | 0 | 0 |
+| A2 | on | **final** | 20/20 | - | 0 | 142.85 | 0 | 0 |
+| A3 | off | - | 20/20 | - | 0 | 177.25 | 6, 6, 176.5 | 1, 1, 177.25 |
+| A3 | on | **final** | 14/20 | timeout 6 | 0 | 251.85 | 6, 0, - | 1, 1, 251.85 |
+| A4 | off | - | 20/20 | - | 0 | 170.9 | 6, 6, 170.9 | 1, 1, 162.8 |
+| A4 | on | **final** | 20/20 | - | 0 | 253.0 | 6, 6, 253.0 | 1, 1, 244.4 |
+| B1 | off | **final** | 19/20 | aborted 1 | 0 | 79.95 | 0 | 0 |
+| B1 | on | **final** | 20/20 | - | 0 | 103.25 | 0 | 0 |
+| B2 | off | **final** | 13/20 | aborted 7 | 0 | 101.65 | 0 | 0 |
+| B2 | on | **final** | 19/20 | aborted 1 | 0 | 163.75 | 0 | 0 |
+| B3 | off | **final** | 10/20 | wrong_goal 9, aborted 1 | 0 | 176.5 | 6, 3, 176.5 | 1, 0, - |
+| B3 | on | **final** | 8/20 | timeout 4, wrong_goal 7, aborted 1 | 0 | 215.5 | 6, 0, - | 1, 0, - |
+| B4 | off | **final** | 10/20 | aborted 3, wrong_goal 7 | 0 | 170.9 | 6, 3, 170.9 | 1, 0, - |
+| B4 | on | **final** | 11/20 | aborted 2, wrong_goal 7 | 0 | 253.0 | 6, 3, 253.0 | 1, 0, - |
+
+Lies by who lied and what became of the lie (lying asks of the dialogue table):
+
+| experiment | detection | lying asks | first-asked liar: asks / caught by reject_impossible / outvoted / withdrawn / fooled / neither | later-asked liar: asks / caught by reject_impossible / outvoted / withdrawn / fooled / neither | runs.csv: given / detected / fooled | totals agree |
+|---|---|---|---|---|---|---|
+| B1 | off | 5 | 5 / 0 / 0 / 0 / 0 / 5 | 0 / 0 / 0 / 0 / 0 / 0 | 5 / 0 / 0 | yes |
+| B1 | on | 12 | 8 / 6 / 0 / 0 / 0 / 2 | 4 / 4 / 0 / 0 / 0 / 0 | 12 / 10 / 0 | yes |
+| B2 | off | 18 | 18 / 0 / 0 / 0 / 0 / 18 | 0 / 0 / 0 / 0 / 0 / 0 | 18 / 0 / 0 | yes |
+| B2 | on | 36 | 23 / 20 / 0 / 0 / 0 / 3 | 13 / 12 / 0 / 0 / 0 / 1 | 36 / 32 / 0 | yes |
+| B3 | off | 15 | 15 / 0 / 0 / 0 / 10 / 5 | 0 / 0 / 0 / 0 / 0 / 0 | 15 / 0 / 10 | yes |
+| B3 | on | 49 | 40 / 6 / 0 / 0 / 19 / 15 | 9 / 4 / 2 / 0 / 1 / 2 | 49 / 12 / 20 | yes |
+| B4 | off | 14 | 14 / 0 / 0 / 0 / 8 / 6 | 0 / 0 / 0 / 0 / 0 / 0 | 14 / 0 / 8 | yes |
+| B4 | on | 47 | 37 / 6 / 0 / 0 / 19 / 12 | 10 / 4 / 2 / 0 / 1 / 3 | 47 / 12 / 20 | yes |
+
+Against the previous layout (`experiments_ab_v4_return_speed_270_20261117_192542`):
+
+| experiment | detection | previous: SUCCESS, collisions, longest s | now: SUCCESS, collisions, longest s | previous fooled (first / later) | now fooled (first / later) |
+|---|---|---|---|---|---|
+| A3 | off | 20/20, 0, 184.45 | 20/20, 0, 177.25 | - | - |
+| A3 | on | 14/20, 0, 265.8 | 14/20, 0, 251.85 | - | - |
+| A4 | off | 20/20, 0, 171.25 | 20/20, 0, 170.9 | - | - |
+| A4 | on | 20/20, 0, 239.7 | 20/20, 0, 253.0 | - | - |
+| B3 | off | 10/20, 0, 183.55 | 10/20, 0, 176.5 | 10 / 0 | 10 / 0 |
+| B3 | on | 11/20, 0, 252.0 | 8/20, 0, 215.5 | 8 / 0 | 19 / 1 |
+| B4 | off | 10/20, 0, 170.9 | 10/20, 0, 170.9 | 8 / 0 | 8 / 0 |
+| B4 | on | 11/20, 0, 239.7 | 11/20, 0, 253.0 | 19 / 1 | 19 / 1 |
+
+##### 420 s development timeout: `experiments_ab_v4_layout_i_420_dev_20261117_224306`
+
+| experiment | detection | final setting | SUCCESS | failures | collisions | longest successful s | E5: runs, successes, longest s | E6: runs, successes, longest s |
+|---|---|---|---|---|---|---|---|---|
+| A1 | off | - | 20/20 | - | 0 | 70.05 | 0 | 0 |
+| A1 | on | **final** | 20/20 | - | 0 | 85.6 | 0 | 0 |
+| A2 | off | - | 20/20 | - | 0 | 91.8 | 0 | 0 |
+| A2 | on | **final** | 20/20 | - | 0 | 142.85 | 0 | 0 |
+| A3 | off | - | 20/20 | - | 0 | 177.25 | 6, 6, 176.5 | 1, 1, 177.25 |
+| A3 | on | **final** | 20/20 | - | 0 | 271.2 | 6, 6, 271.2 | 1, 1, 251.85 |
+| A4 | off | - | 20/20 | - | 0 | 170.9 | 6, 6, 170.9 | 1, 1, 162.8 |
+| A4 | on | **final** | 20/20 | - | 0 | 253.0 | 6, 6, 253.0 | 1, 1, 244.4 |
+| B1 | off | **final** | 19/20 | aborted 1 | 0 | 79.95 | 0 | 0 |
+| B1 | on | **final** | 20/20 | - | 0 | 103.25 | 0 | 0 |
+| B2 | off | **final** | 13/20 | aborted 7 | 0 | 101.65 | 0 | 0 |
+| B2 | on | **final** | 19/20 | aborted 1 | 0 | 163.75 | 0 | 0 |
+| B3 | off | **final** | 10/20 | wrong_goal 9, aborted 1 | 0 | 176.5 | 6, 3, 176.5 | 1, 0, - |
+| B3 | on | **final** | 11/20 | aborted 2, wrong_goal 7 | 0 | 271.2 | 6, 3, 271.2 | 1, 0, - |
+| B4 | off | **final** | 10/20 | aborted 3, wrong_goal 7 | 0 | 170.9 | 6, 3, 170.9 | 1, 0, - |
+| B4 | on | **final** | 11/20 | aborted 2, wrong_goal 7 | 0 | 253.0 | 6, 3, 253.0 | 1, 0, - |
+
+Lies by who lied and what became of the lie (lying asks of the dialogue table):
+
+| experiment | detection | lying asks | first-asked liar: asks / caught by reject_impossible / outvoted / withdrawn / fooled / neither | later-asked liar: asks / caught by reject_impossible / outvoted / withdrawn / fooled / neither | runs.csv: given / detected / fooled | totals agree |
+|---|---|---|---|---|---|---|
+| B1 | off | 5 | 5 / 0 / 0 / 0 / 0 / 5 | 0 / 0 / 0 / 0 / 0 / 0 | 5 / 0 / 0 | yes |
+| B1 | on | 12 | 8 / 6 / 0 / 0 / 0 / 2 | 4 / 4 / 0 / 0 / 0 / 0 | 12 / 10 / 0 | yes |
+| B2 | off | 18 | 18 / 0 / 0 / 0 / 0 / 18 | 0 / 0 / 0 / 0 / 0 / 0 | 18 / 0 / 0 | yes |
+| B2 | on | 36 | 23 / 20 / 0 / 0 / 0 / 3 | 13 / 12 / 0 / 0 / 0 / 1 | 36 / 32 / 0 | yes |
+| B3 | off | 15 | 15 / 0 / 0 / 0 / 10 / 5 | 0 / 0 / 0 / 0 / 0 / 0 | 15 / 0 / 10 | yes |
+| B3 | on | 49 | 40 / 6 / 0 / 0 / 19 / 15 | 9 / 4 / 2 / 0 / 1 / 2 | 49 / 12 / 20 | yes |
+| B4 | off | 14 | 14 / 0 / 0 / 0 / 8 / 6 | 0 / 0 / 0 / 0 / 0 / 0 | 14 / 0 / 8 | yes |
+| B4 | on | 47 | 37 / 6 / 0 / 0 / 19 / 12 | 10 / 4 / 2 / 0 / 1 / 3 | 47 / 12 / 20 | yes |
+
+Against the previous layout (`experiments_ab_v4_return_speed_420_dev_20261117_192605`):
+
+| experiment | detection | previous: SUCCESS, collisions, longest s | now: SUCCESS, collisions, longest s | previous fooled (first / later) | now fooled (first / later) |
+|---|---|---|---|---|---|
+| A3 | off | 20/20, 0, 184.45 | 20/20, 0, 177.25 | - | - |
+| A3 | on | 20/20, 0, 283.9 | 20/20, 0, 271.2 | - | - |
+| A4 | off | 20/20, 0, 171.25 | 20/20, 0, 170.9 | - | - |
+| A4 | on | 20/20, 0, 239.7 | 20/20, 0, 253.0 | - | - |
+| B3 | off | 10/20, 0, 183.55 | 10/20, 0, 176.5 | 10 / 0 | 10 / 0 |
+| B3 | on | 15/20, 0, 308.1 | 11/20, 0, 271.2 | 8 / 0 | 19 / 1 |
+| B4 | off | 10/20, 0, 170.9 | 10/20, 0, 170.9 | 8 / 0 | 8 / 0 |
+| B4 | on | 11/20, 0, 239.7 | 11/20, 0, 253.0 | 19 / 1 | 19 / 1 |
+
+Folder: /Users/anishamehajabin/warehouse-robot-perception/robot_vision/outputs/report_rows_ab_v4_20261117_224407_layout_i
+
+**Read (simulator, not a measurement).**
+- **0 collisions in all 32 rows.** Set A: A1, A2, A4 20/20 in both detection settings and A3 off 20/20 at both budgets; **A3 on is 14/20 at 270 s (the six E5 runs time out: E5 needs 271.2 s, 1.2 s over the floor) and 20/20 at 420 s (longest 271.2 s)**, against 283.9 s on the 16.20 layout.
+- **The weaker lie detection that 16.21 disclosed is there, and it is B3.** B3 on (two voters at J1 instead of three): **SUCCESS 15/20 -> 11/20 at 420 s (8/20 at 270 s, where four E5 runs time out), wrong goal 3 -> 7, lies fooled 8 -> 20 (first-asked liars 8 -> 19, later-asked 0 -> 1)**. B4 on is unchanged (11/20, 19 + 1 fooled): it already had two workers at J1 in 16.20.4. The detection-off rows do not change (B3 off 10 fooled by the first-asked liar, B4 off 8). B1 on 20/20, B2 on 19/20 as before.
+- **Who lied decides:** in B3 on, 40 of the 49 lying asks are the first-asked worker's: 6 are caught by `reject_impossible`, **19 fooled**, 15 neither (not read, or read as the true branch); of the 9 later-asked liars 4 are caught by `reject_impossible`, 2 outvoted, 1 fooled, 2 neither. **A second opinion outvotes a lie only 2 times in B3 on and 2 in B4 on (both by later-asked liars); every other detected lie is a rejection of an impossible direction** (6 + 4 in B3 on and B4 on; 20 + 12 in B2 on, 6 + 4 in B1 on). The first worker's lie is followed 19 times in each of B3 on and B4 on because a tie re-asks and counts him twice (16.13.1), as 16.21 item 2 said.
+- **Durations (420 s runs):** longest successful run in the table 271.2 s (A3 on and B3 on, E5); A4 on and B4 on 253.0 s (previous layout 239.7 s); the E5 / E6 columns give the per-row durations. **What the declared rule would give from these simulator durations (information only; the real value comes from Unity's runs on the new NavMesh): 420 s** (`timeout_from_development(271.2)`: 1.5 x 271.2 = 406.8, rounded up to a multiple of 30; the previous layout gave 480 s from B3 on E5 at 308.1 s). Fed with the 270 s runs the rule would give 390 s from 253.0 s, wrongly: the long routes are timeouts there and cannot count (16.20.5).
+- **A3 / B3 and A4 / B4 against the previous layout (16.20.6 runs):** the tables above. A3 off and A4 off are as before (longest 177.3 s against 184.5 s, 170.9 s against 171.3 s), A3 on 20/20 at 420 s both times; A4 on takes longer (253.0 s against 239.7 s); B3 on is the row that changed, for the reason above; B4 rows are unchanged in successes.

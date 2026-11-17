@@ -17,7 +17,7 @@
     "path_clearance_m": 1.0,
     "ask_zone_m": 5.5,
     "ask_standoff_m": 2.0,
-    "reask_shift_m": 0.4
+    "reask_shift_m": 0.8
   },
   "sets": {
     "A": {
@@ -136,16 +136,12 @@
         "people": 2,
         "junction_slots": [
           {
-            "before_m": 3.5,
-            "right_m": -2.5
+            "before_m": 3.0,
+            "right_m": -2.0
           },
           {
-            "before_m": -4.5,
-            "right_m": 3.5
-          },
-          {
-            "before_m": -5.0,
-            "right_m": -4.0
+            "before_m": -2.5,
+            "right_m": 4.0
           }
         ],
         "start_slots": [
@@ -175,16 +171,12 @@
         "people": 2,
         "junction_slots": [
           {
-            "before_m": 3.5,
-            "right_m": -2.5
+            "before_m": 3.0,
+            "right_m": -2.0
           },
           {
-            "before_m": -4.5,
-            "right_m": 3.5
-          },
-          {
-            "before_m": -5.0,
-            "right_m": -4.0
+            "before_m": -2.5,
+            "right_m": 4.0
           }
         ],
         "start_slots": [
@@ -215,21 +207,14 @@
       "layout": {
         "kind": "beside",
         "people": 2,
-        "people_by_node": {
-          "J1": 3
-        },
         "junction_slots": [
           {
-            "before_m": 3.5,
-            "right_m": -2.5
+            "before_m": 3.0,
+            "right_m": -2.0
           },
           {
-            "before_m": -4.5,
-            "right_m": 3.5
-          },
-          {
-            "before_m": -5.0,
-            "right_m": -4.0
+            "before_m": -2.5,
+            "right_m": 4.0
           }
         ],
         "start_slots": [
@@ -266,19 +251,19 @@
     }
   },
   "why": {
-    "layout.beside": "Decided 2026-11-14 (Anisha, AUDIT.md 16.13 item 1): the simulator matches Unity. Slot k of a node = before_m back along the arrival road (at the start node: behind it, opposite the start heading) and right_m to the RIGHT of the arrival direction (negative = left); worker k stands at slot k, slot 0 is the first worker. The slots are those of Scenario/Config/experiments_ab_unity.json (a test pins them equal). nearer_margin_m 1.0 / approach_m 3.0: the bystander rule of Unity, checked for the beside layout too. Replaces the symmetric pair (3.0 m back, 2.0 m each side) of 16.2 decision 3. CHANGED 2026-11-17 (AUDIT.md 16.20, Anisha): the three junction_slots are Nusrat's clearance layout (experiments_ab_unity.json clearance_layout, commit ed4e000, PENDING until she switches it on): slot 1 3.5 m before and 2.5 m left, slot 2 4.5 m AHEAD (before_m -4.5) and 3.5 m right, slot 3 (J1 in A3, B3) 5.0 m ahead and 4.0 m left, so that no worker stands within 1.0 m of a segment the robot can drive and every ask position is within 5.5 m of its node. The start slots are unchanged. Disclosed by her: the search first left out the tie segment; the declared choice failed by 0.03 m and was re-selected by the same rule. The earlier slots were (3.0, -2.0), (5.5, 2.0), (6.0, -2.0).",
+    "layout.beside": "Decided 2026-11-14 (Anisha, AUDIT.md 16.13 item 1): the simulator matches Unity. Slot k of a node = before_m back along the arrival road (at the start node: behind it, opposite the start heading) and right_m to the RIGHT of the arrival direction (negative = left); worker k stands at slot k, slot 0 is the first worker. The slots are those of Scenario/Config/experiments_ab_unity.json (a test pins them equal). nearer_margin_m 1.0 / approach_m 3.0: the bystander rule of Unity, checked for the beside layout too. Replaces the symmetric pair (3.0 m back, 2.0 m each side) of 16.2 decision 3. CHANGED 2026-11-17 (AUDIT.md 16.20, Anisha): the three junction_slots are Nusrat's clearance layout (experiments_ab_unity.json clearance_layout, commit ed4e000, PENDING until she switches it on): slot 1 3.5 m before and 2.5 m left, slot 2 4.5 m AHEAD (before_m -4.5) and 3.5 m right, slot 3 (J1 in A3, B3) 5.0 m ahead and 4.0 m left, so that no worker stands within 1.0 m of a segment the robot can drive and every ask position is within 5.5 m of its node. The start slots are unchanged. Disclosed by her: the search first left out the tie segment; the declared choice failed by 0.03 m and was re-selected by the same rule. The earlier slots were (3.0, -2.0), (5.5, 2.0), (6.0, -2.0). CHANGED AGAIN 2026-11-17 (AUDIT.md 16.21.2): the junction slots are layout (i) of Nusrat's slot_table.csv (re-search with the controller's 0.8 m re-ask shift, SHA-256 a180e358...ed39f): slot 1 3.0 m before and 2.0 m left, slot 2 2.5 m AHEAD (before_m -2.5) and 4.0 m right; two workers at every node (the third slot of 16.20 is gone: 0 of 864,782 three-worker layouts meet the 1.0 m clearance at 0.8 m). Start slots unchanged. The slots of 16.20 were (3.5, -2.5), (-4.5, 3.5), (-5.0, -4.0).",
     "layout.random": "Decision 3 of 2026-11-13: a 6 m x 6 m square (half_size_m 3.0) centred on the node, at least min_road_m 1.0 from every road centre line; the separation of the workers and their distance from the turning points come from placement_rule (3.0 m each, decision of the third round); rejection sampling seeded by run and node.",
     "goal": "random_endpoint = one of the endpoints of the map, uniformly, from random.Random(f\"{seed}|goal\") over the sorted endpoint names.",
     "trial_timeout_s": "CHOSEN: the v4 value of final_plan.json (270 s). A run that backtracks and runs out of time is a FAILURE (timeout) and is reported as such.",
     "first_seed": "CHOSEN: run k of a scenario uses seed first_seed + k - 1 (1 to 20). Simulator seeds only; no final run is involved.",
     "gesture simulation": "The neutral defaults of hri_sim_v4.GestureSimConfig (coverage 1, accuracy 1, no angle noise) and SimConfig (no 360 noise): the lie is the only error source; the mirror ambiguity of the pointing arm and the second view stay as they are.",
-    "layout.people_by_node": "Decided 2026-11-14 (Anisha, AUDIT.md 16.12 item 3): a third worker at J1 in A3, A4, B3, B4 so that the majority vote of rule (a) has three voters; the other nodes keep 2. In 'beside' the third worker stands 3.0 m behind the first, on its side. CHANGED 2026-11-17 (AUDIT.md 16.20): A4 and B4 (the random layout, scenario 4) have two workers at J1, as Unity's clearance_layout.two_worker_experiments says (three random workers in the 6 m square cannot keep the clearance); A3 and B3 (the beside layout) keep three at J1.",
+    "layout.people_by_node": "Decided 2026-11-14 (Anisha, AUDIT.md 16.12 item 3): a third worker at J1 in A3, A4, B3, B4 so that the majority vote of rule (a) has three voters; the other nodes keep 2. In 'beside' the third worker stands 3.0 m behind the first, on its side. CHANGED 2026-11-17 (AUDIT.md 16.20): A4 and B4 (the random layout, scenario 4) have two workers at J1, as Unity's clearance_layout.two_worker_experiments says (three random workers in the 6 m square cannot keep the clearance); A3 and B3 (the beside layout) keep three at J1. CHANGED AGAIN 2026-11-17 (AUDIT.md 16.21.2): A3 and B3 also have two workers at J1 now (people_by_node removed from scenario 3, as from scenario 4 in 16.20); a tie of two disagreeing workers re-asks the first worker and counts him twice (backtrack is off), so a lie by the first worker at J1 is followed unless reject_impossible catches it.",
     "layout.nearer_margin_m": "Decided 2026-11-14 (Anisha, AUDIT.md 16.12 item 4), as Nusrat's random layout in Unity: every worker after the first is at least 0.25 m farther from the robot than the first at every point of the last approach_m 3.0 m of the arrival road (at the start node: from the start position), so the first worker is the one the robot reaches first; the 3.0 m spacing rule of placement_rule is unchanged. max_draws 100000 as in Unity.",
     "alternative_maps": "turn_left (Nusrat's proposal, adopted as a map of the experiments 2026-11-14) is the left-turn A2; the default is the right turn of 16.2 decision 1; run_scenario(..., side='left') uses it.",
     "session_seed": "Decided 2026-11-14 (AUDIT.md 16.13 item 2): the goal of run k (seed first_seed + k - 1) of A3, A4, B3, B4 is the k-th value of GoalSequence(session_seed) over the map's endpoints sorted by name, as Unity (hri_trials.goal_order is the same SplitMix64 generator; never the same goal twice in a row). session_seed 1 = the development seed.",
     "physical_map_is_v4": "As Unity: the turning points and the roads of the physical v4 map (configs/v4/roadmap.json) count for every map when the placement rule is checked.",
     "lie_directions": "Decided 2026-11-14 (AUDIT.md 16.13 item 3), as Unity's DrawLie: valid_branch = a liar shows a real wrong branch (the node's branches other than the true command); only where the node has no other branch (A1's A, A2's A and B, the v4 map's A) one of the other compass directions, which is impossible. compass = any other of LEFT / FORWARD / RIGHT / BACK (16.2 decision 2).",
-    "placement_rule.clearance": "DECIDED 2026-11-17 (Anisha, AUDIT.md 16.20.2): the random layout (A4, B4) adopts Unity's clearance rejection exactly (ExperimentPlanAB.ClearanceProblem, read from origin/nusrat/v4-step5-dev; values from her experiments_ab_unity.json): a draw of the workers of a node is redrawn unless every ask position of the node (node to each worker's ask position in every order, the return to the first worker, the re-ask point) is within ask_zone_m 5.5 m (answer zone 6.0 m minus margin 0.5 m) of the node and no worker (of this node or of an earlier node) is closer than path_clearance_m 1.0 m to a segment the robot can drive from this node (node to ask positions; ask positions and re-ask points to the next node of every branch), and the workers of this node are that far from every road and from the segments of the nodes placed before. ask_standoff_m 2.0 and reask_shift_m 0.4 are HER model's values (a copy of hri_control.json): the controller's v4 re-ask shift is 0.8 m (control.json); the value here follows her file until Nusrat re-searches her slots with 0.8 m. Applied to the draws of the random layout only; the beside slots are not enforced at planning (layout_check_v4.py and the tests check them)."
+    "placement_rule.clearance": "DECIDED 2026-11-17 (Anisha, AUDIT.md 16.20.2): the random layout (A4, B4) adopts Unity's clearance rejection exactly (ExperimentPlanAB.ClearanceProblem, read from origin/nusrat/v4-step5-dev; values from her experiments_ab_unity.json): a draw of the workers of a node is redrawn unless every ask position of the node (node to each worker's ask position in every order, the return to the first worker, the re-ask point) is within ask_zone_m 5.5 m (answer zone 6.0 m minus margin 0.5 m) of the node and no worker (of this node or of an earlier node) is closer than path_clearance_m 1.0 m to a segment the robot can drive from this node (node to ask positions; ask positions and re-ask points to the next node of every branch), and the workers of this node are that far from every road and from the segments of the nodes placed before. ask_standoff_m 2.0 and reask_shift_m 0.8: the controller's v4 re-ask shift (control.json dialog.reask_shift_m), as Nusrat's re-search of the slots (16.21.2) uses; until 2026-11-17 the value was her earlier model's 0.4 m. Applied to the draws of the random layout only; the beside slots are not enforced at planning (layout_check_v4.py and the tests check them)."
   },
   "detection": {
     "off": {

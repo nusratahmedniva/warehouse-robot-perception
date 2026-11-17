@@ -1,11 +1,10 @@
-"""Nusrat's clearance layout in the simulator (AUDIT.md 16.20, 2026-11-17).
+"""Nusrat's layout in the simulator (AUDIT.md 16.20, 16.21.2).
 
-What is pinned: the slots of scenarios 1 to 3 are her clearance layout and A4/B4 have two workers at J1; every worker of every scenario, seed and node is
-within 6.5 m of its node and has it as the nearest node (largest distance reported: 6.40 m, A3 J1 worker 3); no worker is within 1.0 m of any segment the
-robot can drive (an independent model, layout_check_v4.py) and every ask position is within 5.5 m of its node, at her model's re-ask shift of 0.4 m.
-Known finding that is pinned as a fact and NOT fixed (AUDIT.md 16.20.1, decided 16.20.2: Nusrat re-searches her slots with 0.8 m): with the shift the v4 controller
-really uses (0.8 m) A3's third worker at J1 is 0.74 m from a drivable segment and the re-ask point is 5.53 m from J1. The random layout (A4, B4) keeps the
-clearance since 16.20.2 (tests/test_clearance_rejection_v4.py)."""
+Since 16.21.2 the junction slots are layout (i) of her slot_table.csv (SHA-256 a180e358...ed39f; the re-search with the controller's 0.8 m re-ask shift): slot 1 3.0 m before and
+2.0 m left, slot 2 2.5 m AHEAD and 4.0 m right, two workers at every node. Pinned: every worker of every scenario, seed and node is within 6.5 m of its node and has it as the
+nearest node (largest distance 5.00 m, the start node's second slot); no worker is within 1.0 m of any segment the robot can drive and every ask position is within 5.5 m of its
+node, at her earlier model's re-ask shift of 0.4 m AND at the 0.8 m the controller really uses (layout_check_v4.py, an independent distance check). The 16.20 layout (three slots,
+three workers at J1 in A3) and the live slots before it are kept in analyse_a3_timeouts_v4 for the reproducible analyses; the 16.20 layout fails at 0.8 m (A3 J1: 0.74 m)."""
 
 import copy
 import json
@@ -20,9 +19,10 @@ sys.path.insert(0, str(ROOT))
 import hri_control as hc  # noqa: E402
 import hri_control_v4 as hv  # noqa: E402
 import hri_sim_v4 as sv  # noqa: E402
+import analyse_a3_timeouts_v4 as a3  # noqa: E402
 import layout_check_v4 as lc  # noqa: E402
 
-CLEARANCE_SLOTS = [{"before_m": 3.5, "right_m": -2.5}, {"before_m": -4.5, "right_m": 3.5}, {"before_m": -5.0, "right_m": -4.0}]   # ed4e000
+CLEARANCE_SLOTS = [{"before_m": 3.0, "right_m": -2.0}, {"before_m": -2.5, "right_m": 4.0}]   # layout (i) of slot_table.csv, AUDIT.md 16.21.2
 OLD_SLOTS = [{"before_m": 3.0, "right_m": -2.0}, {"before_m": 5.5, "right_m": 2.0}, {"before_m": 6.0, "right_m": -2.0}]
 UNITY_CFG = ROOT.parent / "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json"
 
@@ -55,7 +55,7 @@ class Model(unittest.TestCase):
 
     def test_segments_of_two_workers_include_every_order_the_tie_return_and_the_branches(self):
         road = hc.Roadmap(hc.load_json("configs/v4/roadmap.json"))
-        workers = [(3.75, -3.5), (9.75, 4.5)]
+        workers = [(4.25, -3.0), (10.25, 2.5)]
         segs, asks = lc.drivable_segments(road, "J1", workers)
         labels = [s[4] for s in segs]
         self.assertEqual(sum("(again)" in x for x in labels), 2)                 # the return to the first worker of each of the two orders
@@ -66,13 +66,14 @@ class Model(unittest.TestCase):
 
 
 class TheLayout(unittest.TestCase):
-    def test_slots_and_people_are_nusrats_clearance_layout(self):
+    def test_slots_and_people_are_layout_i(self):
         scen = sv.load_scenarios()["scenarios"]
         for k in ("1", "2", "3"):
             self.assertEqual(scen[k]["layout"]["junction_slots"], CLEARANCE_SLOTS, k)
-        self.assertEqual(scen["3"]["layout"]["people_by_node"], {"J1": 3})
-        self.assertNotIn("people_by_node", scen["4"]["layout"])                  # A4 and B4: two at J1
+        for k in ("1", "2", "3", "4"):
+            self.assertNotIn("people_by_node", scen[k]["layout"], k)              # two workers at every node, A3, B3, A4, B4 included
         self.assertEqual(scen["4"]["layout"]["kind"], "random")
+        self.assertEqual(sv.load_scenarios()["placement_rule"]["reask_shift_m"], 0.8)
 
     def test_the_start_slots_are_unchanged(self):
         scen = sv.load_scenarios()["scenarios"]
@@ -82,18 +83,19 @@ class TheLayout(unittest.TestCase):
     def test_unitys_values_agree_whenever_the_file_carries_them(self):
         u = json.loads(UNITY_CFG.read_text(encoding="utf-8"))
         if "clearance_layout" not in u:
-            self.skipTest("main's unity/ does not carry clearance_layout yet (PR #40); the pins in test_lie_detection_v4.MatchesUnity use her quoted values")
-        self.assertEqual(u["clearance_layout"]["junction_slots"], CLEARANCE_SLOTS)
-        self.assertEqual((u["path_clearance_m"], u["ask_standoff_m"], u["reask_shift_m"]), (lc.CLEARANCE_M, lc.UNITY_STANDOFF_M, lc.UNITY_RESHIFT_M))
-        self.assertAlmostEqual(u["answer_zone_radius_m"] - u["answer_zone_margin_m"], lc.ASK_ZONE_M)
+            self.skipTest("main's unity/ does not carry clearance_layout yet (PR #40); the pins in test_lie_detection_v4.MatchesUnity use the values of slot_table.csv")
+        self.assertEqual(u["clearance_layout"]["junction_slots"][:2], CLEARANCE_SLOTS)
+        pr = sv.load_scenarios()["placement_rule"]
+        self.assertEqual((u["path_clearance_m"], u["ask_standoff_m"], u["reask_shift_m"]), (pr["path_clearance_m"], pr["ask_standoff_m"], pr["reask_shift_m"]))
+        self.assertAlmostEqual(u["answer_zone_radius_m"] - u["answer_zone_margin_m"], pr["ask_zone_m"])
 
-    def test_the_simulator_places_the_workers_at_her_positions(self):
-        sc = sv.scenario_ab("A3", 1)
-        plan = sc["sim"].plan_workers()
-        j1 = [tuple(round(c, 6) for c in q) for q in plan["J1"]]
-        self.assertEqual(j1, [(3.75, -3.5), (9.75, 4.5), (2.25, 5.0)])
-        self.assertEqual(len(plan["J2"]), 2)
-        self.assertEqual(len(sv.scenario_ab("A4", 1)["sim"].plan_workers()["J1"]), 2)
+    def test_the_simulator_places_the_workers_at_the_table_positions(self):
+        for name in ("A3", "A4"):
+            plan = sv.scenario_ab(name, 1)["sim"].plan_workers()
+            self.assertTrue(all(len(pts) == 2 for pts in plan.values()), name)
+        j1 = [tuple(round(c, 6) for c in q) for q in sv.scenario_ab("A3", 1)["sim"].plan_workers()["J1"]]
+        self.assertEqual(j1, [(4.25, -3.0), (10.25, 2.5)])
+        self.assertEqual([tuple(round(c, 6) for c in q) for q in sv.scenario_ab("A3", 1)["sim"].plan_workers()["J4"]], [(-15.75, -2.0), (-21.25, 4.0)])
 
 
 class Survey(unittest.TestCase):
@@ -105,66 +107,46 @@ class Survey(unittest.TestCase):
         for name, r in self.res.items():
             self.assertEqual(r["not_belonging"], [], name)
             self.assertLess(r["max_distance_to_node_m"], 6.5, name)
-        self.assertEqual(self.res["A1"]["workers"], 40)
-        self.assertEqual(self.res["A2"]["workers"], 80)
-        self.assertEqual(self.res["A3"]["workers"], 220)                          # 20 seeds x (A + J1 to J4: 2 + 3 + 2 + 2 + 2 = 11)
-        self.assertEqual(self.res["A4"]["workers"], 200)                          # J1 has two workers now: 20 x 10
-        self.assertAlmostEqual(self.res["A1"]["max_distance_to_node_m"], 5.0, places=3)
-        self.assertAlmostEqual(self.res["A2"]["max_distance_to_node_m"], math.hypot(4.5, 3.5), places=3)    # 5.70: slot 2 at B
-        a3 = self.res["A3"]["max_distance_where"]
-        self.assertAlmostEqual(a3["distance_m"], math.hypot(5.0, 4.0), places=3)                              # 6.40: slot 3 at J1
-        self.assertEqual((a3["node"], a3["worker"]), ("J1", 3))
+        self.assertEqual([self.res[n]["workers"] for n in ("A1", "A2", "A3", "A4")], [40, 80, 200, 200])       # 20 seeds x 2 workers x (1, 2, 5, 5) nodes
+        for n in ("A1", "A2", "A3"):
+            w = self.res[n]["max_distance_where"]
+            self.assertAlmostEqual(w["distance_m"], 5.0, places=3)                                          # the start node's second slot (3.0 m back, 4.0 m right)
+            self.assertEqual((w["node"], w["worker"]), ("A", 2))
         self.assertLess(self.res["A4"]["max_distance_to_node_m"], math.hypot(3.0, 3.0) + 1e-9)               # the 6 m square
 
-    def test_no_worker_within_1_m_of_a_drivable_segment_at_her_reask_shift(self):
-        for name in ("A1", "A2", "A3"):
-            b = self.res[name]["by_shift"]["0.4"]
-            self.assertEqual(b["plans_violating"], 0, name)
-            self.assertGreaterEqual(b["min_clearance_m"], lc.CLEARANCE_M - lc.EPS, name)
-            self.assertLessEqual(b["max_ask_distance_m"], lc.ASK_ZONE_M + lc.EPS, name)
-        a3 = self.res["A3"]["by_shift"]["0.4"]
-        self.assertAlmostEqual(a3["max_ask_distance_m"], 5.19, places=2)                    # her figure: the largest own-ask distance 5.19 m
-        self.assertAlmostEqual(a3["min_clearance_m"], 1.01, places=2)
+    def test_no_worker_within_1_m_of_a_drivable_segment_at_either_reask_shift(self):
+        for name in ("A1", "A2", "A3", "A4"):
+            for shift in ("0.4", "0.8"):
+                b = self.res[name]["by_shift"][shift]
+                self.assertEqual(b["plans_violating"], 0, (name, shift))
+                self.assertGreaterEqual(b["min_clearance_m"], lc.CLEARANCE_M - lc.EPS, (name, shift))
+                self.assertLessEqual(b["max_ask_distance_m"], lc.ASK_ZONE_M + lc.EPS, (name, shift))
+        a3 = self.res["A3"]["by_shift"]["0.8"]
+        self.assertAlmostEqual(a3["min_clearance_m"], 1.173, places=3)                      # the table's smallest clearance (A3 J1 slot 2)
+        self.assertAlmostEqual(a3["max_ask_distance_m"], 4.062, places=3)                   # the table's largest own ask distance (A)
 
-    def test_the_old_slots_are_caught_by_the_same_check(self):
-        scen = copy.deepcopy(sv.load_scenarios())
-        for k in ("1", "2", "3"):
-            scen["scenarios"][k]["layout"]["junction_slots"] = copy.deepcopy(OLD_SLOTS)
-        old = lc.survey(("A3",), range(1, 21), (0.4,), scen=scen)["A3"]["by_shift"]["0.4"]
-        self.assertEqual(old["plans_violating"], 20)
-        self.assertLess(old["min_clearance_m"], 0.35)                                       # her A3 run 2: 0.31 m from the diagnosis trail
-        self.assertAlmostEqual(old["max_ask_distance_m"], 5.40, places=2)                  # her figure for the live slots at J1
+    def test_the_16_20_layout_is_caught_at_the_v4_shift_and_the_old_slots_at_both(self):
+        for layout, shift, violating, low in (("clearance16", "0.8", 20, 0.8), ("old", "0.4", 20, 0.35)):
+            res = lc.survey(("A3",), range(1, 21), (0.4, 0.8), scen=a3.scenarios(layout))["A3"]["by_shift"][shift]
+            self.assertEqual(res["plans_violating"], violating, layout)
+            self.assertLess(res["min_clearance_m"], low, layout)
+        c16 = lc.survey(("A3",), range(1, 21), (0.4, 0.8), scen=a3.scenarios("clearance16"))["A3"]["by_shift"]
+        self.assertAlmostEqual(c16["0.8"]["min_clearance_m"], 0.74, places=2)               # 16.20.1
+        self.assertAlmostEqual(c16["0.8"]["max_ask_distance_m"], 5.53, places=2)
+        self.assertEqual(c16["0.4"]["plans_violating"], 0)                                  # her model's own shift: clean, as she wrote
 
-    # ---- known findings, pinned as facts (AUDIT.md 16.20.1): reported, not fixed
     def test_known_finding_the_v4_controller_re_asks_with_0_8_not_0_4(self):
         self.assertEqual(hv.make_controller_v4().g["reask_shift_m"], 0.8)
         self.assertEqual(hc.load_json("configs/hri_control.json")["dialog"]["reask_shift_m"], 0.4)       # the v3 value her model copies
 
-    def test_known_finding_a3_j1_at_the_v4_shift(self):
-        b = self.res["A3"]["by_shift"]["0.8"]
-        self.assertEqual(b["plans_violating"], 20)
-        self.assertAlmostEqual(b["min_clearance_m"], 0.74, places=2)                        # worker 3 of J1 to the segment from its re-ask point to J2 (LEFT)
-        self.assertAlmostEqual(b["max_ask_distance_m"], 5.53, places=2)                     # above her 5.5 m rule, below the 6.0 m answer zone
-        self.assertLess(b["max_ask_distance_m"], 6.0)
-        for name in ("A1", "A2"):
-            self.assertEqual(self.res[name]["by_shift"]["0.8"]["plans_violating"], 0, name)
-
-    def test_the_random_layout_now_keeps_the_clearance_at_her_shift_and_not_at_the_v4_shift(self):
-        """AUDIT.md 16.20.2: the simulator's random layout rejects the draws that break Unity's clearance rule (her 0.4 m re-ask model); the controller's own
-        0.8 m shift is a finding that waits for Nusrat's re-search (reported, not changed)."""
-        b4 = self.res["A4"]["by_shift"]["0.4"]
-        self.assertEqual(b4["plans_violating"], 0)
-        self.assertGreaterEqual(b4["min_clearance_m"], lc.CLEARANCE_M - lc.EPS)
-        self.assertLessEqual(b4["max_ask_distance_m"], lc.ASK_ZONE_M + lc.EPS)
-        v4 = self.res["A4"]["by_shift"]["0.8"]
-        self.assertEqual(v4["plans_violating"], 19)                                          # of 20 plans, at the shift the controller really uses
-        self.assertAlmostEqual(v4["min_clearance_m"], 0.73, places=2)
+    def test_the_random_layout_keeps_the_clearance_at_both_shifts_node_by_node(self):
         own = 0
         for seed in range(1, 21):
             sc = sv.scenario_ab("A4", seed)
             for node, pts in sc["sim"].plan_workers().items():
-                own += lc.evaluate_plan(sc["road"], sc["spec"].physical_map, {node: pts})["min_clearance_m"] < lc.CLEARANCE_M - lc.EPS
-        self.assertEqual(own, 0)                                                            # every asking node of A4 on its own, at 0.4 m (was 62 of 100)
+                for shift in (0.4, 0.8):
+                    own += lc.evaluate_plan(sc["road"], sc["spec"].physical_map, {node: pts}, shift=shift)["min_clearance_m"] < lc.CLEARANCE_M - lc.EPS
+        self.assertEqual(own, 0)
 
 
 if __name__ == "__main__":

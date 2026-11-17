@@ -2,8 +2,8 @@
 
 Unity's ExperimentPlanAB.ClearanceProblem (read from origin/nusrat/v4-step5-dev) redraws the workers of a node unless every ask position is within 5.5 m of the
 node and no worker is within 1.0 m of a road or of a segment the robot can drive (node to ask positions in every order incl. the tie return, ask positions and re-ask
-points to the next node of every branch). hri_sim_v4.clearance_problem / place_random(clearance=...) do the same in the simulator; the values (1.0, 5.5, 2.0, 0.4) are
-hers and live in scenarios_ab.json placement_rule."""
+points to the next node of every branch). hri_sim_v4.clearance_problem / place_random(clearance=...) do the same in the simulator; the values (1.0, 5.5, 2.0, 0.8) are
+hers (the re-ask shift 0.8 m since 16.21.2: the controller's value, as her re-search of the slots uses) and live in scenarios_ab.json placement_rule."""
 
 import json
 import sys
@@ -17,7 +17,7 @@ import hri_control as hc  # noqa: E402
 import hri_sim_v4 as sv  # noqa: E402
 import layout_check_v4 as lc  # noqa: E402
 
-RULE = {"path_clearance_m": 1.0, "ask_zone_m": 5.5, "ask_standoff_m": 2.0, "reask_shift_m": 0.4}
+RULE = {"path_clearance_m": 1.0, "ask_zone_m": 5.5, "ask_standoff_m": 2.0, "reask_shift_m": 0.8}      # 0.8 since AUDIT.md 16.21.2 (0.4 in 16.20.4)
 UNITY_CFG = ROOT.parent / "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json"
 
 
@@ -53,7 +53,7 @@ class Problem(unittest.TestCase):
     """clearance_problem on constructed cases (J1 at (6.25, 0); the road to E1 runs north, J2 to the west, J3 to the east)."""
 
     def test_her_clearance_slots_at_j1_are_clean(self):
-        pts = sv.place_slots(road(), "J1", 3, [{"before_m": 3.5, "right_m": -2.5}, {"before_m": -4.5, "right_m": 3.5}, {"before_m": -5.0, "right_m": -4.0}])
+        pts = sv.place_slots(road(), "J1", 2, [{"before_m": 3.0, "right_m": -2.0}, {"before_m": -2.5, "right_m": 4.0}])        # layout (i) of slot_table.csv
         self.assertIsNone(sv.clearance_problem(road(), "J1", pts, {}, None, RULE))
 
     def test_a_worker_on_the_drive_to_another_worker_is_rejected(self):
@@ -144,13 +144,14 @@ class Placement(unittest.TestCase):
 class Survey(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.res = lc.survey(("A4",), range(1, 21), (0.4,))["A4"]
+        cls.res = lc.survey(("A4",), range(1, 21), (0.4, 0.8))["A4"]
 
-    def test_every_a4_plan_passes_the_independent_check_at_her_shift(self):
-        b = self.res["by_shift"]["0.4"]
-        self.assertEqual((b["plans"], b["plans_violating"]), (20, 0))
-        self.assertGreaterEqual(b["min_clearance_m"], 1.0 - lc.EPS)
-        self.assertLessEqual(b["max_ask_distance_m"], 5.5 + lc.EPS)
+    def test_every_a4_plan_passes_the_independent_check_at_both_shifts(self):
+        for shift in ("0.4", "0.8"):
+            b = self.res["by_shift"][shift]
+            self.assertEqual((b["plans"], b["plans_violating"]), (20, 0), shift)
+            self.assertGreaterEqual(b["min_clearance_m"], 1.0 - lc.EPS, shift)
+            self.assertLessEqual(b["max_ask_distance_m"], 5.5 + lc.EPS, shift)
         self.assertEqual(self.res["not_belonging"], [])                      # 6.5 m and nearest node (16.20.1) still hold
         self.assertEqual(self.res["workers"], 200)
 
@@ -166,7 +167,7 @@ class Survey(unittest.TestCase):
 
     def test_the_beside_layouts_are_unchanged(self):
         j1 = sv.scenario_ab("A3", 1)["sim"].plan_workers()["J1"]
-        self.assertEqual([tuple(round(c, 6) for c in q) for q in j1], [(3.75, -3.5), (9.75, 4.5), (2.25, 5.0)])
+        self.assertEqual([tuple(round(c, 6) for c in q) for q in j1], [(4.25, -3.0), (10.25, 2.5)])
 
     def test_the_run_still_completes(self):
         sc = sv.scenario_ab("A4", 1, sv.DETECTION_ON)
