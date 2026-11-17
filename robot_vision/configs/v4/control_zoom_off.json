@@ -27,7 +27,28 @@
     },
     "two_view_enabled": true,
     "view_consistency_deg": 10,
-    "reapproach_commander": true
+    "reapproach_commander": true,
+    "return_to_junction": true
+  },
+  "recovery": {
+    "enabled": true,
+    "blocked_s": 15.0,
+    "person_moved_max_m": 0.3,
+    "back_m": 1.0,
+    "back_speed_mps": 0.2,
+    "side_m": 1.0,
+    "beyond_m": 1.0,
+    "max_attempts": 2,
+    "why": {
+      "declared": "DECIDED 2026-11-17 (AUDIT.md 16.19.2 items A, D, E), a v4 change declared before any final data. The v3 person-in-path stop itself is unchanged; this only acts after it has held for blocked_s. Unity testing waits for Nusrat's NavMesh rack fix.",
+      "blocked_s": "Seconds stopped by the person-in-path stop behind the same person before the recovery starts: a person crossing the 1.2 m corridor clears it in about 1 s, so 15 s is a person who stands there; below the 20 s WAIT timeout; the step-5 deadlocks lasted 420 s.",
+      "person_moved_max_m": "The blocking person's position moved less than this while the robot waited: a standing worker sways, a walking one does not stay within 0.3 m.",
+      "back_m": "Straight back this far: from the 0.85 m standstill distance it leaves the person about 1.9 m away, the 2.0 m ask standoff the robot already holds safely.",
+      "back_speed_mps": "Below the junction speed 0.35 m/s (braking distance 0.04 m). Nusrat measured reverse in Unity: v -0.2 m/s backed up 1.04 m, no drift.",
+      "side_m": "The waypoint abeam of the person is this far to the clear side: corridor half width 0.6 m + robot half width 0.3 m + side margin 0.1 m. Checked on the ground-truth grid by Nusrat (free on every road, 1220 of 1220); the controller never reads that grid: the right side unless somebody is within this distance of the waypoints, else the left, else it keeps waiting.",
+      "beyond_m": "The two waypoints are this far BEFORE and AFTER the person along the road, each side_m to the side: the leg between them runs parallel to the road at side_m from the person, then the normal path to the target.",
+      "max_attempts": "Recoveries per blocking person; then the robot waits as v3 does (the run ends by the timeout)."
+    }
   },
   "zoom": {
     "enabled": false,
