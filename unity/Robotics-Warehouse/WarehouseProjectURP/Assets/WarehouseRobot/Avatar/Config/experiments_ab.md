@@ -2322,3 +2322,49 @@ and (iii); per scenario, node and worker). The two usable candidates on the v4 m
   (`people_by_node` J1 3 cannot be met; item 2).
 - **Not run:** the NavMesh verification (addendum 2's tool). There is no chosen layout, and the tool stops at the first plan the
   pending layout refuses (A3). It will run once a layout is decided.
+
+*Item 4, Anisha's question, answered (2026-11-17): the claim is WITHDRAWN.* "Whenever STOP fires, the reader returns before
+evaluating PROCEED, restarting the 0.5 s PROCEED hold": the first half is true; the second half is not, in the code or in the logs.
+- **The code path** (8848a7a, the code of the step-5 runs; line numbers on `main` 29510ff in brackets):
+  - the reader, `robot_vision/gesture_motion.py`, `read_window`. STOP is decided first (line 636 [660]) and returns at line 649 [673],
+    before the PROCEED block at line 650 [674]. **True:** a frame that passes the STOP rule is read STOP, never PROCEED.
+  - the controller, `robot_vision/hri_control_v4.py`, `ControllerV4.step` (line 867 [939]): a STOP reading of anybody sets
+    `inp.gesture` STOP (lines 871-872 [948-949]), then calls `super().step` (line 873 [950]);
+  - `robot_vision/hri_control.py`, `Controller.step` (unchanged since v3): `_safety` returns "STOP gesture" (line 356), and `step` returns
+    at line 391 **before `self._tick` (line 393)**. So `ControllerV4._read_tick` and its `self.dialog.update(...)` (line 812 [884]) never
+    see that frame;
+  - `hri_control.GestureDialog.update` (lines 172-184) restarts the hold only for (a) a different direction, or (b) a no-direction
+    reading more than `max_none_gap_s` 0.3 s after the candidate was last seen. A frame it never receives restarts nothing: `since`
+    stays where it was.
+  - One more path, found in the replay: the safety stop leaves `last_persons_frame` unchanged. When the STOP frame has gone stale
+    (`gesture_stale_s` 0.5 s), the next tick gives that same frame to the dialog as a NONE reading, and rule (b) decides. Example below:
+    frame 11.676 s, a STOP stop at 12.113 s, then NONE at 12.204 s, 0.11 s after the last FORWARD, so no restart.
+- **The replay** (`finals_v4/replay_dialog_hold.py`, `robot_vision/outputs/replay_dialog_hold_20261117_202338/`): 97 asks of the 8
+  step-5 sessions; 45 accepted in the log; 49 with STOP frames.
+
+| model | asks matching the logged outcome | accepted asks at the logged time |
+|---|---|---|
+| S, the code as written (STOP frames never reach the dialog) | **97/97** | **45/45** |
+| R1, the claim (a STOP frame restarts the hold) | 77/97 | 25/45 |
+| R2, STOP frames given to the dialog as no-direction readings | 95/97 | 43/45 |
+
+- **20 accepted asks had a STOP frame inside the accepted 0.5 s hold** (hold start < STOP frame < accepting frame). In every one the
+  dialog accepted at the logged time, as if the STOP frame were not there. Under the claim none of the 20 would have been accepted in
+  that ask. First example, A1 trial 1 at A (ask 9.386 s):
+
+| frame t (s) | controller t (s) | reaches the dialog | label |
+|---|---|---|---|
+| 11.078 | 11.385 | yes | NONE |
+| 11.178 | 11.593 | no (safety stop: STOP gesture) | STOP |
+| 11.385 | 11.676 | yes | FORWARD: the hold starts |
+| 11.565 | 11.926 | yes | FORWARD |
+| 11.676 | 12.113 | no (safety stop: STOP gesture) | STOP |
+| 11.676 | 12.204 | yes (the same frame, now stale) | NONE |
+| 11.839 | 12.271 | yes | FORWARD |
+| 12.088 | 12.380 | yes | FORWARD: accepted, 0.703 s after the hold started (logged 12.38 s) |
+
+- **What a STOP does cost** (not a restart):
+  - a frame read STOP is a frame not read PROCEED (the reader's early return);
+  - the robot is stopped while STOP holds;
+  - the 5 s ask window keeps running.
+  - This agrees with AUDIT.md 16.19.3 (Anisha could not reproduce it) and 16.19.4 item 5 (feeding the STOP frames removes no abort).
