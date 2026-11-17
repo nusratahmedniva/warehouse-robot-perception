@@ -80,7 +80,8 @@ namespace WarehouseHRI.V4
         public float answer_zone_margin_m;
         /// <summary>Item 3b: no worker this close to a segment the robot can drive (clearance_layout active only).</summary>
         public float path_clearance_m;
-        /// <summary>Item 3b, the ask-position model: copies of Python's hri_control.json dialog.approach_distance_m and dialog.reask_shift_m.</summary>
+        /// <summary>Item 3b, the ask-position model: copies of Python's hri_control.json dialog.approach_distance_m and of the v4 controller's
+        /// configs/v4/control.json dialog.reask_shift_m (section 15 addendum 3).</summary>
         public float ask_standoff_m;
         public float reask_shift_m;
         public ClearanceLayout clearance_layout = new ClearanceLayout();

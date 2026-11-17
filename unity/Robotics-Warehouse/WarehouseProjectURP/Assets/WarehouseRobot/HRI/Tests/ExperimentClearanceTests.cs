@@ -11,7 +11,9 @@ namespace WarehouseHRI.Tests
     /// Avatar/Config/experiments_ab.md section 15 addendum 1, item 3b: no worker within path_clearance_m (1.0 m) of a segment the robot can
     /// drive, and every modelled ask position inside its node's answer zone minus the margin. The layout that meets it (corner slots, two
     /// workers at J1 in A4 and B4) is PENDING in experiments_ab_unity.json clearance_layout (active false) until Anisha's scenarios_ab.json
-    /// carries it; these tests apply it with WithClearanceLayout() and plan every run of seed 1 and seed 2 of every setting.
+    /// carries it; these tests apply it with WithClearanceLayout() and plan every run of seed 1 and seed 2 of every setting. Section 15
+    /// addendum 3: with the v4 re-ask shift (0.8 m) that layout keeps every rule only with two workers at J1; three at J1 (A3, B3 slot 3;
+    /// A4, B4 random) cannot be placed, and no beside slot set with three at J1 exists.
     /// </summary>
     public class ExperimentClearanceTests
     {
@@ -51,7 +53,7 @@ namespace WarehouseHRI.Tests
             Assert.AreEqual(1.0f, cfg.path_clearance_m, 1e-6f);
             Assert.AreEqual(0.5f, cfg.answer_zone_margin_m, 1e-6f);
             Assert.AreEqual(2.0f, cfg.ask_standoff_m, 1e-6f, "Python's dialog.approach_distance_m");
-            Assert.AreEqual(0.4f, cfg.reask_shift_m, 1e-6f, "Python's dialog.reask_shift_m");
+            Assert.AreEqual(0.8f, cfg.reask_shift_m, 1e-6f, "the v4 controller's dialog.reask_shift_m (section 15 addendum 3)");
             Assert.IsFalse(cfg.clearance_layout.active, "PENDING: Anisha's scenarios_ab.json still has the section 3 slots (her MatchesUnity test)");
             var s = cfg.clearance_layout.junction_slots;
             Assert.AreEqual(new[] { 3.5f, 2.5f, -4.5f, 3.5f, -5.0f, -4.0f }, new[] { s[0].before_m, -s[0].right_m, s[1].before_m, s[1].right_m, s[2].before_m, s[2].right_m });
@@ -67,10 +69,26 @@ namespace WarehouseHRI.Tests
             Assert.AreEqual(5.5f, Plan("A3", on).Rule.AskZoneM, 1e-6f, "6.0 m zone minus 0.5 m");
         }
 
+        /// <summary>Section 15 addendum 3: Unity's copy of the re-ask shift is the v4 controller's value (configs/v4/control.json, which
+        /// overrides v3's hri_control.json 0.4 m); the first copy took v3's value.</summary>
         [Test]
-        public void PendingLayout_EverySeed1AndSeed2Plan_OfEverySetting_KeepsEveryRule()
+        public void ReaskShift_IsTheV4ControllersValue()
         {
-            int plans = 0;
+            var ctl = (Dictionary<string, object>)MiniJson.Parse(Repo("robot_vision/configs/v4/control.json"));
+            float shift = (float)(double)((Dictionary<string, object>)ctl["dialog"])["reask_shift_m"];
+            Assert.AreEqual(shift, Cfg().reask_shift_m, 1e-6f);
+        }
+
+        /// <summary>
+        /// Section 15 addendum 3: with the v4 re-ask shift (0.8 m) the pending layout of addendum 1 still plans every run of seeds 1 and 2
+        /// of every setting with two workers at J1 under every rule, but A3 and B3 (three at J1, slot 3) are refused: a modelled ask point
+        /// at J1 lies beyond the 5.5 m zone. No beside slot set with three at J1 meets every rule (finals_v4/layout_search_v4.py); the
+        /// layout stays PENDING a decision.
+        /// </summary>
+        [Test]
+        public void PendingLayout_WithTheV4Shift_PlansTwoAtJ1_AndRefusesThreeAtJ1()
+        {
+            int plans = 0, refused = 0;
             foreach (var (exp, side) in Settings())
             {
                 var cfg = Cfg().WithClearanceLayout();
@@ -83,17 +101,97 @@ namespace WarehouseHRI.Tests
                     {
                         string what = $"{exp}{(side != null ? "_" + side : "")} seed {seed} run {run}";
                         var r = p.PlanRun(seed, run, goals[run - 1], Males, Females, null, out string error);
+                        if (exp.EndsWith("3"))
+                        {
+                            Assert.IsNull(r, what + ": three at J1 must be refused");
+                            StringAssert.Contains("J1: fixed slots break a rule: an ask position", error, what);
+                            refused++;
+                            continue;
+                        }
                         Assert.IsNotNull(r, $"{what}: {error}");
                         plans++;
                         var map = p.RunMap(seed, run, out string mapName);
                         if (side != null) Assert.AreEqual(side == "left" ? "turn_left" : "turn", mapName, what);
                         CheckEveryRule(p, map, r, what);
                         if (exp.EndsWith("4")) Assert.AreEqual(2, r.Workers.Count(x => x.Node == "J1"), what + ": two at J1");
-                        if (exp.EndsWith("3")) Assert.AreEqual(3, r.Workers.Count(x => x.Node == "J1"), what + ": three at J1");
+                    }
+                }
+            }
+            Assert.AreEqual(8 * 2 * Runs, plans);
+            Assert.AreEqual(2 * 2 * Runs, refused);
+        }
+
+        /// <summary>
+        /// Section 15 addendum 3, item 2: three random workers at J1 (A4, B4: Anisha's 6 m square) under the pending rules with the v4
+        /// shift. Unity's own planner (random_max_draws seeded draws) cannot place them in any run of seeds 1 and 2; the lattice search of
+        /// finals_v4/layout_search_v4.py finds no valid triple at all. Pins the finding; nothing is switched on.
+        /// </summary>
+        [Test]
+        public void ThreeRandomWorkersAtJ1_InA4AndB4_CannotBePlaced()
+        {
+            foreach (var exp in new[] { "A4", "B4" })
+            {
+                var cfg = Cfg();
+                cfg.clearance_layout.two_worker_experiments = new string[0];
+                var p = Plan(exp, cfg.WithClearanceLayout());
+                Assert.AreEqual(3, p.WorkersAt("J1"));
+                foreach (int seed in new[] { 1, 2 })
+                {
+                    var goals = p.Goals(seed, Runs);
+                    for (int run = 1; run <= Runs; run++)
+                    {
+                        var r = p.PlanRun(seed, run, goals[run - 1], Males, Females, null, out string error);
+                        Assert.IsNull(r, $"{exp} seed {seed} run {run}: placed three at J1");
+                        StringAssert.Contains("J1: no placement within", error, $"{exp} seed {seed} run {run}");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Section 15 addendum 3, Unity's own planner on two results of the Python search (finals_v4/layout_search_v4_j1.py, report only, not
+        /// switched on): with two workers at J1 in every setting, alternative (i) (slots 3.0 m before / 2.0 m left and 2.5 m ahead / 4.0 m
+        /// right) plans every run of seeds 1 and 2 under every rule, while the pending slots of addendum 1 are refused on roadmap (their slot 2
+        /// at J1 is 0.84 m from J1's drive at the closest).
+        /// </summary>
+        [Test]
+        public void Addendum3_TwoAtJ1_AlternativeIPlans_ThePendingSlotsAreRefusedOnRoadmap()
+        {
+            ExperimentsUnityConfig TwoAtJ1(SlotDef[] slots)
+            {
+                var c = Cfg();
+                if (slots != null) c.clearance_layout.junction_slots = slots;
+                c.clearance_layout.two_worker_experiments = new[] { "A3", "B3", "A4", "B4" };
+                return c.WithClearanceLayout();
+            }
+            var alt = new[] { new SlotDef { before_m = 3.0f, right_m = -2.0f }, new SlotDef { before_m = -2.5f, right_m = 4.0f },
+                              new SlotDef { before_m = 6.0f, right_m = -2.0f } };
+            int plans = 0;
+            foreach (var (exp, side) in Settings())
+            {
+                var cfg = TwoAtJ1(alt);
+                if (side != null) cfg.a2_sides = new[] { side };
+                var p = Plan(exp, cfg);
+                foreach (int seed in new[] { 1, 2 })
+                {
+                    var goals = p.Goals(seed, Runs);
+                    for (int run = 1; run <= Runs; run++)
+                    {
+                        string what = $"(i) {exp}{(side != null ? "_" + side : "")} seed {seed} run {run}";
+                        var r = p.PlanRun(seed, run, goals[run - 1], Males, Females, null, out string error);
+                        Assert.IsNotNull(r, $"{what}: {error}");
+                        CheckEveryRule(p, p.RunMap(seed, run, out _), r, what);
+                        Assert.LessOrEqual(r.Workers.Count(x => x.Node == "J1"), 2, what);
+                        plans++;
                     }
                 }
             }
             Assert.AreEqual(10 * 2 * Runs, plans);
+            var pend = Plan("A3", TwoAtJ1(null)).PlanRun(1, 1, "E1", Males, Females, null, out string err);
+            Assert.IsNull(pend);
+            StringAssert.Contains("fixed slots break a rule", err);
+            StringAssert.Contains("worker 2 is 0.8", err);      // the first drive found (0.85 m); 0.84 m at the closest (the Python table)
+            StringAssert.Contains("(< 1)", err);
         }
 
         /// <summary>An independent check of a planned run: separation, turning points, bystander margin, clearance from every road and every
@@ -115,15 +213,14 @@ namespace WarehouseHRI.Tests
                 var ordered = g.OrderBy(x => x.Slot).ToList();
                 foreach (var x in ordered.Skip(1))
                     Assert.GreaterOrEqual(p.NearerMargin(map, node, x.Position, ordered[0].Position), p.Rule.NearerMarginM - 1e-4f, $"{what}: bystander rule at {g.Key}");
-                var nodeSegs = ExperimentPlanAB.DrivableSegments(map, node, ordered.Select(x => x.Position).ToList(), 2f, 0.4f, out var asks);
+                var nodeSegs = ExperimentPlanAB.DrivableSegments(map, node, ordered.Select(x => x.Position).ToList(), p.Cfg.ask_standoff_m, p.Cfg.reask_shift_m, out var asks);
                 foreach (var s in nodeSegs) segs.Add((s.A, s.B, s.Label));
                 foreach (var a in asks)
                     Assert.LessOrEqual(ExperimentPlanAB.Flat(a - ExperimentPlanAB.Pos(node)), 5.5f + 1e-4f, $"{what}: ask position at {g.Key} outside the zone");
             }
             foreach (var x in w)
                 foreach (var s in segs)
-                    Assert.GreaterOrEqual(ExperimentPlanAB.SegmentDistance(x.Position, s.a, s.b), 1f - 1e-4f, $"{what}: worker {x.Id} ({x.Node}) and {s.label}");
-            Assert.LessOrEqual(r.MaxActive, 6, $"{what}: active avatars");
+                    Assert.GreaterOrEqual(ExperimentPlanAB.SegmentDistance(x.Position, s.a, s.b), 1f - 1e-4f, $"{what}: worker {x.Id} ({x.Node}) and {s.label}");            Assert.LessOrEqual(r.MaxActive, 6, $"{what}: active avatars");
         }
 
         [Test]
@@ -157,6 +254,10 @@ namespace WarehouseHRI.Tests
             var r = p.PlanRun(1, 1, "E1", Males, Females, null, out string error);
             Assert.IsNull(r);
             StringAssert.Contains("fixed slots break a rule", error);
+            // with the 0.8 m shift (addendum 3) the ask zone refuses first; without the zone the clearance still refuses
+            cfg.answer_zone_radius_m = 100f;
+            r = Plan("A3", cfg.WithClearanceLayout()).PlanRun(1, 1, "E1", Males, Females, null, out error);
+            Assert.IsNull(r);
             StringAssert.Contains("(< 1)", error);
         }
 
