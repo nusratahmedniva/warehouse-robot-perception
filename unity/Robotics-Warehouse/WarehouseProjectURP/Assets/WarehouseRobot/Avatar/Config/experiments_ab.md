@@ -2080,3 +2080,46 @@ Each commit is made after both suites pass.
   - The first verification folder is kept as the record of this failure.
 - **Rules unchanged.** V1 to V4, their pass rules and the tests stay as declared. Two Edit Mode tests are added: the `Stations` modifier,
   and every station centre off the NavMesh.
+
+*Made (2026-11-17, commits 275a9eb declaration, f2c34d9 amendment, 864106b fix).*
+- **Bake** (`robot_vision/outputs/navmesh_v4_bake_20261117_052540/`, from the committed scene; Tools > Warehouse v4 > NavMesh > Bake v4
+  NavMesh):
+  - meshes collected: 652 before, 745 after;
+  - `Shelves` 0 -> 93; `Stations` 25 walkable -> 25 Not Walkable; `Walls` 36 and the rest of `GeneratedWarehouse` 591, both unchanged.
+  - New asset `Assets/Scenes/WarehouseRobot_v4/NavMesh-AMR.asset` (binary, 80,224 bytes).
+  - The scene diff holds exactly three things: the modifier on `Stations`, `m_IgnoreNavMeshObstacle` 1 -> 0, and the data reference.
+  - The v3 scene and the v3 asset are byte-for-byte unchanged. The tool checked this, and `NavMeshV4Tests` pins the v3 asset's
+    SHA-256.
+  - The first bake (`navmesh_v4_bake_20261117_051457/`, without the modifier) was discarded before any commit; its folder is kept.
+- **Verification passed** (`robot_vision/outputs/navmesh_v4_check_20261117_053355/`; the failed first one, `_052310`, is kept):
+  - **V1:**
+    - 800 planned runs: live and pending layout, 10 settings, seeds 1 and 2, 20 runs each;
+    - 5,263 points: corridor 22, turn 47, turn_left 47, roadmap 5,147;
+    - all 5,263 points lie on the NavMesh (snap 0.000 m);
+    - **13,245,624 paths: all complete, none entering a footprint.**
+    - Least clearance to a footprint: 0.369 m at (-10.38, -4.29), a rack, in `roadmap`; 0.390 m in the other maps. 199,528 paths
+      (199,503 of them in `roadmap`) come closer than the grid's 0.40 m, all at racks.
+    - Reported, not judged: the NavMesh keeps 0.5 m from the racks' render meshes rounded to its 0.167 m voxels, while the footprints
+      come from the racks' colliders. 0.369 m still clears the robot's half-width of 0.30 m by 0.069 m.
+  - **Negative control:**
+    - the three rack centres lie 1.24, 1.26 and 1.29 m from the nearest NavMesh: not reachable;
+    - (6.25, -5) to (-6.25, -5) goes around the rack in 12.82 m (straight 12.50 m), with a least clearance of 0.502 m.
+  - **V2:** 10,740 cells free on both, 1,310 blocked on both. 252 are free on the grid but off the NavMesh: 0.4 to 0.7 m from a rack
+    (125), a wall (108) or a station (19), the expected band. 19 are blocked on the grid but on the NavMesh. **None of them lies inside
+    a footprint** (the hard rule). All 19 are cells exactly 0.400 m from a station, between two neighbouring stations along the south
+    wall: they sit on the grid's own 0.40 m boundary.
+  - **V2, saved grid:** the Edit-mode grid equals run_001's saved Play-mode `grid.json`, cell for cell.
+  - **V4:** every node of `corridor` (2), `turn` (3), `turn_left` (3) and `roadmap` (11) is on the NavMesh, and every branch path is
+    complete.
+- **V3, side waypoints again** (`robot_vision/outputs/navmesh_side_waypoints_20261117_053431/`):
+  - 1220 of 1220 reachable, every one by a complete 1.00 m NavMesh path;
+  - **negative control passed:** rack centres 1.24 to 1.29 m off the NavMesh, beyond the south wall 1.74 m;
+  - the same count as item 2b's ground-truth grid check (1220/1220).
+- **Leak test** (Edit mode, `robot_vision/outputs/gt_leak_check_20261117_053534/`): passed. cam360 and pan-tilt each have a max diff of
+  0, with 0 pixels differing.
+- **Tests:** `HRI/Tests/NavMeshV4Tests.cs`, 4 tests: the v4 Surface and its asset; the Stations modifier; the v3 asset pinned; and on the
+  v4 NavMesh every rack and station centre off it and the path around the rack at (0, -5). `FinalGuardV4Tests` expects the new asset.
+- **B9:** `final_v4.json` `freeze_files` has the new asset, 29 files. `freeze_v4.py` reads that list unchanged.
+- **Suites:** Python 1163 OK (2 skipped), Unity Edit Mode 339/339.
+- **Not done:** no Play-mode session on the new NavMesh yet. The bridge paths at Play have not been observed; the step-5 rerun will be
+  the first.
