@@ -2525,3 +2525,107 @@ goes from 6 to 5", Anisha's rule, declared there before this rerun).
 - Not modelled: Python turning its approach point by 30-degree steps near another person; a robot standing off the modelled points.
 
 **Commits:** (1) this declaration; (2) the results recorded below, with the two report tools. Each after both suites pass.
+
+*Results (2026-11-18; declaration 3ead71b, every run below on that commit, tree clean apart from the two uncommitted report tools).*
+
+**Item 1 (a), addendum 2's verification: PASSED** (`robot_vision/outputs/navmesh_v4_check_20261118_214518/`).
+- V1: 800 planned runs (the "live" and "pending" halves are both layout (i)). 2,492 points: corridor 23, turn 36, turn_left 36, roadmap
+  2,397. All on the NavMesh (snap 0.000 m).
+- **2,873,119 paths: all complete, none entering a footprint.**
+- Least clearance to a footprint: 0.369 m at (-10.39, -4.27), a rack, in `roadmap`; 0.390 m in the other maps. 83,898 paths come closer
+  than 0.40 m. As in addendum 2, this still clears the robot's 0.30 m half-width.
+- Negative control passed: rack centres 1.24 / 1.26 / 1.29 m off the NavMesh; (6.25, -5) to (-6.25, -5) goes around the rack, 12.82 m,
+  least clearance 0.502 m.
+- V2 (hard rule) passed, the same counts as addendum 2: 10,740 / 1,310 / 252 stricter / 19 looser, 0 inside a footprint. The Edit-mode
+  grid equals run_001's saved Play grid cell for cell.
+- V4 passed on all four maps.
+
+**Item 1 (b), the workers: PASSED** (`robot_vision/outputs/worker_path_check_20261118_214612/`; the temporary script ran in batch mode and
+was deleted with its `.meta`; its source is `TempWorkerPathCheck.cs.txt` there; `git status` clean afterwards).
+- 400 plans (layout (i), `clearance_layout` active; 10 settings x seeds 1, 2 x 20 runs). 37,130 NavMesh paths (6,163 distinct): every
+  end snapped, every path complete, none entering a footprint.
+- **No path within 0.30 m of a worker; none within 0.60 m or 1.0 m either.** The NavMesh paths keep the straight-line clearance.
+- Least worker distance per setting:
+  - A1 / B1 1.955 m;
+  - A2 right / B2 right 1.194 m;
+  - A2 left / B2 left 1.502 m;
+  - A3 / B3 1.173 m;
+  - A4 / B4 1.001 m (seed 2 run 7: J4's ask position (-17.40, 0.22) to E5 passes worker 9 at (-17.52, 1.96)).
+- The export (`plans.json`, `footprints.json`) feeds item 3c.
+
+**Item 2, the timing rerun: NOT RUN** (Nusrat's decision above). No session, no report and no zip exist yet. The report tool
+`finals_v4/timing_rerun_report.py` is committed. It was checked on step 5's A3 logs, outside the repository; its frames-per-window
+counts reproduce Anisha's B2 figures for step 5 (pan-tilt median 15 / 10 / 8 with 1 / 2 / 3+ people). It writes the zip with its
+SHA-256. Anisha's 6 -> 5 rule is therefore still open.
+
+**Item 3c, checkpoints** (`robot_vision/outputs/checkpoint_feasibility_v4_20261118_214624/`; `finals_v4/checkpoint_feasibility_v4.py`).
+- **Port check:** the port's layout (i) equals Unity's planned workers in 320 of 320 beside plans. Its active-avatar count without
+  checkpoints equals Unity's `MaxActive` per setting (2 or 3).
+- **Feasibility per branch** (one checkpoint at a time; candidates every 0.5 m along, 1.0 to 4.5 m to either side):
+
+| map | branch | length (m) | meet P1-P10 | + Q1-Q2 | + Q3 | where, or the binding rule |
+|---|---|---|---|---|---|---|
+| corridor | A -> B | 40.0 | 47 | 39 | 39 | only s 1.0-3.0 or 37.0-39.5 (near an end) |
+| turn, turn_left, roadmap | A -> B / J1 | 20.0 | 14 | **0** | 0 | all at s 1.0-4.5, all within 6.5 m of A, their nearest node: **Q1** |
+| turn | B RIGHT -> C | 20.0 | 66 | 66 | 66 | s 14.5-19.5 |
+| turn_left | B LEFT -> C | 20.0 | 59 | 48 | 48 | s 1.0-19.5 (the far part valid) |
+| roadmap | J1 FORWARD -> E1 | 20.0 | 52 | 51 | 51 | s 2.0-19.5 (the far part valid) |
+| roadmap | J1 RIGHT -> J3 | 12.5 | 1 | 1 | 0 | one spot, (12.25, -4.00): fails Q3, seen from J1's ask points |
+| roadmap | J1 LEFT -> J2 | 12.5 | 14 | **0** | 0 | all within 6.5 m of J1 or J2, their nearest node: **Q1** |
+| roadmap | J2 FORWARD -> J4 | 12.5 | **0** | 0 | 0 | **P6** (44 candidates valid if dropped; P1 8, P2 6, P3 5) |
+| roadmap | J2 -> E2, J3 -> E3, J3 -> E4, J4 -> E5, J4 -> E6 | 20.0 | 51-78 | 51-63 | 51-61 | s 14.5-19.5 (E3, E6: 1.0-19.5) |
+
+- **Answer: not on every branch.**
+  - All rules (P1-P10 + Q1-Q2) can be met on 10 of the 15 branches.
+  - Not on 5:
+    - the start branch A -> B / J1 of turn, turn_left and roadmap (Q1);
+    - J1 LEFT -> J2 (Q1);
+    - J2 FORWARD -> J4 (P6).
+  - Q3 (12.0 m between answer zones) cannot hold on any 12.5 m junction-to-junction branch.
+- **The binding rule for "partway" is P6, the checkpoint's own drive.** At mid-branch every candidate 2.5 m or more to the side breaks
+  only P6; nearer the road it also breaks P5 (the node drives along the road).
+  - What breaks it: the straight drive from the checkpoint's re-ask point (0.8 m to the robot's right) on to the far end of the branch
+    passes the worker. Measured on J1 -> E1 at s 10 m: 0.77 m at 4.5 m to the side, 0.18 m at 2.5 m (the ask point itself: 1.33 / 0.80 m).
+  - So under the declared model a checkpoint can stand only within about 5.5 m of a branch end, not mid-branch.
+  - Mid-branch would need the robot to return to the road before driving on, which Python's `_target` does not model (a straight line
+    to the next node). Or it would need a smaller re-ask shift at checkpoints. Either is for Nusrat and Anisha.
+- **Proposed positions** (declared choice rule; each passes the joint check with the other checkpoints of its map):
+  - 4.5 to 5.5 m before the end of the branch (s 14.5 to 15.5 of 20 m; the corridor 3.0 m before B), 3.5 to 4.5 m to the left, not
+    seen from the start node's ask points:
+    - corridor A -> B: (2.75, 17.00);
+    - turn B -> C: (20.75, 4.50);
+    - turn_left B -> C: (-8.25, -4.50);
+    - J1 -> E1: (2.25, 15.50);
+    - J2 -> E2: (-10.25, 15.50);
+    - J3 -> E3: (14.75, 15.50);
+    - J3 -> E4: (23.25, -14.50);
+    - J4 -> E5: (-23.25, 14.50);
+    - J4 -> E6: (-14.75, -15.50).
+  - J1 -> J3: the only spot, (12.25, -4.00), which is seen from J1's ask points.
+  - **No proposal under the answer rules:**
+    - A -> B / J1: fallback (10.25, -15.50) meets P1-P10 only and fails Q1;
+    - J1 -> J2: fallback (1.25, 3.50) also fails Q1;
+    - J2 -> J4: none.
+- **A4 / B4 (random workers):** the proposed checkpoints checked against each of the 40 plans' drawn workers.
+  - J1 -> J3 fails in 28 (P6) and 31 (Q2) plans.
+  - J1 -> E1 fails in 1 plan (P6), J3 -> E4 in 1 (P6), J4 -> E6 in 2 (P6).
+  - The fallbacks fail in every plan (Q1).
+  - So fixed checkpoints and random workers conflict at J1 -> J3.
+- **Active avatars,** with every proposed checkpoint (fallbacks included): at most 2 / 3 / 5 / 5 (A1 / A2 / A3 / A4, the same for B),
+  against the limit 6. **No plan exceeds it.**
+- **People in view.**
+  - Without checkpoints:
+    - pan-tilt: never 3 or more at any ask point (at most 2), nor while driving;
+    - 360: 3 people at 520 of 3,840 ask points in A3 / B3 (J1 280, J3 240), at 15 of 3,819 in A4 / B4 (J1), and never in A1 / A2 /
+      B1 / B2;
+    - driving, 360: at most 3.
+  - With the proposed checkpoints:
+    - pan-tilt: still never 3 or more at an ask point;
+    - 360, asks with 3 or more: A2 / B2 440 of 1,280 (all at A's asks, from the A -> B fallback beside A); A3 / B3 1,880 of 3,840;
+      A4 / B4 1,722 of 3,819;
+    - driving, 360: at most 5 (A3 / A4), pan-tilt at most 2.
+  - Every flagged ask is in `asks.csv`. The fallbacks next to A and J1 cause a large share of the increase.
+- **Reading for Anisha's B2 / floor 10** (geometry, not timing): in layout (i) the modelled pan-tilt view at an ask never holds 3 people.
+  Step 5 ran the section 3 layout (three workers at J1 in A3), so its 3+ pan-tilt frames (median 8 per 2 s) are not comparable. In
+  layout (i), frames with 3 or more people at an ask would come only from the robot standing off the modelled points. The rerun will
+  show it.
