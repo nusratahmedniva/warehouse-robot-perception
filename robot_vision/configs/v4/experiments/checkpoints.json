@@ -1,0 +1,10 @@
+{
+  "label": "Checkpoint workers of variant T3 (AUDIT.md 16.23, 2026-11-18). SIMULATOR ONLY and PROVISIONAL until Nusrat sends Unity's positions. Read by run_t3_v4.py and hri_sim_v4.plan_checkpoints.",
+  "provisional": true,
+  "fraction": 0.5,
+  "side_order": ["right", "left"],
+  "lateral_m": [3.0, 4.0],
+  "decision_junction": "a node of kind junction with two or more branches",
+  "rule": "The checkpoint worker of a branch leaving a decision junction stands beside the MIDPOINT (fraction 0.5 of the junction-to-next-node segment), 3.0 m to the right of the travel direction; if a rule is broken, 3.0 m to the left, then 4.0 m right, then 4.0 m left. A position needs: farther than lie_detection.second_opinion_radius_m (6.5 m) from every node, at least placement_rule.min_worker_separation_m (3.0 m) from every other worker, min_turning_point_m (3.0 m) from every turning point, path_clearance_m (1.0 m) from every road and every segment the robot can drive (the junction workers' and the checkpoints'). Planned after the junction workers. The robot's own rule is the same fraction (lie_detection.checkpoint_fraction, pinned equal by a test).",
+  "lie": "Same probability as the junction workers of the set (B 0.2, A 0), drawn once per worker per run from the worker's own generator; a liar shows the opposite of the honest gesture (honest: PROCEED toward the goal, POINT back along the arrival road on a wrong branch)."
+}
