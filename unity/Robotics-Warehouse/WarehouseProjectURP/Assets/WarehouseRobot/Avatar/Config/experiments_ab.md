@@ -2413,3 +2413,115 @@ clearance (1.0 m) and ask-zone (5.5 m) checks on at Play. Values from addendum 3
 
 **Commits:** (1) this declaration, before the merge; (2) the merge of `origin/main` with the switch, the `Validate` change and the tests
 (the merge alone fails her two pins, so the switch goes into the merge commit). Each after both suites pass.
+
+### 2026-11-18, section 15 addendum 5: NavMesh check of layout (i), the strict-protocol timing rerun, facts for the backtracking design (declared before any run below)
+
+Nusrat's task of 2026-11-18. Branch `nusrat/v4-timing-backtrack` = `main` a3fc543 (the NavMesh fix of addendum 2, layout (i) active
+since addendum 4, Anisha's B1 floor 10 in `gesture_reader.json`, AUDIT.md 16.21.1). **Report only:** no Unity scene, config, script or
+behaviour changes; nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run, nothing is pushed.
+Development data, not a result. Nothing was run for this addendum before it was written; the only reads were of configs, code and the
+step-5 logs' formats.
+
+**Item 1, the NavMesh check of layout (i).**
+- **(a) Addendum 2's verification, unchanged** (Tools > Warehouse v4 > NavMesh > Verify, batch `NavMeshV4Menu.BatchVerify`; rules V1 to V4
+  as declared there). Its point set takes the "live" and the "pending" layout; both are now layout (i) (the block is active and the live
+  slots equal it), so the two halves are the same plans. Reported as such.
+- **(b) Added here: the workers.** For every planned run (layout (i); seeds 1 and 2, 20 runs; the 10 Unity settings A1, A2 right and left,
+  A3, A4, B1, B2 right and left, B3, B4; Unity's own planner `ExperimentPlanAB.PlanRun`):
+  - the paths: every road of the run's map and of the physical v4 map, and every drivable segment of item 3b's model with the v4 re-ask
+    shift 0.8 m (`ExperimentPlanAB.DrivableSegments`) of every asking node of the run, each as a NavMesh path by the bridge's rule (AMR
+    agent, both ends snapped within `snap_max_distance_m` 1.0 m), sampled every 0.05 m;
+  - **pass needs all three:** every path complete; no sample inside an obstacle footprint (not widened, as V1); **no sample within the
+    robot's half-width, 0.30 m (`robot.json` `robot_width_m` 0.60 / 2), of the centre of any worker of that run**;
+  - reported: the least worker distance (and where), the paths closer than 0.60 m (Python's person-in-path corridor half-width) and closer
+    than 1.0 m (the placement clearance, so far checked on straight lines only).
+  - Tool: a **temporary Editor script** (as addendum 2's diagnosis), run in batch mode, then deleted; it is not committed, and its source is
+    copied into the output folder. It also exports, for item 3c, every plan's workers, map and goal, and the obstacle footprints (not
+    widened) with their groups. It changes nothing in the scene.
+
+**Item 2, the strict-protocol timing rerun** (AUDIT.md 16.19.2 item 1: "if B2_right still exceeds the limits, the active-avatar limit
+goes from 6 to 5", Anisha's rule, declared there before this rerun).
+- **Sessions,** each run once, in this order, with `finals_v4/run_session_v4.ps1 -Rehearsal -Trials 3` (development seed 1, development
+  looks and clips, the development timeout 420 s, the setting's control file, Unity in the Editor window, one Unity start and one server
+  per session):
+  1. `-Experiment A2 -Side left`;
+  2. `-Experiment A3 -ExperimentGoals "E5,E3,E1"`: run 1 is forced to E5 (A > J1 > J2 > J4 > E5, the deepest route); runs 2 and 3 keep the
+     goals that seed 1 gave step 5's A3 runs 2 and 3 (E3, E1). E5 replaces step 5's E2 in run 1;
+  3. `-Experiment B2 -Side right`.
+  A session that fails is reported as it stands and not rerun.
+- **Nusrat's decision (2026-11-18, before this declaration was committed and before any run):** the three sessions are **not run in
+  this task**. The machine had 2.5 GB free with the VS Code / Claude Code session open (step 5: 3.3 to 4.6 GB). Nusrat runs them with
+  the launcher commands above, under the protocol below; then `step5_session_checks.ps1` per session (with the setting names
+  `timing_A2_left`, `timing_A3`, `timing_B2_right`, so that step 5's entries in `step5_sessions.json` stay as they are) and the report
+  tool on a manifest of the three. The report tool is committed with this task's results, with the definitions below; it was checked
+  only on step 5's A3 logs (output outside the repository).
+- **Strict run protocol:** before each session, the run-protocol note (`run_protocol_v4.ps1`, written by the launcher); Windows power mode
+  Best performance on mains; no browser and no other program the user opened, except the VS Code / Claude Code session that runs the
+  sessions, which cannot be closed. Whatever the note lists as still running is disclosed.
+- **Checks, every session:** the launcher's B11 check REHEARSAL VALID, and `finals_v4/step5_session_checks.ps1` (leak test in Unity and
+  in Python, every `truth.jsonl` accepted by `gesture_data.py`, `export_csv_v4.py --session` written).
+- **Measures** (definitions fixed here; a new report tool `finals_v4/timing_rerun_report.py`, evaluation only, read-only on the sessions):
+  - **frames per 2 s window by people in view (1 / 2 / 3+)**: Anisha's B2 definition (`analyse_proceed_stop_v4.b2_counts`): for every
+    pan-tilt frame of `model_outputs.jsonl` within a run, the number of pan-tilt frames in the 2.0 s ending at it, grouped by the people in
+    that frame (3 = three or more; 0 shown apart); n, median, p10. Twice: over all frames, and over the **gesture windows** only (frames
+    while the dialog reads: `decisions.csv` state ask, read or wait at the frame time). The same for the 360 frames by the people in the
+    360 frame. Also the share of gesture-window frames with fewer than 10 frames in their 2 s (the floor) and fewer than 12.
+  - **frame drop rate**: per camera, Unity's `summary.json` `frames` (dropped / (sent + dropped)), and Python's skipped frames
+    (`perception.csv` `skipped_before`, summed, over the frames processed).
+  - **processing time per frame**: `perception.csv` `total_ms` (and `decode_ms`, `model_ms`) per camera, median / p95 / max, and for
+    the pan-tilt frames by people in the frame.
+  - **PROCEED holds accepted with floor 10**: per dialog of the export's `dialogs.csv` whose commander showed PROCEED, accepted or not;
+    and the PROCEED windows the reader passed (`v4_log.jsonl` arm `proceed.ok` true) with fewer than 12 valid frames, i.e. passed only
+    through the floor.
+  - **safety stops**: STOP-gesture episodes, true or false (`step5_report.py`'s definition); person-in-path episodes (`decisions.csv`
+    safety "person in path"); **person-in-path recoveries**: Anisha's recovery events in `python_trial_###.json` (started, detour,
+    interrupted, waiting) and how each ended.
+  - **watchdog stops, round trip, loop lag, free memory**: `summary.json` (watchdog stops reported by Unity; round trip all messages p99 /
+    max; loop lag p99 / max; available memory min; hard paging max), against `configs/v4/bridge.json`'s limits (loop lag p99 25 ms / max
+    100 ms; round trip p99 50 ms / max 150 ms).
+  - Reported against Anisha's rule above: whether B2_right exceeds a limit. **The active-avatar limit is not changed here** (report only);
+    if the rule triggers, the change is for Nusrat and Anisha.
+- **Zip for Anisha** (`robot_vision/outputs/timing_rerun_logs_<time>.zip`, read-only on the outputs): per session `decisions.csv`,
+  `model_outputs.jsonl`, `v4_log.jsonl`, `perception.csv`, `summary.json`, `resources.csv`, `loop_lag.csv`, `python_trial_###.json`, every
+  `run_###/truth.jsonl`, the export, the protocol notes and the report; a `README.md` with every file's size and SHA-256; the zip's SHA-256
+  recorded here.
+
+**Item 3c, facts for the backtracking design: one checkpoint worker on every branch** (geometry only; a new report tool
+`finals_v4/checkpoint_feasibility_v4.py` on top of `layout_search_v4.py`'s port and item 1's plan export).
+- **Branch:** every road from an asking node (start or junction) to its next node in `branches` of `corridor`, `turn`, `turn_left` and
+  `roadmap`.
+- **Candidates:** one worker at distance s from the branch's start node along the road (0.5 m steps) and lateral offset l to either side
+  (1.0 to 4.5 m, 0.5 m steps). The checkpoint's anchor is the road point at s.
+- **Placement rules** (every existing value, with the checkpoint treated as one more asking point with one worker; layout (i)'s workers
+  placed): P1 at least 3.0 m from every other worker; P2 at least 3.0 m from every asking node of the run's map and the physical map and
+  from every other checkpoint's anchor (and every node worker 3.0 m from the anchor); P3 a free cell of the ground-truth grid; P4 1.0 m
+  from every road; P5 1.0 m from every drivable segment of every asking node (0.8 m shift, every order, the tie, every branch); P6 every
+  worker, the checkpoint's own included, 1.0 m from the checkpoint's own drive: from each end of the branch to the checkpoint's ask
+  position (2.0 m from it toward that end) and its re-ask point (0.8 m), and from those on to both ends of the branch (continue and turn
+  back); P7 those ask points on the v4 NavMesh (V2's cell classification, as addendum 3); P8 those ask points within 5.5 m of the anchor;
+  P9 at every asking node, the checkpoint worker at least 1.0 m farther from the robot than that node's first worker over the last 3.0 m
+  of its arrival road (the bystander rule); P10 at most 6 active avatars (8.0 m, every 0.5 m along every road), per plan.
+- **Answer rules**, reported beside them (so that a checkpoint is not taken for a junction's worker or the other way round): Q1 Python's
+  second opinion: the checkpoint worker is not within 6.5 m (`second_opinion_radius_m`) of an asking node that is its nearest node of the
+  map; Q2 Unity's answerer: the checkpoint worker is more than 3.5 m (`ask_max_distance_m`) from every ask position and re-ask point of
+  every asking node, and every node worker more than 3.5 m from the checkpoint's ask points; Q3 (stricter, the zone rule's own reason):
+  the anchor at least 12.0 m (2 x 6.0 m) from every asking node, so no answer zones overlap.
+- **Reported per branch of every map:** whether any candidate meets P1 to P10 (and with Q1 to Q3); where none does, the binding rule(s):
+  the candidates that pass when one rule alone is dropped, and the rules broken most often. A4 and B4 (random): the proposed checkpoints
+  checked against every plan's drawn workers (count of plans where a rule fails, and which).
+- **Proposed position per branch** (choice rule fixed here): meets P1 to P10 and Q1 to Q2; then not visible (below) from any ask position
+  or re-ask point of the branch's start node; then s nearest the middle of the branch; then the smallest |l|; then the right side.
+- **Visibility, per plan** (seeds 1 and 2, the 10 settings), without and with the proposed checkpoints:
+  - a person is in view of a camera at robot position R when it is rendered (within 8.0 m of the robot: `activation_radius_m`), within
+    the detection range 12 m (`hri_perception.json` evaluation `detection_range_m`), and the straight line from R to it crosses no
+    footprint of the tall obstacle groups (`Shelves`, `Walls`; not the 0.13 m stations), from item 1's export;
+  - 360 camera: every direction. Pan-tilt camera: within half its horizontal field of view, 2 atan(tan(30 deg) x 730 / 530) = 77.1 deg
+    at the default 60 deg (zoom only narrows it), of the pan direction: toward the asked worker at an ask point, the robot's heading while
+    driving (step 5's `decisions.csv`: pan command 0 in every navigate row);
+  - **at each ask point** (every ask position and re-ask point of every asking node and checkpoint of the plan) and **while driving** (every
+    0.5 m along the plan's route from the start to its goal): the number of people in each view; **every ask with 3 or more people in a
+    view is flagged**; per plan the most in view while driving and where;
+  - per plan, the active avatars (P10's count) against the limit 6, without and with the checkpoints.
+- Not modelled: Python turning its approach point by 30-degree steps near another person; a robot standing off the modelled points.
+
+**Commits:** (1) this declaration; (2) the results recorded below, with the two report tools. Each after both suites pass.
