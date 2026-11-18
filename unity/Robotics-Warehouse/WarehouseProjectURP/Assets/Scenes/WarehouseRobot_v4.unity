@@ -8051,6 +8051,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 149790800}
+  - component: {fileID: 149790801}
   m_Layer: 0
   m_Name: Stations
   m_TagString: Untagged
@@ -8098,6 +8099,25 @@ Transform:
   - {fileID: 1351612807}
   m_Father: {fileID: 214774686}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &149790801
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 149790799}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_OverrideArea: 1
+  m_Area: 1
+  m_OverrideGenerateLinks: 0
+  m_GenerateLinks: 0
+  m_IgnoreFromBuild: 0
+  m_ApplyToChildren: 1
+  m_AffectedAgents: ffffffff
 --- !u!1 &150719749
 GameObject:
   m_ObjectHideFlags: 0
@@ -18746,13 +18766,13 @@ MonoBehaviour:
   m_DefaultArea: 0
   m_GenerateLinks: 0
   m_IgnoreNavMeshAgent: 1
-  m_IgnoreNavMeshObstacle: 1
+  m_IgnoreNavMeshObstacle: 0
   m_OverrideTileSize: 0
   m_TileSize: 256
   m_OverrideVoxelSize: 0
   m_VoxelSize: 0.16666667
   m_MinRegionArea: 2
-  m_NavMeshData: {fileID: 23800000, guid: 245bc8b1ab28a914a8f44731e6d8341d, type: 2}
+  m_NavMeshData: {fileID: 23800000, guid: 2f891b1fe7a5bcb4e9bcc9e122fa6814, type: 2}
   m_BuildHeightMesh: 0
 --- !u!4 &386359590
 Transform:

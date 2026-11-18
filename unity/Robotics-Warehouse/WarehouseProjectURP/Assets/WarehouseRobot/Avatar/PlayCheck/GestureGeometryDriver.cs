@@ -57,6 +57,12 @@ namespace WarehouseRobot.AvatarCheck
             public float max_palm_bone_deg = -1f, max_palm_mesh_deg = -1f, max_palm_mesh_flatness = -1f, max_thumb_palm_lengths = -1f;
             public float min_thumb_side = 999f, min_thumb_across = 999f, max_thumb_across = -999f;
             public string hand_first_failure = "";
+            // section 15 addendum 1, item 3d (PROCEED takes, reported only): the palm normal from the bones against the direction to the
+            // robot camera and to the worker's torso centre, over every measured frame of the swing window; -1 = not measured
+            public int proceed_palm_frames, proceed_palm_toward_camera_frames, proceed_palm_camera_under60_frames;
+            public float min_palm_camera_deg = -1f, mean_palm_camera_deg = -1f, max_palm_camera_deg = -1f;
+            public float min_palm_body_deg = -1f, mean_palm_body_deg = -1f, max_palm_body_deg = -1f;
+            [NonSerialized] public float SumPalmCamera, SumPalmBody;
             /// <summary>Section 12 addendum 1 (diagnostic, first measured frame): the mesh palm normal of each sub-mesh's palm vertices.</summary>
             public string palm_mesh_groups = "";
             // section 12 addendum 5: skinning (forearm volume, torso rigidity); -1 / 999 = not measured
@@ -243,6 +249,7 @@ namespace WarehouseRobot.AvatarCheck
             WriteNew(Path.Combine(OutputFolder, "table.md"), Table(file));
             WriteNew(Path.Combine(OutputFolder, "hand_table.md"), HandTable(file, m_Cfg.tolerance));
             WriteNew(Path.Combine(OutputFolder, "skin_table.md"), SkinTable(file, m_Cfg.skinning));
+            WriteNew(Path.Combine(OutputFolder, "proceed_palm_table.md"), ProceedPalmTable(file));
             Git(out info.git_commit, out info.git_branch);
             info.finished_local = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", Inv);
             info.unity_version = Application.unityVersion;
@@ -548,6 +555,7 @@ namespace WarehouseRobot.AvatarCheck
             }
             var pc = m_Cfg.tolerance.palm_commands;
             if (pc != null && Array.IndexOf(pc, rec.command) >= 0) MeasureHand(s, rec, right);
+            if (s.Proceed) MeasureProceedPalm(s, rec, right);
             // section 12 addendum 5: skinning on the hold frames; PROCEED on proceed_frames frames evenly over its window
             if (!s.Proceed) MeasureSkin(s, rec, right);
             else if (s.NextSkin < s.SkinTimes.Count && Time.time >= s.SkinTimes[s.NextSkin])
@@ -555,6 +563,66 @@ namespace WarehouseRobot.AvatarCheck
                 MeasureSkin(s, rec, right);
                 while (s.NextSkin < s.SkinTimes.Count && Time.time >= s.SkinTimes[s.NextSkin]) s.NextSkin++;
             }
+        }
+
+        /// <summary>Section 15 addendum 1, item 3d (reported only): on a PROCEED frame, the angle of the palm normal (bones, LookPoser's
+        /// convention) to the direction to the robot camera and to the worker's torso centre (halfway between the midpoint of the UpperArm
+        /// bones and the Hips bone). Toward the body is the design; toward the camera is what MediaPipe would see as an open palm.</summary>
+        void MeasureProceedPalm(Site s, TakeRecord rec, bool right)
+        {
+            var f = HandGeometry.Frame(right ? s.ArmR : s.ArmL);
+            var a = s.Worker.Animator;
+            Transform l = a.GetBoneTransform(HumanBodyBones.LeftUpperArm), r = a.GetBoneTransform(HumanBodyBones.RightUpperArm), hips = a.GetBoneTransform(HumanBodyBones.Hips);
+            if (!f.Valid || l == null || r == null || hips == null) return;
+            var torso = ((l.position + r.position) * 0.5f + hips.position) * 0.5f;
+            float cam = Vector3.Angle(f.Normal, s.Robot.position - f.P), body = Vector3.Angle(f.Normal, torso - f.P);
+            if (rec.proceed_palm_frames == 0)
+            {
+                rec.min_palm_camera_deg = rec.max_palm_camera_deg = cam;
+                rec.min_palm_body_deg = rec.max_palm_body_deg = body;
+            }
+            rec.proceed_palm_frames++;
+            rec.SumPalmCamera += cam;
+            rec.SumPalmBody += body;
+            rec.min_palm_camera_deg = R2(Mathf.Min(rec.min_palm_camera_deg, cam));
+            rec.max_palm_camera_deg = R2(Mathf.Max(rec.max_palm_camera_deg, cam));
+            rec.min_palm_body_deg = R2(Mathf.Min(rec.min_palm_body_deg, body));
+            rec.max_palm_body_deg = R2(Mathf.Max(rec.max_palm_body_deg, body));
+            rec.mean_palm_camera_deg = R2(rec.SumPalmCamera / rec.proceed_palm_frames);
+            rec.mean_palm_body_deg = R2(rec.SumPalmBody / rec.proceed_palm_frames);
+            if (cam < body) rec.proceed_palm_toward_camera_frames++;
+            if (cam < 60f) rec.proceed_palm_camera_under60_frames++;
+        }
+
+        /// <summary>Section 15 addendum 1, item 3d: the PROCEED palm per look and take (reported only; no pass rule).</summary>
+        static string ProceedPalmTable(GeometryFile f)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"# PROCEED palm direction ({(f.label.Length > 0 ? f.label + ", " : "")}{f.created_local})\n\n");
+            sb.Append("experiments_ab.md section 15 addendum 1, item 3d (declared 2026-11-17; reported only, no pass rule, the other checks unchanged). On every " +
+                      "measured frame of the PROCEED swing window, the palm normal from the bones (HandGeometry.Frame: the LookPoser.PalmNormal convention the " +
+                      "hand shaper aligns) against the direction to the stand-in robot camera and against the direction to the worker's torso centre " +
+                      "(halfway between the midpoint of the two UpperArm bones and the Hips bone). 0 deg = the palm faces it. 'toward camera' = frames whose " +
+                      "camera angle is smaller than their body angle; 'camera < 60' = frames with the palm within 60 deg of the camera. No perception.\n\n");
+            sb.Append("| look | kind | arm | clip | take | frames | palm vs camera min / mean / max (deg) | palm vs torso min / mean / max (deg) | toward camera | camera < 60 |\n");
+            sb.Append("|---|---|---|---|---|---|---|---|---|---|\n");
+            var summary = new List<string>();
+            foreach (var l in f.looks)
+            {
+                if (l.status != "ok") { sb.Append($"| {l.id} | {l.kind_group} | {l.status} | | | | | | | |\n"); continue; }
+                int n = 0, toward = 0, under = 0;
+                foreach (var t in l.takes.Where(x => x.proceed_palm_frames > 0))
+                {
+                    n += t.proceed_palm_frames;
+                    toward += t.proceed_palm_toward_camera_frames;
+                    under += t.proceed_palm_camera_under60_frames;
+                    sb.Append($"| {l.id} | {l.kind_group} | {t.arm} | {t.clip} | {t.take} | {t.proceed_palm_frames} | {F(t.min_palm_camera_deg)} / {F(t.mean_palm_camera_deg)} / {F(t.max_palm_camera_deg)} | " +
+                              $"{F(t.min_palm_body_deg)} / {F(t.mean_palm_body_deg)} / {F(t.max_palm_body_deg)} | {t.proceed_palm_toward_camera_frames} | {t.proceed_palm_camera_under60_frames} |\n");
+                }
+                summary.Add($"- {l.id}: {n} PROCEED frames; palm toward the camera more than toward the body in {toward}; within 60 deg of the camera in {under}");
+            }
+            sb.Append("\nPer look:\n\n").Append(string.Join("\n", summary)).Append('\n');
+            return sb.ToString();
         }
 
         /// <summary>Section 12: the gesturing hand's palm normal (bones; skinned mesh) against the robot camera, and the WAIT thumb.</summary>

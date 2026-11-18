@@ -108,6 +108,8 @@ namespace WarehouseAvatar.Tests
             var expect = new List<string>
             {
                 P + "Assets/Scenes/WarehouseRobot_v4.unity",
+                // experiments_ab.md section 15 addendum 2 (2026-11-17): the v4 scene's own NavMesh (racks, pallets, stations baked)
+                P + "Assets/Scenes/WarehouseRobot_v4/NavMesh-AMR.asset",
                 P + "Assets/WarehouseRobot/Bridge/Config/bridge_unity_v4.json",
                 P + "Assets/WarehouseRobot/Robot/Config/robot_unity_v4.json",
                 P + "Assets/WarehouseRobot/Avatar/Config/worker_v4.json",

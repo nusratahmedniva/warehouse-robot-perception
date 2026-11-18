@@ -1,0 +1,22 @@
+{
+  "note": "Inputs of finals_v4/layout_search_v4.py (Avatar/Config/experiments_ab.md section 15 addendum 3). Paths relative to the repository root. Geometry only: map and config files, the saved ground-truth grid of a development run and the cell classification of the v4 NavMesh verification; no trial result is read.",
+  "scenarios_ab": "robot_vision/configs/v4/experiments/scenarios_ab.json",
+  "roadmap_v4": "robot_vision/configs/v4/roadmap.json",
+  "control_v4": "robot_vision/configs/v4/control.json",
+  "experiments_unity": "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json",
+  "grid": "robot_vision/outputs/trials_development_Task2_A3_20261116_222448/run_001/grid.json",
+  "navmesh_cells": "robot_vision/outputs/navmesh_v4_check_20261117_053355/grid_disagreements.csv",
+  "outputs": "robot_vision/outputs",
+  "search": {
+    "slot_before_m": [-8.0, 10.0],
+    "slot_right_m": [-4.5, 4.5],
+    "slot_step_m": 0.5,
+    "report_clearance_m": 1.4,
+    "lattice_step_m": 0.25,
+    "relaxed_clearance_step_m": 0.05,
+    "half_sizes_m": [3.0, 3.5, 4.0, 4.5, 5.0],
+    "mc_draws": 2000000,
+    "mc_seed": 1,
+    "fail_chance_max": 0.001
+  }
+}

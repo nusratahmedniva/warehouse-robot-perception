@@ -35,6 +35,20 @@ namespace WarehouseHRI.V4
         public string file;
     }
 
+    /// <summary>
+    /// experiments_ab.md section 15 addendum 1, item 3b: the layout that keeps the path clearance. active false: the live layout without
+    /// the clearance and the ask-zone checks; active true: these junction slots, two workers per node in the listed experiments, and both
+    /// checks. Active since addendum 4 (2026-11-18) with layout (i) of addendum 3, as Anisha's scenarios_ab.json.
+    /// </summary>
+    [Serializable]
+    public class ClearanceLayout
+    {
+        public bool active;
+        public SlotDef[] junction_slots = new SlotDef[0];
+        /// <summary>Experiments whose three_worker_nodes become empty (A4, B4: 3 random workers at J1 cannot keep the clearance).</summary>
+        public string[] two_worker_experiments = new string[0];
+    }
+
     /// <summary>Scenario/Config/experiments_ab_unity.json (experiments_ab.md sections 3 and 4).</summary>
     [Serializable]
     public class ExperimentsUnityConfig
@@ -60,11 +74,33 @@ namespace WarehouseHRI.V4
         public MapProposal[] proposals = new MapProposal[0];
         public float[] truthful_rgb = new float[0];
         public float[] liar_rgb = new float[0];
+        /// <summary>Section 15 addendum 1, item 3a: a worker answers only while the robot's centre is this close to the worker's own node.</summary>
+        public float answer_zone_radius_m;
+        /// <summary>Item 3b: every modelled ask position lies within answer_zone_radius_m minus this of its node (clearance_layout active only).</summary>
+        public float answer_zone_margin_m;
+        /// <summary>Item 3b: no worker this close to a segment the robot can drive (clearance_layout active only).</summary>
+        public float path_clearance_m;
+        /// <summary>Item 3b, the ask-position model: copies of Python's hri_control.json dialog.approach_distance_m and of the v4 controller's
+        /// configs/v4/control.json dialog.reask_shift_m (section 15 addendum 3).</summary>
+        public float ask_standoff_m;
+        public float reask_shift_m;
+        public ClearanceLayout clearance_layout = new ClearanceLayout();
 
         public static ExperimentsUnityConfig Parse(string json) =>
             JsonUtility.FromJson<ExperimentsUnityConfig>(json ?? "") ?? throw new FormatException("experiments_ab_unity.json: not a JSON object");
 
         public ExperimentDef Experiment(string name) => Array.Find(experiments ?? new ExperimentDef[0], e => e != null && e.name == name);
+
+        /// <summary>A copy with the pending layout applied and active (item 3b): what the config becomes when the block is switched on.</summary>
+        public ExperimentsUnityConfig WithClearanceLayout()
+        {
+            var c = Parse(JsonUtility.ToJson(this));
+            c.junction_slots = c.clearance_layout.junction_slots;
+            foreach (var e in c.experiments)
+                if (e != null && Array.IndexOf(c.clearance_layout.two_worker_experiments ?? new string[0], e.name) >= 0) e.three_worker_nodes = new string[0];
+            c.clearance_layout.active = true;
+            return c;
+        }
 
         public List<string> Validate()
         {
@@ -74,7 +110,12 @@ namespace WarehouseHRI.V4
             else
                 foreach (var x in experiments)
                     if (x == null || string.IsNullOrEmpty(x.name) || (x.set != "A" && x.set != "B") || string.IsNullOrEmpty(x.scenario)) e.Add("experiments: every entry needs name, set A or B and scenario");
-            if (junction_slots == null || junction_slots.Length < 3 || start_slots == null || start_slots.Length < 3) e.Add("junction_slots and start_slots: 3 slots each");
+            // section 15 addendum 4: two junction slots suffice (layout (i)); a third only where an experiment keeps a third worker
+            bool third = Array.Exists(experiments ?? new ExperimentDef[0], x => x != null && x.three_worker_nodes != null && x.three_worker_nodes.Length > 0);
+            bool thirdInBlock = Array.Exists(experiments ?? new ExperimentDef[0], x => x != null && x.three_worker_nodes != null && x.three_worker_nodes.Length > 0
+                                                 && Array.IndexOf(clearance_layout?.two_worker_experiments ?? new string[0], x.name) < 0);
+            if (junction_slots == null || junction_slots.Length < (third ? 3 : 2)) e.Add($"junction_slots: {(third ? 3 : 2)} slots (3 when an experiment lists three_worker_nodes)");
+            if (start_slots == null || start_slots.Length < 3) e.Add("start_slots: 3 slots");
             if (!(approach_m > 0f) || !(nearer_margin_m > 0f) || !(random_nearer_margin_m > 0f)) e.Add("approach_m, nearer_margin_m and random_nearer_margin_m must be > 0");
             if (random_max_draws < 1) e.Add("random_max_draws must be >= 1");
             if (!(ask_max_distance_m > 0f) || !(activation_radius_m > 0f) || !(activation_sample_step_m > 0f)) e.Add("ask_max_distance_m, activation_radius_m and activation_sample_step_m must be > 0");
@@ -82,6 +123,12 @@ namespace WarehouseHRI.V4
             if (a2_sides == null || a2_sides.Length == 0) e.Add("a2_sides: right and/or left");
             else foreach (var s in a2_sides) if (s != "right" && s != "left") e.Add("a2_sides: right and/or left");
             if (truthful_rgb == null || truthful_rgb.Length != 3 || liar_rgb == null || liar_rgb.Length != 3) e.Add("truthful_rgb and liar_rgb: three numbers each");
+            if (!(answer_zone_radius_m > 0f)) e.Add("answer_zone_radius_m must be > 0");
+            if (!(answer_zone_margin_m >= 0f) || !(answer_zone_margin_m < answer_zone_radius_m)) e.Add("answer_zone_margin_m must be in [0, answer_zone_radius_m)");
+            if (!(path_clearance_m > 0f) || !(ask_standoff_m > 0f) || !(reask_shift_m >= 0f)) e.Add("path_clearance_m and ask_standoff_m must be > 0, reask_shift_m >= 0");
+            if (clearance_layout == null || clearance_layout.junction_slots == null || clearance_layout.junction_slots.Length < (thirdInBlock ? 3 : 2))
+                e.Add($"clearance_layout.junction_slots: {(thirdInBlock ? 3 : 2)} slots (3 when an experiment outside two_worker_experiments lists three_worker_nodes)");
+            else foreach (var n in clearance_layout.two_worker_experiments ?? new string[0]) if (Experiment(n) == null) e.Add($"clearance_layout.two_worker_experiments: '{n}' is not an experiment");
             return e;
         }
     }
@@ -90,6 +137,9 @@ namespace WarehouseHRI.V4
     public sealed class PlacementRule
     {
         public float MinWorkerSeparationM, MinTurningPointM, MinRoadM, ApproachM, NearerMarginM;
+        /// <summary>Section 15 addendum 1, item 3b (0 = off: clearance_layout inactive): the path clearance, the largest distance of an ask
+        /// position from its node (answer zone minus margin) and the ask-position model.</summary>
+        public float PathClearanceM, AskZoneM, StandoffM, ReaskShiftM;
     }
 
     /// <summary>One worker of one run: where it stands, its look and what it answers when asked.</summary>
@@ -150,8 +200,10 @@ namespace WarehouseHRI.V4
             error = null;
             var ce = cfg.Validate();
             if (ce.Count > 0) { error = "experiments_ab_unity.json: " + string.Join("; ", ce); return null; }
+            if (cfg.clearance_layout != null && cfg.clearance_layout.active) cfg = cfg.WithClearanceLayout();
             var def = cfg.Experiment(experiment);
             if (def == null) { error = $"experiment '{experiment}' is not in experiments_ab_unity.json"; return null; }
+            bool clear = cfg.clearance_layout != null && cfg.clearance_layout.active;
             try
             {
                 var root = (Dictionary<string, object>)MiniJson.Parse(scenariosJson);
@@ -169,6 +221,8 @@ namespace WarehouseHRI.V4
                         MinWorkerSeparationM = (float)(double)pr["min_worker_separation_m"], MinTurningPointM = (float)(double)pr["min_turning_point_m"],
                         MinRoadM = layout.TryGetValue("min_road_m", out var mr) ? (float)(double)mr : 0f,
                         ApproachM = cfg.approach_m, NearerMarginM = (string)layout["kind"] == "random" ? cfg.random_nearer_margin_m : cfg.nearer_margin_m,
+                        PathClearanceM = clear ? cfg.path_clearance_m : 0f, AskZoneM = clear ? cfg.answer_zone_radius_m - cfg.answer_zone_margin_m : 0f,
+                        StandoffM = cfg.ask_standoff_m, ReaskShiftM = cfg.reask_shift_m,
                     },
                     HalfSizeM = layout.TryGetValue("half_size_m", out var hs) ? (float)(double)hs : 0f,
                     m_People = (int)(double)layout["people"],
@@ -290,6 +344,29 @@ namespace WarehouseHRI.V4
             var eps = Endpoints(Map);
             var g = new GoalSequence(seed);
             for (int i = 0; i < runs; i++) list.Add(eps[g.NextGoalIndex(eps.Count)]);
+            return list;
+        }
+
+        /// <summary>
+        /// Section 15 addendum 1, item 3c (development only): the goals of TrialPlayV4 -experimentGoals "E5,E6,...", one per run, in place of
+        /// the seeded goals. Null and no error when <paramref name="spec"/> is empty (no override). Refused (null with the reason) in a final,
+        /// on a fixed-goal map, for a name that is not an endpoint of the map, or for a list whose length is not the number of runs.
+        /// </summary>
+        public List<string> GoalsOverride(string spec, bool final, int runs, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(spec)) return null;
+            if (final) { error = "-experimentGoals is for development sessions only; a final takes its goals from the seed"; return null; }
+            if (Goal != "random_endpoint") { error = $"-experimentGoals: experiment {Def.name} has the fixed goal {Goal} (map {MapName}); only a random-endpoint map takes goals"; return null; }
+            var eps = Endpoints(Map);
+            var list = new List<string>();
+            foreach (var part in spec.Split(','))
+            {
+                string g = part.Trim();
+                if (eps.IndexOf(g) < 0) { error = $"-experimentGoals: '{g}' is not an endpoint of map {MapName} ({string.Join(", ", eps)})"; return null; }
+                list.Add(g);
+            }
+            if (list.Count != runs) { error = $"-experimentGoals: {list.Count} goal(s) for {runs} run(s); give exactly one per run"; return null; }
             return list;
         }
 
@@ -421,6 +498,7 @@ namespace WarehouseHRI.V4
                     if (m < Rule.NearerMarginM) return $"worker {i + 1} is only {m:0.00} m farther than the first worker on the approach (< {Rule.NearerMarginM})";
                 }
             }
+            if (Rule.PathClearanceM > 0f || Rule.AskZoneM > 0f) return ClearanceProblem(map, node, pos, placed, roads);
             return null;
         }
 
@@ -446,6 +524,123 @@ namespace WarehouseHRI.V4
                 best = Mathf.Min(best, Flat(q - other) - Flat(q - first));
             }
             return best;
+        }
+
+        // ---------------------------------------------------------------- the path clearance (section 15 addendum 1, item 3b)
+
+        /// <summary>A straight piece of the robot's drive (Python's _target: the robot heads for one point at a time).</summary>
+        public struct DriveSegment
+        {
+            public Vector3 A, B;
+            public string Label;
+        }
+
+        /// <summary>
+        /// Item 3b: the segments the robot can drive at one asking node with these workers (in slot order): from the node to the ask position
+        /// of each worker in every order (second opinions), including the return to the first worker of an order (the tie rule), and from
+        /// every ask position and its re-ask point to the next node of every branch of the node. <paramref name="asks"/>: every modelled ask
+        /// position and re-ask point. Roads are not included (Roads()).
+        /// </summary>
+        public static List<DriveSegment> DrivableSegments(RoadmapV4 map, RoadmapV4.NodeDef node, IList<Vector3> workers, float standoff, float shift,
+                                                          out List<Vector3> asks)
+        {
+            var segs = new List<DriveSegment>();
+            asks = new List<Vector3>();
+            var c = Pos(node);
+            var order = new List<int>();
+            for (int i = 0; i < workers.Count; i++) order.Add(i);
+            foreach (var perm in Permutations(order))
+            {
+                var prev = c;
+                string from = node.Name;
+                for (int k = 0; k <= perm.Count; k++)
+                {
+                    if (k == perm.Count && perm.Count < 2) break;
+                    int i = k < perm.Count ? perm[k] : perm[0];        // after the last: back to the first (tie)
+                    var a = AskPosition(workers[i], prev, standoff);
+                    segs.Add(new DriveSegment { A = prev, B = a, Label = $"{from} to the ask position of worker {i + 1}{(k == perm.Count ? " (again)" : "")}" });
+                    AddPoint(asks, a);
+                    AddPoint(asks, ReaskPosition(workers[i], a, standoff, shift));
+                    prev = a;
+                    from = $"the ask position of worker {i + 1}";
+                }
+            }
+            if (map.Branches.TryGetValue(node.Name, out var branches))
+                foreach (var a in asks)
+                    foreach (var b in branches)
+                        segs.Add(new DriveSegment { A = a, B = Pos(map.Node(b.Value)), Label = $"{node.Name}: ask position ({a.x:0.00}, {a.z:0.00}) to {b.Value} ({b.Key})" });
+            return segs;
+        }
+
+        /// <summary>Python's re-ask point (hri_control._reposition): <paramref name="shift"/> to the robot's right as it faces the worker,
+        /// back onto the standoff circle.</summary>
+        public static Vector3 ReaskPosition(Vector3 worker, Vector3 ask, float standoff, float shift)
+        {
+            if (!(shift > 0f)) return ask;
+            var h = new Vector3(worker.x - ask.x, 0f, worker.z - ask.z);
+            if (h.sqrMagnitude < 1e-12f) return ask;
+            h.Normalize();
+            var right = new Vector3(h.z, 0f, -h.x);
+            return AskPosition(worker, ask + right * shift, standoff);
+        }
+
+        static void AddPoint(List<Vector3> list, Vector3 p)
+        {
+            foreach (var q in list) if (Flat(q - p) < 1e-3f) return;
+            list.Add(p);
+        }
+
+        static IEnumerable<List<int>> Permutations(List<int> items)
+        {
+            if (items.Count <= 1) { yield return new List<int>(items); yield break; }
+            for (int i = 0; i < items.Count; i++)
+            {
+                var rest = new List<int>(items);
+                rest.RemoveAt(i);
+                foreach (var p in Permutations(rest))
+                {
+                    p.Insert(0, items[i]);
+                    yield return p;
+                }
+            }
+        }
+
+        /// <summary>The first clearance or ask-zone rule the workers of <paramref name="node"/> break with the workers already placed, or null:
+        /// every worker (here and placed) keeps PathClearanceM from this node's segments, this node's workers keep it from the roads and from
+        /// the segments of every node placed before, and every ask position of this node lies within AskZoneM of it.</summary>
+        string ClearanceProblem(RoadmapV4 map, RoadmapV4.NodeDef node, IList<Vector3> pos, IList<PlannedWorker> placed, List<KeyValuePair<Vector3, Vector3>> roads)
+        {
+            var segs = DrivableSegments(map, node, pos, Rule.StandoffM, Rule.ReaskShiftM, out var asks);
+            if (Rule.AskZoneM > 0f)
+                foreach (var a in asks)
+                    if (Flat(a - Pos(node)) > Rule.AskZoneM + 1e-4f)
+                        return $"an ask position ({a.x:0.00}, {a.z:0.00}) is {Flat(a - Pos(node)):0.00} m from {node.Name} (> {Rule.AskZoneM:0.00}, the answer zone minus its margin)";
+            if (!(Rule.PathClearanceM > 0f)) return null;
+            float clr = Rule.PathClearanceM - 1e-4f;
+            for (int i = 0; i < pos.Count; i++)
+            {
+                foreach (var r in roads)
+                    if (SegmentDistance(pos[i], r.Key, r.Value) < clr) return $"worker {i + 1} is {SegmentDistance(pos[i], r.Key, r.Value):0.00} m from a road (< {Rule.PathClearanceM})";
+                foreach (var s in segs)
+                    if (SegmentDistance(pos[i], s.A, s.B) < clr) return $"worker {i + 1} is {SegmentDistance(pos[i], s.A, s.B):0.00} m from {s.Label} (< {Rule.PathClearanceM})";
+            }
+            foreach (var q in placed)
+                foreach (var s in segs)
+                    if (SegmentDistance(q.Position, s.A, s.B) < clr) return $"worker {q.Id} ({q.Node}) is {SegmentDistance(q.Position, s.A, s.B):0.00} m from {s.Label} (< {Rule.PathClearanceM})";
+            var nodesBefore = new List<string>();
+            foreach (var q in placed) if (!nodesBefore.Contains(q.Node)) nodesBefore.Add(q.Node);
+            foreach (var name in nodesBefore)
+            {
+                var theirs = new List<PlannedWorker>();
+                foreach (var q in placed) if (q.Node == name) theirs.Add(q);
+                theirs.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+                var wpos = new List<Vector3>();
+                foreach (var q in theirs) wpos.Add(q.Position);
+                foreach (var s in DrivableSegments(map, map.Node(name), wpos, Rule.StandoffM, Rule.ReaskShiftM, out _))
+                    for (int i = 0; i < pos.Count; i++)
+                        if (SegmentDistance(pos[i], s.A, s.B) < clr) return $"worker {i + 1} is {SegmentDistance(pos[i], s.A, s.B):0.00} m from {s.Label} (< {Rule.PathClearanceM})";
+            }
+            return null;
         }
 
         static void DrawLie(RoadmapV4 map, PlannedWorker w, int seed, int run, float p)
@@ -502,6 +697,19 @@ namespace WarehouseHRI.V4
                 if (a < bestAngle) { bestAngle = a; best = h.Key; }
             }
             return best;
+        }
+
+        /// <summary>Section 15 addendum 1, item 3a: a worker answers only while the robot's centre is within <paramref name="radius"/> of the
+        /// worker's own node (horizontal); outside it the asked worker shows nothing (NONE).</summary>
+        public static bool InAnswerZone(Vector3 robot, Vector3 node, float radius) => Flat(robot - node) <= radius;
+
+        /// <summary>Where Python stands to ask a worker (hri_control dialog.approach_distance_m): <paramref name="standoff"/> from the
+        /// worker toward <paramref name="from"/> (the node, or the previous ask position), horizontal.</summary>
+        public static Vector3 AskPosition(Vector3 worker, Vector3 from, float standoff)
+        {
+            var d = new Vector3(from.x - worker.x, 0f, from.z - worker.z);
+            if (d.sqrMagnitude < 1e-12f) d = Vector3.right;
+            return new Vector3(worker.x, 0f, worker.z) + d.normalized * standoff;
         }
 
         public static float Flat(Vector3 v) => new Vector2(v.x, v.z).magnitude;

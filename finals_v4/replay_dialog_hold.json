@@ -1,0 +1,6 @@
+{
+  "note": "Inputs of finals_v4/replay_dialog_hold.py (Avatar/Config/experiments_ab.md section 15 addendum 3, item 4). Paths relative to the repository root. Read only on the step-5 bridge folders (development data).",
+  "sessions": "robot_vision/outputs/step5_sessions.json",
+  "python_root": "robot_vision",
+  "outputs": "robot_vision/outputs"
+}

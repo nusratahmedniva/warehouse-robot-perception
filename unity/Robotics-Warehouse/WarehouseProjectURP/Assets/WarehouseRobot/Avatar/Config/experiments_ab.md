@@ -1629,3 +1629,787 @@ decision 3: **20 STOPs per look (10 per arm), part of them while driving**. Sess
 - **Checks:** `zipfile.testzip` clean; Anisha's `analyse_false_stop_v4.Logs` reads both sessions as they are (S1: 64 runs, 11,236 decision
   rows, 16,819 model-output lines; S2: 14 runs, 3,650 decision rows, 4,774 model-output lines); every run passes her split guard as
   development.
+
+## 2026-11-16, section 15: step 5, development runs of the final matrix (STOPPED by the Set A wrong-branch rule after A3)
+
+Branch `nusrat/v4-step5-dev` = main 8848a7a (PR #39: Anisha's STOP rule, `gesture_reader.json` `stop_requires_raised` true,
+`stop_fingertip_spread_min` 1.3). Unity side only: nothing under `robot_vision/`, `docs/` or `external/` changed, nothing frozen, no final
+run, nothing tuned. **Development data, not a result.**
+
+**Plan (Nusrat's task):** the 13 final settings, 3 runs each, with `finals_v4/run_session_v4.ps1 -Rehearsal -Trials 3`. That means the final
+settings' maps, routes, lie switches and control files, with the dev seed (1), development looks and clips, and the development timeout
+(420 s, `trial_plan_v4.json`). Each B setting runs next to its `_off` partner; the session runs in the Unity Editor window. Stop rule: a
+wrong-branch decision in Set A ends the step after that setting's 3 runs.
+
+**Preconditions:**
+- branch = origin/main 8848a7a, clean;
+- Python 1163 OK (2 skipped), Unity Edit Mode 319/319;
+- free memory 3,317 MB of 14,226 MB, power mode Best performance on mains;
+- still running and not closed: Chrome x9 (about 620 MB) and the Claude / VS Code session. "Other apps closed" was therefore NOT fully met;
+  disclosed.
+
+**Run (one Unity start and one server per session):**
+- Sitting 1 (21:28 to 22:22): A1, B1, B1_off, A2_right, B2_right, B2_right_off, A2_left.
+- Sitting 2 (22:23): A3.
+- Then STOPPED. Not run: B3, B3_off, A4, B4, B4_off, and the avatar-experiment rehearsal.
+- Free memory before each session: 3.3 to 4.6 GB, never under 2 GB. Minimum during the sessions (bridge `resources.csv`): 293 to 637 MB.
+
+**Checks, every session:**
+- launcher B11 check REHEARSAL VALID;
+- leak test passed in Unity (`session.json` `leak_test.passed`) and in Python (`gt_path.py session`);
+- every `run_###/truth.jsonl` accepted by `gesture_data.py --messages`;
+- `export_csv_v4.py --session` (development) written.
+
+**Outcomes:**
+
+| setting | SUCCESS | failures | longest run (s) | dialogs: correct / wrong branch / asked again / abort | accepted STOPs (true / false) | watchdog | round trip max (ms) | loop lag max (ms) |
+|---|---|---|---|---|---|---|---|---|
+| A1 | 3/3 | - | 84.7 | 6 / 0 / 0 / 0 | 0 / 19 | 0 | 70.7 | 68 |
+| B1 | 3/3 | - | 93.0 | 5 / 0 / 1 / 0 (1 rejected) | 0 / 15 | 0 | 61.3 | 68 |
+| B1_off | 3/3 | - | 68.9 | 3 / 0 / 0 / 0 | 0 / 10 | 0 | 97.1 | 115 |
+| A2_right | 2/3 | run 3 aborted at A | 139.4 | 7 / 0 / 5 / 3 | 0 / 21 | 0 | 58.9 | 68 |
+| B2_right | 3/3 | - | 138.7 | 8 / 0 / 6 / 2 (2 rejected) | 0 / 32 | 0 | 215.5 | 225 |
+| B2_right_off | 1/3 | run 1 aborted at B, run 2 at A | 99.9 | 3 / 0 / 3 / 2 | 0 / 19 | 0 | 42.8 | 83 |
+| A2_left | 1/3 | runs 1 and 3 aborted at A | 164.7 | 2 / 0 / 7 / 6 (1 rejected) | 0 / 27 | 0 | 65.0 | 84 |
+| A3 | 1/3 | runs 1 and 2 timed out (420 s) | 420.0 | 9 / 2 / 6 / 5 | 0 / 23 | 0 | 46.0 | 52 |
+
+- **Every abort:** "gesture unclear after 2 asks" (PROCEED unread at A or B).
+- **False STOPs:**
+  - all 166 accepted STOPs were false; no worker shows STOP in the experiments;
+  - 154 came while the commander swung PROCEED (phase holding), 12 right after it (phase returning);
+  - all came in the states read, approach or execute, none while navigating;
+  - each episode lasted at most about 0.4 s;
+  - these are STOP-gesture episodes in `decisions.csv`. Python's own `safety_stops` counts every safety stop (STOP gesture and person in
+    path), so it is a different count. It equals the STOP episodes only in A1 (19) and B1 (15). A3: 58 against 23 STOP and 34
+    person-in-path episodes. B1_off, A2_right, B2_right, B2_right_off, A2_left: 1 to 3 more than the STOP episodes (`decisions.csv`
+    has one row per 0.1 s, so a shorter stop may not show). *Corrected 2026-11-17 (addendum 1, item 3e); the sentence first said the
+    counts equal Python's `safety_stops` per run.*
+- **Set B lies (given / detected / corrected / fooled):** B1 2/2/2/0, B1_off 0/0/0/0, B2_right 4/3/3/0, B2_right_off 2/0/0/0.
+  - Without a second opinion the liar at A is seldom asked, so `_off` gives fewer lies.
+  - Mean time minus the matching A setting: B1 +3.2 s, B1_off -15.5 s, B2_right +31.7 s, B2_right_off -40.0 s. These means mix in
+    failures; the per-run pairs are in the report.
+- **Closest person:** at least 1.10 m in every setting except A3 (0.38 and 0.41 m, both while stopped; no collision).
+
+**The stop (A3 run 1, goal E2, J1 true branch LEFT):**
+- J1's three workers pointed LEFT. Their answers were ambiguous (second view) or unread.
+- Looking for a second opinion, the robot approached the next person: J2's workers (w7 at (-0.75, 2.0), w6 at (-3.25, -2.0)). It drove
+  about 3.7 m from J1 toward J2 to ask them.
+- Unity's answer rule ("the active worker within 3.5 m nearest the pan-tilt axis answers") let them answer for THEIR node. Unity's
+  `truth_run001.json` `shown` says junction J2, RIGHT (north, toward E2).
+- Python, still at J1 heading north, resolved that pointing as FORWARD. The reader read what was shown; the export marks it truthful.
+- Two answers agreed, so the controller decided "go FORWARD" at J1 (t 160.99 s): a wrong-branch decision.
+- The robot never drove that branch: it stood "stopped: person in path" next to w7 until the timeout.
+- Run 2 timed out the same way after a correct "go RIGHT": stopped next to a worker beside J3.
+- **Cause, as found:** a scenario fault in the multi-node "beside" layout (like the R3 bystander finding of Stage D2, `upgrade_design.md`). It is not a reader
+  error. Fix options are for Nusrat and Anisha, not chosen here:
+  - Unity: a worker answers only an ask at its own node;
+  - Python: the second-opinion search stays near the junction;
+  - placement: wider slots.
+
+**Tools (new, `finals_v4/`):**
+- `step5_session_checks.ps1`: the extra checks, the export and the session list `robot_vision/outputs/step5_sessions.json`. It also rewrites
+  the launcher's console transcript (`outputs/step5_launcher_<setting>.txt`) with repository-relative paths. The first transcripts held
+  absolute paths, and the Python test `test_run_paths` (no absolute path under `outputs/`) failed on them. They were rewritten the same
+  way; nothing else changed.
+- `step5_report.py`: the per-setting report, `step5_durations_<time>.csv` and `step5_stops_<time>.csv`. Evaluation only.
+- `avatar_rehearsal_check.py`: the blind format check of the avatar rehearsal. No model; tested read-only on an old Edit-mode folder; not
+  yet used.
+- **Fix in `check_session_v4.ps1`:** it inherited `$ErrorActionPreference = "Stop"` from the launcher, so the stderr of criterion 2 ("not
+  frozen") ended the check after criterion 1. It now sets Continue in its own scope. A1's check was run by hand: VALID.
+
+**Outputs (`robot_vision/outputs/`, git-ignored):**
+- `step5_report_20261116_224356.md`, `step5_durations_20261116_224356.csv`, `step5_stops_20261116_224356.csv`;
+- `step5_launcher_<setting>.txt`;
+- `run_protocol_rehearsal_<setting>_*.txt`.
+
+### 2026-11-17, section 15 addendum 1: after the diagnosis (declared before any change below)
+
+Nusrat's task of 2026-11-17, after the report-only diagnosis (PROCEED: the pose did not cause the PROCEED misses or the false STOPs; no pose
+change). Branch `nusrat/v4-step5-dev`. Nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run,
+nothing is pushed. Development work, not a result.
+
+**Already done before this declaration (read only, no change to the repository):**
+- Item 1, the zip for Anisha. It reads `outputs/` only and adds one new zip file (record below).
+- A geometry-only model of the placement, used to find out whether item 3b can be met. It uses the config and map files and one run's saved
+  `grid.json` for the free cells; it reads no trial results. Findings that shaped this declaration:
+  - with the beside slots of section 3 and a 1.0 m clearance, workers on `turn_left` and `roadmap` stand 0.03 to 0.89 m from a segment the
+    robot can drive. One case is J1's slot-2 ask position to J3, which passes J3's slot-2 worker at 0.34 m: A3 run 2 stopped there;
+  - over every pair and triple of junction slots on a 0.5 m grid (before_m -8 to 10, right_m -4.5 to 4.5), every rule together is met only
+    by workers at the junction corners, two of them ahead of the node;
+  - in the random layout (Anisha's 6 m square), 3 workers at J1 are practically never placeable under the clearance (0 of 1,000,000
+    draws); 2 are (about 1 in 400).
+- Nusrat chose (2026-11-17): adopt the corner slots, and 2 workers at J1 in A4 and B4.
+
+**Item 2, answers for Anisha's recovery (report only, no behaviour change):**
+- **(a) Reversing.** A Play-mode check. A new unsaved copy of the v4 scene has `TrialRunnerV4` and the bridge client disabled, so no
+  Python and no trial run.
+  - The robot stands at (6.25, -10.0), facing +z. One worker in a development look (`sunbox_m_shirt_white`) stands 1.2 m ahead, centre to
+    centre.
+  - `DiffDriveController.SetCommand(-0.2, 0)` until the robot has moved 1.0 m backward, then (0, 0).
+  - Reported: the ramp, the speed reached, the distance, lateral drift, heading change, overshoot after the stop command, the signed `V`
+    that telemetry sends, and collisions.
+  - The code already clamps v to +-`max_speed_mps` (no rejection of a negative v); the check confirms the motion.
+- **(b) Side waypoints.** An Edit-mode batch tool on the v4 scene's AMR NavMesh (the bridge's agent type and snap rule). For every road of
+  every map (`corridor`, `turn`, `turn_left`, `roadmap`):
+  - a point every 0.5 m along the road;
+  - a waypoint 1.0 m to its left and to its right;
+  - "reachable" when the waypoint is on the NavMesh within 0.05 m, the path from the road point is complete, and the path is at most 1.5 m
+    long.
+  - Reported per road and side (counts, and where it fails), plus which side the beside workers stand on near each node.
+
+**Item 3a, who answers: a zone per node (live).**
+- A worker answers a new ask only while the robot's centre is within `answer_zone_radius_m` = **6.0 m** of the worker's own node. Outside
+  its zone it answers NONE:
+  - the worker chosen by the existing rule (nearest the pan-tilt axis within 3.5 m) becomes the commander but shows nothing, so
+    `truth.jsonl` has `true_command` NONE;
+  - the ask record says `NONE (outside the <node> zone)`.
+- **Why 6.0 m:**
+  - zones never overlap: 2 x 6.0 < 12.5 m, the shortest distance between two asking nodes of any map;
+  - with `answer_zone_margin_m` 0.5 m, every modelled ask position of a node's own workers must lie within 5.5 m of the node. The live slots
+    reach 5.40 m at J1 (second opinions) and the corner slots 4.95 m.
+- **What it does not cover:** a robot that Python drives into another node's zone and then asks that node's worker still gets an answer
+  for that node. Example: A3 run 1 at 159 s was 4.7 m from J2. Unity cannot tell that apart from a legitimate ask there; the fix is
+  Python's second-opinion search staying near its node (for Anisha). A3 run 1 at 136 s (7.3 m from J2) would now get NONE.
+- Edit Mode tests.
+
+**Item 3b, placement clearance (built, with the new layout PENDING):**
+- **The rule.** No worker within `path_clearance_m` = **1.0 m** of any segment the robot can drive. 1.0 m = Python's person-in-path
+  corridor half-width 0.6 m (`hri_control.json` `safety.corridor_half_width_m`) + 0.4 m (the re-ask shift, also the allowance for where
+  the robot really stands).
+- **The segments**, straight, as Python's `_target` sends the robot (NavMesh paths are straight in the open aisles):
+  - every road of the run's map and of the physical v4 map;
+  - per asking node, from the node to the ask position of each of its workers, in every order (second opinions), including the return to
+    the first worker (tie);
+  - from every ask position, and its re-ask point, to the next node of every branch of the node (any branch can be taken after a wrong
+    answer or a lie).
+- **The ask-position model.** The ask position is `ask_standoff_m` 2.0 m from the worker toward where the robot comes from (the node, or
+  the previous ask position); the re-ask point is that position moved `reask_shift_m` 0.4 m to the robot's right and put back on the
+  2.0 m circle. Both values are Python's (`hri_control.json` `dialog`); Unity holds copies in its config.
+  - Not modelled: Python turning its approach point by 30-degree steps when another person is within 1.2 m of it.
+- **Zone check.** The same model's ask positions must lie within `answer_zone_radius_m - answer_zone_margin_m` of their node (item 3a).
+- **Checked** against the workers already placed at other nodes and against the new node's own workers. Applies to beside (fixed slots)
+  and random (redraws).
+- **Layout (Nusrat's choice):**
+  - junction slots: 1 = 2.5 m before, 2.5 m left; 2 = 4.5 m ahead, 3.5 m right; 3 (J1 in A3 and B3) = 5.0 m ahead, 3.5 m left;
+  - start slots unchanged;
+  - A4 and B4: 2 workers at J1.
+  - Among the slot sets that meet every rule this one has the smallest largest own-ask distance (4.95 m), then the least movement from
+    the section 3 slots.
+- **Why it stays PENDING.** Anisha's `tests/test_lie_detection_v4.py` `MatchesUnity` requires Unity's `junction_slots`, `start_slots` and
+  `three_worker_nodes` to equal her `scenarios_ab.json`. Changing them alone would fail her suite, and her files are hers. So:
+  - the new values go into a `clearance_layout` block of `experiments_ab_unity.json` with `"active": false`;
+  - the code applies the block, the clearance and the zone check only when it is active;
+  - the live layout stays as in section 3 until Anisha changes `scenarios_ab.json` (slots, `people_by_node` of scenario 4), her tests and
+    her simulator's placement rules; then the block is switched on in one change.
+- **Edit Mode tests:**
+  - with the block applied: every run of seed 1 and seed 2 (20 runs each) of every setting (A1, A2 right and left, A3, A4, B1, B2 right and
+    left, B3, B4; the `_off` settings use the same Unity plans) is planned, and every worker keeps the clearance and the zone;
+  - the live slots with the clearance on reproduce the A3 run 2 geometry (0.34 m);
+  - the live config plans as before.
+
+**Item 3c, development-only goal override:**
+- `TrialPlayV4 -experimentGoals E5,E6,...` replaces the seeded goals of an experiment session.
+- **Refused:**
+  - in a final (`-finalSetting`);
+  - on a fixed-goal map (A1, B1, A2, B2);
+  - a name that is not an endpoint of the map;
+  - a list whose length is not the number of runs.
+- **Recorded:** `session.json` `goal_order` holds the list, and a new Unity key `goals_override` holds the given text ("" without one),
+  like `navigation_looks_override`. Python does not check `session.json` keys (v3's `hri_trials` recomputes `goal_order`; v4 tools read
+  each run's goal from `truth_run###.json`).
+- **Launcher:** `run_session_v4.ps1 -ExperimentGoals "E5,E6,E5"`, rehearsal only, refused in a final, passed through to Unity.
+- Edit Mode tests on the parsing and every refusal.
+
+**Item 3d, the PROCEED palm in the geometry check (reported, no pass/fail change):**
+- On every measured PROCEED frame (the swing window `proceed_window_s`), from the bones (`HandGeometry.Frame`, the palm normal the poser
+  sets), measure:
+  - the angle between the palm normal and the direction to the stand-in robot camera;
+  - the angle between the palm normal and the direction to the worker's torso centre (halfway between the midpoint of the two UpperArm
+    bones and the Hips bone).
+- Per look, arm and take: min, mean and max of both angles, the frames where the palm faces the camera more than the body (camera angle
+  < body angle), and the frames with the camera angle under 60 degrees.
+- A new table `proceed_palm_table.md`. The arm, hand and skinning checks and their pass are unchanged. All looks; no perception.
+
+**Item 3e:** correct the sentence about `safety_stops` in section 15 (below, in its own commit).
+
+**Commits:** one per item (declaration; 3e; 2a and 2b; 3a; 3b; 3c; 3d), each after both suites pass.
+
+*Item 1, made (2026-11-17).*
+- **Zip:** `robot_vision/outputs/step5_logs_20261117_011303.zip` (git-ignored).
+  - 9,431,342 bytes; SHA-256 `75bbc8851a758a76c7140a20b8c24e10035d6c0095091d1b2429099c42d17d3f`;
+  - 71 entries (94.8 MB uncompressed); `zipfile.testzip` clean.
+- **Contents:**
+  - the 8 step-5 sessions in the layout of the section 13 zip: `<bridge run>/decisions.csv`, `model_outputs.jsonl`, `v4_log.jsonl`;
+    `<Unity session>/run_###/truth.jsonl` (24 runs);
+  - `step5_durations_20261116_224356.csv`, `step5_stops_20261116_224356.csv`, the step 5 report and `step5_sessions.json`;
+  - `diagnosis/`: the diagnosis tables (`proceed_out/proceed_per_ask.md` and its per-frame JSON), the captured console outputs (PROCEED
+    summary, valid frames, replay vs live, A3 timeline, safety stops by cause) and their scripts;
+  - `make_step5_zip.py`;
+  - `README.md`: a table naming each setting (experiment, map, A2 side, lie detection on/off, goals, folders) and every file's size and
+    SHA-256.
+
+*Item 2, answers for Anisha's recovery (2026-11-17).* Tools: `Robot/PlayCheck/ReverseDriveCheck.cs`, `Robot/Editor/RecoveryChecksMenu.cs`
+(Tools > Warehouse v4 > Recovery). Report only; no behaviour changed.
+- **(a) Reversing: yes.** `robot_vision/outputs/reverse_drive_check_20261117_022117/` (`report.md`, `samples.csv`; batch-mode Play, 0 errors).
+  - `DiffDriveController` takes a negative v: v = -0.20 m/s was reached in 0.40 s (the 0.5 m/s^2 ramp).
+  - v = 0 was commanded at 1.002 m; the robot stood at 1.040 m. The overshoot of 0.038 m is the braking distance at 0.5 m/s^2.
+  - Lateral drift 0.0000 m, heading change 0.000 deg, no collision.
+  - The worker (`sunbox_m_shirt_white`, a development look) stood 1.20 m ahead; 2.24 m after the move.
+  - Telemetry's `v` is the signed `drive.V`, so Python sees -0.20.
+  - The check's PASS rule (within 0.1 m, drift under 0.02 m, heading under 0.5 deg, no collision) was set in the check's code before it
+    ran, not in this addendum.
+- **(b) Side waypoints: yes on every road, but the NavMesh cannot tell.** Final run: `robot_vision/outputs/navmesh_side_waypoints_20261117_021955/`.
+  - Earlier runs `_021708` and `_021805` were the same tool without, then with a first negative control; kept, superseded.
+  - All 1220 points (every road of `corridor`, `turn`, `turn_left`, `roadmap`, every 0.5 m, both sides) passed: a waypoint 1.0 m to the side
+    on the AMR NavMesh, with a complete straight path of 1.00 m.
+  - **Negative control failed: the baked AMR NavMesh does not contain the racks.** From the aisle at (6.25, -5) the NavMesh gives a complete,
+    straight 6.25 m path to the rack centre (0, -5), and the same at two other rack centres. The ground-truth grid marks those cells
+    blocked. Only the point beyond the south wall is off the NavMesh.
+    - So a NavMesh path or snap test cannot vouch for a recovery waypoint.
+    - The bridge's NavMesh targets are not checked against racks either: worth knowing for Anisha's recovery and for any target off the
+      roads.
+    - Not investigated further: why the racks are missing from the bake.
+  - **Independent check against the ground-truth grid** (`grid_check.md` in the same folder; the v4 grid of
+    `trials_development_Task2_A3_20261116_222448/run_001/grid.json`, colliders widened by 0.40 m). The road point, the waypoint and the
+    straight 1.0 m move to it are free for **1220 of 1220** samples, on both sides of every road.
+  - The aisles are about 10 m wide, so 1.0 m to either side is clear of static obstacles everywhere. **"The clear side" is decided by the
+    workers only.** `report.md` lists, per road, which side and how far along each beside worker stands (live slots). In the live layout
+    the junction workers stand 2.0 m beside the arrival road, slot 1 on the left 3.0 m before the node, slot 2 on the right 5.5 m before it.
+
+*Item 3a, made (2026-11-17, commit 8375ba8).*
+- `answer_zone_radius_m` 6.0 is in `experiments_ab_unity.json`. `TrialRunnerV4Experiment` gates each new ask with
+  `ExperimentPlanAB.InAnswerZone`:
+  - outside the zone the chosen worker is the commander but gets no request (truth NONE);
+  - the ask record reads `NONE (outside the <node> zone)`; `session.json` `answer_rule` says so.
+- 5 Edit Mode tests (`HRI/Tests/ExperimentAnswerZoneTests.cs`):
+  - the radius and its refusal at 0;
+  - the A3 run 1 positions: 7.6 m from J2 gets NONE, 4.7 m still answers (the uncovered case);
+  - the ask-position helper;
+  - every own ask position of the live layout (A1 to A4, seeds 1 and 2, 20 runs) within 5.5 m;
+  - no two zones overlap on any map.
+- Not run in Play (no Python session); the gate is covered by the logic tests only.
+
+*Item 3c, made (2026-11-17, commit 89d7cd1).*
+- `ExperimentPlanAB.GoalsOverride`, `TrialPlayV4 -experimentGoals`, `session.json` `goals_override`, and
+  `run_session_v4.ps1 -ExperimentGoals`.
+- 6 Edit Mode tests (`HRI/Tests/ExperimentGoalsOverrideTests.cs`): no override, order and spaces, planning with the given goals, and the
+  refusals (final, fixed-goal maps, unknown names, empty name, wrong count).
+- Launcher dry runs:
+  - A3 with `"E5, E6,E5"` passes `-experimentGoals E5,E6,E5` to Unity;
+  - refused: A1 (fixed goal B), a count that differs from `-Trials`, a final.
+- Not run in Play.
+
+*Item 3b, made (2026-11-17).*
+- `ExperimentPlanAB.DrivableSegments` / `ReaskPosition` / `ClearanceProblem`, `PlacementRule.PathClearanceM` / `AskZoneM`, and
+  `ExperimentsUnityConfig.WithClearanceLayout`.
+- In `experiments_ab_unity.json`: `answer_zone_margin_m` 0.5, `path_clearance_m` 1.0, `ask_standoff_m` 2.0, `reask_shift_m` 0.4, and the
+  `clearance_layout` block with `"active": false`.
+- `session.json` `clearance_rule` says whether the checks were applied (now: pending).
+- **Disclosure: the slots differ from the ones declared above.**
+  - The slot search before the declaration left out one declared segment, the return to the first worker (tie).
+  - Under the full declared model, checked by Unity's Edit Mode test, the declared choice (slot 1 2.5 m before, slot 3 3.5 m left) failed
+    at A3 J1 seed 1 run 1: worker 3 stood 0.97 m from the segment from its own tie ask position (3.41, 3.11) to E1.
+  - The search was rerun with the tie, with the same rules and the same declared choice rule (meets every rule; smallest largest own-ask
+    distance; then least movement). Nothing else changed: no value and no rule.
+  - Its first choice, now pending:
+    - slot 1: **3.5 m before**, 2.5 m left;
+    - slot 2: 4.5 m ahead, 3.5 m right;
+    - slot 3 (J1 in A3, B3): 5.0 m ahead, **4.0 m left**;
+    - largest own-ask distance 5.19 m (within 5.5).
+  - Still a corner layout, as Nusrat chose. With the tie included, 58 slot sets keep the clearance and 8 of them also keep the 5.5 m ask
+    zone.
+- 5 Edit Mode tests (`HRI/Tests/ExperimentClearanceTests.cs`):
+  - the config values and that the block is inactive;
+  - **all 400 plans with the pending layout pass**: A1, A2 right and left, A3, A4, B1, B2 right and left, B3, B4; seeds 1 and 2; 20 runs
+    each. Each plan gets an independent re-check of separation, turning points, bystander margin, clearance to every road and every
+    drivable segment, ask positions within 5.5 m, and at most 6 active avatars;
+  - the segment model (every order, the tie, every branch, the re-ask point on the 2.0 m circle);
+  - the live slots with the clearance on are refused. From A3 run 2's logged ask position (6.3, -5.3) the line to J3 passes J3's slot-2
+    worker at 0.31 m; the diagnosis's 0.33 m was measured from the driven trail;
+  - the live config plans as before.
+- **Not checked:** free cells and colliders for the pending slots at Play. The Edit Mode tests have no scene; the search checked the slot
+  positions against the saved ground-truth grid. Unity checks both at Play once the block is active.
+- **For Anisha (her files; nothing changed there):**
+  - `scenarios_ab.json` `junction_slots` of scenarios 1 to 3 = the pending slots;
+  - scenario 4 without `people_by_node` J1 3 (A4 and B4: 2 at J1);
+  - her `MatchesUnity` tests (`test_the_slots_and_margins_are_unitys`, `test_slot_positions`);
+  - her simulator's placement: the clearance and the ask zone, so that the simulator still does what Unity does (AUDIT.md 16.13);
+  - then Nusrat sets `clearance_layout.active` true (and the live `junction_slots` / `three_worker_nodes` to the pending values) in one
+    change;
+  - also for Anisha (items 2b and 3a): keep the second-opinion search near its node.
+
+*Item 3d, made (2026-11-17).*
+- `GestureGeometryDriver` measures the PROCEED palm and writes `proceed_palm_table.md`. The other checks and the pass are unchanged.
+- **Run:** `robot_vision/outputs/gesture_geometry_proceed_palm_20261117_034140/` (batch mode, all 15 looks, no perception).
+  - `run_info.json` names HEAD 89d7cd1: the run used the uncommitted 3b and 3d edits; 3b does not touch the geometry check.
+  - Arms 15/15, skinning 15/15, hand 13/15 (anime_f_01 and anime_f_03: the known sleeve artefact of section 12), as before.
+- **PROCEED palm (bones):**
+  - It faces the camera within 60 deg only on Boxo with `proceed_ik_01` (20 of 695 frames, minimum 56.7 deg). On every other look it
+    stays at least 61.8 deg from the camera.
+  - Mean angle to the camera: 110 to 133 deg by clip. The camera mostly sees the back or the edge of the hand, as MediaPipe did in the
+    diagnosis.
+  - Mean angle to the torso centre: 77 to 88 deg, i.e. palm up or toward the chest, as designed.
+  - Frames with the palm nearer the camera direction than the body direction: 9 to 12 % per look (Boxo 28 %). By clip: `proceed_ik_01`
+    30 %, `proceed_ik_02` 4 %, `proceed_ik_03` 2 %. The low part of `proceed_ik_01` again (as the diagnosis said).
+- Read with the diagnosis: the pose does not show the palm to the camera. The false STOPs come from the reader's open-hand cues on the
+  back of a hand with closed fingers, not from a palm turned toward the robot.
+
+### 2026-11-17, section 15 addendum 2: racks in the robot's NavMesh (declared before any change below)
+
+Nusrat's task of 2026-11-17, before the step-5 rerun: the racks are missing from the AMR NavMesh (item 2b's failed negative control).
+Branch `nusrat/v4-step5-dev`. Nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run, nothing is
+pushed. Development work, not a result.
+
+**Already done before this declaration (read only; a temporary Editor script, deleted again, nothing tracked changed):** a batch-mode
+diagnosis of the v4 scene. It called the NavMesh Surface's own source collection and matched every collected mesh to the obstacle groups
+of `robot_unity_v4.json` (`Shelves`, `FloorBoxes`, `Walls`, `Stations`).
+- The v4 scene has one NavMesh Surface: agent type AMR (radius 0.5 m, height 1.8 m, slope 5 deg, step 0.02 m), collect "All", render
+  meshes, all layers. Its baked data is `Assets/Scenes/WarehouseRobot/NavMesh-NavMesh Surface.asset`: the **v3 scene's asset**. The v4
+  scene was copied from v3 and both scenes still share it.
+- **Cause:** the Surface has "Ignore NavMesh Obstacles" on. It drops every collected mesh whose GameObject has a `NavMeshObstacle`.
+  The generated warehouse put one on every rack and on every pallet: 93 `NavMeshObstacle`s, all under `GeneratedWarehouse/Shelves`.
+  12 are the racks (disabled, carving); 81 are the pallets (enabled, not carving). So none of the 93 rack and pallet meshes (12 racks)
+  reached the bake: 652 meshes were collected, 0 of them from `Shelves`.
+- Neither obstacle type puts the racks back at Play: the rack obstacles are disabled, and the pallet obstacles do not carve. The bridge's
+  NavMesh paths therefore ignore the racks in Play as well.
+- **Not the cause:**
+  - layers: all `Default`, the mask takes all;
+  - static flags: none set, and "All" does not need them;
+  - colliders: the Surface bakes render meshes, not colliders. The racks have their own colliders (165), so `ColliderSetup` adds none
+    to them; it adds boxes only to the stations, at Play;
+  - `NavMeshModifier`s: 5, each ignoring the robot or a worker, as intended.
+- **Walls and stations are collected** (36 of 36 walls and 25 of 25 stations). `FloorBoxes` is empty in the v4 scene (0 units): the
+  only boxes are the pallets on the racks, under `Shelves`.
+
+**The fix (v4 scene only):**
+- On the v4 scene's NavMesh Surface, "Ignore NavMesh Obstacles" off. Everything else stays as it is: the agent type and its settings,
+  render meshes, collect All, the modifiers that keep out the robot and the workers.
+  - Not baking from physics colliders: the stations get colliders only at Play (`ColliderSetup`), so an Edit-mode bake from colliders
+    would lose them. Render meshes already include the walls and the stations.
+  - The vendored warehouse objects and their `NavMeshObstacle`s stay unchanged.
+- Rebake into a **new asset**, `Assets/Scenes/WarehouseRobot_v4/NavMesh-AMR.asset`, referenced only by the v4 scene:
+  - the Editor's Bake button deletes the Surface's current asset before it saves the new one. Here that is the v3 asset, still used by the
+    v3 scene (v1.0 must stay reproducible). So the bake is a script: `NavMeshSurface.BuildNavMesh`, then save the data as the new asset.
+  - The v3 scene and its asset stay byte-for-byte unchanged.
+  - Tool: Tools > Warehouse v4 > NavMesh > Bake v4 NavMesh (and a batch method). It refuses any scene but the v4 one, and any target
+    path that already exists.
+- **Every experiment map:** `corridor`, `turn`, `turn_left` and `roadmap` are road graphs on the one floor of the v4 scene; there is no
+  other scene or NavMesh. One bake covers all four maps. The verification checks each map separately.
+
+**Verification (Tools > Warehouse v4 > NavMesh > Verify; Edit mode, batch; report only, into a new
+`robot_vision/outputs/navmesh_v4_check_<time>/`). Rules fixed here, before anything is baked:**
+- **V1, NavMesh paths and racks.**
+  - **Point set per map:** every node of the map and of the physical v4 map (start, junctions, endpoints). Also every ask position and
+    re-ask point of the item 3b model (`ExperimentPlanAB.DrivableSegments`, standoff 2.0 m, shift 0.4 m), taken from every planned run:
+    seeds 1 and 2, 20 runs, all 10 Unity settings (A1, A2 right and left, A3, A4, B1, B2 right and left, B3, B4), in both the live layout
+    and the pending clearance layout. Duplicates within 0.01 m are merged.
+  - **Paths:** a NavMesh path between every pair of points of the same map, by the bridge's rule (AMR filter; both ends snapped with
+    `NavMesh.SamplePosition` within `snap_max_distance_m` 1.0 m). Each path is sampled every 0.05 m along its corners.
+  - **Footprints:** the obstacle footprints of the ground-truth grid (`ObstacleFootprints`: every unit of the four groups, its colliders
+    or mesh boxes in the robot's height band), not widened.
+  - **Pass needs all three:**
+    - (a) no path sample lies inside a footprint;
+    - (b) every path is complete;
+    - (c) every point snaps within 1.0 m.
+  - **Reported:** per map, the least clearance of any path to a footprint, the paths closer than 0.40 m (the grid's widening), and the
+    snap distances.
+- **V1 negative control (must pass):**
+  - the three rack centres of item 2b's control are not reachable under item 2b's test;
+  - the straight line from (6.25, -5) to (-6.25, -5) crosses the rack at (0, -5), and the NavMesh path between those points does not.
+- **V2, NavMesh against the ground-truth grid (report).**
+  - The grid is the official v4 grid (0.5 m cells, widened by 0.40 m), built in Edit mode by `GroundTruthLayer.BuildGrid`, as at Play.
+    It is also compared cell by cell with run_001's saved `grid.json` of `trials_development_Task2_A3_20261116_222448`.
+  - Every cell centre is "on the NavMesh" when `NavMesh.SamplePosition` finds the AMR NavMesh within 0.05 m horizontally.
+  - Four counts: both free; both blocked; grid free but off the NavMesh (the NavMesh is stricter); grid blocked but on the NavMesh (the
+    NavMesh is looser).
+  - For each disagreeing cell: its position, the distance from its centre to the nearest footprint, and whether that centre is on the
+    floor. Expected, and not a failure: a band where the NavMesh's 0.5 m radius (rounded to its 0.167 m voxels) exceeds the grid's 0.40 m.
+  - **Hard rule, the same as V1 (a):** no cell centre inside a footprint is on the NavMesh. Every other disagreement is reported, not
+    judged.
+- **V3, the 1.0 m side waypoints again.** Item 2b's tool, rerun unchanged on the new NavMesh, with NavMesh paths.
+  - Its negative control must now pass.
+  - Its counts are reported, and compared with the grid check of item 2b (1220/1220 free).
+  - One text fix in that tool's report: it still describes the pending slots as declared ("2.5 m before", "3.5 m left"), not as built
+    ("3.5 m before", "4.0 m left", item 3b's disclosure).
+- **V4, the roadmap builder's own NavMesh check, on all four maps:**
+  - every node within 0.5 m of the AMR NavMesh;
+  - a complete NavMesh path for every branch.
+- **Edit Mode tests (new):**
+  - the v4 Surface does not ignore NavMesh obstacles and refers to the new asset;
+  - the v3 scene still refers to the v3 asset, and the v3 asset's SHA-256 is unchanged (pinned);
+  - on the v4 scene, the rack centres are off the NavMesh and the path across the rack at (0, -5) goes around it.
+- **Then:**
+  - the Edit-mode leak test;
+  - both suites;
+  - the B9 list: the new asset is added to `final_v4.json` `freeze_files` (29 files) and to `FinalGuardV4Tests`. The v4 scene is
+    already listed. `freeze_v4.py` reads that list and needs no change.
+
+**What changes for the robot:** the bridge's NavMesh paths and target snaps now see the racks and pallets. A target inside or within
+0.5 m of a rack snaps to the NavMesh's edge, or fails beyond 1.0 m. Every development session before this change used the old NavMesh;
+from here on they differ in that respect.
+
+**Commits:**
+1. this declaration;
+2. the bake tool, the new asset, the scene change, the verification tool, the tests and the B9 list;
+3. the results recorded below.
+
+Each commit is made after both suites pass.
+
+*Amendment, 2026-11-17, after the first verification and before any further change: the stations.*
+- **What happened.** The bake as declared (commit 275a9eb's plan; bake report `robot_vision/outputs/navmesh_v4_bake_20261117_051457/`)
+  was verified in `robot_vision/outputs/navmesh_v4_check_20261117_052310/`.
+  - V1 passed: 13,245,624 paths, none entering a footprint, all complete, every point within 0 m of the NavMesh. The negative control
+    passed.
+  - V4 passed.
+  - **V2's hard rule failed:** 100 grid cells whose centre lies inside a footprint are on the NavMesh. **All 100 are stations.** So are
+    all 276 "NavMesh looser" cells (the other 176 lie 0.2 to 0.4 m from a station).
+- **Why.** The declaration assumed that baking the stations' render meshes makes them obstacles. It does not.
+  - A station is a 0.70 x 0.70 m pad, 0.05 m high (y 0.08 to 0.13).
+  - That is less than one voxel of the bake's height resolution, so the NavMesh runs over the pads.
+  - The racks and walls are tall; they are obstacles now.
+  - V1 did not see this because no modelled point or path comes near a station: all 25 stand along the south wall (z -25).
+- **The added fix** (v4 scene only; the task requires the stations to be obstacles):
+  - a `NavMeshModifier` on the v4 scene's `GeneratedWarehouse/Stations` group object;
+  - override area "Not Walkable", applied to its children;
+  - Unity bakes a Not Walkable mesh as a hole, widened by the agent radius (0.5 m), like any other obstacle.
+  - Only the stations get it. The racks, pallets and walls are already obstacles through their height. The vendored station objects
+    themselves stay unchanged.
+- **How.**
+  - The bake tool adds the modifier when it is missing.
+  - The first bake was never committed. Its asset and scene change are discarded and the bake reruns from the committed scene.
+  - The first verification folder is kept as the record of this failure.
+- **Rules unchanged.** V1 to V4, their pass rules and the tests stay as declared. Two Edit Mode tests are added: the `Stations` modifier,
+  and every station centre off the NavMesh.
+
+*Made (2026-11-17, commits 275a9eb declaration, f2c34d9 amendment, 864106b fix).*
+- **Bake** (`robot_vision/outputs/navmesh_v4_bake_20261117_052540/`, from the committed scene; Tools > Warehouse v4 > NavMesh > Bake v4
+  NavMesh):
+  - meshes collected: 652 before, 745 after;
+  - `Shelves` 0 -> 93; `Stations` 25 walkable -> 25 Not Walkable; `Walls` 36 and the rest of `GeneratedWarehouse` 591, both unchanged.
+  - New asset `Assets/Scenes/WarehouseRobot_v4/NavMesh-AMR.asset` (binary, 80,224 bytes).
+  - The scene diff holds exactly three things: the modifier on `Stations`, `m_IgnoreNavMeshObstacle` 1 -> 0, and the data reference.
+  - The v3 scene and the v3 asset are byte-for-byte unchanged. The tool checked this, and `NavMeshV4Tests` pins the v3 asset's
+    SHA-256.
+  - The first bake (`navmesh_v4_bake_20261117_051457/`, without the modifier) was discarded before any commit; its folder is kept.
+- **Verification passed** (`robot_vision/outputs/navmesh_v4_check_20261117_053355/`; the failed first one, `_052310`, is kept):
+  - **V1:**
+    - 800 planned runs: live and pending layout, 10 settings, seeds 1 and 2, 20 runs each;
+    - 5,263 points: corridor 22, turn 47, turn_left 47, roadmap 5,147;
+    - all 5,263 points lie on the NavMesh (snap 0.000 m);
+    - **13,245,624 paths: all complete, none entering a footprint.**
+    - Least clearance to a footprint: 0.369 m at (-10.38, -4.29), a rack, in `roadmap`; 0.390 m in the other maps. 199,528 paths
+      (199,503 of them in `roadmap`) come closer than the grid's 0.40 m, all at racks.
+    - Reported, not judged: the NavMesh keeps 0.5 m from the racks' render meshes rounded to its 0.167 m voxels, while the footprints
+      come from the racks' colliders. 0.369 m still clears the robot's half-width of 0.30 m by 0.069 m.
+  - **Negative control:**
+    - the three rack centres lie 1.24, 1.26 and 1.29 m from the nearest NavMesh: not reachable;
+    - (6.25, -5) to (-6.25, -5) goes around the rack in 12.82 m (straight 12.50 m), with a least clearance of 0.502 m.
+  - **V2:** 10,740 cells free on both, 1,310 blocked on both. 252 are free on the grid but off the NavMesh: 0.4 to 0.7 m from a rack
+    (125), a wall (108) or a station (19), the expected band. 19 are blocked on the grid but on the NavMesh. **None of them lies inside
+    a footprint** (the hard rule). All 19 are cells exactly 0.400 m from a station, between two neighbouring stations along the south
+    wall: they sit on the grid's own 0.40 m boundary.
+  - **V2, saved grid:** the Edit-mode grid equals run_001's saved Play-mode `grid.json`, cell for cell.
+  - **V4:** every node of `corridor` (2), `turn` (3), `turn_left` (3) and `roadmap` (11) is on the NavMesh, and every branch path is
+    complete.
+- **V3, side waypoints again** (`robot_vision/outputs/navmesh_side_waypoints_20261117_053431/`):
+  - 1220 of 1220 reachable, every one by a complete 1.00 m NavMesh path;
+  - **negative control passed:** rack centres 1.24 to 1.29 m off the NavMesh, beyond the south wall 1.74 m;
+  - the same count as item 2b's ground-truth grid check (1220/1220).
+- **Leak test** (Edit mode, `robot_vision/outputs/gt_leak_check_20261117_053534/`): passed. cam360 and pan-tilt each have a max diff of
+  0, with 0 pixels differing.
+- **Tests:** `HRI/Tests/NavMeshV4Tests.cs`, 4 tests: the v4 Surface and its asset; the Stations modifier; the v3 asset pinned; and on the
+  v4 NavMesh every rack and station centre off it and the path around the rack at (0, -5). `FinalGuardV4Tests` expects the new asset.
+- **B9:** `final_v4.json` `freeze_files` has the new asset, 29 files. `freeze_v4.py` reads that list unchanged.
+- **Suites:** Python 1163 OK (2 skipped), Unity Edit Mode 339/339.
+- **Not done:** no Play-mode session on the new NavMesh yet. The bridge paths at Play have not been observed; the step-5 rerun will be
+  the first.
+
+### 2026-11-17, section 15 addendum 3: the layout with the controller's re-ask shift, three workers at J1, the slot table, Anisha's question (declared before any change below)
+
+Nusrat's task of 2026-11-17. Branch `nusrat/v4-layout-2` = `main` 29510ff (PR #41, Anisha's step-5 fixes) with `nusrat/v4-step5-dev`
+(0ee553a: addenda 1 and 2, the NavMesh fix) merged in, because that branch is not on `main` yet. Nothing under `robot_vision/`, `docs/` or
+`external/` changes; nothing is frozen, no final is run, nothing is pushed; `clearance_layout` stays `"active": false`. Development work,
+not a result.
+
+**Already done before this declaration (read only; no tracked file changed):** item 4's replay of the step-5 logs. It touches no layout
+value and shaped nothing in items 1 to 3; it is recorded with its result under item 4.
+
+**Item 1, the clearance search with the controller's real re-ask shift.**
+- **The correction.** Item 3b's ask-position model took `reask_shift_m` 0.4 m from v3's `hri_control.json` `dialog`. The v4 controller
+  uses **0.8 m**: `configs/v4/control.json` `dialog.reask_shift_m`, merged over the v3 dialog by `hri_control_v4.load_control` (the
+  step-5 sessions ran with 0.8 m, `config_used/control_lie_*.json`). Unity's copy in `experiments_ab_unity.json` becomes 0.8, its note
+  names `configs/v4/control.json`, and an Edit Mode test pins the copy to that file. The copy is used only by the clearance model and by
+  the NavMesh verification's point set; nothing at Play changes while the block is inactive.
+- **Rules unchanged** (item 3b as built, `ExperimentPlanAB.NodeProblem` / `ClearanceProblem`):
+  - no worker within **1.0 m** of a drivable segment: every road of the run's map and of the physical v4 map; per asking node, from the
+    node to the ask position of each of its workers in every order, with the return to the first (tie); from every ask position and
+    re-ask point to the next node of every branch of the node;
+  - ask position = 2.0 m from the worker toward where the robot comes from; re-ask point = 0.8 m to the robot's right, back on the
+    2.0 m circle; every ask position and re-ask point within 5.5 m of its node (zone 6.0 m minus margin 0.5 m);
+  - workers at least 3.0 m apart and 3.0 m from every asking node of the run's map and of the physical map; bystander margin 1.0 m over
+    the last 3.0 m of the arrival road (beside) or 0.25 m (random); `min_road_m` 1.0 (random); at most 6 active avatars (8.0 m); the
+    worker's cell free on the ground-truth grid.
+- **The clearance value is not changed.** Item 3b's reason read "0.6 m corridor + 0.4 m (the re-ask shift, ...)", written with the v3
+  shift. With 0.8 m the same sum is **1.4 m**; that would be a rule change and is not made here. The search also runs at 1.4 m and is
+  **reported only** (does a layout exist, and its first choice), for Nusrat and Anisha to decide.
+- **The new NavMesh.** Addendum 2 did not change the ground-truth grid (V2: the Edit-mode grid equals the saved Play grid cell for cell),
+  so the worker cells are checked on it as before. **Added requirement, new here:** every modelled ask position and re-ask point lies in
+  a cell that is on the new AMR NavMesh, by V2's cell classification in `navmesh_v4_check_20261117_053355/` (grid-free cells minus
+  `grid_free_navmesh_off`, plus `grid_blocked_navmesh_on`). The report says whether it changes the choice. The chosen layout is then
+  verified on the real NavMesh with addendum 2's tool (V1 to V4, rules unchanged; its point set takes the shift from the config).
+- **The search** (as item 3b's, now a committed tool `finals_v4/layout_search_v4.py`, a Python port of the Unity model; it reads the
+  config and map files, the saved grid and the V2 classification, and no trial result):
+  - slot candidates: `before_m` -8.0 to 10.0 and `right_m` -4.5 to 4.5 in 0.5 m steps, at least 3.0 m from the node;
+  - pairs (slots 1 and 2) with 2 workers at every asking node of `corridor`, `turn`, `turn_left` and `roadmap`; then slot 3 with 3 at J1
+    of `roadmap`; each set checked on all maps together;
+  - start slots unchanged; if they break a rule, the start slots are searched over the same candidates by the same choice rule, reported;
+  - **choice rule unchanged:** meets every rule; then the smallest largest own-ask distance; then the least movement from the section 3
+    slots (sum of the slot shifts).
+- **Checks of the choice:** `ExperimentClearanceTests` with the new block (every plan of seeds 1 and 2, 20 runs, of the 10 Unity
+  settings; the independent re-check reads the standoff and the shift from the config instead of fixed numbers); then the NavMesh
+  verification. The block stays inactive.
+
+**Item 2, three workers at J1 in A4 and B4** (random layout, scenario 4: a 6 m square around the node, `half_size_m` 3.0). With 2 at J1 a
+single lie in B4 is a tie; 3 give a majority. Every rule of item 1 for the random layout applies.
+- **Existence:** every triple of points of a 0.25 m lattice over J1's square, ordered by distance to J1 as Unity sorts a draw, checked
+  against J1's rules (roads, its own segments, separation, turning points, bystander margin, ask zone, free cell, the NavMesh requirement).
+  Reported: the number of valid triples, and the acceptance rate of Unity's draw estimated from them (valid ordered triples / all
+  ordered lattice triples), with the chance that 100,000 draws (`random_max_draws`) all fail.
+- **Practical:** with the block applied and A4 and B4 given 3 at J1, Unity's own planner for every run of seeds 1 and 2.
+- **If no triple exists, or Unity cannot plan every run,** it is reported as impossible under the rules, with:
+  - **the binding constraint(s):** which single rule, when dropped alone, lets lattice triples pass (and how many); and the closest
+    triple (the largest smallest margin to any rule) with the rule it breaks and by how much;
+  - **the closest alternatives, each under every other rule, none switched on:**
+    - (a) the third worker at item 1's slot 3, a fixed spot on the other side of the road, and two random in the square;
+    - (b) a smaller clearance for one worker only: the largest value (0.05 m steps) at which a valid triple exists, the other two keeping
+      1.0 m from everything;
+    - (c) a larger square: the smallest `half_size_m` (0.5 m steps, up to 5.0) at which the estimated acceptance rate leaves less than a
+      1 in 1,000 chance that 100,000 draws all fail;
+  - A4 and B4 then stay with 2 at J1 in the pending block. A3 and B3 (beside) keep 3 at J1 through item 1's slot 3.
+
+**Item 3, the slot table for Anisha** (her `scenarios_ab.json`; nothing of hers changes here). For the chosen layout, and for the 1.4 m
+report: per scenario (1 `corridor`; 2 `turn` and `turn_left`; 3 `roadmap`), per asking node and worker: slot, `before_m` / `right_m`,
+world position, distance to its node, and the largest own-ask distance. Scenario 4: the random rule (square, margins, `people_by_node`).
+Also for her `second_opinion_radius_m` (6.5 m, waiting for the largest placement distance, AUDIT.md 16.19.3 D): the largest
+worker-to-node distance and whether every worker's nearest node of the v4 map is its own node. Written to a new output folder and here.
+
+**Item 4, Anisha's question (report only).** The diagnosis said: "whenever STOP fires, the reader returns before evaluating PROCEED,
+restarting the 0.5 s PROCEED hold". Asked: the exact file, function and line in her reader and in the dialog code path, and a replayed
+example showing the restart; if it cannot be shown, it is withdrawn.
+- **Method (already run, read only):** the live dialog class `hri_control.GestureDialog` replayed on the frames the dialog saw in every
+  ask of the 8 step-5 sessions (the `v4_log.jsonl` rows, which `_log_frame` writes only inside `_read_tick`), with each session's
+  `config_used` values, under three models: S, the code as written (a frame read STOP is never given to the dialog); R1, the claim (a
+  STOP frame restarts the hold); R2, a STOP frame given to the dialog as a no-direction reading (the change Anisha tried, AUDIT.md
+  16.19.3). STOP frames are the `decisions.csv` rows "STOP gesture" in the read state. Each model's acceptance is compared with the
+  logged one. The tool becomes `finals_v4/replay_dialog_hold.py`.
+
+**Commits:** (1) this declaration; (2) the search tool, the config copy, the block and the tests; (3) the results and the slot table;
+(4) item 4's tool and record. Each after both suites pass.
+
+*Amendment, 2026-11-17, after the first search run and before anything further is computed: no beside layout with three workers at J1.*
+- **What happened** (`finals_v4/layout_search_v4.py`, run `robot_vision/outputs/layout_search_v4_20261117_202249/`, uncommitted tool on 1e56271):
+  - addendum 1's pending slots fail with the 0.8 m shift: at J1 of `roadmap` an ask point lies beyond 5.5 m (the ask zone);
+  - **no slot set with 3 workers at J1 meets every rule**: 0 at 1.0 m with the NavMesh requirement, 0 at 1.0 m without it, 0 at the
+    report-only 1.4 m. The start slots pass unchanged; 2989 slot pairs pass on `corridor`, `turn` and `turn_left` (1.0 m, NavMesh);
+  - item 2's lattice: 0 valid triples at J1 (its declared analysis continues in the same run);
+  - the port was checked first against addendum 1: with the 0.4 m shift and no NavMesh requirement it returns addendum 1's choice
+    (3.5 / -2.5, -4.5 / 3.5, -5.0 / -4.0; largest own-ask distance 5.193 m) as the first of 10 valid sets.
+  - A diagnostic script was started and stopped before it printed anything; no result of it was seen.
+- **So item 1 has no choice under the declared rules.** Added now, the same treatment as declared for item 2 (nothing is chosen, nothing
+  is switched on; the pending block keeps addendum 1's slots, marked as failing at 0.8 m):
+  - **binding rule(s) at J1** (3 beside workers, A's workers placed, the 1.0 m clearance and the NavMesh requirement): over every slot
+    triple whose slots 1 and 2 are one of the 2989 valid pairs and whose three J1 positions are 3.0 m apart, the set of rules each
+    triple breaks, and the number of triples valid when one rule alone is dropped;
+  - **the closest alternatives, each checked on every map under every other rule:**
+    - (i) 2 workers at J1 in A3 and B3 too: the first pair by the declared choice rule (all four maps, 2 per asking node);
+    - (ii) a larger ask zone: the smallest largest own-ask distance of a 3-at-J1 set valid with the zone rule dropped, and the zone
+      radius it needs (that distance + the 0.5 m margin), against 6.25 m (beyond it two zones overlap: 12.5 m / 2);
+    - (iii) a smaller clearance for slot 3 only: the largest value (0.05 m steps) at which a set exists whose other workers keep 1.0 m
+      from every drive and road.
+  - Committed as `finals_v4/layout_search_v4_j1.py` (it imports the search tool's model).
+
+*Items 1 to 3, made (2026-11-17). Nothing is chosen or switched on: under the declared rules there is no layout to choose.*
+- **Tools** (`finals_v4/`, inputs in `layout_search_v4.json`; geometry only):
+  - `layout_search_v4.py`, the search (a Python port of Unity's placement model);
+  - `layout_search_v4_j1.py`, the amendment's analysis;
+  - `layout_alternatives_v4.py`, the slot tables and item 2's alternative (a).
+  - The search run used the tool before one refactor (the pair stage moved into `beside_pairs` for the J1 script, same code); it was not
+    rerun (45 min).
+- **Port check:** with the 0.4 m shift and no NavMesh requirement the port returns addendum 1's choice first (largest own-ask distance
+  5.193 m).
+- **The correction:** `experiments_ab_unity.json` `reask_shift_m` 0.4 -> 0.8. Its note names `configs/v4/control.json`, and
+  `ExperimentClearanceTests.ReaskShift_IsTheV4ControllersValue` pins it to that file.
+
+**Item 1** (`robot_vision/outputs/layout_search_v4_20261117_202249/`, `layout_search_v4_j1_20261117_204024/`):
+- **Search space:** 594 slot candidates; 404 pass roads, turning points and free cells at every junction; 2989 pairs pass `corridor`,
+  `turn` and `turn_left` (1.0 m, NavMesh requirement). The start slots pass unchanged.
+- **No slot set with 3 workers at J1 meets every rule:** 0 at 1.0 m with the NavMesh requirement, 0 without it, 0 at the report-only
+  1.4 m. The NavMesh requirement changes nothing: there is no choice either way.
+- **Addendum 1's pending slots fail with 0.8 m:**
+  - 3 at J1: an ask position 5.51 m from J1 (Unity: A3 seed 1 run 1);
+  - 2 at J1 on `roadmap`: slot 2 (4.5 m ahead, 3.5 m right) stands 0.84 m from J1's drive at the closest (Unity's first find:
+    0.85 m, from the line "ask position (9.22, 2.57) to E1").
+  - With 2 at J1 they still plan every A1, A2, A4, B1, B2, B4 run (Unity test). A4 and B4 are random, so their junction slots are not
+    used there.
+- **The binding rule, at J1** (864,782 triples: slots 1 and 2 a valid pair, the J1 positions 3.0 m apart, A's workers placed):
+  - **every triple breaks "worker clearance from J1's own drive"**. Dropping that rule alone leaves 103,212 valid at J1. Dropping any
+    other single rule leaves 0: ask zone, bystander margin, NavMesh requirement, clearance from A's drive.
+  - Most frequent sets of broken rules: own drive + ask zone 283,305; own drive + bystander margin 270,923; own drive alone 103,212.
+  - The four clearance rules dropped together leave 111,725.
+- **Closest alternatives** (none chosen):
+
+| alternative | result | what it costs |
+|---|---|---|
+| (i) 2 workers at J1 in A3 and B3 too | 215 pairs valid on every map. First by the declared choice rule: slot 1 = 3.0 m before, 2.0 m left (the live slot 1); slot 2 = 2.5 m ahead, 4.0 m right; largest own-ask distance 4.06 m. **Unity's planner: all 400 plans of seeds 1 and 2 pass every rule** (`Addendum3_TwoAtJ1_AlternativeIPlans_...`) | B3, like B4, has no majority at J1: one lie is a tie |
+| (ii) a larger ask zone | 0 sets even with the zone rule dropped | does not help |
+| (iii) a smaller clearance for slot 3 only | largest **0.631 m (0.60 m in 0.05 m steps)**: slot 1 = 3.5 m before, 2.5 m left; slot 2 = 4.0 m ahead, 4.0 m right; slot 3 = 4.5 m ahead, 3.0 m left (3.25, 4.50); largest own-ask distance 4.73 m; every other worker at least 1.0 m | 0.63 m is barely above Python's person-in-path corridor half-width (0.6 m): the robot on that line passes the worker at the edge of its stop corridor. Not checked at Play |
+
+**Item 2, three random workers at J1** (A4 and B4, the 6 m square):
+- **Lattice:** 625 points, 160 pass the point rules, 247,360 triples keep the separation, **0 valid**.
+  - Binding rule: the clearance from J1's own drive. Dropping it alone leaves 29,388 valid; dropping the separation alone 1,226; any
+    other single rule 0.
+  - Broken sets: bystander margin + own drive 217,972; own drive alone 29,388.
+  - The closest triple, (7.25, -3.00), (9.25, 1.75), (4.25, -3.00), misses the clearance by 0.124 m (0.876 m).
+- **Unity's planner:** every run of seeds 1 and 2 of A4 and B4 with 3 at J1 is refused at J1 ("no placement within 100000 draws").
+  Pinned by `ThreeRandomWorkersAtJ1_InA4AndB4_CannotBePlaced`.
+- **Alternatives** (none switched on):
+  - **(a) a third worker fixed on the other side of the road, two random:** 0 of 2,000,000 draws accepted, both for the pending slot 3
+    (2.25, 5.00) and for (iii)'s slot 3 (3.25, 4.50). Item 1 has no slot 3 of its own, so these two stand in for it.
+    (`robot_vision/outputs/layout_alternatives_v4_20261117_211023/`)
+  - **(b) one worker closer to J1's drive:** at most 0.215 m (0.20 m in steps). That worker would stand inside the 0.6 m stop corridor of
+    a drive line, so this is not usable.
+  - **(c) a larger square:** half size 3.0 to 4.5 m, 0 of 2,000,000 draws each; 5.0 m, 1 of 2,000,000 (rate 5e-7, so 100,000 draws all
+    fail with a chance of 0.95). No size up to 5.0 m works.
+  - So with the 1.0 m clearance and the 0.8 m shift, three random workers at J1 cannot be placed. A4 and B4 stay with 2 at J1 in the
+    pending block.
+  - The only 3-at-J1 placement found anywhere is (iii), a fixed beside layout with slot 3 at 0.60 m. Using it for A4 and B4 too would
+    change Anisha's random layout of scenario 4.
+
+**Item 3, the slot tables** (`layout_alternatives_v4_20261117_211023/slot_table.csv`: candidates P = the pending block with 2 at J1, (i)
+and (iii); per scenario, node and worker). The two usable candidates on the v4 map; the start slots are unchanged in both:
+
+(i), 2 at J1 in every setting:
+
+| node | slot | before_m | right_m | x, z | to node (m) | own-ask max (m) | clearance (m) |
+|---|---|---|---|---|---|---|---|
+| A | 1 | 3.0 | -2.0 | 4.25, -23.00 | 3.61 | 4.06 | 2.00 |
+| A | 2 | 3.0 | 4.0 | 10.25, -23.00 | 5.00 | 4.06 | 1.97 |
+| J1 | 1 | 3.0 | -2.0 | 4.25, -3.00 | 3.61 | 3.18 | 1.57 |
+| J1 | 2 | -2.5 | 4.0 | 10.25, 2.50 | 4.72 | 3.18 | 1.17 |
+| J2 | 1 | 3.0 | -2.0 | -3.25, -2.00 | 3.61 | 3.18 | 1.58 |
+| J2 | 2 | -2.5 | 4.0 | -8.75, 4.00 | 4.72 | 3.18 | 1.19 |
+| J3 | 1 | 3.0 | -2.0 | 15.75, 2.00 | 3.61 | 3.18 | 1.50 |
+| J3 | 2 | -2.5 | 4.0 | 21.25, -4.00 | 4.72 | 3.18 | 1.19 |
+| J4 | 1 | 3.0 | -2.0 | -15.75, -2.00 | 3.61 | 3.18 | 1.50 |
+| J4 | 2 | -2.5 | 4.0 | -21.25, 4.00 | 4.72 | 3.18 | 1.19 |
+
+(iii), 3 at J1 in A3 and B3, slot 3 relaxed:
+
+| node | slot | before_m | right_m | x, z | to node (m) | own-ask max (m) | clearance (m) |
+|---|---|---|---|---|---|---|---|
+| J1 | 1 | 3.5 | -2.5 | 3.75, -3.50 | 4.30 | 4.73 | 1.73 |
+| J1 | 2 | -4.0 | 4.0 | 10.25, 4.00 | 5.66 | 4.73 | 1.01 |
+| J1 | 3 | -4.5 | -3.0 | 3.25, 4.50 | 5.41 | 4.73 | 0.63 (relaxed) |
+| J2 | 1 / 2 | 3.5 / -4.0 | -2.5 / 4.0 | -2.75, -2.50 / -10.25, 4.00 | 4.30 / 5.66 | 3.95 | 1.86 / 1.21 |
+| J3 | 1 / 2 | 3.5 / -4.0 | -2.5 / 4.0 | 15.25, 2.50 / 22.75, -4.00 | 4.30 / 5.66 | 3.95 | 1.22 / 1.61 |
+| J4 | 1 / 2 | 3.5 / -4.0 | -2.5 / 4.0 | -15.25, -2.50 / -22.75, 4.00 | 4.30 / 5.66 | 3.95 | 1.65 / 1.61 |
+
+- `turn` and `turn_left` (B) use the same junction slots, and `corridor` only the start slots. Every one of those rows passes; the
+  values are in the CSV.
+- **For Anisha's `second_opinion_radius_m` (6.5 m):** the largest worker-to-node distance is 5.00 m in (i), 5.66 m in (iii) and 5.70 m
+  in P. Every worker's nearest node of its map is its own node in all three, so 6.5 m keeps every worker of every candidate.
+- **Scenario 4:** the random rule stays as it is (6 m square, bystander margin 0.25 m, `min_road_m` 1.0), with **2** at J1
+  (`people_by_node` J1 3 cannot be met; item 2).
+- **Not run:** the NavMesh verification (addendum 2's tool). There is no chosen layout, and the tool stops at the first plan the
+  pending layout refuses (A3). It will run once a layout is decided.
+
+*Item 4, Anisha's question, answered (2026-11-17): the claim is WITHDRAWN.* "Whenever STOP fires, the reader returns before
+evaluating PROCEED, restarting the 0.5 s PROCEED hold": the first half is true; the second half is not, in the code or in the logs.
+- **The code path** (8848a7a, the code of the step-5 runs; line numbers on `main` 29510ff in brackets):
+  - the reader, `robot_vision/gesture_motion.py`, `read_window`. STOP is decided first (line 636 [660]) and returns at line 649 [673],
+    before the PROCEED block at line 650 [674]. **True:** a frame that passes the STOP rule is read STOP, never PROCEED.
+  - the controller, `robot_vision/hri_control_v4.py`, `ControllerV4.step` (line 867 [939]): a STOP reading of anybody sets
+    `inp.gesture` STOP (lines 871-872 [948-949]), then calls `super().step` (line 873 [950]);
+  - `robot_vision/hri_control.py`, `Controller.step` (unchanged since v3): `_safety` returns "STOP gesture" (line 356), and `step` returns
+    at line 391 **before `self._tick` (line 393)**. So `ControllerV4._read_tick` and its `self.dialog.update(...)` (line 812 [884]) never
+    see that frame;
+  - `hri_control.GestureDialog.update` (lines 172-184) restarts the hold only for (a) a different direction, or (b) a no-direction
+    reading more than `max_none_gap_s` 0.3 s after the candidate was last seen. A frame it never receives restarts nothing: `since`
+    stays where it was.
+  - One more path, found in the replay: the safety stop leaves `last_persons_frame` unchanged. When the STOP frame has gone stale
+    (`gesture_stale_s` 0.5 s), the next tick gives that same frame to the dialog as a NONE reading, and rule (b) decides. Example below:
+    frame 11.676 s, a STOP stop at 12.113 s, then NONE at 12.204 s, 0.11 s after the last FORWARD, so no restart.
+- **The replay** (`finals_v4/replay_dialog_hold.py`, `robot_vision/outputs/replay_dialog_hold_20261117_202338/`): 97 asks of the 8
+  step-5 sessions; 45 accepted in the log; 49 with STOP frames.
+
+| model | asks matching the logged outcome | accepted asks at the logged time |
+|---|---|---|
+| S, the code as written (STOP frames never reach the dialog) | **97/97** | **45/45** |
+| R1, the claim (a STOP frame restarts the hold) | 77/97 | 25/45 |
+| R2, STOP frames given to the dialog as no-direction readings | 95/97 | 43/45 |
+
+- **20 accepted asks had a STOP frame inside the accepted 0.5 s hold** (hold start < STOP frame < accepting frame). In every one the
+  dialog accepted at the logged time, as if the STOP frame were not there. Under the claim none of the 20 would have been accepted in
+  that ask. First example, A1 trial 1 at A (ask 9.386 s):
+
+| frame t (s) | controller t (s) | reaches the dialog | label |
+|---|---|---|---|
+| 11.078 | 11.385 | yes | NONE |
+| 11.178 | 11.593 | no (safety stop: STOP gesture) | STOP |
+| 11.385 | 11.676 | yes | FORWARD: the hold starts |
+| 11.565 | 11.926 | yes | FORWARD |
+| 11.676 | 12.113 | no (safety stop: STOP gesture) | STOP |
+| 11.676 | 12.204 | yes (the same frame, now stale) | NONE |
+| 11.839 | 12.271 | yes | FORWARD |
+| 12.088 | 12.380 | yes | FORWARD: accepted, 0.703 s after the hold started (logged 12.38 s) |
+
+- **What a STOP does cost** (not a restart):
+  - a frame read STOP is a frame not read PROCEED (the reader's early return);
+  - the robot is stopped while STOP holds;
+  - the 5 s ask window keeps running.
+  - This agrees with AUDIT.md 16.19.3 (Anisha could not reproduce it) and 16.19.4 item 5 (feeding the STOP frames removes no abort).
+
+### 2026-11-18, section 15 addendum 4: layout (i) switched on after Anisha's PR #42 (declared before any change below)
+
+Nusrat's task of 2026-11-18. Branch `nusrat/v4-layout-2` (cd2fbc9). Its PR checks failed only in combination with `main`; the push
+checks passed. Nothing under `robot_vision/`, `docs/` or `external/` is edited here (the merge brings `main`'s versions unchanged);
+nothing is frozen, no final or Play session is run, nothing is pushed. Development work, not a result.
+
+**What the merge showed** (`origin/main` 1e89dcd, PR #42 `anisha/v4-clearance-layout`, AUDIT.md 16.21.2-16.21.3, merged without a
+commit and aborted after both suites ran; no tracked file was changed):
+- Anisha's `scenarios_ab.json` now carries alternative (i) of addendum 3: junction slots (3.0, -2.0) and (-2.5, 4.0), two workers at
+  every node (`people_by_node` removed from scenarios 3 and 4), `placement_rule` with `path_clearance_m` 1.0, `ask_zone_m` 5.5,
+  `ask_standoff_m` 2.0, `reask_shift_m` 0.8.
+- Python suite on the merged tree: 1284 tests, **2 failures**, 9 skipped. Both are her pins on Unity's block, which still holds addendum
+  1's slots (3.5, -2.5), (-4.5, 3.5):
+  - `test_clearance_layout_v4.TheLayout.test_unitys_values_agree_whenever_the_file_carries_them`;
+  - `test_lie_detection_v4.MatchesUnity.test_the_slots_and_margins_are_unitys` (and, once the block is active, it also requires
+    Unity's live `junction_slots` to equal the two slots exactly).
+- Unity Edit Mode suite on the merged tree: 342/342.
+
+**Decision (Nusrat, 2026-11-18):** alternative (i) of addendum 3, as in Anisha's file: two workers at every asking node in every setting
+(A3, B3, A4, B4 included); slot 1 3.0 m before and 2.0 m left, slot 2 2.5 m ahead and 4.0 m right; start slots unchanged; the
+clearance (1.0 m) and ask-zone (5.5 m) checks on at Play. Values from addendum 3's slot table
+(`layout_alternatives_v4_20261117_211023/slot_table.csv`), equal to her `scenarios_ab.json` (16.21.2).
+
+**The change, in one step** (as the block's note says: active becomes true and the live values are replaced):
+- `experiments_ab_unity.json`: `clearance_layout.active` true; `clearance_layout.junction_slots` = the two (i) slots;
+  `clearance_layout.two_worker_experiments` = A3, B3, A4, B4; live `junction_slots` = the same two slots; `three_worker_nodes` of A3,
+  A4, B3, B4 = []; the notes say so. Every other value (start slots, margins, zone, clearance, shift, activation) is unchanged.
+- `ExperimentsUnityConfig.Validate` requires 3 junction slots in both places; (i) has 2. The check becomes: at least 2 junction slots,
+  3 where an experiment keeps a third worker (live: any `three_worker_nodes`; block: any outside `two_worker_experiments`). Start slots
+  keep 3. No planner, rule or Play behaviour changes beyond the switch.
+- Edit Mode tests that pinned the block as inactive, or the section 3 / addendum 1 slots as live, are rewritten to pin (i) active and
+  every plan of seeds 1 and 2 of the 10 Unity settings under every rule. The earlier findings stay pinned with their slots written in
+  the tests: the section 3 slots refused under the clearance (A3 run 2 geometry); addendum 1's slots failing at 0.8 m (three at J1:
+  ask zone; two at J1 on `roadmap`: 0.84 m); three random workers at J1 cannot be placed.
+
+**Disclosed consequences:**
+- B3 and B4 have no majority at J1: one lie by two workers is a tie (as Anisha records in 16.21.2; she re-asks the first worker).
+- The layout tools `finals_v4/layout_search_v4.py` and `layout_search_v4_j1.py` read Unity's live and block slots as their baseline
+  ("least movement from the section 3 slots"). A rerun after this change takes (i) as that baseline; their committed outputs of
+  2026-11-17 stay the record. They are not changed here.
+- Not run here: addendum 2's NavMesh verification of the chosen layout (an Editor menu run), any Play session.
+
+**Commits:** (1) this declaration, before the merge; (2) the merge of `origin/main` with the switch, the `Validate` change and the tests
+(the merge alone fails her two pins, so the switch goes into the merge commit). Each after both suites pass.
