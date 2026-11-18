@@ -2751,3 +2751,69 @@ blind avatar rehearsal) and the analysis commands, in the report; Nusrat runs th
 
 **Commits:** (1) this declaration; (2) the checkpoint workers (config, planner, runner, force-lie option, launcher passthrough, NavMesh
 verify points, tests); (3) the checks' results and the report tool. Each after both suites pass.
+
+*Results (2026-11-18/19; declaration be1a08f, implementation 7d8ab30; every check below ran on 7d8ab30).*
+
+**Items 1 and 2:** as declared; nothing in Unity's answer rule changed for the next junction. Coverage on the roadmap: 7 checkpoints, J1 LEFT
+-> J2 and J2 FORWARD -> J4 by the next junction's workers (Edit Mode test `Coverage_EveryDecisionBranch`; 11 off-route junction cases all
+BACK toward the arrival road, `NextJunction_PointsBackOnEveryWrongPath`).
+
+**Items 3 and 4, the planner** (commit 7d8ab30: `checkpoints` block, `ExperimentPlanAB` `Checkpoints` / `CheckpointDrive` /
+`CheckpointAnswers` / `CheckpointDirection` / `CheckpointProblem` / `CheckpointsAroundNode`, `RunPlanAB.Checkpoints`, runner spawning and answer
+rule, `session.json` `checkpoint_rule` and `force_lie`, `-experimentForceLie`, the launcher's `-ExperimentForceLie`, Verify points).
+- **Every run of seeds 1 and 2 of the 10 Unity settings is planned** (stop rule not triggered): with `free` = null (Edit Mode test) and
+  with Play's own position check (ground-truth grid and capsule test, the export below).
+- A3 / B3: the node workers keep their places, ids, looks and lies (`NodeWorkers_UnchangedInTheBesideLayout`); no redraws.
+- A4 / B4 (random): the node workers are redrawn around the checkpoints. With Play's check, redraws per run 3,538 / 15,656.5 / 55,851 (min
+  / median / max over 40 runs); per node J1 median 12,860.5, max 54,366 of `random_max_draws` 100,000 (A 505, J2 4,640, J3 2,849, J4 2,526
+  at most). **J1 is the binding node: the J1 -> J3 checkpoint (P6, Q2) leaves a small part of J1's 6 m square; seeds 1 and 2 stay under
+  the limit, other seeds are not checked.** With `free` = null the 40 runs need 266,262 redraws in all (Play's check rejects more cells, so
+  Play's random positions differ from the Edit Mode test's, as before).
+- Active avatars: at most 4 in A3, A4, B3, B4 (2 elsewhere), limit 6.
+- Changed existing test: `ExperimentClearanceTests.Before()` switches the checkpoints off (the pre-addendum-4 configs it pins had none).
+- Unity Edit Mode 357/357 (12 new tests in `HRI/Tests/CheckpointWorkersTests.cs`), Python 1284 OK (9 skipped).
+
+**Item 5, the checks.**
+- **NavMesh Verify: PASSED** (`robot_vision/outputs/navmesh_v4_check_20261118_235705/`): 800 planned runs, 2,524 points (checkpoint ask
+  points included; 0 off the NavMesh), 2,950,319 paths, 0 not complete, 0 entering a footprint; control, V2 (252 stricter / 19 looser) and
+  V4 as before.
+- **Worker and checkpoint path check: PASSED** (`robot_vision/outputs/checkpoint_check_20261118_235303/`; temporary script
+  `TempCheckpointCheck`, run in batch mode with Play's position check, deleted with its `.meta`, source `TempCheckpointCheck.cs.txt` there):
+  400 plans, 48,270 NavMesh paths (11,200 checkpoint drives), every end snapped, all complete, none entering a footprint, **none within
+  0.30, 0.60 or 1.0 m of a worker** (checkpoints included); least 1.000 m (A4 seed 1 run 1, a J1 drive), least on a checkpoint drive
+  1.001 m (A4 seed 2 run 9, J3 RIGHT -> E4); every checkpoint ask point on the NavMesh (largest snap 0.000 m).
+- **Positions and people in view** (`robot_vision/outputs/checkpoint_layout_report_v4_20261118_235345/`, `finals_v4/checkpoint_layout_report_v4.py`):
+
+| branch | s / right (m) | worker x, z | to its junction / next node (m) |
+|---|---|---|---|
+| J1 FORWARD -> E1 | 15.5 / -4.0 | 2.25, 15.50 | 16.01 / 6.02 |
+| J1 RIGHT -> J3 | 6.0 / +4.0 | 12.25, -4.00 | 7.21 / 7.63 |
+| J2 RIGHT -> E2 | 15.5 / -4.0 | -10.25, 15.50 | 16.01 / 6.02 |
+| J3 LEFT -> E3 | 15.5 / -4.0 | 14.75, 15.50 | 16.01 / 6.02 |
+| J3 RIGHT -> E4 | 14.5 / -4.5 | 23.25, -14.50 | 15.18 / 7.11 |
+| J4 RIGHT -> E5 | 14.5 / -4.5 | -23.25, 14.50 | 15.18 / 7.11 |
+| J4 LEFT -> E6 | 15.5 / -4.0 | -14.75, -15.50 | 16.01 / 6.02 |
+
+  - Identical in every plan. The independent Python port of addendum 5's rules finds **no failure** in any plan.
+  - **Pan-tilt: never 3 or more people at any ask.** Node asks: at most 2 (A3 / B3 360 of 2,400 asks with 2); checkpoint asks: always 1
+    (the checkpoint alone).
+  - 360 at node asks, 3 or more: A3 / B3 920 of 2,400 (max 4; at J1 and J3), A4 / B4 626 of 2,369 (max 4); A1, A2, B1, B2 never (2).
+  - 360 at checkpoint asks, 3 or more: 160 of 1,120 in each of A3, A4, B3, B4, all at the J1 -> J3 checkpoint (J1's and J3's workers in
+    view; max 4); every other checkpoint ask sees only its own worker.
+  - While driving: at most 4 in 360, at most 1 (A3 / B3) or 2 (A4 / B4) in pan-tilt.
+- **Smoke trial (development, not a result):** B3, seed 1, 1 trial, goal E1 (`-experimentGoals`, seeded E2), `-experimentForceLie J1:RIGHT`,
+  main's server with `control_lie_on.json`. Unity `trials_development_Task2_B3_20261118_235842`, bridge `bridge_guide_20261118_235726`.
+  - Checks: the launcher's B11 check **REHEARSAL VALID** (leak test passed in Unity, `session.json` `leak_test.passed` true, and in Python,
+    `gt_path.py session`; split guard; every truth and run file accepted); `step5_session_checks.ps1 -Setting smoke_t4_B3` **ALL CHECKS
+    PASSED** (`gesture_data.py --messages`, export `export_csv_v4_20261119_000411`).
+  - 17 workers in `truth.jsonl` (ids 11-17 the checkpoints, with rows every frame, `active` false while far).
+  - Outcome: FAILURE, aborted at J3 at 213.8 s; 0 collisions, closest person 1.24 m; 0 watchdog stops; round trip max 115.7 ms; loop lag
+    p99 22 ms, **max 147 ms (over the 100 ms limit; VS Code / Claude Code session open, free memory 3.9 GB before the session)**.
+  - What happened: A, two PROCEED read FORWARD. J1: worker 3 (forced liar) POINT RIGHT, read RIGHT; the second opinion, worker 4, PROCEED
+    read FORWARD; the tie re-asked worker 3 (second view) and the robot took RIGHT, **following the lie**. It drove J1 -> J3 past the
+    J1 -> J3 checkpoint (worker 12), which **was not asked** (main's controller has no checkpoint state); in this run worker 12 is itself a
+    seeded liar (it would show FORWARD, true BACK). At J3, on the wrong path for E1: **worker 7 (honest) pointed BACK twice** (truth POINT,
+    -40.6 to +2.0 deg to the robot's forward axis, `gesture_truthful` true); Python read NONE both times (insufficient history, cues not met;
+    no rejection was logged). Worker 8, a seeded liar, pointed RIGHT (true BACK), read NONE; then the abort.
+  - **Not shown: a checkpoint pointing back.** No checkpoint was asked, so no checkpoint gestured (all their truth rows NONE). As
+    declared, this needs Anisha's checkpoint controller. The next junction's contradiction was shown by Unity but not read by the reader.
