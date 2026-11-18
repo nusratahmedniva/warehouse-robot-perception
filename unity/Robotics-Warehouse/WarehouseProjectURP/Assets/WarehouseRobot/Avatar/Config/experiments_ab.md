@@ -2368,3 +2368,48 @@ evaluating PROCEED, restarting the 0.5 s PROCEED hold": the first half is true; 
   - the robot is stopped while STOP holds;
   - the 5 s ask window keeps running.
   - This agrees with AUDIT.md 16.19.3 (Anisha could not reproduce it) and 16.19.4 item 5 (feeding the STOP frames removes no abort).
+
+### 2026-11-18, section 15 addendum 4: layout (i) switched on after Anisha's PR #42 (declared before any change below)
+
+Nusrat's task of 2026-11-18. Branch `nusrat/v4-layout-2` (cd2fbc9). Its PR checks failed only in combination with `main`; the push
+checks passed. Nothing under `robot_vision/`, `docs/` or `external/` is edited here (the merge brings `main`'s versions unchanged);
+nothing is frozen, no final or Play session is run, nothing is pushed. Development work, not a result.
+
+**What the merge showed** (`origin/main` 1e89dcd, PR #42 `anisha/v4-clearance-layout`, AUDIT.md 16.21.2-16.21.3, merged without a
+commit and aborted after both suites ran; no tracked file was changed):
+- Anisha's `scenarios_ab.json` now carries alternative (i) of addendum 3: junction slots (3.0, -2.0) and (-2.5, 4.0), two workers at
+  every node (`people_by_node` removed from scenarios 3 and 4), `placement_rule` with `path_clearance_m` 1.0, `ask_zone_m` 5.5,
+  `ask_standoff_m` 2.0, `reask_shift_m` 0.8.
+- Python suite on the merged tree: 1284 tests, **2 failures**, 9 skipped. Both are her pins on Unity's block, which still holds addendum
+  1's slots (3.5, -2.5), (-4.5, 3.5):
+  - `test_clearance_layout_v4.TheLayout.test_unitys_values_agree_whenever_the_file_carries_them`;
+  - `test_lie_detection_v4.MatchesUnity.test_the_slots_and_margins_are_unitys` (and, once the block is active, it also requires
+    Unity's live `junction_slots` to equal the two slots exactly).
+- Unity Edit Mode suite on the merged tree: 342/342.
+
+**Decision (Nusrat, 2026-11-18):** alternative (i) of addendum 3, as in Anisha's file: two workers at every asking node in every setting
+(A3, B3, A4, B4 included); slot 1 3.0 m before and 2.0 m left, slot 2 2.5 m ahead and 4.0 m right; start slots unchanged; the
+clearance (1.0 m) and ask-zone (5.5 m) checks on at Play. Values from addendum 3's slot table
+(`layout_alternatives_v4_20261117_211023/slot_table.csv`), equal to her `scenarios_ab.json` (16.21.2).
+
+**The change, in one step** (as the block's note says: active becomes true and the live values are replaced):
+- `experiments_ab_unity.json`: `clearance_layout.active` true; `clearance_layout.junction_slots` = the two (i) slots;
+  `clearance_layout.two_worker_experiments` = A3, B3, A4, B4; live `junction_slots` = the same two slots; `three_worker_nodes` of A3,
+  A4, B3, B4 = []; the notes say so. Every other value (start slots, margins, zone, clearance, shift, activation) is unchanged.
+- `ExperimentsUnityConfig.Validate` requires 3 junction slots in both places; (i) has 2. The check becomes: at least 2 junction slots,
+  3 where an experiment keeps a third worker (live: any `three_worker_nodes`; block: any outside `two_worker_experiments`). Start slots
+  keep 3. No planner, rule or Play behaviour changes beyond the switch.
+- Edit Mode tests that pinned the block as inactive, or the section 3 / addendum 1 slots as live, are rewritten to pin (i) active and
+  every plan of seeds 1 and 2 of the 10 Unity settings under every rule. The earlier findings stay pinned with their slots written in
+  the tests: the section 3 slots refused under the clearance (A3 run 2 geometry); addendum 1's slots failing at 0.8 m (three at J1:
+  ask zone; two at J1 on `roadmap`: 0.84 m); three random workers at J1 cannot be placed.
+
+**Disclosed consequences:**
+- B3 and B4 have no majority at J1: one lie by two workers is a tie (as Anisha records in 16.21.2; she re-asks the first worker).
+- The layout tools `finals_v4/layout_search_v4.py` and `layout_search_v4_j1.py` read Unity's live and block slots as their baseline
+  ("least movement from the section 3 slots"). A rerun after this change takes (i) as that baseline; their committed outputs of
+  2026-11-17 stay the record. They are not changed here.
+- Not run here: addendum 2's NavMesh verification of the chosen layout (an Editor menu run), any Play session.
+
+**Commits:** (1) this declaration, before the merge; (2) the merge of `origin/main` with the switch, the `Validate` change and the tests
+(the merge alone fails her two pins, so the switch goes into the merge commit). Each after both suites pass.
