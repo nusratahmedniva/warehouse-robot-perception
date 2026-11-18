@@ -7,6 +7,7 @@ param(
     [switch]$DryRun,                                  # print every command without running it (only read-only lookups run)
     [int]$Trials = 3,                                 # rehearsal only: the number of runs (launch_prep --trials)
     [string]$ExperimentGoals = "",                    # rehearsal only, random-endpoint maps (A3, A4, B3, B4): one goal per run, e.g. "E5,E6,E5" (TrialPlayV4 -experimentGoals; experiments_ab.md section 15 addendum 1, item 3c)
+    [string]$ExperimentForceLie = "",                 # rehearsal only: NODE:COMMAND, the first worker of that asking node lies with COMMAND in every run, e.g. "J1:RIGHT" (TrialPlayV4 -experimentForceLie; experiments_ab.md section 15 addendum 6)
     [string]$UnityExe = ""                            # default: Unity Hub's editor of ProjectSettings/ProjectVersion.txt
 )
 # One v4 session, end to end (2026-11-13; Avatar/Config/final_procedure_v4.md). Since 2026-11-14 the finals are the experiments A/B
@@ -83,10 +84,15 @@ if ($Rehearsal) {
         if ($goalList.Count -ne $Trials) { Say "REFUSED: -ExperimentGoals gives $($goalList.Count) goal(s) for -Trials $Trials (one per run)"; exit 2 }
         $unityMode += @("-experimentGoals", ($goalList -join ","))
     }
+    if ($ExperimentForceLie) {
+        if ($ExperimentForceLie -notmatch '^[A-Za-z0-9]+:(LEFT|FORWARD|RIGHT|BACK)$') { Say "REFUSED: -ExperimentForceLie takes NODE:COMMAND, COMMAND one of LEFT, FORWARD, RIGHT, BACK (e.g. J1:RIGHT)"; exit 2 }
+        $unityMode += @("-experimentForceLie", $ExperimentForceLie)
+    }
     $sessionPattern = "trials_development_$($trialsCfg.task)_${Experiment}_*"
 } else {
     if ($PSBoundParameters.ContainsKey("Trials")) { Say "REFUSED: -Trials is for a rehearsal only (a final runs runs_per_setting = $($plan.runs_per_setting))"; exit 2 }
     if ($ExperimentGoals) { Say "REFUSED: -ExperimentGoals is for a rehearsal only (a final takes its goals from final_seed)"; exit 2 }
+    if ($ExperimentForceLie) { Say "REFUSED: -ExperimentForceLie is for a rehearsal only (a final draws its lies from final_seed)"; exit 2 }
     $timeout = $plan.timeout_s
     $runs = [int]$plan.runs_per_setting
     $unityMode = @("-finalSetting", $name)

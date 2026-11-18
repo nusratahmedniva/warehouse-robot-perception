@@ -38,6 +38,21 @@
     "two_worker_experiments": ["A3", "B3", "A4", "B4"],
     "note": "ACTIVE since 2026-11-18 (experiments_ab.md section 15 addendum 4, declared before the change; Nusrat's decision after Anisha's PR #42, AUDIT.md 16.21.2): layout (i) of addendum 3, two workers at every asking node in every experiment, slot 1 3.0 m before and 2.0 m left, slot 2 2.5 m AHEAD and 4.0 m right; the live junction_slots and three_worker_nodes above carry the same values; the clearance and ask-zone checks apply at Play. Unity's planner places every run of seeds 1 and 2 of the 10 settings under every rule (ExperimentClearanceTests). The record below is the block before the switch: its slots were (3.5, -2.5), (-4.5, 3.5), (-5.0, -4.0) with two_worker_experiments A4, B4. PENDING ANISHA (2026-11-17, Nusrat's choice; experiments_ab.md section 15 addendum 1, item 3b). The corner layout that keeps the clearance on every map: slot 1 3.5 m before and 2.5 m left of the junction, slot 2 4.5 m AHEAD and 3.5 m right, slot 3 (J1 in A3, B3) 5.0 m ahead and 4.0 m left; start slots unchanged; A4 and B4 with 2 workers at J1 (3 random workers in the 6 m square cannot keep the clearance). Found by a geometry search over every slot on a 0.5 m grid (smallest largest own-ask distance, 5.19 m, then least movement from the section 3 slots), under the declared segment model including the return to the first worker (tie); the first search left the tie out and its choice (slot 1 2.5 m before, slot 3 3.5 m left) failed the Unity check by 0.03 m (section 15 addendum 1, record of item 3b). Stays inactive until Anisha's scenarios_ab.json (junction_slots, people_by_node of scenario 4), her MatchesUnity tests and her simulator's placement carry it; then active becomes true in one change and junction_slots / three_worker_nodes above are replaced by these values. 2026-11-17, section 15 addendum 3: WITH THE V4 RE-ASK SHIFT (0.8 m) THESE SLOTS FAIL with three workers at J1 (an ask point 5.51 m from J1) and with two at J1 on roadmap (slot 2 0.84 m from a drive); no beside slot set with three at J1 keeps every rule, nor do three random workers at J1. Kept unchanged and inactive until Nusrat and Anisha decide between the alternatives of addendum 3."
   },
+  "checkpoints": {
+    "active": true,
+    "positions": [
+      { "map": "roadmap", "from": "J1", "command": "FORWARD", "s_m": 15.5, "right_m": -4.0 },
+      { "map": "roadmap", "from": "J1", "command": "RIGHT", "s_m": 6.0, "right_m": 4.0 },
+      { "map": "roadmap", "from": "J2", "command": "RIGHT", "s_m": 15.5, "right_m": -4.0 },
+      { "map": "roadmap", "from": "J3", "command": "LEFT", "s_m": 15.5, "right_m": -4.0 },
+      { "map": "roadmap", "from": "J3", "command": "RIGHT", "s_m": 14.5, "right_m": -4.5 },
+      { "map": "roadmap", "from": "J4", "command": "RIGHT", "s_m": 14.5, "right_m": -4.5 },
+      { "map": "roadmap", "from": "J4", "command": "LEFT", "s_m": 15.5, "right_m": -4.0 }
+    ],
+    "answer_radius_m": 3.5,
+    "second_opinion_radius_m": 6.5,
+    "note": "2026-11-18, experiments_ab.md section 15 addendum 6 (variant T4, declared before the change): one checkpoint worker beside each listed decision branch (s_m along the branch from its junction, right_m to the right of the travel direction, negative = left); positions = addendum 5 item 3c proposals that meet P1-P10 and Q1-Q2 (checkpoint_feasibility_v4_20261118_214624). J1 LEFT -> J2 and J2 FORWARD -> J4 have no valid spot: the next junction honest workers point BACK there (ExperimentPlanAB.TruthfulCommand, unchanged); Unity refuses a run whose map has a decision branch with neither. Same template and navigation looks as every worker; honest PROCEED on a branch toward B, POINT back toward its junction otherwise; a liar (the set lie_probability, per worker per run, seeded) shows the opposite. Answers only while the road nearest the robot centre is its branch and the robot is within answer_radius_m of it (else NONE). Fixed; every node worker is placed around the checkpoints under every rule, and each checkpoint is checked under every rule. second_opinion_radius_m is a copy of configs/v4/control.json lie_detection.second_opinion_radius_m (pinned by CheckpointWorkersTests)."
+  },
   "activation_radius_m": 8.0,
   "activation_sample_step_m": 0.5,
   "max_active_avatars": 6,

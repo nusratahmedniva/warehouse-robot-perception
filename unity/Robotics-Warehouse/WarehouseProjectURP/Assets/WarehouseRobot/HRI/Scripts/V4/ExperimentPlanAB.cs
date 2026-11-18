@@ -49,6 +49,30 @@ namespace WarehouseHRI.V4
         public string[] two_worker_experiments = new string[0];
     }
 
+    /// <summary>experiments_ab.md section 15 addendum 6 (variant T4): one checkpoint worker beside a decision branch.</summary>
+    [Serializable]
+    public class CheckpointDef
+    {
+        /// <summary>The map whose runs get this checkpoint (scenarios_ab.json map name, or roadmap).</summary>
+        public string map;
+        /// <summary>The decision junction the branch leaves, and the branch command there.</summary>
+        public string from, command;
+        /// <summary>Along the branch from the junction (the anchor), and to the right of the travel direction (negative = left).</summary>
+        public float s_m, right_m;
+    }
+
+    /// <summary>Section 15 addendum 6: the checkpoint workers, their answer radius and Unity's copy of Python's second-opinion radius.</summary>
+    [Serializable]
+    public class CheckpointsConfig
+    {
+        public bool active;
+        public CheckpointDef[] positions = new CheckpointDef[0];
+        /// <summary>A checkpoint worker answers only while the robot's centre is this close to it (and on its branch).</summary>
+        public float answer_radius_m;
+        /// <summary>Copy of configs/v4/control.json lie_detection.second_opinion_radius_m (rule Q1).</summary>
+        public float second_opinion_radius_m;
+    }
+
     /// <summary>Scenario/Config/experiments_ab_unity.json (experiments_ab.md sections 3 and 4).</summary>
     [Serializable]
     public class ExperimentsUnityConfig
@@ -85,6 +109,7 @@ namespace WarehouseHRI.V4
         public float ask_standoff_m;
         public float reask_shift_m;
         public ClearanceLayout clearance_layout = new ClearanceLayout();
+        public CheckpointsConfig checkpoints = new CheckpointsConfig();
 
         public static ExperimentsUnityConfig Parse(string json) =>
             JsonUtility.FromJson<ExperimentsUnityConfig>(json ?? "") ?? throw new FormatException("experiments_ab_unity.json: not a JSON object");
@@ -129,6 +154,14 @@ namespace WarehouseHRI.V4
             if (clearance_layout == null || clearance_layout.junction_slots == null || clearance_layout.junction_slots.Length < (thirdInBlock ? 3 : 2))
                 e.Add($"clearance_layout.junction_slots: {(thirdInBlock ? 3 : 2)} slots (3 when an experiment outside two_worker_experiments lists three_worker_nodes)");
             else foreach (var n in clearance_layout.two_worker_experiments ?? new string[0]) if (Experiment(n) == null) e.Add($"clearance_layout.two_worker_experiments: '{n}' is not an experiment");
+            if (checkpoints != null && checkpoints.active)
+            {
+                if (!(checkpoints.answer_radius_m > 0f) || !(checkpoints.second_opinion_radius_m > 0f)) e.Add("checkpoints: answer_radius_m and second_opinion_radius_m must be > 0");
+                foreach (var d in checkpoints.positions ?? new CheckpointDef[0])
+                    if (d == null || string.IsNullOrEmpty(d.map) || string.IsNullOrEmpty(d.from) || Array.IndexOf(ExperimentPlanAB.Directions, d.command) < 0 ||
+                        d.command == ExperimentPlanAB.Back || !(d.s_m > 0f) || d.right_m == 0f)
+                        e.Add("checkpoints: every position needs map, from, a branch command (LEFT, FORWARD, RIGHT), s_m > 0 and right_m != 0");
+            }
             return e;
         }
     }
@@ -157,8 +190,21 @@ namespace WarehouseHRI.V4
         public string TrueCommand;
         /// <summary>The direction this worker shows every time it is asked in the run (TrueCommand unless it lies).</summary>
         public string ShownCommand;
-        /// <summary>The shown direction is a branch of the node in the robot's map (false: an impossible direction).</summary>
+        /// <summary>The shown direction is a branch of the node in the robot's map (false: an impossible direction). A checkpoint worker's
+        /// FORWARD (continue) and BACK (return along its branch) both count as a way on.</summary>
         public bool ShownIsBranch;
+        /// <summary>Section 15 addendum 6: the branch of a checkpoint worker; null for a node's worker. For a checkpoint, Node is its label
+        /// ("J1 RIGHT -> J3"), Slot 0, TrueCommand FORWARD (the branch leads to the goal) or BACK.</summary>
+        public CheckpointBranch Checkpoint;
+    }
+
+    /// <summary>Section 15 addendum 6: a checkpoint's branch, its anchor (the road point at S) and its worker's position.</summary>
+    public sealed class CheckpointBranch
+    {
+        public string From, Command, To;
+        public float S, Right;
+        public Vector3 Anchor, Position;
+        public string Label => $"{From} {Command} -> {To}";
     }
 
     public sealed class RunPlanAB
@@ -167,7 +213,10 @@ namespace WarehouseHRI.V4
         public string Goal;
         /// <summary>The map this run uses (A2: turn or turn_left).</summary>
         public string MapName;
+        /// <summary>The workers of the asking nodes.</summary>
         public readonly List<PlannedWorker> Workers = new List<PlannedWorker>();
+        /// <summary>Section 15 addendum 6: the checkpoint workers (fixed), ids after the node workers'.</summary>
+        public readonly List<PlannedWorker> Checkpoints = new List<PlannedWorker>();
         /// <summary>Per asking node: rejected candidate positions (random layout; 0 for beside).</summary>
         public readonly Dictionary<string, int> Redraws = new Dictionary<string, int>();
         public int MaxActive;
@@ -402,6 +451,21 @@ namespace WarehouseHRI.V4
             if (map.Node(goal) == null) { error = $"goal {goal} is not a node of map {mapName}"; return null; }
             if (males == null || males.Count == 0 || females == null || females.Count == 0) { error = "a male and a female navigation look are needed"; return null; }
             var nodes = AskNodes(map);
+            // section 15 addendum 6: the checkpoints are fixed and planned first; ids follow the node workers' ids
+            var cps = Checkpoints(map, mapName, out error);
+            if (cps == null) { error = $"run {run}: {error}"; return null; }
+            int nodeWorkers = 0;
+            foreach (var n in nodes) nodeWorkers += WorkersAt(n.Name);
+            for (int c = 0; c < cps.Count; c++)
+            {
+                var w = new PlannedWorker { Id = nodeWorkers + 1 + c, Node = cps[c].Label, Slot = 0, Position = cps[c].Position, Gender = c % 2 == 0 ? "male" : "female",
+                                            Checkpoint = cps[c], TrueCommand = Reaches(map, cps[c].To, goal) ? Forward : Back };
+                var looks = w.Gender == "male" ? males : females;
+                w.Look = looks[(c / 2 + run - 1) % looks.Count];
+                DrawCheckpointLie(w, seed, run, LieProbability);
+                plan.Checkpoints.Add(w);
+            }
+            var placed = new List<PlannedWorker>(plan.Checkpoints);
             int id = 1;
             for (int ni = 0; ni < nodes.Count; ni++)
             {
@@ -415,12 +479,12 @@ namespace WarehouseHRI.V4
                     if (k > slots.Length) { error = $"{node.Name}: {k} workers but {slots.Length} slots"; return null; }
                     pos = new List<Vector3>();
                     for (int s = 0; s < k; s++) pos.Add(SlotPosition(map, node, slots[s]));
-                    string why = NodeProblem(map, node, pos, plan.Workers, free);
+                    string why = NodeProblem(map, node, pos, placed, free);
                     if (why != null) { error = $"run {run}, {node.Name}: fixed slots break a rule: {why}"; return null; }
                 }
                 else
                 {
-                    pos = DrawRandom(map, node, k, plan.Workers, free, new Rng(seed, run, ni + 1, PlaceSalt), out redraws, out string why);
+                    pos = DrawRandom(map, node, k, placed, free, new Rng(seed, run, ni + 1, PlaceSalt), out redraws, out string why);
                     if (pos == null) { error = $"run {run}, {node.Name}: no placement within {Cfg.random_max_draws} draws ({why})"; return null; }
                 }
                 plan.Redraws[node.Name] = redraws;
@@ -432,10 +496,13 @@ namespace WarehouseHRI.V4
                     w.Look = looks[(ni + run - 1 + s / 2) % looks.Count];
                     DrawLie(map, w, seed, run, LieProbability);
                     plan.Workers.Add(w);
+                    placed.Add(w);
                     id++;
                 }
             }
-            plan.MaxActive = MaxActive(map, plan.Workers, Cfg.activation_radius_m, Cfg.activation_sample_step_m);
+            string cpWhy = CheckpointProblem(map, plan, free);
+            if (cpWhy != null) { error = $"run {run}: {cpWhy}"; return null; }
+            plan.MaxActive = MaxActive(map, placed, Cfg.activation_radius_m, Cfg.activation_sample_step_m);
             if (plan.MaxActive > Cfg.max_active_avatars)
             {
                 error = $"run {run}: up to {plan.MaxActive} workers would be active at once (> max_active_avatars {Cfg.max_active_avatars})";
@@ -498,7 +565,45 @@ namespace WarehouseHRI.V4
                     if (m < Rule.NearerMarginM) return $"worker {i + 1} is only {m:0.00} m farther than the first worker on the approach (< {Rule.NearerMarginM})";
                 }
             }
-            if (Rule.PathClearanceM > 0f || Rule.AskZoneM > 0f) return ClearanceProblem(map, node, pos, placed, roads);
+            if (Rule.PathClearanceM > 0f || Rule.AskZoneM > 0f)
+            {
+                string why = ClearanceProblem(map, node, pos, placed, roads);
+                if (why != null) return why;
+            }
+            return CheckpointsAroundNode(map, node, pos, placed);
+        }
+
+        /// <summary>Section 15 addendum 6: the rules between this node's workers and the checkpoints (placed first): 3.0 m from every anchor,
+        /// the clearance from every checkpoint's own drive, farther than ask_max_distance_m from every checkpoint ask point and every checkpoint
+        /// farther than that from this node's ask points, every checkpoint at least the bystander margin farther than the node's first worker.
+        /// (Separation and the clearance of the checkpoints from this node's drives are the existing checks over the placed workers.)</summary>
+        string CheckpointsAroundNode(RoadmapV4 map, RoadmapV4.NodeDef node, IList<Vector3> pos, IList<PlannedWorker> placed)
+        {
+            List<Vector3> nodeAsks = null;
+            float clr = Rule.PathClearanceM - 1e-4f;
+            foreach (var c in placed)
+            {
+                if (c.Checkpoint == null) continue;
+                if (nodeAsks == null) DrivableSegments(map, node, pos, Rule.StandoffM, Rule.ReaskShiftM, out nodeAsks);
+                var drive = CheckpointDrive(map, c.Checkpoint, c.Position, Rule.StandoffM, Rule.ReaskShiftM, out var cpAsks);
+                for (int i = 0; i < pos.Count; i++)
+                {
+                    float d = Flat(pos[i] - c.Checkpoint.Anchor);
+                    if (d < Rule.MinTurningPointM) return $"worker {i + 1} is {d:0.00} m from the anchor of checkpoint {c.Node} (< {Rule.MinTurningPointM})";
+                    if (Rule.PathClearanceM > 0f)
+                        foreach (var s in drive)
+                            if (SegmentDistance(pos[i], s.A, s.B) < clr) return $"worker {i + 1} is {SegmentDistance(pos[i], s.A, s.B):0.00} m from {s.Label} (< {Rule.PathClearanceM})";
+                    foreach (var q in cpAsks)
+                        if (Flat(pos[i] - q) <= Cfg.ask_max_distance_m) return $"worker {i + 1} is {Flat(pos[i] - q):0.00} m from an ask point of checkpoint {c.Node} (<= {Cfg.ask_max_distance_m})";
+                }
+                foreach (var q in nodeAsks)
+                    if (Flat(c.Position - q) <= Cfg.ask_max_distance_m) return $"checkpoint {c.Node} is {Flat(c.Position - q):0.00} m from an ask point of {node.Name} (<= {Cfg.ask_max_distance_m})";
+                if (pos.Count > 0)
+                {
+                    float m = NearerMargin(map, node, c.Position, pos[0]);
+                    if (m < Rule.NearerMarginM) return $"checkpoint {c.Node} is only {m:0.00} m farther than {node.Name}'s first worker on the approach (< {Rule.NearerMarginM})";
+                }
+            }
             return null;
         }
 
@@ -628,11 +733,11 @@ namespace WarehouseHRI.V4
                 foreach (var s in segs)
                     if (SegmentDistance(q.Position, s.A, s.B) < clr) return $"worker {q.Id} ({q.Node}) is {SegmentDistance(q.Position, s.A, s.B):0.00} m from {s.Label} (< {Rule.PathClearanceM})";
             var nodesBefore = new List<string>();
-            foreach (var q in placed) if (!nodesBefore.Contains(q.Node)) nodesBefore.Add(q.Node);
+            foreach (var q in placed) if (q.Checkpoint == null && !nodesBefore.Contains(q.Node)) nodesBefore.Add(q.Node);
             foreach (var name in nodesBefore)
             {
                 var theirs = new List<PlannedWorker>();
-                foreach (var q in placed) if (q.Node == name) theirs.Add(q);
+                foreach (var q in placed) if (q.Checkpoint == null && q.Node == name) theirs.Add(q);
                 theirs.Sort((a, b) => a.Slot.CompareTo(b.Slot));
                 var wpos = new List<Vector3>();
                 foreach (var q in theirs) wpos.Add(q.Position);
@@ -657,6 +762,216 @@ namespace WarehouseHRI.V4
                 w.ShownCommand = wrong[rng.Index(wrong.Count)];
             }
             w.ShownIsBranch = IsBranch(map, w.Node, w.ShownCommand);
+        }
+
+        // ---------------------------------------------------------------- checkpoint workers (section 15 addendum 6, variant T4)
+
+        /// <summary>The decision junctions of a map: junctions with two or more branches.</summary>
+        public static List<RoadmapV4.NodeDef> DecisionJunctions(RoadmapV4 map)
+        {
+            var list = new List<RoadmapV4.NodeDef>();
+            foreach (var n in map.Nodes)
+                if (n.Kind == RoadmapV4.KindJunction && map.Branches.TryGetValue(n.Name, out var bs) && bs.Count >= 2) list.Add(n);
+            return list;
+        }
+
+        /// <summary>
+        /// The checkpoints of a run's map (config order; empty while checkpoints are inactive): each entry must name a branch of a decision
+        /// junction of the map, once, inside the branch. Coverage (item 2): every decision branch has a checkpoint or ends at an asking node
+        /// (whose honest workers point back); null with the reason otherwise.
+        /// </summary>
+        public List<CheckpointBranch> Checkpoints(RoadmapV4 map, string mapName, out string error)
+        {
+            error = null;
+            var list = new List<CheckpointBranch>();
+            var c = Cfg.checkpoints;
+            if (c == null || !c.active) return list;
+            var decision = DecisionJunctions(map);
+            foreach (var d in c.positions ?? new CheckpointDef[0])
+            {
+                if (d == null || d.map != mapName) continue;
+                if (!decision.Exists(n => n.Name == d.from)) { error = $"checkpoint {d.from} {d.command}: {d.from} is not a decision junction of map {mapName}"; return null; }
+                var b = map.Branches[d.from].Find(x => x.Key == d.command);
+                if (b.Key == null) { error = $"checkpoint {d.from} {d.command}: no such branch in map {mapName}"; return null; }
+                if (list.Exists(x => x.From == d.from && x.Command == d.command)) { error = $"checkpoint {d.from} {d.command}: listed twice"; return null; }
+                var a = Pos(map.Node(d.from));
+                var e = Pos(map.Node(b.Value));
+                if (!(d.s_m > 0f && d.s_m < Flat(e - a))) { error = $"checkpoint {d.from} {d.command}: s_m {d.s_m} is not inside the branch ({Flat(e - a):0.00} m)"; return null; }
+                var f = (e - a).normalized;
+                var r = Vector3.Cross(Vector3.up, f);
+                var anchor = a + f * d.s_m;
+                list.Add(new CheckpointBranch { From = d.from, Command = d.command, To = b.Value, S = d.s_m, Right = d.right_m, Anchor = anchor, Position = anchor + r * d.right_m });
+            }
+            var asking = new HashSet<string>();
+            foreach (var n in AskNodes(map)) asking.Add(n.Name);
+            foreach (var j in decision)
+                foreach (var b in map.Branches[j.Name])
+                    if (!list.Exists(x => x.From == j.Name && x.Command == b.Key) && !asking.Contains(b.Value))
+                    {
+                        error = $"decision branch {j.Name} {b.Key} -> {b.Value} of map {mapName}: no checkpoint and no workers at its end (section 15 addendum 6, item 2)";
+                        return null;
+                    }
+            return list;
+        }
+
+        /// <summary>A checkpoint's modelled ask points (from each end of its branch: the ask position at the standoff and its re-ask point) and
+        /// its own drive (each end to its ask position; every ask point on to both ends), as addendum 5 item 3c.</summary>
+        public static List<DriveSegment> CheckpointDrive(RoadmapV4 map, CheckpointBranch cp, Vector3 worker, float standoff, float shift, out List<Vector3> asks)
+        {
+            var segs = new List<DriveSegment>();
+            asks = new List<Vector3>();
+            var ends = new[] { (cp.From, Pos(map.Node(cp.From))), (cp.To, Pos(map.Node(cp.To))) };
+            foreach (var (name, x) in ends)
+            {
+                var a = AskPosition(worker, x, standoff);
+                segs.Add(new DriveSegment { A = x, B = a, Label = $"checkpoint {cp.Label}: {name} to its ask position" });
+                foreach (var q in new[] { a, ReaskPosition(worker, a, standoff, shift) })
+                {
+                    AddPoint(asks, q);
+                    foreach (var (to, y) in ends)
+                        segs.Add(new DriveSegment { A = q, B = y, Label = $"checkpoint {cp.Label}: ask point ({q.x:0.00}, {q.z:0.00}) to {to}" });
+                }
+            }
+            return segs;
+        }
+
+        /// <summary>Section 15 addendum 6, item 3: a checkpoint worker answers only while the road of the map nearest to the robot's centre is
+        /// its branch (strictly, by more than 0.001 m: silent at a node where roads meet) and the robot's centre is within radius of it.</summary>
+        public static bool CheckpointAnswers(RoadmapV4 map, CheckpointBranch cp, Vector3 worker, Vector3 robot, float radius)
+        {
+            if (Flat(robot - worker) > radius) return false;
+            var s = Pos(map.Node(cp.From));
+            var e = Pos(map.Node(cp.To));
+            float own = SegmentDistance(robot, s, e);
+            foreach (var r in Roads(map))
+            {
+                bool same = (Flat(r.Key - s) < 1e-4f && Flat(r.Value - e) < 1e-4f) || (Flat(r.Key - e) < 1e-4f && Flat(r.Value - s) < 1e-4f);
+                if (!same && SegmentDistance(robot, r.Key, r.Value) <= own + 1e-3f) return false;
+            }
+            return true;
+        }
+
+        /// <summary>The world direction a checkpoint worker shows: FORWARD along its branch (PROCEED), BACK toward its junction.</summary>
+        public static Vector3 CheckpointDirection(RoadmapV4 map, CheckpointBranch cp, string command)
+        {
+            var d = Pos(map.Node(cp.To)) - Pos(map.Node(cp.From));
+            return (command == Back ? -d : d).normalized;
+        }
+
+        /// <summary>The checkpoint's lie: the same per-worker, per-run stream as every worker; a liar shows the opposite (FORWARD and BACK).</summary>
+        static void DrawCheckpointLie(PlannedWorker w, int seed, int run, float p)
+        {
+            var rng = new Rng(seed, run, w.Id, LieSalt);
+            w.Liar = rng.NextDouble() < p;
+            w.ShownCommand = w.Liar ? (w.TrueCommand == Forward ? Back : Forward) : w.TrueCommand;
+            w.ShownIsBranch = true;
+        }
+
+        /// <summary>Each checkpoint's own rules once the run's node workers stand (addendum 6 item 4: P1-P10, Q1, Q2), the first broken one or null.</summary>
+        string CheckpointProblem(RoadmapV4 map, RunPlanAB plan, Func<Vector3, bool> free)
+        {
+            if (plan.Checkpoints.Count == 0) return null;
+            var turning = new List<Vector3>();
+            foreach (var n in AskNodes(map)) turning.Add(Pos(n));
+            foreach (var n in AskNodes(Physical)) turning.Add(Pos(n));
+            var roads = Roads(map);
+            roads.AddRange(Roads(Physical));
+            var nodeSegs = new List<DriveSegment>();
+            var nodeAsks = new List<Vector3>();
+            var names = new List<string>();
+            foreach (var q in plan.Workers) if (!names.Contains(q.Node)) names.Add(q.Node);
+            foreach (var name in names)
+            {
+                var theirs = plan.Workers.FindAll(q => q.Node == name);
+                theirs.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+                nodeSegs.AddRange(DrivableSegments(map, map.Node(name), theirs.ConvertAll(q => q.Position), Rule.StandoffM, Rule.ReaskShiftM, out var a));
+                nodeAsks.AddRange(a);
+            }
+            var everyone = new List<PlannedWorker>(plan.Workers);
+            everyone.AddRange(plan.Checkpoints);
+            var drives = new Dictionary<int, List<DriveSegment>>();
+            var asks = new Dictionary<int, List<Vector3>>();
+            foreach (var c in plan.Checkpoints)
+            {
+                drives[c.Id] = CheckpointDrive(map, c.Checkpoint, c.Position, Rule.StandoffM, Rule.ReaskShiftM, out var a);
+                asks[c.Id] = a;
+            }
+            float clr = Rule.PathClearanceM - 1e-4f;
+            foreach (var c in plan.Checkpoints)
+            {
+                var p = c.Position;
+                string me = $"checkpoint {c.Node} at ({p.x:0.00}, {p.z:0.00})";
+                foreach (var q in everyone)
+                {
+                    if (q == c) continue;
+                    if (Flat(p - q.Position) < Rule.MinWorkerSeparationM) return $"{me} is {Flat(p - q.Position):0.00} m from worker {q.Id} (< {Rule.MinWorkerSeparationM})";
+                    if (Flat(q.Position - c.Checkpoint.Anchor) < Rule.MinTurningPointM) return $"worker {q.Id} is {Flat(q.Position - c.Checkpoint.Anchor):0.00} m from the anchor of {me} (< {Rule.MinTurningPointM})";
+                }
+                foreach (var t in turning)
+                    if (Flat(p - t) < Rule.MinTurningPointM) return $"{me} is {Flat(p - t):0.00} m from an asking node (< {Rule.MinTurningPointM})";
+                if (free != null && !free(p)) return $"{me} is on a blocked cell or inside a collider";
+                if (Rule.PathClearanceM > 0f)
+                {
+                    foreach (var r in roads)
+                        if (SegmentDistance(p, r.Key, r.Value) < clr) return $"{me} is {SegmentDistance(p, r.Key, r.Value):0.00} m from a road (< {Rule.PathClearanceM})";
+                    foreach (var s in nodeSegs)
+                        if (SegmentDistance(p, s.A, s.B) < clr) return $"{me} is {SegmentDistance(p, s.A, s.B):0.00} m from {s.Label} (< {Rule.PathClearanceM})";
+                    foreach (var o in plan.Checkpoints)
+                        if (o != c)
+                            foreach (var s in drives[o.Id])
+                                if (SegmentDistance(p, s.A, s.B) < clr) return $"{me} is {SegmentDistance(p, s.A, s.B):0.00} m from {s.Label} (< {Rule.PathClearanceM})";
+                    foreach (var q in everyone)
+                        foreach (var s in drives[c.Id])
+                            if (SegmentDistance(q.Position, s.A, s.B) < clr) return $"worker {q.Id} is {SegmentDistance(q.Position, s.A, s.B):0.00} m from {s.Label} (< {Rule.PathClearanceM})";
+                }
+                foreach (var a in asks[c.Id])
+                {
+                    if (free != null && !free(a)) return $"{me}: its ask point ({a.x:0.00}, {a.z:0.00}) is on a blocked cell or inside a collider";
+                    if (!CheckpointAnswers(map, c.Checkpoint, p, a, Cfg.checkpoints.answer_radius_m)) return $"{me} would not answer at its ask point ({a.x:0.00}, {a.z:0.00})";
+                    foreach (var q in everyone)
+                        if (q != c && Flat(q.Position - a) <= Cfg.ask_max_distance_m) return $"worker {q.Id} is {Flat(q.Position - a):0.00} m from an ask point of {me} (<= {Cfg.ask_max_distance_m})";
+                }
+                foreach (var a in nodeAsks)
+                    if (Flat(p - a) <= Cfg.ask_max_distance_m) return $"{me} is {Flat(p - a):0.00} m from a node's ask point ({a.x:0.00}, {a.z:0.00}) (<= {Cfg.ask_max_distance_m})";
+                RoadmapV4.NodeDef nearest = null;
+                foreach (var n in map.Nodes) if (nearest == null || Flat(p - Pos(n)) < Flat(p - Pos(nearest))) nearest = n;
+                bool asking = nearest != null && AskNodes(map).Exists(n => n.Name == nearest.Name);
+                if (asking && Flat(p - Pos(nearest)) <= Cfg.checkpoints.second_opinion_radius_m)
+                    return $"{me} is {Flat(p - Pos(nearest)):0.00} m from {nearest.Name}, its nearest node (<= second_opinion_radius_m {Cfg.checkpoints.second_opinion_radius_m})";
+            }
+            return null;
+        }
+
+        /// <summary>Section 15 addendum 6 (development only): -experimentForceLie NODE:COMMAND. True with node and command null for an empty
+        /// spec; false with the reason in a final, or for a spec that is not NODE:COMMAND with COMMAND one of LEFT, FORWARD, RIGHT, BACK.</summary>
+        public static bool ParseForceLie(string spec, bool final, out string node, out string command, out string error)
+        {
+            node = command = error = null;
+            if (string.IsNullOrWhiteSpace(spec)) return true;
+            if (final) { error = "-experimentForceLie is for development sessions only; a final draws its lies from the seed"; return false; }
+            var parts = spec.Trim().Split(':');
+            if (parts.Length != 2 || parts[0].Length == 0 || Array.IndexOf(Directions, parts[1]) < 0)
+            {
+                error = $"-experimentForceLie '{spec}': give NODE:COMMAND, COMMAND one of {string.Join(", ", Directions)} (e.g. J1:RIGHT)";
+                return false;
+            }
+            node = parts[0];
+            command = parts[1];
+            return true;
+        }
+
+        /// <summary>Makes the first worker (slot 1) of an asking node a liar that shows <paramref name="command"/> in this run; the reason
+        /// when the node has no workers in the run or the command is its true command, else null.</summary>
+        public string ApplyForceLie(RunPlanAB plan, string node, string command)
+        {
+            var w = plan.Workers.Find(x => x.Node == node && x.Slot == 0);
+            if (w == null) return $"-experimentForceLie: {node} is not an asking node of map {plan.MapName}";
+            if (w.TrueCommand == command) return $"-experimentForceLie: run {plan.Run} (goal {plan.Goal}): {command} is the true command at {node}";
+            var map = plan.MapName != MapName && LeftMap != null ? LeftMap : Map;
+            w.Liar = true;
+            w.ShownCommand = command;
+            w.ShownIsBranch = IsBranch(map, node, command);
+            return null;
         }
 
         /// <summary>A worker is active (rendered and animated) while the robot is within the activation radius of it.</summary>

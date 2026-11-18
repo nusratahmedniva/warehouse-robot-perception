@@ -37,6 +37,7 @@ namespace WarehouseHRI.Tests
             c.clearance_layout.active = false;
             c.clearance_layout.junction_slots = blockSlots;
             c.clearance_layout.two_worker_experiments = twoWorker;
+            c.checkpoints.active = false;              // addendum 6's checkpoints did not exist before addendum 4
             return c;
         }
 
