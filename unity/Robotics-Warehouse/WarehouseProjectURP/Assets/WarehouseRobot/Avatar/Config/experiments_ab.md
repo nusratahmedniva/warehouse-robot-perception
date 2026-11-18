@@ -2629,3 +2629,125 @@ SHA-256. Anisha's 6 -> 5 rule is therefore still open.
   Step 5 ran the section 3 layout (three workers at J1 in A3), so its 3+ pan-tilt frames (median 8 per 2 s) are not comparable. In
   layout (i), frames with 3 or more people at an ask would come only from the robot standing off the modelled points. The rerun will
   show it.
+
+### 2026-11-18, section 15 addendum 6: checkpoint workers (variant T4), declared before any change or run below
+
+Nusrat's task of 2026-11-18 ("checkpoint workers, adopted by Anisha, T4"). Branch `nusrat/v4-timing-backtrack` (continued, after 8acd539).
+Unity side and `finals_v4/` only: nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run, nothing
+is pushed. Development data, not a result. Before this declaration nothing was run; the only reads were of the maps, configs and code, of
+addendum 5's outputs and of Anisha's branch `origin/anisha/v4-tie-rule` (AUDIT.md 16.22-16.23, variant T3, simulator only, not merged into
+main). "T4" is not written down anywhere yet; this addendum takes Nusrat's task text as its definition: T3's checkpoint workers with Unity's
+positions of addendum 5, and the next junction's workers where no checkpoint position exists. Every truth field name is from
+`docs/protocol_v3.md`; no new field is added (one is proposed to Anisha in the report).
+
+**Item 1, facts (read from `configs/v4/roadmap.json` and `ExperimentPlanAB`; no run).**
+- Decision junctions (a junction with two or more branches) exist only on the map `roadmap` (experiments A3, A4, B3, B4 and the `_off`
+  settings B3_off, B4_off). `corridor` (A1, B1) and `turn` / `turn_left` (A2, B2) have one branch per node: no decision branch, no
+  checkpoint (as T3).
+- Decision branches: J1 FORWARD -> E1, J1 RIGHT -> J3, J1 LEFT -> J2; J2 FORWARD -> J4, J2 RIGHT -> E2; J3 LEFT -> E3, J3 RIGHT -> E4;
+  J4 RIGHT -> E5, J4 LEFT -> E6 (9).
+- Where a wrong branch leads (endpoints have no workers; every junction has its two workers of layout (i)):
+  - J1, goal E1: RIGHT -> J3 (workers), LEFT -> J2 (workers). Goal E3 / E4: FORWARD -> E1 (empty endpoint), LEFT -> J2 (workers). Goal
+    E2 / E5 / E6: FORWARD -> E1 (empty), RIGHT -> J3 (workers).
+  - J2 (reached on the right path only for E2, E5, E6): goal E2: FORWARD -> J4 (workers); goal E5 / E6: RIGHT -> E2 (empty).
+  - J3 (goal E3 / E4) and J4 (goal E5 / E6): the wrong branch ends at the other endpoint (empty).
+  - So three wrong branches lead to a junction with workers (J1 RIGHT, J1 LEFT, J2 FORWARD); every other wrong branch ends at an empty
+    endpoint.
+- What an honest worker at the next junction shows when the robot arrives there on a wrong path: `ExperimentPlanAB.TruthfulCommand` gives
+  BACK at a node none of whose branches reaches the goal (AUDIT.md 16.11 item 4, since section 4), and the worker POINTs along the arrival
+  road toward the previous junction (`Direction(map, node, BACK)` = the arrival heading turned 180 deg; the map is a tree, so the arrival
+  road is the one road into the junction: J2 and J3 from J1, J4 from J2). A liar there shows a wrong valid branch of that junction (both
+  are wrong). **Unity's answer rule already does what item 2 asks; it is not changed**, only pinned by new Edit Mode tests.
+- Seen from Python on main (read, not changed): with `reject_impossible` on, a POINT back along the arrival road is rejected ("arrival")
+  and, backtrack being off, the asks run out and the robot aborts; with it off the answer is dropped silently and the ask runs out. Using
+  the next junction's BACK as evidence needs Anisha's controller (her T3 rule 3 still rejects "back" at junctions): for Anisha.
+
+**Item 2, coverage (roadmap).** A checkpoint on every decision branch with a valid spot (addendum 5's proposals that met P1-P10 and Q1-Q2):
+
+| decision branch | covered by |
+|---|---|
+| J1 FORWARD -> E1 | checkpoint (2.25, 15.50) |
+| J1 RIGHT -> J3 | checkpoint (12.25, -4.00), and J3's workers |
+| J1 LEFT -> J2 | J2's workers (no valid spot, addendum 5: Q1) |
+| J2 FORWARD -> J4 | J4's workers (no valid spot, addendum 5: P6) |
+| J2 RIGHT -> E2 | checkpoint (-10.25, 15.50) |
+| J3 LEFT -> E3 | checkpoint (14.75, 15.50) |
+| J3 RIGHT -> E4 | checkpoint (23.25, -14.50) |
+| J4 RIGHT -> E5 | checkpoint (-23.25, 14.50) |
+| J4 LEFT -> E6 | checkpoint (-14.75, -15.50) |
+
+Unity checks the coverage when it plans a run: every decision branch of the run's map has a checkpoint or leads to an asking node; else the
+run is refused.
+
+**Item 3, the checkpoint workers** (new block `checkpoints` in `Scenario/Config/experiments_ab_unity.json`, read by `ExperimentPlanAB`).
+- Positions: per entry the map, the branch (junction and command), `s_m` along the branch from the junction and `right_m` to the right of
+  the travel direction (negative = left), as addendum 5's table: J1 FORWARD 15.5 / -4.0; J1 RIGHT 6.0 / +4.0; J2 RIGHT 15.5 / -4.0; J3 LEFT
+  15.5 / -4.0; J3 RIGHT 14.5 / -4.5; J4 RIGHT 14.5 / -4.5; J4 LEFT 15.5 / -4.0. The anchor is the road point at `s_m`. A run's map gets the
+  entries of its own name only (so `roadmap`: A3, A4, B3, B4).
+- Same template (`WorkerV4.prefab`) and the run's navigation looks (development or final split, as every worker); gender alternates in the
+  file order (first male), look `looks[(k / 2 + run - 1) % n]` for the k-th checkpoint of the map. Ids follow the node workers' ids in file
+  order, so every node worker keeps its id, its look and its lie draw (the junction liars are those of addendum 4).
+- Honest: PROCEED (`worker_v4.json` `forward_command`) on a branch whose next node reaches the goal (true command FORWARD); otherwise POINT
+  back along the branch toward its junction (true command BACK; direction = junction minus next node, horizontal). A liar shows the
+  opposite (FORWARD <-> BACK). Lie probability = the set's (`scenarios_ab.json`: B 0.2, A 0), drawn once per worker per run from the
+  existing seeded stream (session seed, run, worker id, the lie salt), the same answer every time it is asked in the run.
+- Answer rule: who answers is unchanged (the active worker within 3.5 m nearest the pan-tilt axis). A checkpoint worker then shows its
+  answer only while (a) the road of the run's map nearest to the robot's centre is its branch, strictly (by more than 0.001 m; at a node,
+  where roads meet, it is silent), and (b) the robot's centre is within `checkpoints.answer_radius_m` 3.5 m of it. Otherwise it is the
+  commander but shows nothing (truth NONE), as a node worker outside its zone. Node workers' rule (6.0 m zone of their node) is unchanged.
+- Truth rows: exactly as every worker (`TruthLogger` over every spawned worker): `true_command` PROCEED (`point_angle_deg` -1) or POINT
+  (the angle to the robot's forward axis), `gesture_truthful` false while a liar gestures, the extra field `active`. No role field: which
+  ids are checkpoints is in `session.json` `workers_plan` (one line per worker, as now, with "checkpoint J1 RIGHT -> J3") and in a new
+  `session.json` string `checkpoint_rule`; Unity's `truth_run###.json` `shown` records name a checkpoint's ask `J1 RIGHT -> J3`.
+- Detection-off settings: Unity runs each as its on twin (section 13), so B3_off / B4_off plan the same checkpoints at the same places with
+  the same lies; only Python ignores them.
+- Stand rings and the minimap/ask markers as for the other workers (green / magenta-red).
+
+**Item 4, placement.** Checkpoints are fixed and placed first; every node's workers are then placed with the checkpoints counted as workers
+under every rule, and each checkpoint is checked under every rule once the run's node workers stand. With the existing values (separation
+3.0 m, turning points 3.0 m, clearance 1.0 m, standoff 2.0 m, re-ask shift 0.8 m, bystander margin of the layout: beside 1.0 m, random
+0.25 m, over the last 3.0 m, answerer 3.5 m, active avatars 6 within 8.0 m):
+- node workers (added to the existing checks): 3.0 m from every checkpoint and from every checkpoint's anchor; 1.0 m from every checkpoint's
+  own drive; farther than 3.5 m from every checkpoint ask point; every checkpoint at least the bystander margin farther than the node's
+  first worker over the last 3.0 m of the arrival road; every checkpoint 1.0 m from this node's drives (the existing "placed workers"
+  check) and farther than 3.5 m from this node's ask points;
+- each checkpoint (addendum 5's P1-P10, Q1-Q2 with P7 and P8 as Unity can check them): 3.0 m from every other worker (P1); 3.0 m from every
+  asking node of the run's map and the physical map and from every other checkpoint's anchor (P2); a free cell with no collider (P3,
+  Unity's existing check); 1.0 m from every road (P4); 1.0 m from every node drive and every other checkpoint's drive (P5); every worker, it
+  included, 1.0 m from its own drive (P6: from each end of the branch to its ask position and re-ask point, and from those to both ends);
+  its ask points on free cells (P7; the NavMesh itself in item 5); at each of its ask points its answer rule holds (P8); P9 above; at most
+  6 active avatars (P10, the existing `MaxActive`, now over every worker); not within `checkpoints.second_opinion_radius_m` 6.5 m (a copy of
+  `configs/v4/control.json` `lie_detection.second_opinion_radius_m`, pinned by a test) of an asking node that is its nearest node (Q1);
+  Q2 above.
+- Beside (A3, B3): layout (i) slots unchanged; any broken rule refuses the run. Random (A4, B4): the existing seeded draws, a draw is
+  rejected while any rule above fails (redraws per node in `session.json` `placement`, as now; up to `random_max_draws` 100,000).
+- **Stop rule:** if any run of seeds 1 and 2 (20 runs each) of A3, A4, B3, B4 cannot be planned, STOP and report (nothing else below runs).
+
+**Item 5, checks.**
+- Edit Mode tests (new `HRI/Tests/CheckpointWorkersTests.cs`, and the existing tests that pin plans or `MaxActive` updated where the
+  checkpoints change them, each change listed in the report): the config and its copies; the positions; the coverage table; truthful /
+  lying commands and directions; the next junction's BACK on every wrong path; the answer rule; every run of seeds 1 and 2 of the 13
+  settings planned (rules re-checked independently in the test); redraw counts; active avatars <= 6.
+- NavMesh: `Tools > Warehouse v4 > NavMesh > Verify` (addendum 2, unchanged rules) with the checkpoints' ask points added to its point set
+  (a committed change of `NavMeshV4Menu`), and addendum 5 item 1 (b)'s worker check repeated with the checkpoints as workers and their own
+  drives as paths (the same kind of temporary Editor script, run in batch mode and deleted; source copied into its output folder), which
+  also exports every plan with its checkpoints.
+- Positions and people in view: a new report tool `finals_v4/checkpoint_layout_report_v4.py` (evaluation only, read-only), on that export,
+  with addendum 5's view model unchanged (rendered within 8.0 m, range 12 m, line of sight past Shelves and Walls, pan-tilt half field
+  77.1 / 2 deg toward the asked worker): the exact positions table and, per ask point (node asks and checkpoint asks), the people in the 360
+  and the pan-tilt view; asks with 3 or more flagged; the most while driving; active avatars per plan.
+- Leak test: Unity's own (session.json) and `gt_path.py session` on the smoke session.
+- **Smoke (development, one Play trial):** B3, seed 1, development looks, 1 trial, `-experimentGoals E1` (J1's true branch FORWARD) and a
+  new development-only option `-experimentForceLie J1:RIGHT` (TrialPlayV4; the launcher's `-ExperimentForceLie`): the first worker (slot
+  1) of J1 lies and shows RIGHT, recorded in `session.json` `force_lie`; refused in a final, for a node that is not an asking node, or a
+  command equal to the node's true command in a run. Python: main's server with B3's control file (`control_lie_on.json`), as step 5.
+  **Known before the run:** main's controller never asks a checkpoint (T3's checkpoint states are on Anisha's unmerged branch), so a
+  checkpoint can gesture in this trial only if an ask happens within its answer rule. What the trial can show: J1's forced lie, the robot
+  on the wrong branch J1 -> J3 past its checkpoint (planned BACK), and J3's honest workers pointing BACK. It is reported as it happens and
+  not rerun.
+
+**Item 6:** the launcher commands for step 5 (13 settings, 3 runs each, `-ExperimentGoals` E5 / E6 on the random-endpoint settings, the
+blind avatar rehearsal) and the analysis commands, in the report; Nusrat runs them.
+
+**Commits:** (1) this declaration; (2) the checkpoint workers (config, planner, runner, force-lie option, launcher passthrough, NavMesh
+verify points, tests); (3) the checks' results and the report tool. Each after both suites pass.
