@@ -22,6 +22,7 @@ import test_v4_upgrades as tu  # noqa: E402
 
 CFG = ap.load_config()
 RC, CC = gm.load_config(), cm.load_config()
+RC["proceed"] = {k: v for k, v in RC["proceed"].items() if k != "min_valid_floor"}      # the nominal rule: the replay baseline, B1 (AUDIT.md 16.21) is the variant under test
 
 
 def world(mirror=False, flip_z=False):

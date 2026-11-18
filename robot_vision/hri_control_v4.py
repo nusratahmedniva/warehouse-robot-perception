@@ -334,6 +334,9 @@ class ControllerV4(hc.Controller):
             raise ValueError("lie_detection.backtrack needs lie_detection.reject_impossible (the rejections are its evidence)")
         self.rc = {**RECOVERY_DEFAULTS, **{k: v for k, v in v4_cfg.get("recovery", {}).items() if k in RECOVERY_DEFAULTS}}
         super().__init__(base_cfg, roadmap)
+        rs = v4_cfg.get("dialog", {}).get("return_speed_mps")
+        if rs is not None and not (0.0 < float(rs) <= self.d["cruise_speed_mps"]):
+            raise ValueError(f"dialog.return_speed_mps must be above 0 and at most the cruise speed {self.d['cruise_speed_mps']} m/s (got {rs})")
 
     # -- bookkeeping --
     def reset(self, t):
@@ -834,8 +837,9 @@ class ControllerV4(hc.Controller):
                 self._log(inp.time_s, "returned_to_junction", "at the junction point: now the branch",
                           distance_m=round(math.hypot(nx - inp.x, nz - inp.z), 2))
             else:
-                cmd.v, cmd.omega, _ = hc.pure_pursuit(inp.x, inp.z, inp.yaw_deg, self._path(inp, nx, nz), self.d, self.d["approach_speed_mps"],
-                                                      self.d["arrive_junction_m"])
+                # AUDIT.md 16.20.5: the return drives at dialog.return_speed_mps (the cruise speed); absent = the approach speed, as before
+                speed = self.v4["dialog"].get("return_speed_mps") or self.d["approach_speed_mps"]
+                cmd.v, cmd.omega, _ = hc.pure_pursuit(inp.x, inp.z, inp.yaw_deg, self._path(inp, nx, nz), self.d, speed, self.d["arrive_junction_m"])
                 return
         before = self.state
         super()._tick(inp, cmd)

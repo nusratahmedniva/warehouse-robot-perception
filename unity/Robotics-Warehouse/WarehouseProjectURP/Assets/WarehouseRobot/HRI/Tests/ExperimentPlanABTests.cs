@@ -99,22 +99,22 @@ namespace WarehouseHRI.Tests
         }
 
         [Test]
-        public void Beside_UsesTheDeclaredSlots_ThreeAtJ1InA3AndB3()
+        public void Beside_UsesTheDeclaredSlots_TwoAtEveryNode()
         {
             var a1 = Run(Plan("A1"), 1, 1);
             Assert.AreEqual(2, a1.Workers.Count);
             Assert.AreEqual(new Vector3(4.25f, 0f, -23f), a1.Workers[0].Position);
             Assert.AreEqual(new Vector3(10.25f, 0f, -23f), a1.Workers[1].Position);
             var a3 = Run(Plan("A3"), 1, 1);
-            Assert.AreEqual(11, a3.Workers.Count, "2 at A, J2, J3, J4 and 3 at J1");
+            Assert.AreEqual(10, a3.Workers.Count, "2 at A, J1, J2, J3, J4 (layout (i), experiments_ab.md section 15 addendum 4)");
             var j1 = a3.Workers.Where(x => x.Node == "J1").OrderBy(x => x.Slot).Select(x => x.Position).ToList();
-            Assert.AreEqual(new Vector3(4.25f, 0f, -3f), j1[0]);
-            Assert.AreEqual(new Vector3(8.25f, 0f, -5.5f), j1[1]);
-            Assert.AreEqual(new Vector3(4.25f, 0f, -6f), j1[2]);
+            Assert.AreEqual(2, j1.Count);
+            Assert.Less(ExperimentPlanAB.Flat(j1[0] - new Vector3(4.25f, 0f, -3f)), 1e-4f, "slot 1: 3.0 m before, 2.0 m left");
+            Assert.Less(ExperimentPlanAB.Flat(j1[1] - new Vector3(10.25f, 0f, 2.5f)), 1e-4f, "slot 2: 2.5 m ahead, 4.0 m right");
             var j2 = a3.Workers.Where(x => x.Node == "J2").OrderBy(x => x.Slot).Select(x => x.Position).ToList();
             Assert.AreEqual(-3.25f, j2[0].x, 1e-4f, "J2 is reached heading west: slot 1 is 3 m east of it, 2 m to the robot's left (south)");
             Assert.AreEqual(-2f, j2[0].z, 1e-4f);
-            CollectionAssert.AreEqual(Enumerable.Range(1, 11), a3.Workers.Select(x => x.Id));
+            CollectionAssert.AreEqual(Enumerable.Range(1, 10), a3.Workers.Select(x => x.Id));
             Assert.IsTrue(a3.Redraws.Values.All(v => v == 0), "beside: no draws");
         }
 

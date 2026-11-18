@@ -101,11 +101,13 @@
     "cycles_min": 2.0,
     "swing_min": 0.3,
     "vertical_share_min": 0.7,
+    "min_valid_floor": 10,
     "declared": "2026-11-12 (Nusrat, during Anisha's absence, P2; Avatar/Config/upgrade_design.md section 2), before any PROCEED recording exists. INITIAL values, to be set on development data by the B12 sweep (D3).",
     "why": {
       "window_s": "PROCEED = 2 to 4 forearm swings within about 2.0 s (the gesture's definition), so the window that must hold at least two cycles is 2.0 s, longer than the 1.0 s window of the held classes.",
       "cycles_min": "At least 2 up-and-down cycles (4 strokes): one swing can be any arm movement; a repeated swing is the 'go on' wave.",
       "swing_min": "Each stroke of the wrist height at least 0.3 torso lengths (about 15 cm at a 0.5 m torso): 6 to 15 times the keypoint jitter (0.02 to 0.05 torso lengths) and under the forearm's reach (0.26 m = 0.5 torso lengths).",
+      "min_valid_floor": "DECIDED 2026-11-17 (Anisha and Nusrat, AUDIT.md 16.21; the candidate B1 of 16.19.2, replayed in 16.19.6, adopted before Nusrat's strict-protocol rerun): PROCEED needs valid arm frames >= max(this floor 10, window.min_valid_fraction 0.6 x the frames the reader RECEIVED for this person in the 2.0 s window) instead of 0.6 x the nominal 20 (12). At the nominal 10 Hz the rule is unchanged (max(10, 12) = 12); below it the rule follows what arrived: a 5 Hz stream (10 frames in 2 s) can still be read. 5 Hz is the lowest rate at which a half-cycle of the fastest swing in the data (p90 3.5 cycles per 2 s) is sampled by about 1.5 frames, so the stroke count can be trusted. Replay 16.19.6: no STOP reading changes; S5 PROCEED holds 35/62 -> 58/62 (current reader), 59/62 with C2s. If Nusrat's rerun (frames per window by people in view) shows the floor is wrong it is changed then and disclosed. absent = the nominal rule, as before. v4 only.",
       "vertical_share_min": "The wrist path is at least 70 per cent vertical (sum of |dy| over the path): a forward-up swing seen from the front is mostly vertical in the image; a sideways wave or a pointing swing is not."
     }
   }

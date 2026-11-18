@@ -36,9 +36,9 @@ namespace WarehouseHRI.V4
     }
 
     /// <summary>
-    /// experiments_ab.md section 15 addendum 1, item 3b: the corner layout and the path clearance, PENDING until Anisha's scenarios_ab.json
-    /// (and her MatchesUnity tests) carry the same slots and people. active false: the live layout (section 3) without the clearance and the
-    /// ask-zone checks; active true: these junction slots, two workers per node in the listed experiments, and both checks.
+    /// experiments_ab.md section 15 addendum 1, item 3b: the layout that keeps the path clearance. active false: the live layout without
+    /// the clearance and the ask-zone checks; active true: these junction slots, two workers per node in the listed experiments, and both
+    /// checks. Active since addendum 4 (2026-11-18) with layout (i) of addendum 3, as Anisha's scenarios_ab.json.
     /// </summary>
     [Serializable]
     public class ClearanceLayout
@@ -110,7 +110,12 @@ namespace WarehouseHRI.V4
             else
                 foreach (var x in experiments)
                     if (x == null || string.IsNullOrEmpty(x.name) || (x.set != "A" && x.set != "B") || string.IsNullOrEmpty(x.scenario)) e.Add("experiments: every entry needs name, set A or B and scenario");
-            if (junction_slots == null || junction_slots.Length < 3 || start_slots == null || start_slots.Length < 3) e.Add("junction_slots and start_slots: 3 slots each");
+            // section 15 addendum 4: two junction slots suffice (layout (i)); a third only where an experiment keeps a third worker
+            bool third = Array.Exists(experiments ?? new ExperimentDef[0], x => x != null && x.three_worker_nodes != null && x.three_worker_nodes.Length > 0);
+            bool thirdInBlock = Array.Exists(experiments ?? new ExperimentDef[0], x => x != null && x.three_worker_nodes != null && x.three_worker_nodes.Length > 0
+                                                 && Array.IndexOf(clearance_layout?.two_worker_experiments ?? new string[0], x.name) < 0);
+            if (junction_slots == null || junction_slots.Length < (third ? 3 : 2)) e.Add($"junction_slots: {(third ? 3 : 2)} slots (3 when an experiment lists three_worker_nodes)");
+            if (start_slots == null || start_slots.Length < 3) e.Add("start_slots: 3 slots");
             if (!(approach_m > 0f) || !(nearer_margin_m > 0f) || !(random_nearer_margin_m > 0f)) e.Add("approach_m, nearer_margin_m and random_nearer_margin_m must be > 0");
             if (random_max_draws < 1) e.Add("random_max_draws must be >= 1");
             if (!(ask_max_distance_m > 0f) || !(activation_radius_m > 0f) || !(activation_sample_step_m > 0f)) e.Add("ask_max_distance_m, activation_radius_m and activation_sample_step_m must be > 0");
@@ -121,7 +126,8 @@ namespace WarehouseHRI.V4
             if (!(answer_zone_radius_m > 0f)) e.Add("answer_zone_radius_m must be > 0");
             if (!(answer_zone_margin_m >= 0f) || !(answer_zone_margin_m < answer_zone_radius_m)) e.Add("answer_zone_margin_m must be in [0, answer_zone_radius_m)");
             if (!(path_clearance_m > 0f) || !(ask_standoff_m > 0f) || !(reask_shift_m >= 0f)) e.Add("path_clearance_m and ask_standoff_m must be > 0, reask_shift_m >= 0");
-            if (clearance_layout == null || clearance_layout.junction_slots == null || clearance_layout.junction_slots.Length < 3) e.Add("clearance_layout.junction_slots: 3 slots");
+            if (clearance_layout == null || clearance_layout.junction_slots == null || clearance_layout.junction_slots.Length < (thirdInBlock ? 3 : 2))
+                e.Add($"clearance_layout.junction_slots: {(thirdInBlock ? 3 : 2)} slots (3 when an experiment outside two_worker_experiments lists three_worker_nodes)");
             else foreach (var n in clearance_layout.two_worker_experiments ?? new string[0]) if (Experiment(n) == null) e.Add($"clearance_layout.two_worker_experiments: '{n}' is not an experiment");
             return e;
         }
