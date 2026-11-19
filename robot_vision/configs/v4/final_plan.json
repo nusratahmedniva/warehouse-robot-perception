@@ -306,7 +306,7 @@
       ]
     }
   },
-  "test_assignment_note": "2026-11-14 (AUDIT.md 16.15): every one of the 13 settings uses the test looks sunbox_m_shirt_plaid (male slots 1 and 3) and sunbox_f_shirt_plaid (female slot 2) and the test clips point_mixamo_02 (POINT) and proceed_ik_03 (PROCEED), the two commands an experiment worker shows. DISCLOSED: with one test look per gender the third worker at J1 (A3, A4, B3, B4 and the _off twins) wears the same look as the first; development rotates two looks per gender. The earlier note (B7, plan (b), sunbox_f2 for the four Task 2 settings) is superseded with them.",
+  "test_assignment_note": "2026-11-14 (AUDIT.md 16.15): every one of the 13 settings uses the test looks sunbox_m_shirt_plaid (male slots 1 and 3) and sunbox_f_shirt_plaid (female slot 2) and the test clips point_mixamo_02 (POINT) and proceed_ik_03 (PROCEED), the two commands an experiment worker shows. UPDATED 2026-11-18 (AUDIT.md 16.24.3): since the layout of 16.21.2 every node has two workers (slot 1 male, slot 2 female), so no worker at J1 or elsewhere wears a repeated test look and the third male slot of the 16.15 assignment is not used; development rotates two looks per gender. The checkpoint workers of the detection-on settings (16.23, 16.24.3) are not part of this assignment: their number, looks and positions are Unity's to define. The earlier note (B7, plan (b), sunbox_f2 for the four Task 2 settings) is superseded with them.",
   "unity_files_and_guard": {
     "freeze_list": "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/final_v4.json",
     "freeze_list_key": "freeze_files",

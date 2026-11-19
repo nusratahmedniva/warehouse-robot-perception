@@ -60,7 +60,8 @@ import hri_control as hc
 DIRECTIONS = hc.DIRECTIONS
 LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3, "second_opinion_radius_m": None,
                 "backtrack_scope": "any",          # AUDIT.md 16.22: "disagreed" = backtrack only to a junction where the accepted answers named more than one branch
-                "checkpoint": False, "checkpoint_fraction": 0.5}   # AUDIT.md 16.23 (T3): stop at this fraction of a branch leaving a decision junction and ask the checkpoint worker
+                "checkpoint": False, "checkpoint_fraction": 0.5,   # AUDIT.md 16.23 (T3): stop at this fraction of a branch leaving a decision junction and ask the checkpoint worker
+                "checkpoint_scope": "any"}                         # AUDIT.md 16.24 (T4): "disputed" = a checkpoint pointing back counts only when the junction's answers disagreed (a vote, not a veto)
 # AUDIT.md 16.19.2 item E: person-in-path recovery (v4 only; the v3 stop itself is unchanged). Absent block or enabled false = the v3 behaviour.
 RECOVERY_DEFAULTS = {"enabled": False, "blocked_s": 15.0, "person_moved_max_m": 0.3, "back_m": 1.0, "back_speed_mps": 0.2,
                      "side_m": 1.0, "beyond_m": 1.0, "max_attempts": 2}
@@ -341,6 +342,8 @@ class ControllerV4(hc.Controller):
                 raise ValueError("lie_detection.checkpoint needs lie_detection.second_opinion_radius_m (the robot tells a checkpoint worker from a junction worker by it)")
             if not 0.0 < float(self.ld["checkpoint_fraction"]) < 1.0:
                 raise ValueError(f"lie_detection.checkpoint_fraction must be between 0 and 1 (got {self.ld['checkpoint_fraction']!r})")
+            if self.ld["checkpoint_scope"] not in ("any", "disputed"):
+                raise ValueError(f"lie_detection.checkpoint_scope must be 'any' or 'disputed' (got {self.ld['checkpoint_scope']!r})")
         self.rc = {**RECOVERY_DEFAULTS, **{k: v for k, v in v4_cfg.get("recovery", {}).items() if k in RECOVERY_DEFAULTS}}
         super().__init__(base_cfg, roadmap)
         rs = v4_cfg.get("dialog", {}).get("return_speed_mps")
@@ -1141,7 +1144,12 @@ class ControllerV4(hc.Controller):
         """The checkpoint points back: evidence the branch is wrong. One backtrack per junction (the existing machinery); a second pointing back keeps the branch."""
         cp, j = self.cp, self.cp["junction"]
         self._cp_finish(t, "back")
-        if j in self.backtracked:
+        lc = self.last_choice
+        disputed = bool(lc and lc["node"] == j and lc["branch"] == cp["branch"] and lc.get("disagreed"))
+        if self.ld["checkpoint_scope"] == "disputed" and not disputed:        # T4: one vote against a junction whose answers agreed: logged, ignored
+            self._cp_note(t, "back", "ignore_undisputed", f"the checkpoint of {j} {cp['branch']} points back but the answers at {j} agreed: ignored, keep {cp['branch']}")
+            self._cp_continue(t)
+        elif j in self.backtracked:
             self._cp_note(t, "back", "keep", f"{j} has used its one backtrack: keep {cp['branch']}")
             self._cp_continue(t)
         elif not self._untried(j):
