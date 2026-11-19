@@ -1,0 +1,122 @@
+{
+  "label": "Checkpoint workers at the positions Nusrat sent (AUDIT.md 16.26 item 1, 2026-11-19). SIMULATOR ONLY. Read by run_t3_v4.py --checkpoints and hri_sim_v4.plan_checkpoints; checkpoints.json (the provisional layout of 16.23 / 16.25.1) is kept for the reproduction of 16.25.1.1 until the reruns of 16.26 decide.",
+  "provisional": false,
+  "source": {
+    "file": "positions.csv",
+    "sha256": "c20268236950485cd98b773fbbc65fbe1329fc57cf32957ddb2c2aefed9534d3",
+    "note": "read in place from ~/Downloads; 7 rows, none on J1 to J2 or J2 to J4. s_m = distance along the branch from the junction to the spot (the point of the road abeam the worker), right_m = the worker's offset to the right of the travel direction (negative = left), anchor = the spot, x z = the worker."
+  },
+  "fraction": 0.5,
+  "fraction_note": "Unused where `positions` has the branch (the spot is the anchor); kept so that the older keys of the file format stay valid.",
+  "branches": [
+    "J1>FORWARD",
+    "J1>RIGHT",
+    "J2>RIGHT",
+    "J3>LEFT",
+    "J3>RIGHT",
+    "J4>LEFT",
+    "J4>RIGHT"
+  ],
+  "fixed_first": true,
+  "positions": {
+    "J1>FORWARD": {
+      "s_m": 15.5,
+      "right_m": -4.0,
+      "x": 2.25,
+      "z": 15.5,
+      "anchor": [
+        6.25,
+        15.5
+      ],
+      "to": "E1",
+      "dist_junction_m": 16.008,
+      "dist_next_m": 6.021,
+      "nearest_node": "E1"
+    },
+    "J1>RIGHT": {
+      "s_m": 6.0,
+      "right_m": 4.0,
+      "x": 12.25,
+      "z": -4.0,
+      "anchor": [
+        12.25,
+        0.0
+      ],
+      "to": "J3",
+      "dist_junction_m": 7.211,
+      "dist_next_m": 7.632,
+      "nearest_node": "J1"
+    },
+    "J2>RIGHT": {
+      "s_m": 15.5,
+      "right_m": -4.0,
+      "x": -10.25,
+      "z": 15.5,
+      "anchor": [
+        -6.25,
+        15.5
+      ],
+      "to": "E2",
+      "dist_junction_m": 16.008,
+      "dist_next_m": 6.021,
+      "nearest_node": "E2"
+    },
+    "J3>LEFT": {
+      "s_m": 15.5,
+      "right_m": -4.0,
+      "x": 14.75,
+      "z": 15.5,
+      "anchor": [
+        18.75,
+        15.5
+      ],
+      "to": "E3",
+      "dist_junction_m": 16.008,
+      "dist_next_m": 6.021,
+      "nearest_node": "E3"
+    },
+    "J3>RIGHT": {
+      "s_m": 14.5,
+      "right_m": -4.5,
+      "x": 23.25,
+      "z": -14.5,
+      "anchor": [
+        18.75,
+        -14.5
+      ],
+      "to": "E4",
+      "dist_junction_m": 15.182,
+      "dist_next_m": 7.106,
+      "nearest_node": "E4"
+    },
+    "J4>LEFT": {
+      "s_m": 15.5,
+      "right_m": -4.0,
+      "x": -14.75,
+      "z": -15.5,
+      "anchor": [
+        -18.75,
+        -15.5
+      ],
+      "to": "E6",
+      "dist_junction_m": 16.008,
+      "dist_next_m": 6.021,
+      "nearest_node": "E6"
+    },
+    "J4>RIGHT": {
+      "s_m": 14.5,
+      "right_m": -4.5,
+      "x": -23.25,
+      "z": 14.5,
+      "anchor": [
+        -18.75,
+        14.5
+      ],
+      "to": "E5",
+      "dist_junction_m": 15.182,
+      "dist_next_m": 7.106,
+      "nearest_node": "E5"
+    }
+  },
+  "rule": "Each worker stands at (x, z); the robot's spot is the anchor, the point of the road abeam the worker (lie_detection.checkpoint_s_m: the junction plus s_m along the branch). The robot asks from the spot by the v3 approach rule: 2.0 m from the worker on the line to them, i.e. 2.0 m across, the worker seen at 90 degrees to the road (so a BACK along the road is at 90 degrees from the camera). The junction workers (A4 and B4: drawn at random) are placed around these fixed workers."
+}

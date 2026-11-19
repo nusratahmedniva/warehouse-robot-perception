@@ -209,8 +209,8 @@ class IsolationTests(unittest.TestCase):
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)
-            # check_stop_rule_v4.py (AUDIT.md 16.18) is evaluation code and reuses the analysis; the rule is unchanged for every other file
-            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("analyse_false_stop_v4.py", "check_stop_rule_v4.py", "analyse_proceed_stop_v4.py"):
+            # check_stop_rule_v4.py (AUDIT.md 16.18) is evaluation code and reuses the analysis; analyse_point_frames_v4.py (AUDIT.md 16.26 item 3, 2026-11-19) and analyse_live_association_v4.py (16.26.4, 2026-11-20) are evaluation code too; the rule is unchanged for every other file
+            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("analyse_false_stop_v4.py", "check_stop_rule_v4.py", "analyse_proceed_stop_v4.py", "analyse_point_frames_v4.py", "analyse_live_association_v4.py"):
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

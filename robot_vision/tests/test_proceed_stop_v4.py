@@ -230,7 +230,7 @@ class ConfigAndIsolationTests(unittest.TestCase):
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)
-            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name == "analyse_proceed_stop_v4.py":
+            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("analyse_proceed_stop_v4.py", "analyse_point_frames_v4.py", "analyse_point_dialog_v4.py", "analyse_live_association_v4.py", "fit_point_readability_v4.py"):          # the latter: evaluation code of AUDIT.md 16.26 item 3 (2026-11-19) and 16.26.4 / 16.26.5 (2026-11-20)
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

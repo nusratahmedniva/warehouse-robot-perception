@@ -64,10 +64,14 @@ LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack"
                 "checkpoint_scope": "any",                         # AUDIT.md 16.24 (T4): "disputed" = a checkpoint pointing back counts only when the junction's answers disagreed (a vote, not a veto)
                 "checkpoint_person_radius_m": 5.0,                 # AUDIT.md 16.25: only a person within this distance of the checkpoint spot (and nearest to it, outside every junction zone) is asked there
                 "checkpoint_branches": None,                       # AUDIT.md 16.25.1: the branches ("J1>LEFT") that have a checkpoint worker; None = every branch leaving a decision junction (T4 of 16.25.0.1)
+                "checkpoint_s_m": None,                            # AUDIT.md 16.26 item 1: {"J1>FORWARD": 15.5, ...} the spot of a branch = this far along it from the junction (the point abeam the worker); None / absent entry = checkpoint_fraction
                 "next_junction_back": False}                       # AUDIT.md 16.25.1: after a disputed junction, a BACK answer at the next junction (reached by a branch without a checkpoint worker) is a vote to go back
 # AUDIT.md 16.19.2 item E: person-in-path recovery (v4 only; the v3 stop itself is unchanged). Absent block or enabled false = the v3 behaviour.
 RECOVERY_DEFAULTS = {"enabled": False, "blocked_s": 15.0, "person_moved_max_m": 0.3, "back_m": 1.0, "back_speed_mps": 0.2,
                      "side_m": 1.0, "beyond_m": 1.0, "max_attempts": 2}
+# AUDIT.md 16.26 item 2 (4a side view): a raised arm that fails the POINT cue on length or elbow angle is read again from a point rotated around the worker at the ask distance.
+# Absent block or enabled false = no side view (every earlier behaviour).
+SIDE_VIEW_DEFAULTS = {"enabled": False, "rotation_min_deg": 60.0, "rotation_max_deg": 90.0, "waypoint_step_deg": 30.0, "keep_m": None}
 V4_ROADMAP = "configs/v4/roadmap.json"
 START = "start"                          # roadmap kind of the start node in the v4 map (it asks, P8)
 
@@ -350,6 +354,9 @@ class ControllerV4(hc.Controller):
             if not float(self.ld["checkpoint_person_radius_m"]) > 0.0:
                 raise ValueError(f"lie_detection.checkpoint_person_radius_m must be above 0 (got {self.ld['checkpoint_person_radius_m']!r})")
         self.rc = {**RECOVERY_DEFAULTS, **{k: v for k, v in v4_cfg.get("recovery", {}).items() if k in RECOVERY_DEFAULTS}}
+        self.sv = {**SIDE_VIEW_DEFAULTS, **{k: v for k, v in v4_cfg.get("side_view", {}).items() if k in SIDE_VIEW_DEFAULTS}}
+        if not 0.0 < float(self.sv["rotation_min_deg"]) <= float(self.sv["rotation_max_deg"]) <= 180.0 or not float(self.sv["waypoint_step_deg"]) > 0.0:
+            raise ValueError(f"side_view: need 0 < rotation_min_deg <= rotation_max_deg <= 180 and waypoint_step_deg > 0 (got {self.sv})")
         super().__init__(base_cfg, roadmap)
         if self.ld["checkpoint_branches"] is not None:
             # the list belongs to the deployment, not to one map: an entry for a node this map does not have is ignored (A1 and A2 run on small maps); an entry that names a
@@ -358,6 +365,11 @@ class ControllerV4(hc.Controller):
             bad = [b for b in self.ld["checkpoint_branches"] if ">" not in b or (b.split(">", 1)[0] in self.road.nodes and b not in valid)]
             if bad:
                 raise ValueError(f"lie_detection.checkpoint_branches names branches that leave no decision junction of the map: {bad} (valid here: {sorted(valid)})")
+        for key, s_m in (self.ld["checkpoint_s_m"] or {}).items():
+            j, _, cmd = key.partition(">")
+            nxt = self.road.next(j, cmd) if j in self.road.nodes else None
+            if nxt is not None and not 0.0 < float(s_m) < math.hypot(*(a - b for a, b in zip(self.road.pos(nxt), self.road.pos(j)))):
+                raise ValueError(f"lie_detection.checkpoint_s_m[{key}] = {s_m} is not inside the branch")
         rs = v4_cfg.get("dialog", {}).get("return_speed_mps")
         if rs is not None and not (0.0 < float(rs) <= self.d["cruise_speed_mps"]):
             raise ValueError(f"dialog.return_speed_mps must be above 0 and at most the cruise speed {self.d['cruise_speed_mps']} m/s (got {rs})")
@@ -408,6 +420,10 @@ class ControllerV4(hc.Controller):
         self.cp_done: set = set()                             # (junction, branch) whose checkpoint was handled
         self.cp_log: list[dict] = []                          # one row per checkpoint: result (proceed / back / none) and the action taken
         self.cp_backtracks = 0
+        self.sv_since: float | None = None                    # AUDIT.md 16.26 item 2: since when the commander's raised arm fails the POINT cue on length / elbow (pan-tilt frame time)
+        self.side_view_used = False                           # one side view per ask
+        self.last_point_fail = ""                             # "length" / "elbow": why the commander's raised arm failed the POINT cue (for the log)
+        self.side_views: list[dict] = []                      # the side views made (for the summary)
         self.back_ctx: dict | None = None                     # AUDIT.md 16.25.1: set at an arrival at a junction when a BACK answer counts there as a vote
         self.nj_log: list[dict] = []                          # the backtracks made on a BACK vote at the next junction
         self._new_junction()
@@ -415,6 +431,7 @@ class ControllerV4(hc.Controller):
             self.zoom.reset()
 
     def _new_junction(self) -> None:
+        self.sv_since, self.side_view_used = None, False
         self.view1: dict | None = None                        # candidate world yaws of the first view (two-view)
         self.two_view_used = False
         self.amb_frames: list[dict] = []
@@ -499,9 +516,11 @@ class ControllerV4(hc.Controller):
     def _ask(self, t, cmd):
         super()._ask(t, cmd)
         self.ask_serial += 1
-        if self.free_asks > 0:                                # a second view or a re-approach is not an unclear answer
+        if self.free_asks > 0:                                # a second view, a side view or a re-approach is not an unclear answer
             self.free_asks -= 1
             self.dialog.asks -= 1
+        else:
+            self.sv_since, self.side_view_used = None, False  # a new ask: one side view is allowed again
         self.waiting, self.wait_since, self.last_persons_frame = False, None, None
         self.amb_frames, self.amb_since = [], None
         self.rej_since = self.rej_key = None
@@ -541,6 +560,7 @@ class ControllerV4(hc.Controller):
             self.commander_since = inp.persons_time_s
         self.choice, self.commander_pt = choice, choice.commander
         self.resolution = None
+        self._track_side_view(persons, choice.commander, inp)  # before the commander test: a held arm that fails the cue reads NONE and is never a commander (AUDIT.md 16.26.6)
         if choice.commander is None:
             self.commander_360 = None
             return "NONE"
@@ -577,6 +597,29 @@ class ControllerV4(hc.Controller):
             return "NONE" if self.reject else (res.command or "NONE")
         self.amb_frames, self.amb_since = [], None
         return "WAIT" if r.command == "WAIT" else "NONE"
+
+    def _track_side_view(self, persons: list, commander: int | None, inp: TickInputV4) -> None:
+        """AUDIT.md 16.26 item 2 (trigger, corrected in 16.26.6): since when does the raised arm of the person being asked fail the POINT cue on length or elbow? That person is
+        the commander if there is one, else (a held arm that fails the cue reads NONE, so nobody is the commander) the facing person in the direction of the worker the robot
+        approached, within link_bearing_tol_deg. sv_since = the pan-tilt frame time the failure began; None when it does not hold."""
+        if not self.sv["enabled"]:
+            self.sv_since = None
+            return
+
+        def fails(q) -> bool:
+            r = q.reading
+            return bool(q.facing and r.raised and getattr(r, "point_fail", "") in ("length", "elbow") and r.command not in ("POINT", "WAIT", "STOP", "PROCEED"))
+        who = next((q for q in persons if q.track_id == commander), None) if commander is not None else None
+        if who is None and self.person is not None:
+            toward = hc.wrap(hc.yaw_to(inp.x, inp.z, *self.person) - inp.yaw_deg)
+            near = sorted((abs(hc.wrap(q.bearing_deg - toward)), q.track_id, q) for q in persons if fails(q))
+            who = near[0][2] if near and near[0][0] <= self.ccfg["link_bearing_tol_deg"] else None
+        if who is not None and fails(who):
+            self.last_point_fail = who.reading.point_fail
+            if self.sv_since is None:
+                self.sv_since = inp.persons_time_s
+        else:
+            self.sv_since = None
 
     # -- rule (b): impossible answers --
     def _rejection(self, command: str | None, res: Resolution | None, why: str) -> tuple | None:
@@ -838,6 +881,77 @@ class ControllerV4(hc.Controller):
         self._reposition(inp, inp.time_s, cmd)
         return True
 
+    def _back_axis_yaw(self) -> float | None:
+        """World yaw of a BACK here: toward the junction from a checkpoint spot, else the direction the robot arrived from."""
+        if self._cp_dialog():
+            return hc.yaw_to(*self.cp["point"], *self.road.pos(self.cp["junction"]))
+        return arrival_yaw(self.road, self.node)
+
+    def _side_view_plan(self, inp: TickInputV4, axis_yaw: float) -> tuple[dict | None, str]:
+        """(plan, why not): the viewpoint for a second reading of a worker whose arm is foreshortened. It is the point at the ask distance from the worker whose line of sight is
+        PERPENDICULAR to the BACK axis, on the road side of the worker (a BACK is then 90 degrees from the camera, the middle of the readable band); the rotation around the worker from
+        the present viewpoint is clamped to rotation_min_deg .. rotation_max_deg. The way follows the circle (waypoints every waypoint_step_deg at the radius that keeps the chord at the
+        ask distance); the target and every waypoint keep keep_m from every other person (the clearance check of the recovery and of the second person's approach)."""
+        sv = self.sv
+        wx, wz = self.person
+        r = float(self.g["approach_distance_m"])
+        px, pz = self.cp["point"] if self._cp_dialog() else self.road.pos(self.node)
+        a = math.radians(axis_yaw)
+        u = (math.sin(a), math.cos(a))
+        n1 = (u[1], -u[0])
+        lat = (wx - px) * n1[0] + (wz - pz) * n1[1]
+        side = -1.0 if lat > 1e-6 else 1.0 if lat < -1e-6 else (1.0 if ((inp.x - wx) * n1[0] + (inp.z - wz) * n1[1]) >= 0 else -1.0)      # the road side: against the worker's offset
+        cur = hc.yaw_to(wx, wz, inp.x, inp.z)
+        tgt0 = hc.yaw_to(wx, wz, wx + side * r * n1[0], wz + side * r * n1[1])
+        delta = hc.wrap(tgt0 - cur)
+        sign = 1.0 if delta >= 0 else -1.0
+        mag = min(max(abs(delta), float(sv["rotation_min_deg"])), float(sv["rotation_max_deg"]))
+        n_seg = max(1, math.ceil(mag / float(sv["waypoint_step_deg"]) - 1e-9))       # equal arcs of at most waypoint_step_deg
+        seg = mag / n_seg
+        r_way = r / math.cos(math.radians(min(seg, 170.0) / 2.0))                     # the vertices of the polygon round the ask circle: every leg touches the circle, none enters it
+
+        def at(yaw_deg: float, radius: float) -> tuple[float, float]:
+            return wx + math.sin(math.radians(yaw_deg)) * radius, wz + math.cos(math.radians(yaw_deg)) * radius
+        ways = [at(cur + sign * (k + 0.5) * seg, r_way) for k in range(n_seg)]
+        target = at(cur + sign * mag, r)
+        keep = float(sv["keep_m"]) if sv["keep_m"] is not None else 2.0 * self.s["corridor_half_width_m"]
+        others = [(q["x"], q["z"]) for q in self._fresh_people(inp) if math.hypot(q["x"] - wx, q["z"] - wz) > 0.5]
+        for pt in ways + [target]:
+            if any(math.hypot(pt[0] - ox, pt[1] - oz) < keep - 1e-9 for ox, oz in others):
+                return None, f"somebody within {keep:g} m of the way or of the viewpoint"
+        return {"target": target, "waypoints": ways, "rotation_deg": round(sign * mag, 2), "perpendicular_deg": round(delta, 2), "axis_yaw": round(axis_yaw, 2)}, ""
+
+    def _start_side_view(self, inp: TickInputV4, t: float) -> bool:
+        """The commander's raised arm has failed the POINT cue on its length or elbow for gesture_hold_s: look again from the side, once per ask (AUDIT.md 16.26 item 2)."""
+        if (not self.sv["enabled"] or self.side_view_used or self.sv_since is None or self.waiting or self.person is None
+                or inp.persons_time_s is None or inp.persons_time_s - self.sv_since < self.g["gesture_hold_s"] - 1e-6):
+            return False
+        self.side_view_used = True                             # decided once, whatever comes of it
+        axis = self._back_axis_yaw()
+        if axis is None:
+            self._log(t, "side_view_blocked", "no arrival direction known here")
+            return False
+        plan, why = self._side_view_plan(inp, axis)
+        if plan is None:
+            self._log(t, "side_view_blocked", why, axis_yaw=round(axis, 2))
+            return False
+        self.approach_point = plan["target"]
+        self.detour = list(plan["waypoints"])
+        self.turning = False
+        self.free_asks += 1                                    # not an unclear answer, as the second view
+        self.waiting, self.wait_since = False, None
+        self.sv_since = None
+        self.trace.append(f"{t:.2f}:side_view")
+        rec = {"t": round(t, 3), "node": self.node, "ask": self.dialog.asks, "serial": self.ask_serial, **{k: plan[k] for k in ("rotation_deg", "perpendicular_deg", "axis_yaw")},
+               "to": [round(plan["target"][0], 2), round(plan["target"][1], 2)]}
+        self.side_views.append(rec)
+        if self.record is not None:
+            self.record["side_view"] = rec
+        self._log(t, "side_view", f"raised arm fails the POINT cue on its {self.last_point_fail}: a second reading from {abs(plan['rotation_deg']):g} degrees round the worker",
+                  **{k: v for k, v in rec.items() if k != "t"})
+        self._set("approach", t)
+        return True
+
     def _start_reapproach(self, inp: TickInputV4) -> bool:
         """The commander is not the person the robot approached: go to the commander (once per junction)."""
         dv = self.v4["dialog"]
@@ -924,7 +1038,7 @@ class ControllerV4(hc.Controller):
             self.last_persons_frame = inp.persons_time_s
             self.label = self._interpret(inp)
             self._row = self._log_frame(inp)
-            if self._start_reapproach(inp) or self._start_second_view(inp, cmd):
+            if self._start_reapproach(inp) or self._start_second_view(inp, cmd) or self._start_side_view(inp, t):
                 return
             if self.label == "WAIT":
                 if self.wait_since is None:
@@ -1057,9 +1171,17 @@ class ControllerV4(hc.Controller):
         return self.cp is not None and self.cp["stage"] == "dialog"
 
     def _cp_point(self, junction: str, nxt: str) -> tuple[float, float]:
-        """The checkpoint spot of the branch from `junction` to `nxt`: checkpoint_fraction of the way along it."""
-        f = float(self.ld["checkpoint_fraction"])
+        """The checkpoint spot of the branch from `junction` to `nxt`: checkpoint_s_m along it from the junction when the branch has an entry (AUDIT.md 16.26: the point of the
+        road abeam the worker), else checkpoint_fraction of the way."""
         (x0, z0), (x1, z1) = self.road.pos(junction), self.road.pos(nxt)
+        length = math.hypot(x1 - x0, z1 - z0)
+        table = self.ld["checkpoint_s_m"]
+        if table:
+            cmd = next((c for c, n in self.road.branches.get(junction, {}).items() if n == nxt), None)
+            s = table.get(f"{junction}>{cmd}")
+            if s is not None and length > 0:
+                return x0 + float(s) / length * (x1 - x0), z0 + float(s) / length * (z1 - z0)
+        f = float(self.ld["checkpoint_fraction"])
         return x0 + f * (x1 - x0), z0 + f * (z1 - z0)
 
     def _cp_spots(self) -> dict:
@@ -1384,7 +1506,7 @@ class ControllerV4(hc.Controller):
                    "waited_s": round(self.waited_s, 3), "decisions": list(self.decisions), "route": list(self.route),
                    "safety_stops": self.safety_stops, "lie_detection": dict(self.ld), "recoveries": self.recoveries,
                    "checkpoint": {"enabled": bool(self.ld["checkpoint"]), "log": list(self.cp_log), "backtracks": self.cp_backtracks + len(self.nj_log),
-                                  "next_junction_back": list(self.nj_log)}}
+                                  "next_junction_back": list(self.nj_log)}, "side_views": list(self.side_views)}
         return s
 
 

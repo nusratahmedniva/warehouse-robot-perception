@@ -153,6 +153,7 @@ class GestureSimConfig:
     point_angle_sigma_deg: float = 0.0
     crosscheck_accuracy: float | None = None    # None: no hand world landmarks; else P(the cross-check prefers the TRUE depth reading)
     confusion: dict = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_CONFUSION.items()})
+    point_readability: dict | None = None       # AUDIT.md 16.26.5 item 4: {"bins": [{lo, hi, p}]}, P(a pointing at this angle to the line of sight is read in a frame); None = every pointing is read (as before)
 
 
 class Scene:
@@ -659,6 +660,15 @@ def plan_checkpoints(road: hc.Roadmap, physical: hc.Roadmap | None, plan: dict, 
     from every node (never a junction worker for the junction rules), at least min_worker_separation_m from every other worker, min_turning_point_m
     from every turning point, and path_clearance_m from every road and every segment the robot can drive (the junction workers' and the checkpoints').
     No candidate = ValueError."""
+    if cfg.get("positions"):                                          # AUDIT.md 16.26 item 1: the positions Unity sent; the spot is the anchor, no search
+        out = {}
+        for j, cmd, nxt in decision_branches(road, cfg.get("branches")):
+            pos = cfg["positions"].get(f"{j}>{cmd}")
+            if pos is None:
+                raise ValueError(f"checkpoints `positions` has no entry for {j}>{cmd}")
+            out[(j, cmd)] = {"x": float(pos["x"]), "z": float(pos["z"]), "point": tuple(float(c) for c in pos["anchor"]), "next": nxt,
+                             "side": "right" if float(pos["right_m"]) > 0 else "left", "lateral_m": abs(float(pos["right_m"]))}
+        return out
     standoff, shift = float(rule["ask_standoff_m"]), float(rule["reask_shift_m"])
     sep, turn, clr = float(rule["min_worker_separation_m"]), float(rule["min_turning_point_m"]), float(rule["path_clearance_m"])
     eps = 1e-4
@@ -696,6 +706,15 @@ def plan_checkpoints(road: hc.Roadmap, physical: hc.Roadmap | None, plan: dict, 
         workers.append((chosen["x"], chosen["z"]))
         drive += checkpoint_segments(road, j, nxt, pt, (chosen["x"], chosen["z"]), standoff, shift)
     return out
+
+
+def readability_p(model: dict, angle_deg: float) -> float:
+    """P(a pointing at this angle to the line of sight (0 = away from the camera, 180 = at it) is read as POINT in one frame), from a point_readability model."""
+    a = min(180.0, max(0.0, abs(angle_deg)))
+    for b in model["bins"]:
+        if b["lo"] <= a < b["hi"] or (b["hi"] >= 180 and a >= b["lo"]):
+            return float(b["p"])
+    return 0.0
 
 
 class ReaderLevelVision(VisionSim):
@@ -754,8 +773,16 @@ class ReaderLevelVision(VisionSim):
                     (shown == "STOP" and s["since_gesture_s"] is not None and s["since_gesture_s"] >= self.rc["window"]["stop_window_s"]) or \
                     (shown == "PROCEED" and s["phase"] == "holding" and s["hold_age_s"] >= self.rc["proceed"]["window_s"])
             command = self._degrade(shown) if ready else "NONE"
+            foreshortened = False
+            if command == "POINT" and self.g.point_readability is not None and s["world_angle_deg"] is not None:
+                # AUDIT.md 16.26.5 item 4: a pointing close to the line of sight is not read; the arm is up and fails the cue on length (the side view may start)
+                pr = readability_p(self.g.point_readability, abs(_wrap(s["world_angle_deg"] - hc.yaw_to(x, z, p.x, p.z))))
+                if pr < 1.0 and (pr <= 0.0 or self.rng.random() >= pr):
+                    command, foreshortened = "NONE", True
             r = gm.Reading(command, 0.9 if command != "NONE" else 0.0, "simulated", t, arm=s["arm"] if raised else None,
                            frame_class=shown, moving=moving, raised=raised, hold_s=s["hold_age_s"], valid_frames=10, n_frames=10)
+            if foreshortened:
+                r.point_fail = "length"
             r.arms = {s["arm"] if raised else "right": {"raised": raised, "path": s["amplitude"] if moving else 0.0, "moving": moving}}
             if command == "POINT":
                 r.point = self._point(s["world_angle_deg"], cam, yaw, shown, command)
