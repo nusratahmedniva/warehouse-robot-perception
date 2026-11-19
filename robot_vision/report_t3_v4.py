@@ -54,7 +54,14 @@ def run_metrics(rec: dict) -> dict:
             cp_fooled += 1
         elif right is False and not liar and e["action"] != "backtrack":
             missed_honest += 1                                  # an honest checkpoint on a wrong branch that did not send the robot back
-    return {"junction_fooled": fooled_j, "wrong_branch_without_a_lie": other_wrong, "cp_fooled": cp_fooled, "caught": caught, "false_backtracks": false_bt,
+    nj_backtracks = nj_false = 0                                # AUDIT.md 16.25.1: backtracks on a BACK vote at the next junction; false = the branch taken at J was the right one
+    for e in rec["checkpoint"].get("next_junction_back", []):
+        g = next((x for x in rec["go"] if x["node"] == e["junction"] and x["branch"] == e["branch"]), None)
+        nj_backtracks += 1
+        if g is not None and g["correct"] == g["branch"]:
+            nj_false += 1
+            false_bt += 1
+    return {"nj_backtracks": nj_backtracks, "nj_false": nj_false, "junction_fooled": fooled_j, "wrong_branch_without_a_lie": other_wrong, "cp_fooled": cp_fooled, "caught": caught, "false_backtracks": false_bt,
             "backtracks": rec["checkpoint"]["backtracks"], "cp_lying": sum(1 for g in cp_g.values() if not g["truthful"]), "cp_asked": len(rec["checkpoint"]["log"]),
             "missed_honest": missed_honest, "ignored_undisputed": ignored}
 

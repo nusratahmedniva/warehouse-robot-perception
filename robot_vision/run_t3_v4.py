@@ -34,12 +34,18 @@ def detection_for(variant: str, setting: str, cp_cfg: dict) -> dict:
     if variant == "T0":
         return dict(sv.DETECTION_ON)
     on = {**sv.DETECTION_ON, "checkpoint": True, "checkpoint_fraction": float(cp_cfg["fraction"])}
-    return {**on, "checkpoint_scope": "disputed"} if variant == "T4" else on
+    if variant != "T4":
+        return on
+    t4 = {**on, "checkpoint_scope": "disputed", "checkpoint_person_radius_m": 5.0}                    # 5.0 m: AUDIT.md 16.25
+    if cp_cfg.get("branches") is not None:                                                            # AUDIT.md 16.25.1: the branches with a checkpoint worker, and BACK counted at the next junction
+        t4 = {**t4, "checkpoint_branches": list(cp_cfg["branches"]), "next_junction_back": True}
+    return t4
 
 
-def one_run(variant: str, name: str, setting: str, seed: int, timeout_s: float, cp_cfg: dict, scen: dict) -> dict:
-    sc = sv.scenario_ab(name, seed, detection_for(variant, setting, cp_cfg), scen=scen, sim_cfg=hs.SimConfig(timeout_s=timeout_s),
-                        checkpoints=cp_cfg if variant in ("T3", "T4") else None)
+def one_run(variant: str, name: str, setting: str, seed: int, timeout_s: float, cp_cfg: dict, scen: dict, hook=None, detection: dict | None = None, t0_workers: bool = False) -> dict:
+    """One run. hook / detection: analysis only (analyse_cp_rule_v4.py: put an earlier behaviour back / override the switches)."""
+    sc = sv.scenario_ab(name, seed, detection if detection is not None else detection_for(variant, setting, cp_cfg), scen=scen, sim_cfg=hs.SimConfig(timeout_s=timeout_s),
+                        checkpoints=cp_cfg if (variant in ("T3", "T4") or t0_workers) else None, hook=hook)
     road, goal = sc["road"], sc["goal"]
     r = sc["sim"].run(goal)
     v4 = r["v4"]
@@ -59,6 +65,8 @@ def main(argv=None) -> None:
     ap.add_argument("--variants", nargs="+", default=list(VARIANTS), choices=VARIANTS)   # all three by default
     ap.add_argument("--first-seed", type=int, default=None,
                     help="the seed of run 1 (default: first_seed of scenarios_ab.json); AUDIT.md 16.24.2 runs seeds 21 to 60 with --first-seed 21 --runs 40 (goals: the same GoalSequence, run k = seed k)")
+    ap.add_argument("--t0-with-workers", action="store_true",
+                    help="AUDIT.md 16.25.1: T0 runs in the same scene as T4 (the checkpoint workers present, the robot ignoring them), so that a seed has the same junction workers in both")
     ap.add_argument("--label", default="")
     a = ap.parse_args(argv)
     cp_cfg = json.loads(dio.resolve(CP_CONFIG).read_text(encoding="utf-8"))
@@ -73,10 +81,10 @@ def main(argv=None) -> None:
         for name in a.experiments:
             for setting in ("off", "on"):
                 for k in range(a.runs):
-                    rows.append(one_run(variant, name, setting, first + k, a.timeout_s, cp_cfg, scen))
+                    rows.append(one_run(variant, name, setting, first + k, a.timeout_s, cp_cfg, scen, t0_workers=a.t0_with_workers))
     dio.write_json(out / "runs.json", rows)
     meta = {"git": dio.git_info(), "runs": a.runs, "timeout_s": a.timeout_s, "first_seed": first, "experiments": a.experiments, "variants": a.variants,
-            "checkpoints": cp_cfg, "source": "simulator"}
+            "checkpoints": cp_cfg, "t0_with_workers": a.t0_with_workers, "source": "simulator"}
     dio.write_json(out / "run.json", meta)
     print(f"{len(rows)} runs")
     print(f"Folder: {out}")

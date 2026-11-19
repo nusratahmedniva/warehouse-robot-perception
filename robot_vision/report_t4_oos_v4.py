@@ -69,7 +69,7 @@ def row_stats(rows: list[dict]) -> dict:
     reasons = [r["failure_reason"] for r in rows if r["outcome"] != "SUCCESS"]
     m = [rt.run_metrics(r) for r in rows]
     return {"runs": len(rows), "success": len(ok), "wrong_goal": reasons.count("wrong_goal"), "aborted": reasons.count("aborted"), "timeout": reasons.count("timeout"),
-            "collision": reasons.count("collision"), "backtracks": sum(x["backtracks"] for x in m), "false_backtracks": sum(x["false_backtracks"] for x in m),
+            "collision": reasons.count("collision"), "backtracks": sum(x["backtracks"] for x in m), "nj_backtracks": sum(x["nj_backtracks"] for x in m), "false_backtracks": sum(x["false_backtracks"] for x in m),
             "max_people_in_view": max(r["max_people_in_view"] for r in rows), "median_s": statistics.median(ok) if ok else None, "p95_s": percentile(ok, 0.95),
             "max_s": max(ok) if ok else None, "mean_all_s": statistics.fmean(r["time_s"] for r in rows),
             "rule_timeout_s": fg.timeout_from_development(max(ok)) if ok else None}
@@ -125,7 +125,7 @@ def markdown(res: dict, finals: set, folder: str, t_t0: dict, t_t4: dict) -> str
         d = df.get((exp, setting)) if var == "T4" else None
         dtxt = f"{d['diff_pp']:+.1f} ({d['lo_pp']:+.1f} to {d['hi_pp']:+.1f}); {d['gained']} / {d['lost']}" if d else "-"
         L.append(f"| {exp} | {setting} | {'**final**' if (exp, setting) in finals else '-'} | {var} | {s['success']}/{s['runs']} = {100 * s['success'] / s['runs']:.1f}% ({100 * lo:.1f} to {100 * hi:.1f}) | {dtxt} | "
-                 f"{s['wrong_goal']} | {s['aborted']} | {s['timeout']} | {s['backtracks']} | {s['false_backtracks']} | {s['max_people_in_view']} | {f(s['median_s'])} | {f(s['p95_s'])} | "
+                 f"{s['wrong_goal']} | {s['aborted']} | {s['timeout']} | {s['backtracks']}{' (' + str(s['nj_backtracks']) + ' at the next junction)' if s['nj_backtracks'] else ''} | {s['false_backtracks']} | {s['max_people_in_view']} | {f(s['median_s'])} | {f(s['p95_s'])} | "
                  f"{f(s['max_s'])} | {f(s['rule_timeout_s'])} |")
     b = res["bar"]
     L += ["", f"Folder: `{folder}`", "",

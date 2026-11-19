@@ -61,7 +61,10 @@ DIRECTIONS = hc.DIRECTIONS
 LIE_DEFAULTS = {"second_opinion": False, "reject_impossible": False, "backtrack": False, "max_opinions": 3, "second_opinion_radius_m": None,
                 "backtrack_scope": "any",          # AUDIT.md 16.22: "disagreed" = backtrack only to a junction where the accepted answers named more than one branch
                 "checkpoint": False, "checkpoint_fraction": 0.5,   # AUDIT.md 16.23 (T3): stop at this fraction of a branch leaving a decision junction and ask the checkpoint worker
-                "checkpoint_scope": "any"}                         # AUDIT.md 16.24 (T4): "disputed" = a checkpoint pointing back counts only when the junction's answers disagreed (a vote, not a veto)
+                "checkpoint_scope": "any",                         # AUDIT.md 16.24 (T4): "disputed" = a checkpoint pointing back counts only when the junction's answers disagreed (a vote, not a veto)
+                "checkpoint_person_radius_m": 5.0,                 # AUDIT.md 16.25: only a person within this distance of the checkpoint spot (and nearest to it, outside every junction zone) is asked there
+                "checkpoint_branches": None,                       # AUDIT.md 16.25.1: the branches ("J1>LEFT") that have a checkpoint worker; None = every branch leaving a decision junction (T4 of 16.25.0.1)
+                "next_junction_back": False}                       # AUDIT.md 16.25.1: after a disputed junction, a BACK answer at the next junction (reached by a branch without a checkpoint worker) is a vote to go back
 # AUDIT.md 16.19.2 item E: person-in-path recovery (v4 only; the v3 stop itself is unchanged). Absent block or enabled false = the v3 behaviour.
 RECOVERY_DEFAULTS = {"enabled": False, "blocked_s": 15.0, "person_moved_max_m": 0.3, "back_m": 1.0, "back_speed_mps": 0.2,
                      "side_m": 1.0, "beyond_m": 1.0, "max_attempts": 2}
@@ -344,8 +347,17 @@ class ControllerV4(hc.Controller):
                 raise ValueError(f"lie_detection.checkpoint_fraction must be between 0 and 1 (got {self.ld['checkpoint_fraction']!r})")
             if self.ld["checkpoint_scope"] not in ("any", "disputed"):
                 raise ValueError(f"lie_detection.checkpoint_scope must be 'any' or 'disputed' (got {self.ld['checkpoint_scope']!r})")
+            if not float(self.ld["checkpoint_person_radius_m"]) > 0.0:
+                raise ValueError(f"lie_detection.checkpoint_person_radius_m must be above 0 (got {self.ld['checkpoint_person_radius_m']!r})")
         self.rc = {**RECOVERY_DEFAULTS, **{k: v for k, v in v4_cfg.get("recovery", {}).items() if k in RECOVERY_DEFAULTS}}
         super().__init__(base_cfg, roadmap)
+        if self.ld["checkpoint_branches"] is not None:
+            # the list belongs to the deployment, not to one map: an entry for a node this map does not have is ignored (A1 and A2 run on small maps); an entry that names a
+            # node of this map must be a branch of a decision junction (a typo is refused)
+            valid = {f"{j}>{c}" for j, br in self.road.branches.items() if self.road.kind(j) == "junction" and len(br) >= 2 for c in br}
+            bad = [b for b in self.ld["checkpoint_branches"] if ">" not in b or (b.split(">", 1)[0] in self.road.nodes and b not in valid)]
+            if bad:
+                raise ValueError(f"lie_detection.checkpoint_branches names branches that leave no decision junction of the map: {bad} (valid here: {sorted(valid)})")
         rs = v4_cfg.get("dialog", {}).get("return_speed_mps")
         if rs is not None and not (0.0 < float(rs) <= self.d["cruise_speed_mps"]):
             raise ValueError(f"dialog.return_speed_mps must be above 0 and at most the cruise speed {self.d['cruise_speed_mps']} m/s (got {rs})")
@@ -396,6 +408,8 @@ class ControllerV4(hc.Controller):
         self.cp_done: set = set()                             # (junction, branch) whose checkpoint was handled
         self.cp_log: list[dict] = []                          # one row per checkpoint: result (proceed / back / none) and the action taken
         self.cp_backtracks = 0
+        self.back_ctx: dict | None = None                     # AUDIT.md 16.25.1: set at an arrival at a junction when a BACK answer counts there as a vote
+        self.nj_log: list[dict] = []                          # the backtracks made on a BACK vote at the next junction
         self._new_junction()
         if hasattr(self, "zoom"):
             self.zoom.reset()
@@ -438,6 +452,8 @@ class ControllerV4(hc.Controller):
             return self.cp["point"]                           # T3: first the checkpoint of the branch
         if self.state == "execute" and self.next_node and self._return_pending():
             return self.road.pos(self.node)                   # D: first the junction point
+        if self.state == "execute" and self.next_node and self._cp_wanted(self.next_node):
+            return self._cp_point(self.node, self.next_node)  # AUDIT.md 16.25.0: the next place the robot goes is the checkpoint spot (same heading), not the next node
         return super()._target()
 
     def _return_pending(self) -> bool:
@@ -456,6 +472,7 @@ class ControllerV4(hc.Controller):
     def _arrive(self, node, t):
         self.detour = []
         self.cp = None
+        self.back_ctx = None
         self.route.append(node)
         if self.backtrack_target == node:
             self._arrive_backtrack(node, t)
@@ -468,14 +485,13 @@ class ControllerV4(hc.Controller):
             super()._arrive(node, t)
         if self.state == "scan":
             self._new_junction()
+            self.back_ctx = self._back_context(node)
 
     def _navigate(self, node, t):
         if self.state == "execute" and node == self.next_node and self._cp_wanted(node):
             lc = self.last_choice
-            x0, z0 = self.road.pos(self.node)
-            x1, z1 = self.road.pos(node)
             f = float(self.ld["checkpoint_fraction"])
-            self.cp = {"junction": self.node, "branch": lc["branch"], "next": node, "point": (x0 + f * (x1 - x0), z0 + f * (z1 - z0)), "stage": "drive"}
+            self.cp = {"junction": self.node, "branch": lc["branch"], "next": node, "point": self._cp_point(self.node, node), "stage": "drive"}
             self._log(t, "checkpoint_drive", f"{lc['branch']} from {self.node}: stop at {f:g} of the way to {node} and ask the checkpoint worker",
                       point=[round(self.cp["point"][0], 2), round(self.cp["point"][1], 2)])
         super()._navigate(node, t)
@@ -513,6 +529,8 @@ class ControllerV4(hc.Controller):
         """Commander + reading of the newest frame -> a dialog label: a branch command, 'WAIT' or 'NONE'."""
         self.reject = None
         persons = self._fresh_persons(inp)
+        if self._cp_dialog():                                  # AUDIT.md 16.25: at a checkpoint only a qualifying person is read
+            persons = [p for p in persons if self._cp_pt_ok(p, inp)]
         t_ask = self.record.get("t_ask_first") if self.record else None
         early = {p.track_id: "gesture started before the question was shown" for p in persons
                  if (p.reading.raised or p.reading.command == "PROCEED") and t_ask is not None and self.raised_since.get(p.track_id, math.inf) < t_ask - 1e-9}
@@ -694,6 +712,9 @@ class ControllerV4(hc.Controller):
         self._set("approach", t)
 
     def _decide_go(self, t: float, branch: str, reason: str) -> None:
+        if branch == "BACK":                                   # AUDIT.md 16.25.1: the answers at this junction decided to go back
+            self._k_back(t, reason)
+            return
         self.tried.setdefault(self.node, set()).add(branch)
         self.last_choice = {"node": self.node, "branch": branch, "serial": self.ask_serial,
                             "disagreed": len({v["branch"] for v in self.votes}) > 1}      # 16.22: did the accepted answers of this visit name more than one branch
@@ -825,7 +846,7 @@ class ControllerV4(hc.Controller):
                 or inp.persons_time_s - self.commander_since < self.g["gesture_hold_s"] - 1e-6):
             return False
         tgt = next((q for q in self._fresh_people(inp) if q.get("track_id") == self.commander_360), None)
-        if tgt is None:
+        if tgt is None or (self._cp_dialog() and not self._cp_qualifies(tgt)):                  # AUDIT.md 16.25: at a checkpoint only a qualifying person is approached
             return False
         px, pz = tgt["x"], tgt["z"]
         ax, az = inp.x - px, inp.z - pz
@@ -925,6 +946,9 @@ class ControllerV4(hc.Controller):
             if held:
                 if self._cp_dialog():                           # T3: a checkpoint pointing back is the evidence, not an unclear answer
                     self._cp_back(inp, t)
+                    return
+                if self.back_ctx is not None and self.reject[0] == "arrival":     # AUDIT.md 16.25.1: here BACK is a vote, not a rejection
+                    self._back_vote(inp, t, cmd)
                     return
                 self._reject_answer(inp, t, self.reject)
                 ev = self.dialog.unclear()
@@ -1032,6 +1056,54 @@ class ControllerV4(hc.Controller):
     def _cp_dialog(self) -> bool:
         return self.cp is not None and self.cp["stage"] == "dialog"
 
+    def _cp_point(self, junction: str, nxt: str) -> tuple[float, float]:
+        """The checkpoint spot of the branch from `junction` to `nxt`: checkpoint_fraction of the way along it."""
+        f = float(self.ld["checkpoint_fraction"])
+        (x0, z0), (x1, z1) = self.road.pos(junction), self.road.pos(nxt)
+        return x0 + f * (x1 - x0), z0 + f * (z1 - z0)
+
+    def _cp_spots(self) -> dict:
+        """{(junction, command): (x, z)} of every checkpoint spot of the map: `checkpoint_fraction` of the way along a branch leaving a decision junction (the robot's own rule, roadmap only)."""
+        out = {}
+        for j, br in self.road.branches.items():
+            if self.road.kind(j) != "junction" or len(br) < 2:
+                continue
+            for cmd, nxt in br.items():
+                if self._cp_has(j, cmd):
+                    out[(j, cmd)] = self._cp_point(j, nxt)
+        return out
+
+    def _cp_qualifies(self, q: dict) -> bool:
+        """AUDIT.md 16.25: may this person (a 360 track with a world position) be asked at the checkpoint being handled? (a) within checkpoint_person_radius_m of THIS spot, (b) this spot is
+        the nearest spot of the map to them, (c) outside the second-opinion zone of every asking node (every junction and the start node)."""
+        cp = self.cp
+        if cp is None:
+            return False
+        here = cp["point"]
+        d = math.hypot(q["x"] - here[0], q["z"] - here[1])
+        if d > float(self.ld["checkpoint_person_radius_m"]) + 1e-9:
+            return False
+        if any(math.hypot(q["x"] - s[0], q["z"] - s[1]) < d - 1e-9 for k, s in self._cp_spots().items() if k != (cp["junction"], cp["branch"])):
+            return False
+        zone = self.ld["second_opinion_radius_m"]
+        return not any(math.hypot(q["x"] - self.road.pos(n)[0], q["z"] - self.road.pos(n)[1]) <= zone + 1e-9
+                       for n, v in self.road.nodes.items() if v["kind"] in ("junction", START))
+
+    def _cp_pt_ok(self, p: cm.PersonReading, inp: TickInputV4) -> bool:
+        """A pan-tilt person is read at a checkpoint only when linked to a qualifying 360 track (a person who cannot be placed is not read)."""
+        tid = self._link_360(p, inp)
+        if tid is None:
+            return False
+        q = next((q for q in self._fresh_people(inp) if q.get("track_id", -1) == tid), None)
+        return q is not None and self._cp_qualifies(q)
+
+    def _cp_has(self, junction: str, command: str) -> bool:
+        """Does this branch have a checkpoint worker (checkpoint on, and the branch in checkpoint_branches; None = every branch of a decision junction)?"""
+        if not self.ld["checkpoint"]:
+            return False
+        branches = self.ld["checkpoint_branches"]
+        return branches is None or f"{junction}>{command}" in branches
+
     def _cp_wanted(self, node: str) -> bool:
         """After a decision at a decision junction (a junction with two or more branches): is the branch to `node` one whose checkpoint is still to be asked?"""
         if not self.ld["checkpoint"]:
@@ -1039,7 +1111,7 @@ class ControllerV4(hc.Controller):
         lc = self.last_choice
         if lc is None or lc["node"] != self.node or self.road.kind(self.node) != "junction" or len(self.road.branches.get(self.node, {})) < 2:
             return False
-        return self.road.next(self.node, lc["branch"]) == node and (self.node, lc["branch"]) not in self.cp_done
+        return (self._cp_has(self.node, lc["branch"]) and self.road.next(self.node, lc["branch"]) == node and (self.node, lc["branch"]) not in self.cp_done)
 
     def _cp_drive(self, inp: TickInputV4, cmd) -> None:
         tx, tz = self.cp["point"]
@@ -1059,7 +1131,7 @@ class ControllerV4(hc.Controller):
         t = inp.time_s
         people = self._fresh_people(inp)
         seen = bool(people) and inp.people_time_s is not None and inp.people_time_s >= self.state_start
-        cand = [q for q in people if not self._belongs_here(q)[0]] if seen else []
+        cand = [q for q in people if self._cp_qualifies(q)] if seen else []                    # AUDIT.md 16.25
         if t - self.state_start >= self.g["scan_min_s"] and cand:
             p = min(cand, key=lambda q: q["distance_m"])
             self.person = (p["x"], p["z"])
@@ -1069,14 +1141,16 @@ class ControllerV4(hc.Controller):
             self.approach_point = (p["x"] + ax / n * r, p["z"] + az / n * r)
             self.turning = False
             self.record = {"junction": self.node, "checkpoint": f"{self.cp['junction']}>{self.cp['branch']}", "t_start": round(t, 3), "person_x": round(p["x"], 3),
-                           "person_z": round(p["z"], 3), "person_distance_m": round(p["distance_m"], 3)}
+                           "person_z": round(p["z"], 3), "person_distance_m": round(p["distance_m"], 3), "person_360": p.get("track_id")}
             self.approached_360 = p.get("track_id")
             self.dialogs_started = 1
             if self.approached_360 is not None:
                 self.asked_360.add(self.approached_360)
             self._set("approach", t)
         elif t - self.state_start >= self.g["scan_timeout_s"]:
-            self._cp_none(t, "nobody found at the checkpoint")
+            self._log(t, "checkpoint_no_person", f"nobody qualifies at the checkpoint of {self.cp['junction']} {self.cp['branch']} within {self.g['scan_timeout_s']:g} s "
+                      f"(within {self.ld['checkpoint_person_radius_m']:g} m of the spot, nearest to it, outside every junction zone)", people_seen=len(people))
+            self._cp_none(t, "no checkpoint person", no_person=True)
 
     def _interpret_cp(self, p: cm.PersonReading, inp: TickInputV4) -> str:
         """The label of a checkpoint worker's gesture: PROCEED (or a point along the branch) = FORWARD; a point back along the arrival road = NONE with
@@ -1118,10 +1192,10 @@ class ControllerV4(hc.Controller):
         self.waiting = False
         self.rej_since = self.rej_key = None
 
-    def _cp_note(self, t: float, result: str, action: str, why: str) -> None:
+    def _cp_note(self, t: float, result: str, action: str, why: str, no_person: bool = False) -> None:
         cp = self.cp
         self.cp_log.append({"t": round(t, 3), "junction": cp["junction"], "branch": cp["branch"], "next": cp["next"], "result": result, "action": action,
-                            "asks": self.dialog.asks, "person_360": self._voter()})
+                            "asks": self.dialog.asks, "person_360": self._voter(), "no_person": no_person})
         self._log(t, "checkpoint_answer", why, junction=cp["junction"], branch=cp["branch"], result=result, action=action)
 
     def _cp_continue(self, t: float) -> None:
@@ -1135,9 +1209,9 @@ class ControllerV4(hc.Controller):
         self._cp_note(t, "proceed", "continue", f"the checkpoint of {self.cp['junction']} {self.cp['branch']} shows the way on: continue")
         self._cp_continue(t)
 
-    def _cp_none(self, t: float, why: str) -> None:
+    def _cp_none(self, t: float, why: str, no_person: bool = False) -> None:
         self._cp_finish(t, "unclear")
-        self._cp_note(t, "none", "continue", f"checkpoint of {self.cp['junction']} {self.cp['branch']}: {why}: continue")
+        self._cp_note(t, "none", "continue", f"checkpoint of {self.cp['junction']} {self.cp['branch']}: {why}: continue", no_person=no_person)
         self._cp_continue(t)
 
     def _cp_back(self, inp: TickInputV4, t: float) -> None:
@@ -1165,6 +1239,47 @@ class ControllerV4(hc.Controller):
                       withdrawn_serial=self.last_choice["serial"] if self.last_choice else None, rejections=[])
             self.cp = None
             self._navigate(j, t)
+
+    # -- AUDIT.md 16.25.1: "back" at the next junction --
+    def _back_context(self, node: str) -> dict | None:
+        """Called at an arrival at junction `node`: does a BACK answer here count as a vote to go back? Only when `node` was reached by the branch just decided at J, J was DISPUTED,
+        that branch has no checkpoint worker, J has not used its one backtrack and has another branch untried. Anywhere else BACK stays rejected."""
+        if not self.ld["next_junction_back"] or self.road.kind(node) != "junction":
+            return None
+        lc = self.last_choice
+        if lc is None or lc["node"] == node or self.road.next(lc["node"], lc["branch"]) != node:
+            return None
+        j = lc["node"]
+        if not lc.get("disagreed") or j in self.backtracked or not self._untried(j) or self._cp_has(j, lc["branch"]):
+            return None
+        return {"junction": j, "branch": lc["branch"], "serial": lc["serial"]}
+
+    def _back_vote(self, inp: TickInputV4, t: float, cmd) -> None:
+        """A held answer pointing back along the arrival road, in a visit where it counts (back_ctx): accepted as a vote "BACK" in this junction's tally."""
+        ctx = self.back_ctx
+        if self.record is not None:
+            self.record.update(t_accept=round(t, 3), back_vote=True, views=2 if self.view1 else 1, point=self.resolution.to_dict() if self.resolution else None,
+                               commander_pt=self.commander_pt, commander_360=self.commander_360)
+        self.dialog.accepted = "BACK"
+        self.waiting = False
+        self.rej_since = self.rej_key = None
+        self._finish_record("accepted", t)
+        self._log(t, "answer_accepted", f"BACK read for {self.g['gesture_hold_s']:g} s: the arrival road, counted as a vote at {self.node} (the answers at {ctx['junction']} disagreed)",
+                  branch="BACK", asks=self.dialog.asks, person_360=self._voter(), back_vote=True)
+        self._after_vote(inp, t, cmd, "BACK")
+
+    def _k_back(self, t: float, reason: str) -> None:
+        """The tally of this junction decided BACK: return to the junction J whose answers disagreed (the existing backtrack machinery, at most once per J)."""
+        ctx = self.back_ctx
+        j = ctx["junction"]
+        self.nj_log.append({"t": round(t, 3), "junction": j, "branch": ctx["branch"], "at": self.node, "action": "backtrack"})
+        self.backtracked.add(j)
+        self.backtrack_target = j
+        self.trace.append(f"{t:.2f}:backtrack")
+        self._log(t, "backtrack", f"{reason}: the answers at {self.node} point back along the road from {j} (whose answers disagreed): return to {j}", to=j, failed_branch=ctx["branch"],
+                  withdrawn_serial=ctx["serial"], rejections=list(self.rejections), kind="next_junction")
+        self.back_ctx = None
+        self._navigate(j, t)
 
     # -- E: person-in-path recovery (AUDIT.md 16.19.2) --
     def _blocker(self, inp) -> dict | None:
@@ -1268,7 +1383,8 @@ class ControllerV4(hc.Controller):
         s["v4"] = {"zoom_enabled": self.zoom.z["enabled"], "commander_changes": list(self.commander_changes),
                    "waited_s": round(self.waited_s, 3), "decisions": list(self.decisions), "route": list(self.route),
                    "safety_stops": self.safety_stops, "lie_detection": dict(self.ld), "recoveries": self.recoveries,
-                   "checkpoint": {"enabled": bool(self.ld["checkpoint"]), "log": list(self.cp_log), "backtracks": self.cp_backtracks}}
+                   "checkpoint": {"enabled": bool(self.ld["checkpoint"]), "log": list(self.cp_log), "backtracks": self.cp_backtracks + len(self.nj_log),
+                                  "next_junction_back": list(self.nj_log)}}
         return s
 
 

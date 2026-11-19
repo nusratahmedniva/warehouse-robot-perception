@@ -396,11 +396,14 @@ def drivable_segments(road: hc.Roadmap, node: str, workers: list, standoff: floa
 CLEARANCE_KEYS = ("path_clearance_m", "ask_zone_m", "ask_standoff_m", "reask_shift_m")
 
 
-def clearance_problem(road: hc.Roadmap, node: str, pos: list, placed_by_node: dict, physical: hc.Roadmap | None, rule: dict) -> str | None:
+def clearance_problem(road: hc.Roadmap, node: str, pos: list, placed_by_node: dict, physical: hc.Roadmap | None, rule: dict,
+                      extra_workers=(), extra_segments=()) -> str | None:
     """Unity's ClearanceProblem (AUDIT.md 16.20.2): the first clearance or ask-zone rule the workers `pos` of `node` break with the workers already
     placed at other nodes (`placed_by_node`: {node: [(x, z), ...]} in placement order), or None. Every ask position of this node within
     rule["ask_zone_m"] of it; every worker (here and placed) rule["path_clearance_m"] from this node's drivable segments; this node's workers that far
-    from every road of the map and of the physical map and from the drivable segments of every node placed before."""
+    from every road of the map and of the physical map and from the drivable segments of every node placed before. AUDIT.md 16.25.1: `extra_workers` and
+    `extra_segments` are the FIXED checkpoint workers and the segments the robot drives for them: this node's workers keep the clearance from those segments and
+    those workers keep it from this node's segments."""
     standoff, shift = rule["ask_standoff_m"], rule["reask_shift_m"]
     segs, asks = drivable_segments(road, node, pos, standoff, shift)
     nx, nz = road.pos(node)
@@ -424,6 +427,15 @@ def clearance_problem(road: hc.Roadmap, node: str, pos: list, placed_by_node: di
             d = _seg_dist(q[0], q[1], sg[:4])
             if d < clr:
                 return f"worker {i + 1} is {d:.2f} m from {sg[4]} (< {rule['path_clearance_m']})"
+        for sg in extra_segments:
+            d = _seg_dist(q[0], q[1], sg)
+            if d < clr:
+                return f"worker {i + 1} is {d:.2f} m from a segment of a checkpoint (< {rule['path_clearance_m']})"
+    for w in extra_workers:
+        for sg in segs:
+            d = _seg_dist(w[0], w[1], sg[:4])
+            if d < clr:
+                return f"a checkpoint worker is {d:.2f} m from {sg[4]} (< {rule['path_clearance_m']})"
     for other, pts in placed_by_node.items():
         for q in pts:
             for sg in segs:
@@ -543,7 +555,7 @@ def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_ro
                  seed: int | str, min_turning_m: float = 0.0, nearer_margin_m: float = 0.0, approach_m: float = 3.0,
                  max_draws: int = 10000, physical: hc.Roadmap | None = None,
                  placed: list[tuple[float, float]] | tuple = (), clearance: dict | None = None,
-                 placed_by_node: dict | None = None) -> list[tuple[float, float]]:
+                 placed_by_node: dict | None = None, extra_workers=(), extra_segments=()) -> list[tuple[float, float]]:
     """n people uniform in a square of side 2 * half_size_m centred on the node, at least min_road_m from every road centre line
     (of the map and of the physical map), min_sep_m apart (also from `placed`, the workers of other nodes) and min_turning_m from every
     turning point (rejection sampling, seeded by run and node). The drawn set is sorted by distance to the node (the first = the one the
@@ -570,7 +582,7 @@ def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_ro
             continue
         if nearer_margin_m > 0 and any(nearer_margin(road, node, o, out[0], approach_m) < nearer_margin_m for o in out[1:]):
             continue
-        if clearance is not None and clearance_problem(road, node, out, placed_by_node or {}, physical, clearance) is not None:
+        if clearance is not None and clearance_problem(road, node, out, placed_by_node or {}, physical, clearance, extra_workers, extra_segments) is not None:
             continue
         return out
     raise ValueError(f"cannot place {n} people at {node} in {max_draws} draws (half_size {half_size_m}, road {min_road_m}, "
@@ -616,9 +628,11 @@ def detour_corners(x: float, z: float, target: tuple[float, float], people: list
 
 # ---------------------------------------------------------------- T3: checkpoint workers (AUDIT.md 16.23)
 
-def decision_branches(road: hc.Roadmap) -> list[tuple[str, str, str]]:
-    """(junction, command, next node) of every branch leaving a decision junction (a node of kind junction with two or more branches), in roadmap order."""
-    return [(j, cmd, nxt) for j, br in road.branches.items() if road.nodes[j]["kind"] == "junction" and len(br) >= 2 for cmd, nxt in br.items()]
+def decision_branches(road: hc.Roadmap, branches: list | None = None) -> list[tuple[str, str, str]]:
+    """(junction, command, next node) of every branch leaving a decision junction (a node of kind junction with two or more branches), in roadmap order;
+    `branches` (AUDIT.md 16.25.1: ["J1>FORWARD", ...]) keeps only those that have a checkpoint worker (None = all)."""
+    return [(j, cmd, nxt) for j, br in road.branches.items() if road.nodes[j]["kind"] == "junction" and len(br) >= 2 for cmd, nxt in br.items()
+            if branches is None or f"{j}>{cmd}" in branches]
 
 
 def checkpoint_point(road: hc.Roadmap, junction: str, nxt: str, fraction: float) -> tuple[float, float]:
@@ -657,7 +671,7 @@ def plan_checkpoints(road: hc.Roadmap, physical: hc.Roadmap | None, plan: dict, 
         drive += [sg[:4] for sg in segs]
     workers = [q for pts in plan.values() for q in pts]
     out: dict = {}
-    for j, cmd, nxt in decision_branches(road):
+    for j, cmd, nxt in decision_branches(road, cfg.get("branches")):
         pt = checkpoint_point(road, j, nxt, float(cfg["fraction"]))
         a = math.radians(hc.yaw_to(pt[0], pt[1], *road.pos(nxt)))
         right = (math.cos(a), -math.sin(a))
@@ -791,9 +805,10 @@ class SimulatorV4:
             else:                                                  # the earlier symmetric pair
                 pts = place_beside(self.road, junction, n, lay["lateral_m"], lay["before_m"])
         elif lay["kind"] == "random":
+            extra_w, extra_s = self._fixed_checkpoints(rule)
             pts = place_random(self.road, junction, n, lay["half_size_m"], lay["min_road_m"], sep, self.seed, turn, margin, approach,
                                lay.get("max_draws", 10000), sp.physical_map, placed,
-                               {k: rule[k] for k in CLEARANCE_KEYS} if all(k in rule for k in CLEARANCE_KEYS) else None, placed_by_node)
+                               {k: rule[k] for k in CLEARANCE_KEYS} if all(k in rule for k in CLEARANCE_KEYS) else None, placed_by_node, extra_w, extra_s)
         elif lay["kind"] == "fixed":                       # tests / demonstrations: explicit (x, z) per node
             return [tuple(q) for q in lay["points"][junction]]
         else:
@@ -802,13 +817,27 @@ class SimulatorV4:
             check_placement(self.road, junction, pts, sep, turn, sp.physical_map, margin, approach, placed)
         return pts
 
+    def _checkpoints_first(self) -> bool:
+        """AUDIT.md 16.25.1: the checkpoint positions are fixed (planned before, and independent of, the junction workers) when checkpoints.json says "fixed_first"."""
+        cfg = self.spec.checkpoints
+        return bool(cfg and cfg.get("fixed_first"))
+
+    def _fixed_checkpoints(self, rule: dict) -> tuple[list, list]:
+        """(the fixed checkpoint workers, the segments the robot drives for them) the junction workers are drawn around; empty unless `fixed_first`."""
+        if not self._checkpoints_first() or not self._cp_plan:
+            return [], []
+        standoff, shift = float(rule["ask_standoff_m"]), float(rule["reask_shift_m"])
+        workers = [(cw["x"], cw["z"]) for cw in self._cp_plan.values()]
+        segs = [sg for (j, cmd), cw in self._cp_plan.items() for sg in checkpoint_segments(self.road, j, cw["next"], cw["point"], (cw["x"], cw["z"]), standoff, shift)]
+        return workers, segs
+
     def plan_workers(self) -> dict:
         """Plan every asking node of the run up front, in Unity's order (start node, then the junctions in file order), each against the workers of
-        the nodes before it (Unity's PlanRun). Returns {node: [(x, z), ...]}."""
+        the nodes before it (Unity's PlanRun). Returns {node: [(x, z), ...]}. With fixed checkpoints (16.25.1) the checkpoint workers count as placed."""
         plan: dict = {}
         if self.spec.layout is None or self.spec.layout["kind"] == "fixed":
             return plan
-        placed: list = []
+        placed: list = [(cw["x"], cw["z"]) for cw in self._cp_plan.values()] if self._checkpoints_first() else []
         for node in ask_nodes(self.road):
             plan[node] = self._positions_at(node, placed, dict(plan))
             placed += plan[node]
@@ -971,8 +1000,13 @@ class SimulatorV4:
         cfg, road, c = self.cfg, self.road, self.c
         rng_seed = self.seed
         self._worker_rngs, self._worker_lies, self.gestures = {}, {}, []
-        self._plan = self.plan_workers()
-        self._cp_plan = self.plan_checkpoints()
+        if self._checkpoints_first():                           # AUDIT.md 16.25.1: the checkpoints first, the junction workers around them
+            self._plan, self._cp_plan = {}, {}
+            self._cp_plan = self.plan_checkpoints()
+            self._plan = self.plan_workers()
+        else:
+            self._plan = self.plan_workers()
+            self._cp_plan = self.plan_checkpoints()
         max_view = 0
         visions: dict[str, ReaderLevelVision] = {}
         x, z = road.pos(road.start)

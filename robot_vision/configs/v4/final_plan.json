@@ -173,6 +173,20 @@
   },
   "superseded_settings_note": "The four v4 Task 2 settings of 2026-10-24 .. 2026-11-13, replaced on 2026-11-14 by the experiments A/B matrix (AUDIT.md 16.15 decision 1). Kept for the record only: no tool reads this key, Unity refuses these names as superseded (final_v4.json superseded_settings), and none was ever run as a final.",
   "settings_note": "null = not constrained by the setting. Every final session must lie wholly in the test split (data_splits_v4.guard_run with --final-evaluation); a setting's own constraints are checked on top. Which setting uses which test looks and clips is part of the plan: fill the setting notes in AUDIT.md section 14.",
+  "lie_detection_checkpoint": {
+    "declared": "2026-11-19 (AUDIT.md 16.25.2; T4 of 16.24.3, 16.25, 16.25.1). What the control file of a setting must say about the checkpoint workers, besides the three rules of scenarios_ab.json detection: a detection-on setting runs T4 exactly (the values below, the same as the four control_lie_on*.json files and run_t3_v4.detection_for('T4')); a detection-off setting has checkpoint false (the checkpoint workers are in the scene and the robot ignores them; the other keys do not matter then). final_guard_v4.control_problems compares every key; a missing key counts as its default.",
+    "on": {
+      "checkpoint": true,
+      "checkpoint_fraction": 0.5,
+      "checkpoint_scope": "disputed",
+      "checkpoint_person_radius_m": 5.0,
+      "checkpoint_branches": ["J1>FORWARD", "J1>RIGHT", "J2>RIGHT", "J3>LEFT", "J3>RIGHT", "J4>RIGHT", "J4>LEFT"],
+      "next_junction_back": true
+    },
+    "off": {
+      "checkpoint": false
+    }
+  },
   "run_once": "Each setting is run once. A setting with a FINAL_DONE.json in its evaluation folder or in a bridge run folder cannot be started or evaluated again (final_guard_v4.py).",
   "test_assignment": {
     "A1": {

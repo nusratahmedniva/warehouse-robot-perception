@@ -1,3 +1,5 @@
+> **Current overview of the project: [workflow_v4.md](workflow_v4.md).** This file is the v4 specification.
+
 # Avatar-Mediated Human-Robot Interaction in Virtual Worlds: v4 flow
 
 v4 is a new study built on top of v3, not a change to it. v3 is frozen as release `v1.0` and is the baseline: fixed arm

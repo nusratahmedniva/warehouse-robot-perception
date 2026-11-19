@@ -118,11 +118,11 @@ def lie_detection_label(ld: dict | None) -> str | None:
     import final_guard_v4 as fg
     if not ld:
         return None
-    flags = {k: bool(ld.get(k)) for k in fg.SWITCHES}
+    flags = {k: bool(ld.get(k)) for k in fg.LIE_RULES}
     for name in ("off", "on"):
-        if flags == {k: bool(v) for k, v in fg.detection_switches(name).items() if k in fg.SWITCHES}:
+        if flags == {k: bool(v) for k, v in fg.detection_switches(name).items() if k in fg.LIE_RULES}:
             return name
-    return "".join(letter for letter, k in zip("abc", fg.SWITCHES) if flags[k])
+    return "".join(letter for letter, k in zip("abc", fg.LIE_RULES) if flags[k])
 
 
 def check_columns(cfg: dict) -> None:

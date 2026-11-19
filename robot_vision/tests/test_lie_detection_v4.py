@@ -731,7 +731,8 @@ class ExperimentFiles(unittest.TestCase):
                 for k in ("second_opinion", "reject_impossible", "backtrack"):
                     self.assertEqual(f["lie_detection"][k], scen["detection"][mode][k], (suffix, mode, k))
                 g, b = json.loads(json.dumps(f)), json.loads(json.dumps(base))
-                T4 = {"checkpoint": True, "checkpoint_fraction": 0.5, "checkpoint_scope": "disputed"}                    # AUDIT.md 16.24.3: the on files carry T4, the off files do not
+                T4 = {"checkpoint": True, "checkpoint_fraction": 0.5, "checkpoint_scope": "disputed", "checkpoint_person_radius_m": 5.0,
+                      "checkpoint_branches": ["J1>FORWARD", "J1>RIGHT", "J2>RIGHT", "J3>LEFT", "J3>RIGHT", "J4>RIGHT", "J4>LEFT"], "next_junction_back": True}                    # AUDIT.md 16.24.3: the on files carry T4, the off files do not
                 if mode == "on":
                     self.assertEqual({k: g["lie_detection"].pop(k) for k in T4}, T4, suffix)
                     self.assertIn("16.24.3", g["lie_detection"]["why"].pop("checkpoint"), suffix)

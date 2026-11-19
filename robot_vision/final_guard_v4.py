@@ -29,7 +29,10 @@ REPO = HERE.parent
 PLAN = "robot_vision/configs/v4/final_plan.json"
 MARKERS = {"run": "FINAL_RUN_DONE.json", "evaluation": "FINAL_DONE.json", "export": "FINAL_EXPORT_DONE.json"}
 SCENARIOS = "robot_vision/configs/v4/experiments/scenarios_ab.json"
-SWITCHES = ("second_opinion", "reject_impossible", "backtrack")
+LIE_RULES = ("second_opinion", "reject_impossible", "backtrack")        # the a / b / c rules of the experiments (export_csv_v4.lie_detection_label letters)
+# AUDIT.md 16.25.2: the checkpoint workers of T4 (16.24.3, 16.25, 16.25.1); their expected values are final_plan.json lie_detection_checkpoint
+CHECKPOINT_SWITCHES = ("checkpoint", "checkpoint_fraction", "checkpoint_scope", "checkpoint_person_radius_m", "checkpoint_branches", "next_junction_back")
+SWITCHES = LIE_RULES + CHECKPOINT_SWITCHES
 EVAL_PREFIX = "hri_eval_final_v4"
 EXPORT_PREFIX = "export_csv_v4_final"
 
@@ -116,17 +119,34 @@ def detection_switches(label: str, repo: Path = REPO) -> dict:
     return json.loads((repo / SCENARIOS).read_text(encoding="utf-8"))["detection"][label]
 
 
+def checkpoint_switches(label: str, repo: Path = REPO) -> dict:
+    """The checkpoint switches 'on' (T4: every key) or 'off' (checkpoint false) means (final_plan.json lie_detection_checkpoint, AUDIT.md 16.25.2)."""
+    return plan(repo)["lie_detection_checkpoint"][label]
+
+
+def _same_switch(have, want) -> bool:
+    """A switch has the declared value: booleans as booleans (absent = false), everything else equal (absent = None never equals a declared value)."""
+    if isinstance(want, bool):
+        return bool(have) == want
+    return have == want
+
+
 def control_problems(setting: str, control: dict, repo: Path = REPO) -> list[str]:
     """What is wrong with this control config (the dict of a control file or of a bridge run's config_used/control.json) for the
-    setting: its lie-detection switches must be those of the setting's lie_detection (on / off) and its roadmap the setting's map.
-    A setting without those keys (none today) is not constrained."""
+    setting: its lie-detection switches must be those of the setting's lie_detection (on / off), its checkpoint switches those of the
+    same label in final_plan.json lie_detection_checkpoint (on = T4 exactly, off = checkpoint false; AUDIT.md 16.25.2) and its roadmap the
+    setting's map. A setting without those keys (none today) is not constrained."""
     spec = plan(repo)["settings"][setting]
     out = []
     if spec.get("lie_detection") is not None:
         want, have = detection_switches(spec["lie_detection"], repo), control.get("lie_detection", {})
-        for k in SWITCHES:
+        for k in LIE_RULES:
             if bool(have.get(k)) != bool(want[k]):
                 out.append(f"lie_detection.{k} is {bool(have.get(k))} but setting {setting} needs {bool(want[k])} (detection {spec['lie_detection']})")
+        cp = checkpoint_switches(spec["lie_detection"], repo)
+        for k in CHECKPOINT_SWITCHES:
+            if k in cp and not _same_switch(have.get(k), cp[k]):
+                out.append(f"lie_detection.{k} is {have.get(k)!r} but setting {setting} needs {cp[k]!r} (detection {spec['lie_detection']}, final_plan.json lie_detection_checkpoint)")
     if spec.get("roadmap") is not None and _norm(control.get("roadmap")) != _norm(spec["roadmap"]):
         out.append(f"roadmap is {control.get('roadmap')!r} but setting {setting} needs {spec['roadmap']!r}")
     return out
