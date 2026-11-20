@@ -2413,3 +2413,145 @@ clearance (1.0 m) and ask-zone (5.5 m) checks on at Play. Values from addendum 3
 
 **Commits:** (1) this declaration, before the merge; (2) the merge of `origin/main` with the switch, the `Validate` change and the tests
 (the merge alone fails her two pins, so the switch goes into the merge commit). Each after both suites pass.
+
+### 2026-11-20, section 15 addendum 8: checkpoint workers dropped, the T0-ready branch, the development timeout 900 s (declared before any change below)
+
+Nusrat's task of 2026-11-20 after Anisha's decision (AUDIT.md 16.26.9, on main 33cab20). Branch `nusrat/v4-t0-ready`, new from `origin/main`
+33cab20. Unity side and `finals_v4/` only: nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run,
+nothing is pushed. **Development data, not a result.** Numbering: addenda 5 to 7 of this section exist only on the unmerged branch
+`nusrat/v4-timing-backtrack` (pushed up to 7c5adc6; 683b5bc local); they are summarised below and not merged.
+
+**1. The record: checkpoint workers were built, diagnosed and dropped.**
+- **Built and diagnosed on `nusrat/v4-timing-backtrack`** (not merged): addendum 5 (3ead71b, 8acd539: NavMesh check of layout (i), the
+  strict-protocol timing rerun declared (not run), facts for a backtracking design); addendum 6 (be1a08f, 7d8ab30, 7c5adc6: variant T4, seven
+  fixed checkpoint workers beside the decision branches, an answer rule, `-experimentForceLie`, Verify points, 12 Edit Mode tests); addendum 7
+  (683b5bc: the abeam checkpoint ask, the side-view re-ask, a readability threshold, the BACK diagnosis tool). Uncommitted work after 683b5bc
+  (the abeam and side-view planner, a recorder and scorer of BACK readability, a truth `role` field) was never committed; it is kept in a
+  local `git stash` of that branch, not here.
+- **Unity's diagnosis numbers (development, not results):**
+  - addendum 6 checks on 7d8ab30: every run of seeds 1 and 2 of the 10 Unity settings planned; NavMesh Verify PASSED
+    (`navmesh_v4_check_20261118_235705`); worker and checkpoint path check PASSED (`checkpoint_check_20261118_235303`: 400 plans, 48,270 paths,
+    none within 1.0 m of a worker); pan-tilt never 3 or more people at an ask.
+  - B3 smoke trial (`trials_development_Task2_B3_20261118_235842` / `bridge_guide_20261118_235726`, forced liar at J1): REHEARSAL VALID; the
+    robot followed the lie at J1; at J3 the honest worker 7 pointed BACK twice and was read NONE both times; aborted at J3 at 213.8 s.
+  - BACK diagnosis (`back_read_diagnosis_20261119_203250`, `finals_v4/back_read_diagnosis_v4.py`; replay equals the log in 37 of 37
+    readings): the arm pointed 144.8 and 163.5 deg from the worker-to-camera line; POINT cue in 0 of 19 and 0 of 18 raised frames (image arm
+    length median 0.78 and 0.36 shoulder widths, needs 0.8); the logged stage was `insufficient_history` (the pan-tilt at 4.35 to 4.40 frames/s
+    with two people in its frame, 4 to 5 frames in the 1.0 s window, 6 needed). Development POINT asks by angle to the camera line: 45-135 deg
+    33 asks, 27 read as POINT, 20 with the correct direction; 135-180 deg 6 asks, 0 read; below 30 deg 1 ask, 0 read.
+  - After 683b5bc (uncommitted code, recorded for completeness): the side view as first declared failed Unity's planning rules (Edit Mode
+    341/364; diagnostic `side_view_diag_20261119_214424`: 0 of 400 runs planned with the Edit Mode check, 240 of 400 with Play's); only "J2 and
+    J4, back to the first ask point" planned 400 of 400 (`side_view_diag_20261119_215510`). A BACK readability recording
+    (`back_readability_20261119_215631`, 156 asks, development looks and clips) scored 7 of 26 spots passing at 10 Hz
+    (`back_readability_report_20261119_221613`: the 7 checkpoint FORWARD spots; all 19 BACK spots failed; at 4.4 frames/s every spot
+    failed). At J3 and J4 the mirror image of a BACK reading lands 13.8 or 22.6 deg from LEFT or RIGHT, inside `branch_match_max_deg` 30, so
+    `resolve_point` returns ambiguous (`mirror_ambiguity_20261120_124936`, ideal reading).
+- **Dropped on 2026-11-20 by Anisha's declared stopping rule (AUDIT.md 16.24; 16.26.8.1, 16.26.9).** Simulator: T4 without the side view on
+  fresh seeds 101 to 140, 900 s: B3 on 24/40 -> 24/40 (+0.0 pp), B4 on 23/40 -> 23/40 (+0.0 pp), bar +15 pp: FAIL. With the side view
+  (16.26.7) the runs stalled: A2 on (no checkpoints) fell from 40/40 to 0/40 and 1/40 by timeouts at 900 s; B3 on -30.0 and -37.5 pp. T0 is
+  kept for the finals; her guard refuses any checkpoint key on and `side_view.enabled` true.
+- **The final scenes contain no checkpoint workers.** This branch starts from main, where Unity never had them (none of the commits above is
+  merged); item 3 proves it.
+
+**2. What comes over from `nusrat/v4-timing-backtrack`, and nothing else.**
+- (b) `finals_v4/back_read_diagnosis_v4.py` (from 683b5bc, unchanged: a diagnosis tool of the B3 smoke trial; it reads that trial and the
+  checkpoint-era planner export, and changes nothing) and a copy of its report `Avatar/Config/reports_v4/back_read_diagnosis_20261119_203250.md`.
+- (c) Tooling useful without checkpoints:
+  - `finals_v4/timing_rerun_report.py` (from 8acd539: frames per 2 s window by 1, 2, 3+ people in the frame, overall and in gesture windows;
+    perception and round-trip timing), generalised: `--prefix P` takes the manifest entries whose setting starts with P (default `timing_`,
+    the old behaviour); its own zip is left as it was (inside `robot_vision/outputs/`).
+  - `finals_v4/step5_report.py`: `--prefix P` takes only the manifest entries whose setting is P + one of the 13 final setting names (no
+    prefix: the old behaviour, every entry); the prefix is dropped to pair a B setting with its A partner (`t0_B3` with `t0_A3`). Output
+    files carry the prefix in their name. Its per-run CSV (`step5_durations_<time>.csv`) already lists outcome, failure reason and duration;
+    that is the input of the timeout rule (item 5); the tool computes no timeout.
+  - New `finals_v4/step5_zip_v4.py`: ONE zip, OUTSIDE the repository (a folder given on the command line; refused inside the repository),
+    of every session of the manifest with the prefix (Unity session folder, bridge run folder, export folder, launcher transcript, the
+    launcher's `run_session_*` logs and run-protocol notes of each setting) plus the analysis outputs named on the command line; a
+    `MANIFEST.json` inside (every file, size, SHA-256); `zipfile.testzip` after writing; prints the zip's SHA-256 and writes it next to the
+    zip (`<zip>.sha256`). Never overwrites. Read-only on the outputs.
+  - Not taken (checkpoint-only): `checkpoint_feasibility_v4.py`, `checkpoint_layout_report_v4.py`, the T4 planner, its tests, the launcher's
+    `-ExperimentForceLie`, the `t4_` handling of `step5_report.py`, the side-view and readability tools.
+
+**3. Checks that no checkpoint trace remains** (on this branch, before and after the changes):
+- search, case-insensitive, all Unity files (scripts, tests, configs, scenes, prefabs, assets), `final_v4.json` (freeze list and settings),
+  `experiments_ab_unity.json`, the 13 session configs, the launcher and `finals_v4/`, for `checkpoint`, `side_view` / `side view`, `abeam`,
+  `force_lie` / `ForceLie`, `t4_` and the seven checkpoint worker positions of addendum 6 (e.g. `2.25, 15.5`, `12.25, -4.0`); and in the
+  plans of the placement check below, no worker off an asking node and no worker id above 2 x the asking nodes (the checkpoint era had ids
+  11 to 17 in A3 / B3). **Allowed and listed, not removed:** v3 Task 1 route checkpoints (`Task1Route`, `TrialRunner`,
+  `GroundTruthLayer`: C1 to C3 of v3, a different thing, frozen v3), the historical text of this file, and `back_read_diagnosis_v4.py` with
+  its report (item 2 (b)). Anything else found is removed after a dated note here, before the removal.
+- **Placement identical to main's layout (i):** the temporary worker path check of addendum 5 (`TempWorkerPathCheck`, source in
+  `worker_path_check_20261118_214612/`, run on a3fc543 whose `unity/` equals main's) is run again on this branch (copied in, run in batch
+  mode, deleted with its `.meta`, source copied to its output). Pass: its 400 plans (10 settings x seeds 1 and 2 x runs 1 to 20, which
+  contain seed 1 runs 1 to 3 and seed 2 runs 1 to 20) equal the reference `plans.json` in setting, seed, run, map, goal, max_active and every
+  worker's id, node, slot, x and z (within 0.0001 m); every path complete, outside every footprint, none within 0.30 m of a worker (as
+  addendum 5); max active avatars <= 6.
+- **NavMesh Verify** (`NavMeshV4Menu.BatchVerify`, addendum 2's rules V1 to V4): PASSED.
+- **Freeze list:** every `final_v4.json` `freeze_files` entry exists; every setting's experiment config exists, names an existing control
+  file and passes Anisha's `final_guard_v4.control_problems` (no problem).
+
+**4. The development timeout for step 5: 900 s** (Anisha's request; at least 420 s so long routes count). `Scenario/Config/trial_plan_v4.json`
+`development_timeout_s` 420 -> 900 (the only place: TrialRunnerV4 reads it in development mode, the launcher sets the per-run timeout and its
+Unity wait (runs x 900 + 1800 s) from it, `step5_session_checks.ps1` records it as `timeout_s`); its note says why. Development mode only:
+`final_plan.json` `timeout_s` (Anisha's) is not touched and **the final timeout is not set here.**
+
+**5. Open item (pending Anisha's confirmation in AUDIT.md): how the final timeout rule treats development runs that time out or abort.**
+Her declared rule (AUDIT.md 16.15 decision 2, 16.16 decision 4; `final_guard_v4.development_timeout`): 1.5 x the longest SUCCESSFUL
+development run, rounded up to 30 s, never below 270 s; every run that failed by timeout is listed and its cause must be found before the
+freeze; other failures (aborts, collisions) give no duration. **Nusrat's proposal:** the longest SUCCESSFUL development run of the step-5 runs
+at 900 s; a run that timed out or aborted gives no duration. Not applied until Anisha confirms in AUDIT.md.
+
+**6. Checks before the commit and before the smoke trial:** both full suites (Unity Edit Mode; Python, including her `MatchesUnity` and guard
+tests); item 3; `run_session_v4.ps1 -Rehearsal -Trials 3 -DryRun` for all 13 settings (the step-5 arguments; the printed timeout must be 900 s);
+dry checks of the blind avatar rehearsal (the entry points `LookCheckMenu.BatchRunExperiment` and `LookCheckPlayMenu.CommandLineRunAB` exist;
+`avatar_rehearsal_check.py --help` runs) and of the avatar-experiment commands (each part with `-avatarExperiment`, in batch mode, is
+refused because nothing is frozen, and writes no marker).
+
+**7. One development smoke trial:** B3, `-Rehearsal -Trials 1` (seed 1, development looks and clips, 900 s), Python from main (T0,
+`control_lie_on.json`). Pass: the launcher's B11 check REHEARSAL VALID; leak test passed in Unity and in Python; `step5_session_checks.ps1`
+ALL CHECKS PASSED (setting name `smoke_t0_B3`); Anisha's guard accepts the control file; no `checkpoint` or `side_view` key in any
+`messages.jsonl` line or any `truth.jsonl` row. The outcome of the trial is reported, not judged (development).
+
+**Commits:** this declaration alone; then the timeout, the tools and the report copy; then the results. Each after both suites pass. No push.
+
+*Results of addendum 8 (2026-11-20; declaration 2ee6e63, implementation b66e39a; every check below ran on b66e39a).*
+
+- **Kept / dropped.** Kept from `nusrat/v4-timing-backtrack`: `finals_v4/back_read_diagnosis_v4.py` (unchanged, from 683b5bc) with its report
+  copy `reports_v4/back_read_diagnosis_20261119_203250.md`; `finals_v4/timing_rerun_report.py` (from 8acd539) with `--prefix`. New:
+  `step5_report.py --prefix`, `finals_v4/step5_zip_v4.py`. Dropped: everything checkpoint- or side-view-specific (item 2). The uncommitted work
+  of that branch is in a local `git stash` there ("abandoned 2026-11-20: checkpoints dropped"); nothing of it is on this branch.
+- **Merge:** none needed (origin/main still 33cab20 after `git fetch`).
+- **Suites:** Unity Edit Mode 345/345 (on 2ee6e63 and on b66e39a); Python 1423 OK, 9 skipped (both commits), her `MatchesUnity` (11),
+  clearance (`test_clearance_layout_v4`, `test_clearance_rejection_v4`) and guard tests (`test_v4_final`, `test_t0_final_v4`) all run and pass.
+- **Item 3, traces: PASSED** (`robot_vision/outputs/trace_check_20261120_135650/`): 56 matches in 7 files, 0 not allowed: the v3 Task 1
+  route checkpoints (`Task1Route.cs` 9, `Task1RouteTests.cs` 3, `TrialRunner.cs` 4, `GroundTruthLayer.cs` 1), this addendum's text (25) and
+  the diagnosis tool (5) with its report (9). No checkpoint position in any file (scenes and prefabs included). Nothing removed.
+- **Item 3, placement: IDENTICAL to main's layout (i)** (`worker_path_check_20261120_142310/`, the temporary `TempWorkerPathCheck` of
+  addendum 5 run in batch mode, deleted with its `.meta`, source copied there): all 400 plans equal the reference
+  `worker_path_check_20261118_214612/plans.json` in setting, seed, run, map, goal, max_active and every worker's id, node, slot, x and z
+  (largest position difference 0.000 m); this includes seed 1 runs 1 to 3 and seed 2 runs 1 to 20 of all 10 Unity settings (230 plans). Max
+  worker id 10, no worker off an asking node, **max active avatars 3** (limit 6). Paths: 37,130 (6,163 distinct), every end snapped, none
+  incomplete, none entering a footprint, none within 0.30, 0.60 or 1.0 m of a worker (least 1.001 m, A4 seed 2 run 7, as on main).
+- **NavMesh Verify: PASSED** (`navmesh_v4_check_20261120_142610/`): V1, V2 (hard rule), V4.
+- **Freeze list:** the 29 `final_v4.json` `freeze_files` exist; the 13 settings' experiment configs exist, name existing control files, and
+  `final_guard_v4.control_problems` reports no problem for any of them (on files: `control_lie_on*.json`, T0; off files: `control_lie_off*.json`).
+- **Launcher dry runs** (`step5_dryrun_t0_20261120_142721/`, `-Rehearsal -Trials 3 -DryRun`, the 13 settings): every one exit 0, not
+  refused, "timeout 900 s per run", Unity wait `-trialTimeout 4500`, the setting's control file and `-experiment` / `-experimentSide`.
+- **Avatar commands:** blind rehearsal: `avatar_rehearsal_check.py --help` exit 0, both entry points present (they ran below). Avatar
+  experiment: `LookCheckMenu.BatchRunExperiment -avatarExperiment` and `LookCheckPlayMenu.CommandLineRunAB -avatarExperiment` in batch mode were
+  both **refused** (exit 1: `frozen.json` not frozen, the B9 files not recorded); 0 `AVATAR_EXPERIMENT_*` markers before and after; no
+  output folder written. Note for the rehearsal: `looks_ab.json` `avatar_experiment` includes the test looks (e.g. `sunbox_f2`), so the
+  rehearsal's frames are deleted after the blind check (`--delete-frames`) and only its report goes to Anisha.
+- **Item 7, smoke trial: PASSED** (development, not a result). B3, seed 1, 1 run, goal E2, 900 s (`-trialTimeout 2700`), Python from
+  main with `control_lie_on.json` (T0). Unity `trials_development_Task2_B3_20261120_142959`, bridge `bridge_guide_20261120_142801`,
+  transcript `smoke_t0_launcher_B3_20261120_142759.txt`, export `export_csv_v4_20261120_143346`.
+  - Launcher B11 check: criteria 1, 3 to 7 PASS, 2 N/A (not frozen), REHEARSAL VALID; leak test passed in Unity and Python.
+  - `step5_session_checks.ps1 -Setting smoke_t0_B3`: ALL CHECKS PASSED (`gesture_data.py --messages` 1 of 1).
+  - Anisha's guard: `control_problems("B3", ...)` = none for both control files in `config_used/` (`checkpoint` false, no `side_view`).
+  - No `checkpoint` or side-view key or text in any of 10,717 `messages.jsonl` lines, 245 `v4_log.jsonl` lines, 22,520 `truth.jsonl` rows
+    or `session.json`.
+  - Outcome: FAILURE, aborted at 190.4 s; 0 collisions, closest person 1.26 m. J1: the seeded liar showed RIGHT (read RIGHT), the second
+    opinion LEFT (true, read LEFT), the tie re-asked the liar (RIGHT): the robot took RIGHT (fooled, the T0 limitation of AUDIT.md 16.26.9).
+    J3: the honest worker's BACK was read NONE in both dialogs (as in addendum 6's smoke trial); abort. Timing: 0 watchdog stops, round trip
+    max 37.7 ms, loop lag max 53 ms, 0 bridge errors; **free memory minimum 195 MB** (VS Code / Claude Code open; step 5 runs with it closed).
+- **Not done here:** no step-5 session, no avatar rehearsal, no freeze, no final, no timeout set, no push.
