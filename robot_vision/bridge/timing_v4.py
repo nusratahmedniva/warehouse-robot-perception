@@ -6,6 +6,8 @@ helpers measure that, in the same way before and after the worker-process change
 
 - LoopLagMonitorV4: bridge/diagnostics.LoopLagMonitor (unchanged, still used by protocol 2) plus every lag sample, so the
   report can give p99 and max, not only the lags over the 50 ms threshold. Used by the server only for protocol 3.
+  Since AUDIT.md 16.27 its stall stack dump (faulthandler.dump_traceback_later) has an explicit switch, stall_dump (configs/v4/bridge.json
+  timing.stall_dump; absent = on, as before): off = no stall_tracebacks.txt and no faulthandler call at all, the lag log and every sample stay.
 - reply_stats / handle_stats / lag_stats: pure functions over numbers (no clock, no models): unit-tested on synthetic data.
 - evaluate: compares the measured numbers with the limits declared in configs/v4/bridge.json ("timing_limits").
 
@@ -118,12 +120,40 @@ def evaluate(limits: dict | None, measured: dict) -> dict:
 
 
 class LoopLagMonitorV4(diag.LoopLagMonitor):
-    """LoopLagMonitor that also keeps every lag sample (10 ms sleeps: 100 per second, 8 bytes each)."""
+    """LoopLagMonitor that also keeps every lag sample (10 ms sleeps: 100 per second, 8 bytes each).
+
+    stall_dump (AUDIT.md 16.27, an instrument setting, not a decision rule): True = the stack dump of the base class (on a stall longer than dump_after_s
+    faulthandler writes every thread's stack to stall_tracebacks.txt), the behaviour before 16.27. False = OFF: stall_tracebacks.txt is not created and
+    faulthandler.dump_traceback_later is never scheduled (nor cancelled); the lag measurement, loop_lag.csv and every sample are kept. A dump of a stalled
+    process crashed a step-5 server natively (python312.dll, 0xc0000005, in _Py_DumpTracebackThreads); it is off for the finals."""
 
     def __init__(self, out_dir: Path | None, interval_s: float = 0.01, threshold_ms: float = 50.0, dump_after_s: float = 0.25,
-                 clock=time.monotonic, t0: float | None = None):
-        super().__init__(out_dir, interval_s, threshold_ms, dump_after_s, clock, t0)
+                 clock=time.monotonic, t0: float | None = None, stall_dump: bool = True):
+        if not isinstance(stall_dump, bool):
+            raise ValueError(f"stall_dump must be true or false (got {stall_dump!r}); off is an explicit false, not a large dump_after_s")
+        self.stall_dump = stall_dump
+        if stall_dump:
+            super().__init__(out_dir, interval_s, threshold_ms, dump_after_s, clock, t0)
+        else:
+            super().__init__(None, interval_s, threshold_ms, dump_after_s, clock, t0)           # the base opens both files with a run folder: give it none ...
+            if out_dir is not None:                                                              # ... and open only the lag log here
+                self._csv_file = (Path(out_dir) / "loop_lag.csv").open("x", newline="", encoding="utf-8", buffering=1)
+                self._csv = csv.writer(self._csv_file)
+                self._csv.writerow(["t_wall_s", "lag_ms", "threads"])
         self.samples: list[float] = []
+
+    async def stop(self) -> None:
+        if self.stall_dump:
+            await super().stop()
+            return
+        if self._task is not None:                                                               # the base closes the lag log only together with the dump file
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        if self._csv is not None:
+            self._csv_file.close()
 
     async def _run(self) -> None:
         while True:
@@ -147,7 +177,12 @@ class LoopLagMonitorV4(diag.LoopLagMonitor):
     def summary(self) -> dict:
         out = super().summary()
         out["all_samples"] = lag_stats(self.samples)
-        out["stall_dump_after_s"] = self.dump_after_s
-        out["note"] += ("; all_samples covers every 10 ms sleep (protocol 3 only), the stack dump is written when a stall "
-                        "exceeds stall_dump_after_s")
+        out["stall_dump"] = self.stall_dump
+        out["stall_dump_after_s"] = self.dump_after_s if self.stall_dump else None
+        if self.stall_dump:
+            out["note"] += ("; all_samples covers every 10 ms sleep (protocol 3 only), the stack dump is written when a stall "
+                            "exceeds stall_dump_after_s")
+        else:
+            out["note"] = ("event-loop lag = how late a 10 ms sleep woke up; all_samples covers every 10 ms sleep (protocol 3 only); "
+                           "the stall stack dump is OFF (AUDIT.md 16.27): no stall_tracebacks.txt")
         return out

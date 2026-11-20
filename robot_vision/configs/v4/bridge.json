@@ -23,8 +23,9 @@
   },
   "timing": {
     "loop_lag_threshold_ms": 50.0,
+    "stall_dump": false,
     "stall_dump_after_s": 0.1,
-    "note": "Instrument settings of the v4 server (bridge/timing_v4.py), not decision thresholds. The loop-lag monitor wakes every 10 ms and logs a wake-up later than loop_lag_threshold_ms; a stall longer than stall_dump_after_s writes the Python stacks of every thread to stall_tracebacks.txt (protocol 2 keeps 0.25 s). Declared 2026-11-06 for AUDIT.md section 14.14."
+    "note": "Instrument settings of the v4 server (bridge/timing_v4.py), not decision thresholds. The loop-lag monitor wakes every 10 ms and logs a wake-up later than loop_lag_threshold_ms (loop_lag.csv and every sample stay ON). stall_dump: with true, a stall longer than stall_dump_after_s writes the Python stacks of every thread to stall_tracebacks.txt (protocol 2 keeps 0.25 s; an absent key means true, as before 2026-11-20). stall_dump is FALSE since 2026-11-20 (AUDIT.md 16.27): a dump of a stalled process crashed a step-5 server natively (python312.dll, 0xc0000005, in _Py_DumpTracebackThreads, first crash in 31 dumps), so the finals run with no dump: no stall_tracebacks.txt and no faulthandler call. Off is this explicit false, not a large stall_dump_after_s; stall_dump_after_s (0.1) is only the setting used when the dump is switched on. Declared 2026-11-06 for AUDIT.md section 14.14, amended 2026-11-20."
   },
   "timing_limits": {
     "loop_lag_p99_ms": 25,

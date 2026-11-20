@@ -85,6 +85,8 @@ def load_config(path: str | Path = DEFAULT_CONFIG) -> tuple[dict, Path]:
                          f"{list(P.SUPPORTED_VERSIONS)}")
     if cfg["protocol_version"] >= 3 and "hud" not in cfg:
         raise ValueError(f"{p}: protocol version 3 needs a 'hud' block (log_messages_per_direction)")
+    if cfg["protocol_version"] >= 3 and not isinstance((cfg.get("timing") or {}).get("stall_dump", True), bool):      # AUDIT.md 16.27
+        raise ValueError(f"{p}: timing.stall_dump must be true or false (off is an explicit false, not a large stall_dump_after_s)")
     for key in ("host", "port", "telemetry_hz", "frame_360_hz", "frame_pan_tilt_hz", "watchdog_timeout_s",
                 "max_header_bytes", "max_attachment_bytes"):
         if key not in cfg:
@@ -698,7 +700,8 @@ async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mu
         from bridge import timing_v4
         t4 = cfg.get("timing", {})
         lag = timing_v4.LoopLagMonitorV4(out, threshold_ms=float(t4.get("loop_lag_threshold_ms", 50.0)),
-                                         dump_after_s=float(t4.get("stall_dump_after_s", 0.25)), t0=log.t0)
+                                         dump_after_s=float(t4.get("stall_dump_after_s") or 0.25), t0=log.t0,
+                                         stall_dump=t4.get("stall_dump", True))       # AUDIT.md 16.27: absent = on, as before; false = no dump, lag still logged
     else:
         lag = diag.LoopLagMonitor(out, t0=log.t0)
     lag.start()
