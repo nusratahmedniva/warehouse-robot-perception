@@ -2513,3 +2513,45 @@ ALL CHECKS PASSED (setting name `smoke_t0_B3`); Anisha's guard accepts the contr
 `messages.jsonl` line or any `truth.jsonl` row. The outcome of the trial is reported, not judged (development).
 
 **Commits:** this declaration alone; then the timeout, the tools and the report copy; then the results. Each after both suites pass. No push.
+
+*Results of addendum 8 (2026-11-20; declaration 2ee6e63, implementation b66e39a; every check below ran on b66e39a).*
+
+- **Kept / dropped.** Kept from `nusrat/v4-timing-backtrack`: `finals_v4/back_read_diagnosis_v4.py` (unchanged, from 683b5bc) with its report
+  copy `reports_v4/back_read_diagnosis_20261119_203250.md`; `finals_v4/timing_rerun_report.py` (from 8acd539) with `--prefix`. New:
+  `step5_report.py --prefix`, `finals_v4/step5_zip_v4.py`. Dropped: everything checkpoint- or side-view-specific (item 2). The uncommitted work
+  of that branch is in a local `git stash` there ("abandoned 2026-11-20: checkpoints dropped"); nothing of it is on this branch.
+- **Merge:** none needed (origin/main still 33cab20 after `git fetch`).
+- **Suites:** Unity Edit Mode 345/345 (on 2ee6e63 and on b66e39a); Python 1423 OK, 9 skipped (both commits), her `MatchesUnity` (11),
+  clearance (`test_clearance_layout_v4`, `test_clearance_rejection_v4`) and guard tests (`test_v4_final`, `test_t0_final_v4`) all run and pass.
+- **Item 3, traces: PASSED** (`robot_vision/outputs/trace_check_20261120_135650/`): 56 matches in 7 files, 0 not allowed: the v3 Task 1
+  route checkpoints (`Task1Route.cs` 9, `Task1RouteTests.cs` 3, `TrialRunner.cs` 4, `GroundTruthLayer.cs` 1), this addendum's text (25) and
+  the diagnosis tool (5) with its report (9). No checkpoint position in any file (scenes and prefabs included). Nothing removed.
+- **Item 3, placement: IDENTICAL to main's layout (i)** (`worker_path_check_20261120_142310/`, the temporary `TempWorkerPathCheck` of
+  addendum 5 run in batch mode, deleted with its `.meta`, source copied there): all 400 plans equal the reference
+  `worker_path_check_20261118_214612/plans.json` in setting, seed, run, map, goal, max_active and every worker's id, node, slot, x and z
+  (largest position difference 0.000 m); this includes seed 1 runs 1 to 3 and seed 2 runs 1 to 20 of all 10 Unity settings (230 plans). Max
+  worker id 10, no worker off an asking node, **max active avatars 3** (limit 6). Paths: 37,130 (6,163 distinct), every end snapped, none
+  incomplete, none entering a footprint, none within 0.30, 0.60 or 1.0 m of a worker (least 1.001 m, A4 seed 2 run 7, as on main).
+- **NavMesh Verify: PASSED** (`navmesh_v4_check_20261120_142610/`): V1, V2 (hard rule), V4.
+- **Freeze list:** the 29 `final_v4.json` `freeze_files` exist; the 13 settings' experiment configs exist, name existing control files, and
+  `final_guard_v4.control_problems` reports no problem for any of them (on files: `control_lie_on*.json`, T0; off files: `control_lie_off*.json`).
+- **Launcher dry runs** (`step5_dryrun_t0_20261120_142721/`, `-Rehearsal -Trials 3 -DryRun`, the 13 settings): every one exit 0, not
+  refused, "timeout 900 s per run", Unity wait `-trialTimeout 4500`, the setting's control file and `-experiment` / `-experimentSide`.
+- **Avatar commands:** blind rehearsal: `avatar_rehearsal_check.py --help` exit 0, both entry points present (they ran below). Avatar
+  experiment: `LookCheckMenu.BatchRunExperiment -avatarExperiment` and `LookCheckPlayMenu.CommandLineRunAB -avatarExperiment` in batch mode were
+  both **refused** (exit 1: `frozen.json` not frozen, the B9 files not recorded); 0 `AVATAR_EXPERIMENT_*` markers before and after; no
+  output folder written. Note for the rehearsal: `looks_ab.json` `avatar_experiment` includes the test looks (e.g. `sunbox_f2`), so the
+  rehearsal's frames are deleted after the blind check (`--delete-frames`) and only its report goes to Anisha.
+- **Item 7, smoke trial: PASSED** (development, not a result). B3, seed 1, 1 run, goal E2, 900 s (`-trialTimeout 2700`), Python from
+  main with `control_lie_on.json` (T0). Unity `trials_development_Task2_B3_20261120_142959`, bridge `bridge_guide_20261120_142801`,
+  transcript `smoke_t0_launcher_B3_20261120_142759.txt`, export `export_csv_v4_20261120_143346`.
+  - Launcher B11 check: criteria 1, 3 to 7 PASS, 2 N/A (not frozen), REHEARSAL VALID; leak test passed in Unity and Python.
+  - `step5_session_checks.ps1 -Setting smoke_t0_B3`: ALL CHECKS PASSED (`gesture_data.py --messages` 1 of 1).
+  - Anisha's guard: `control_problems("B3", ...)` = none for both control files in `config_used/` (`checkpoint` false, no `side_view`).
+  - No `checkpoint` or side-view key or text in any of 10,717 `messages.jsonl` lines, 245 `v4_log.jsonl` lines, 22,520 `truth.jsonl` rows
+    or `session.json`.
+  - Outcome: FAILURE, aborted at 190.4 s; 0 collisions, closest person 1.26 m. J1: the seeded liar showed RIGHT (read RIGHT), the second
+    opinion LEFT (true, read LEFT), the tie re-asked the liar (RIGHT): the robot took RIGHT (fooled, the T0 limitation of AUDIT.md 16.26.9).
+    J3: the honest worker's BACK was read NONE in both dialogs (as in addendum 6's smoke trial); abort. Timing: 0 watchdog stops, round trip
+    max 37.7 ms, loop lag max 53 ms, 0 bridge errors; **free memory minimum 195 MB** (VS Code / Claude Code open; step 5 runs with it closed).
+- **Not done here:** no step-5 session, no avatar rehearsal, no freeze, no final, no timeout set, no push.
