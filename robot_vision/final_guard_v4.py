@@ -15,12 +15,22 @@ check_setting: a final session must be what its setting says (zoom flag, bystand
 final; for an experiment setting also its looks and clips, the control file the bridge ran with and the experiment and set Unity
 recorded), from configs/v4/final_plan.json. timeout_from_development, development_timeout: the declared timeout rule (AUDIT.md 16.15 decision 2, corrected in 16.16 decision 4).
 Reporting/evaluation code; inference code never imports it.
+
+Command line (AUDIT.md 16.20.5.1): python final_guard_v4.py --timeout-from SOURCE [SOURCE ...] [--prefix t0_] [--runs-per-setting 3] [--out FILE]
+pools the step-5 development runs of ALL 13 settings once, lists every run that is excluded from the rule with its outcome, and prints the timeout the
+rule gives. SOURCE: the step-5 zip of finals_v4/step5_zip_v4.py (read in place), the step-5 manifest (outputs/step5_sessions.json), or NAME=<Unity session
+folder> (e.g. t0_A3=outputs/trials_development_Task2_...). It computes the number only; final_plan.json is not edited.
 """
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import math
+import re
+import sys
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -224,3 +234,160 @@ def _experiment_run_problems(setting: str, spec: dict, pl: dict, runs: list, rep
         if f.is_file():
             out += [f"{Path(b).name}: {p}" for p in control_problems(setting, json.loads(f.read_text(encoding="utf-8")), repo)]
     return out
+
+
+# ---------------------------------------------------------------- the timeout from the step-5 runs (AUDIT.md 16.20.5.1)
+
+STEP5_PREFIX = "t0_"                  # the step-5 sessions are named <prefix><final setting> (finals_v4/step5_report.py --prefix); smoke_t0_*, dry_* are not step 5
+STEP5_RUNS_PER_SETTING = 3            # step 5 = 13 settings x 3 development runs
+MIN_DEVELOPMENT_TIMEOUT_S = 420.0     # 16.20.5 decision 2: development runs that feed the rule never use less (900 s is used, 16.20.5.1)
+_TRUTH_RUN = re.compile(r"truth_run(\d+)\.json$")
+
+
+def _run_record(d: dict, setting: str, where: str) -> dict:
+    """The fields development_timeout and the listing need from one truth_run###.json (Unity's TruthRun)."""
+    return {"setting": setting, "trial": d.get("trial"), "mode": d.get("mode"), "outcome": d.get("outcome"), "failure_reason": d.get("failure_reason"),
+            "total_s": d.get("total_s"), "where": where}
+
+
+def _runs_of_folder(folder: Path, setting: str) -> list[dict]:
+    if not folder.is_dir():
+        raise SystemExit(f"{setting}: {folder} is not a folder")
+    return [_run_record(json.loads(f.read_text(encoding="utf-8-sig")), setting, f"{folder.name}/{f.name}")
+            for f in sorted(folder.iterdir()) if _TRUTH_RUN.fullmatch(f.name)]
+
+
+def _runs_of_zip(z: zipfile.ZipFile, setting: str, unity: str) -> list[dict]:
+    base = f"{setting}/{unity}/"
+    return [_run_record(json.loads(z.read(n).decode("utf-8-sig")), setting, f"{unity}/{n[len(base):]}") for n in sorted(z.namelist())      # the place is <session folder>/<file>, as for a folder
+            if n.startswith(base) and _TRUTH_RUN.fullmatch(n[len(base):])]
+
+
+def load_step5_sources(sources: list[str], base: Path = HERE) -> tuple[list[dict], list[str]]:
+    """(sessions, files read): every session named by the sources, whatever its name; a session is {'name', 'where', 'timeout_s', 'runs'}. A zip is read in place
+    (its MANIFEST.json names the sessions), a manifest .json names Unity session folders (relative to robot_vision/ unless absolute), NAME=FOLDER names one."""
+    sessions, read = [], []
+    for src in sources:
+        if "=" in src and not Path(src).exists():
+            name, _, folder = src.partition("=")
+            f = Path(folder) if Path(folder).is_absolute() else base / folder
+            sessions.append({"name": name, "where": str(folder), "timeout_s": None, "runs": _runs_of_folder(f, name)})
+            read.append(f"{name}={f.name}")
+            continue
+        path = Path(src) if Path(src).is_absolute() else Path.cwd() / src
+        if not path.is_file():
+            raise SystemExit(f"{src}: not a file (a step-5 zip, a step-5 manifest .json or NAME=<Unity session folder>)")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        read.append(f"{path.name} sha256 {digest}")
+        if path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(path) as z:
+                if "MANIFEST.json" not in z.namelist():
+                    raise SystemExit(f"{path.name}: no MANIFEST.json (not a zip of finals_v4/step5_zip_v4.py)")
+                for m in json.loads(z.read("MANIFEST.json").decode("utf-8-sig")).get("sessions", []):
+                    sessions.append({"name": m["setting"], "where": f"{path.name}:{m['setting']}/{m['unity']}", "timeout_s": m.get("timeout_s"),
+                                     "runs": _runs_of_zip(z, m["setting"], m["unity"])})
+        elif path.suffix.lower() == ".json":
+            for m in json.loads(path.read_text(encoding="utf-8-sig")).get("sessions", []):
+                u = Path(m["unity"])
+                sessions.append({"name": m["setting"], "where": f"{path.name}:{m['setting']}", "timeout_s": m.get("timeout_s"),
+                                 "runs": _runs_of_folder(u if u.is_absolute() else base / u, m["setting"])})
+        else:
+            raise SystemExit(f"{src}: not a .zip, a .json manifest or NAME=FOLDER")
+    return sessions, read
+
+
+def pool_step5(sessions: list[dict], settings: list[str], prefix: str = STEP5_PREFIX, runs_per_setting: int = STEP5_RUNS_PER_SETTING) -> dict:
+    """The pooled runs of the 13 final settings. {'runs': [...], 'ignored': [session names that are not step 5], 'problems': [...]}. Any problem = no timeout is derived."""
+    by: dict[str, list[dict]] = {st: [] for st in settings}
+    ignored = []
+    for se in sessions:
+        name = se["name"]
+        if name.startswith(prefix) and name[len(prefix):] in by:
+            by[name[len(prefix):]].append(se)
+        else:
+            ignored.append(name)
+    problems, runs = [], []
+    for st in settings:
+        ses = by[st]
+        if not ses:
+            problems.append(f"{prefix}{st}: no session (step 5 has all {len(settings)} settings)")
+            continue
+        if len(ses) > 1:
+            problems.append(f"{prefix}{st}: {len(ses)} sessions ({'; '.join(x['where'] for x in ses)}): give one (an interrupted session is kept, not used)")
+            continue
+        se = ses[0]
+        if se["timeout_s"] is not None and float(se["timeout_s"]) < MIN_DEVELOPMENT_TIMEOUT_S:
+            problems.append(f"{prefix}{st}: development timeout {se['timeout_s']} s is below {MIN_DEVELOPMENT_TIMEOUT_S:g} s: its runs cannot feed the rule (16.20.5)")
+        se = {**se, "runs": [{**r, "setting": st} for r in se["runs"]]}            # from here on a run carries its FINAL setting name (A3), not the session's (t0_A3)
+        if len(se["runs"]) != runs_per_setting:
+            problems.append(f"{prefix}{st}: {len(se['runs'])} runs, step 5 has {runs_per_setting} per setting")
+        trials = [r["trial"] for r in se["runs"]]
+        if len(set(trials)) != len(trials):
+            problems.append(f"{prefix}{st}: a trial number appears twice {sorted(trials)}")
+        for r in se["runs"]:
+            if r["mode"] != "development":
+                problems.append(f"{prefix}{st} trial {r['trial']}: mode {r['mode']!r}: only development runs feed the rule")
+            if r["outcome"] is None or r["total_s"] is None:
+                problems.append(f"{prefix}{st} trial {r['trial']}: outcome or total_s missing in {r['where']}")
+        runs += se["runs"]
+    return {"runs": runs, "ignored": ignored, "problems": problems}
+
+
+def step5_timeout_report(runs: list[dict], ignored: list[str]) -> tuple[list[str], dict]:
+    """(the lines to print, the development_timeout result) for the pooled runs: ONE value from all of them (16.20.5.1)."""
+    res = development_timeout(runs)
+    best = max((r for r in runs if r["outcome"] == "SUCCESS"), key=lambda r: float(r["total_s"]))
+    lines = [f"Pooled: {res['runs']} runs of {len({r['setting'] for r in runs})} settings; {res['successful_runs']} successful, {len(runs) - res['successful_runs']} excluded "
+             f"({res['timeouts']} timed out, {res['other_failures']} other failures)", "",
+             "| setting | trial | outcome | failure | total_s | in the rule |", "|---|---|---|---|---|---|"]
+    for r in runs:
+        ok = r["outcome"] == "SUCCESS"
+        lines.append(f"| {r['setting']} | {r['trial']} | {r['outcome']} | {r['failure_reason']} | {float(r['total_s']):.1f} | "
+                     f"{'yes' if ok else 'NO: gives no duration' + (' (timed out: its cause must be found before the freeze, 16.16 decision 4)' if r['failure_reason'] == 'timeout' else '')} |")
+    excluded = [r for r in runs if r["outcome"] != "SUCCESS"]
+    lines += ["", f"Excluded from the rule ({len(excluded)}):"] + [f"  {r['setting']} trial {r['trial']}: {r['outcome']} / {r['failure_reason']}, {float(r['total_s']):.1f} s  [{r['where']}]" for r in excluded]
+    if not excluded:
+        lines.append("  none")
+    lines += ["", f"Longest SUCCESSFUL run: {res['longest_successful_s']:.1f} s ({best['setting']} trial {best['trial']})",
+              f"timeout_s = 1.5 x {res['longest_successful_s']:.1f} = {1.5 * res['longest_successful_s']:.1f}, rounded up to a multiple of 30 s, never below 270 s = {res['timeout_s']:g} s",
+              "One value for all settings, from the pooled runs. final_plan.json timeout_s is NOT edited (it stays until a declared edit before the freeze)."]
+    if ignored:
+        lines.append(f"Not step 5 (ignored): {', '.join(sorted(set(ignored)))}")
+    if res["cause_needed_before_the_freeze"]:
+        lines.append(f"CAUSE NEEDED BEFORE THE FREEZE: {res['timeouts']} development run(s) timed out (listed above).")
+    return lines, res
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="The development timeout from the pooled step-5 runs of all 13 settings (AUDIT.md 16.20.5.1).")
+    ap.add_argument("--timeout-from", nargs="+", required=True, metavar="SOURCE",
+                    help="the step-5 zip of finals_v4/step5_zip_v4.py (read in place), the step-5 manifest .json, or NAME=<Unity session folder> (e.g. t0_A3=outputs/trials_development_...)")
+    ap.add_argument("--prefix", default=STEP5_PREFIX, help="the setting prefix of the step-5 sessions (default t0_)")
+    ap.add_argument("--runs-per-setting", type=int, default=STEP5_RUNS_PER_SETTING)
+    ap.add_argument("--out", default=None, help="also write the report to this new file (an existing file is refused)")
+    a = ap.parse_args(argv)
+    settings = list(plan()["settings"])
+    sessions, read = load_step5_sources(a.timeout_from)
+    pooled = pool_step5(sessions, settings, a.prefix, a.runs_per_setting)
+    lines = ["Timeout from the step-5 development runs (AUDIT.md 16.20.5.1), read in place:"] + [f"  {x}" for x in read] + [""]
+    if pooled["problems"]:
+        lines += ["REFUSED: no timeout is derived."] + [f"  - {p}" for p in pooled["problems"]]
+        code = 2
+    else:
+        try:
+            body, _ = step5_timeout_report(pooled["runs"], pooled["ignored"])
+            lines += body
+            code = 0
+        except ValueError as e:
+            lines += [f"REFUSED: {e}"]
+            code = 2
+    text = "\n".join(lines)
+    if a.out:
+        with Path(a.out).open("x", encoding="utf-8") as f:
+            f.write(text + "\n")
+    print(text)
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
