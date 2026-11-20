@@ -486,6 +486,8 @@ class Reading:
     hand_label: str | None = None         # MediaPipe's label of the hand of the read arm in the latest frame (logged, not required)
     hand_label_score: float | None = None
     label_agrees: bool | None = None      # would that label (at wait_score_min / stop_score_min) have agreed with the command read?
+    point_fail: str = ""                  # AUDIT.md 16.26 item 2: a raised arm held for the window fails the POINT cue on "length" or "elbow" (the arm is foreshortened: a side view may read it); "" = no
+                                          # such failure. An output only: no reader value depends on it.
 
     def to_dict(self) -> dict:
         d = {"command": self.command, "score": _r(self.score), "why": self.why, "t": _r(self.t), "arm": self.arm,
@@ -495,11 +497,26 @@ class Reading:
              "fov_deg": _r(self.fov_deg),
              "hand_label": self.hand_label, "hand_label_score": _r(self.hand_label_score), "label_agrees": self.label_agrees}
         d["point"] = self.point.to_dict() if self.point is not None else None
+        if self.point_fail:                                  # only when set: the logs of every other reading are what they were
+            d["point_fail"] = self.point_fail
         return d
 
 
 def _r(x, n=3):
     return None if x is None else round(float(x), n)
+
+
+def point_fail_reason(af: ArmFrame, cfg: dict) -> str:
+    """Why a raised arm fails the POINT cue, when it is the arm's length (point.arm_length_min) or its elbow angle (point.point_arm_extension_min_deg): "length", "elbow"; else "".
+    The checks of frame_flags in the same order; nothing here changes whether a frame passes (AUDIT.md 16.26 item 2)."""
+    p = cfg["point"]
+    if not af.valid or not af.raised:
+        return ""
+    if af.length_ratio is not None and af.length_ratio < p["arm_length_min"]:
+        return "length"
+    if af.elbow_deg is not None and af.elbow_deg < p["point_arm_extension_min_deg"]:
+        return "elbow"
+    return ""
 
 
 def _share(flags: list[bool]) -> float:
@@ -627,6 +644,11 @@ def _arm_window(samples: list[Sample], side: str, cfg: dict, t_now: float, robot
         info["hold"] = hold
         info["point_share"] = _share([f["point_ok"] for _, _, f in hold])
         info["wait_share"] = _share([f["wait_ok"] for _, _, f in hold])
+        reasons = [r for r in (point_fail_reason(af, cfg) for _, af, f in hold if not f["point_ok"]) if r]
+        if reasons:                                        # AUDIT.md 16.26 item 2: a raised arm that keeps failing on its length or elbow
+            top, n = max(((k, reasons.count(k)) for k in set(reasons)), key=lambda kv: (kv[1], kv[0]))
+            if n / len(hold) >= cfg["decision"]["class_share_min"] - 1e-9:
+                info["point_fail"] = top
     return info
 
 
@@ -710,6 +732,7 @@ def read_window(samples: list[Sample], cfg: dict, t_now: float | None = None, ro
             _fill_boxes(r, samples, raised[0])
         elif any(a["hold"] for a in arms.values()):
             r.why = "cues not met or classes ambiguous"
+            r.point_fail = next((a["point_fail"] for a in arms.values() if a.get("point_fail")), "")
             _fill_boxes(r, samples, raised[0])
         else:
             r.why = "no hold"

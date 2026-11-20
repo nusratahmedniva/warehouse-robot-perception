@@ -41,6 +41,13 @@ SETTINGS = {
     "abc": {"second_opinion": True, "reject_impossible": True, "backtrack": True},
 }
 ORDER = list(SETTINGS)
+# AUDIT.md 16.22 (2026-11-18): what the "on" rows mean in the tie-rule comparison. T0 = the current "on"; T1 = + backtrack (the existing switch);
+# T2 = T1 with backtrack_scope "disagreed" (only to a junction where the accepted answers named more than one branch). The "off" rows are the same in all three.
+TIE_VARIANTS = {
+    "T0": dict(sv.DETECTION_ON),
+    "T1": {**sv.DETECTION_ON, "backtrack": True},
+    "T2": {**sv.DETECTION_ON, "backtrack": True, "backtrack_scope": "disagreed"},
+}
 NAMES = {"off": "off", "on": "on (a+b)", "a": "a: second opinion only", "b": "b: reject only", "bc": "b+c: reject + backtrack",
          "abc": "a+b+c (with backtrack)"}
 
@@ -173,6 +180,8 @@ def main(argv=None) -> None:
                     help="analysis only: override sets.B.lie_mode of scenarios_ab.json (per_gesture = the earlier model of 16.2 decision 2)")
     ap.add_argument("--lie-directions", choices=["valid_branch", "compass"], default=None,
                     help="analysis only: override sets.B.lie_directions of scenarios_ab.json (compass = any other of LEFT / FORWARD / RIGHT / BACK, 16.2)")
+    ap.add_argument("--tie-variant", choices=list(TIE_VARIANTS), default="T0",
+                    help="AUDIT.md 16.22: what the 'on' rows mean: T0 the current on (default), T1 + backtrack, T2 + backtrack only from junctions where the answers disagreed")
     ap.add_argument("--label", default="")
     ap.add_argument("--config", default=ex.DEFAULT_CONFIG)
     a = ap.parse_args(argv)
@@ -188,6 +197,7 @@ def main(argv=None) -> None:
         scen["sets"]["B"]["lie_mode"] = a.lie_mode
     if a.lie_directions:
         scen["sets"]["B"]["lie_directions"] = a.lie_directions
+    SETTINGS["on"] = dict(TIE_VARIANTS[a.tie_variant])
     pairs = run_all(out / "sessions", a.runs, a.timeout_s, a.experiments, scen, a.settings)
     runs = ev.load_sessions(pairs, gd.load_config())
     run_rows, dialog_rows = ex.build_tables(runs)
@@ -195,7 +205,7 @@ def main(argv=None) -> None:
     ex.write_csv(out / "dialogs.csv", dialog_rows, cfg["dialogs"], cfg.get("empty", ""))
     table = summarise(run_rows)
     meta = {"runs": a.runs, "timeout_s": a.timeout_s, "first_seed": int(scen["first_seed"]), "experiments": a.experiments,
-            "settings": a.settings, "lie_mode": scen["sets"]["B"].get("lie_mode", "per_gesture"),
+            "settings": a.settings, "tie_variant": a.tie_variant, "lie_mode": scen["sets"]["B"].get("lie_mode", "per_gesture"),
             "lie_directions": scen["sets"]["B"].get("lie_directions", "compass"), "source": "simulator"}
     dio.write_json(out / "table.json", {"meta": meta, "rows": table})
     mirror = arrival_mirror_report(run_rows, dialog_rows)

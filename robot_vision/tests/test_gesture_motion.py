@@ -235,6 +235,26 @@ class WindowTests(unittest.TestCase):
         self.assertGreaterEqual(r.hold_s, 0.4)
         self.assertIsNotNone(r.arm_box)
 
+    def test_a_foreshortened_raised_arm_says_it_failed_on_its_length(self):
+        """AUDIT.md 16.26 item 2: an arm held pointing almost at the camera (170 degrees: length ratio 0.73 < 0.8) reads NONE and the reading says why; one at 160 degrees still reads POINT."""
+        r = self.read(vs.arm_sequence(point_builder(4, az=170.0), 16), 10)
+        self.assertEqual((r.command, r.why, r.raised, r.point_fail), ("NONE", "cues not met or classes ambiguous", True, "length"))
+        self.assertEqual(r.to_dict()["point_fail"], "length")
+        self.assertEqual(r.arms["left"]["point_fail"], "length")
+        ok = self.read(vs.arm_sequence(point_builder(4, az=160.0), 16), 10)
+        self.assertEqual((ok.command, ok.point_fail), ("POINT", ""))
+        self.assertNotIn("point_fail", ok.to_dict())                    # the logs of every other reading are what they were
+        self.assertNotIn("point_fail", ok.arms["left"])
+
+    def test_no_point_fail_without_a_raised_held_arm_and_it_changes_no_reading(self):
+        idle = self.read(vs.arm_sequence(lambda i: (*vs.body(), {}), 12), 10)
+        self.assertEqual((idle.command, idle.point_fail), ("NONE", ""))
+        moving = self.read(vs.arm_sequence(point_builder(12, az=170.0), 12), 10)           # still swinging: no hold, so no verdict on the cue
+        self.assertEqual(moving.point_fail, "")
+        self.assertEqual(moving.command, "NONE")
+        self.assertEqual(gm.point_fail_reason(gm.arm_frame(vs.arm_sequence(point_builder(4, az=170.0), 16)[-1], "left", CFG), CFG), "length")
+        self.assertEqual(gm.point_fail_reason(gm.arm_frame(vs.arm_sequence(point_builder(4, az=90.0), 16)[-1], "left", CFG), CFG), "")
+
     def test_moving_arm_without_a_hold_reads_none_and_says_why(self):
         s = vs.arm_sequence(point_builder(12), 12)               # still swinging for the whole window
         r = self.read(s, 10)

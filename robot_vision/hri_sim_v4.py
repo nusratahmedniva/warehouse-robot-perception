@@ -120,6 +120,7 @@ class Person:
     episode: Episode | None = None               # a bystander may gesture too (a distractor)
     facing: bool = True                          # facing the robot (a bystander may look away)
     extra_episodes: list = field(default_factory=list)   # later gestures of the same person (e.g. WAIT, then POINT)
+    cp: bool = False                                     # a checkpoint worker (AUDIT.md 16.23, T3): detected with its own noise stream
 
     def state(self, t: float) -> dict:
         """What the person shows at t: phase, true command, arm, clip, the world POINT angle (None if not POINT), the
@@ -152,6 +153,7 @@ class GestureSimConfig:
     point_angle_sigma_deg: float = 0.0
     crosscheck_accuracy: float | None = None    # None: no hand world landmarks; else P(the cross-check prefers the TRUE depth reading)
     confusion: dict = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_CONFUSION.items()})
+    point_readability: dict | None = None       # AUDIT.md 16.26.5 item 4: {"bins": [{lo, hi, p}]}, P(a pointing at this angle to the line of sight is read in a frame); None = every pointing is read (as before)
 
 
 class Scene:
@@ -208,6 +210,7 @@ class VisionSim:
     def __init__(self, scene: Scene, cfg: SimConfig, gcfg: GestureSimConfig, seed: int = 1):
         self.scene, self.cfg, self.g = scene, cfg, gcfg
         self.rng = random.Random(seed)
+        self.rng_cp = random.Random(f"{seed}|checkpoint workers")      # T3: the checkpoint workers' detection noise never moves the junction workers' draws
         for cmd, wrong in gcfg.confusion.items():         # (PROCEED has no default confusion: a wrong PROCEED reads NONE)
             if cmd in wrong or any(w not in COMMANDS for w in wrong) or not wrong:
                 raise ValueError(f"confusion[{cmd}] must list other commands from {COMMANDS}")
@@ -216,9 +219,10 @@ class VisionSim:
         out = []
         for p in self.scene.people:
             dist = math.hypot(p.x - x, p.z - z)
-            if dist <= self.cfg.detection_range_m and self.rng.random() < self.cfg.p_detect:
-                b = hc.wrap(hc.yaw_to(x, z, p.x, p.z) - yaw) + self.rng.gauss(0, self.cfg.bearing_sigma_deg)
-                d = max(0.1, dist + self.cfg.distance_bias_m + self.rng.gauss(0, self.cfg.distance_sigma_m))
+            rng = self.rng_cp if p.cp else self.rng
+            if dist <= self.cfg.detection_range_m and rng.random() < self.cfg.p_detect:
+                b = hc.wrap(hc.yaw_to(x, z, p.x, p.z) - yaw) + rng.gauss(0, self.cfg.bearing_sigma_deg)
+                d = max(0.1, dist + self.cfg.distance_bias_m + rng.gauss(0, self.cfg.distance_sigma_m))
                 wx, wz = hc.world_point(x, z, yaw, b, d)
                 out.append({"id": p.id, "x": wx, "z": wz, "distance_m": d, "bearing_deg": b})
         return out
@@ -316,6 +320,8 @@ class SceneSpec:
     placement_rule: dict | None = None                           # {"min_worker_separation_m", "min_turning_point_m"} enforced for beside / random layouts (16.11)
     lie_script: list | None = None                               # tests / demonstrations: gesture k (in the order staged) shows this direction (LEFT /
                                                                  # FORWARD / RIGHT / BACK) as a lie, None = truthful; replaces the random draw
+    checkpoints: dict | None = None                              # AUDIT.md 16.23 (T3): checkpoint workers on every branch leaving a decision junction (configs/v4/experiments/checkpoints.json); None = none
+    cp_lies: list | None = None                                  # tests / demonstrations: the checkpoints ("J1>LEFT") whose worker lies; replaces the random draw
 
 
 COMPASS = {"LEFT": -90.0, "FORWARD": 0.0, "RIGHT": 90.0, "BACK": 180.0}      # relative to the arrival direction
@@ -391,11 +397,14 @@ def drivable_segments(road: hc.Roadmap, node: str, workers: list, standoff: floa
 CLEARANCE_KEYS = ("path_clearance_m", "ask_zone_m", "ask_standoff_m", "reask_shift_m")
 
 
-def clearance_problem(road: hc.Roadmap, node: str, pos: list, placed_by_node: dict, physical: hc.Roadmap | None, rule: dict) -> str | None:
+def clearance_problem(road: hc.Roadmap, node: str, pos: list, placed_by_node: dict, physical: hc.Roadmap | None, rule: dict,
+                      extra_workers=(), extra_segments=()) -> str | None:
     """Unity's ClearanceProblem (AUDIT.md 16.20.2): the first clearance or ask-zone rule the workers `pos` of `node` break with the workers already
     placed at other nodes (`placed_by_node`: {node: [(x, z), ...]} in placement order), or None. Every ask position of this node within
     rule["ask_zone_m"] of it; every worker (here and placed) rule["path_clearance_m"] from this node's drivable segments; this node's workers that far
-    from every road of the map and of the physical map and from the drivable segments of every node placed before."""
+    from every road of the map and of the physical map and from the drivable segments of every node placed before. AUDIT.md 16.25.1: `extra_workers` and
+    `extra_segments` are the FIXED checkpoint workers and the segments the robot drives for them: this node's workers keep the clearance from those segments and
+    those workers keep it from this node's segments."""
     standoff, shift = rule["ask_standoff_m"], rule["reask_shift_m"]
     segs, asks = drivable_segments(road, node, pos, standoff, shift)
     nx, nz = road.pos(node)
@@ -419,6 +428,15 @@ def clearance_problem(road: hc.Roadmap, node: str, pos: list, placed_by_node: di
             d = _seg_dist(q[0], q[1], sg[:4])
             if d < clr:
                 return f"worker {i + 1} is {d:.2f} m from {sg[4]} (< {rule['path_clearance_m']})"
+        for sg in extra_segments:
+            d = _seg_dist(q[0], q[1], sg)
+            if d < clr:
+                return f"worker {i + 1} is {d:.2f} m from a segment of a checkpoint (< {rule['path_clearance_m']})"
+    for w in extra_workers:
+        for sg in segs:
+            d = _seg_dist(w[0], w[1], sg[:4])
+            if d < clr:
+                return f"a checkpoint worker is {d:.2f} m from {sg[4]} (< {rule['path_clearance_m']})"
     for other, pts in placed_by_node.items():
         for q in pts:
             for sg in segs:
@@ -538,7 +556,7 @@ def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_ro
                  seed: int | str, min_turning_m: float = 0.0, nearer_margin_m: float = 0.0, approach_m: float = 3.0,
                  max_draws: int = 10000, physical: hc.Roadmap | None = None,
                  placed: list[tuple[float, float]] | tuple = (), clearance: dict | None = None,
-                 placed_by_node: dict | None = None) -> list[tuple[float, float]]:
+                 placed_by_node: dict | None = None, extra_workers=(), extra_segments=()) -> list[tuple[float, float]]:
     """n people uniform in a square of side 2 * half_size_m centred on the node, at least min_road_m from every road centre line
     (of the map and of the physical map), min_sep_m apart (also from `placed`, the workers of other nodes) and min_turning_m from every
     turning point (rejection sampling, seeded by run and node). The drawn set is sorted by distance to the node (the first = the one the
@@ -565,7 +583,7 @@ def place_random(road: hc.Roadmap, node: str, n: int, half_size_m: float, min_ro
             continue
         if nearer_margin_m > 0 and any(nearer_margin(road, node, o, out[0], approach_m) < nearer_margin_m for o in out[1:]):
             continue
-        if clearance is not None and clearance_problem(road, node, out, placed_by_node or {}, physical, clearance) is not None:
+        if clearance is not None and clearance_problem(road, node, out, placed_by_node or {}, physical, clearance, extra_workers, extra_segments) is not None:
             continue
         return out
     raise ValueError(f"cannot place {n} people at {node} in {max_draws} draws (half_size {half_size_m}, road {min_road_m}, "
@@ -607,6 +625,96 @@ def detour_corners(x: float, z: float, target: tuple[float, float], people: list
         if not changed:
             break
     return pts
+
+
+# ---------------------------------------------------------------- T3: checkpoint workers (AUDIT.md 16.23)
+
+def decision_branches(road: hc.Roadmap, branches: list | None = None) -> list[tuple[str, str, str]]:
+    """(junction, command, next node) of every branch leaving a decision junction (a node of kind junction with two or more branches), in roadmap order;
+    `branches` (AUDIT.md 16.25.1: ["J1>FORWARD", ...]) keeps only those that have a checkpoint worker (None = all)."""
+    return [(j, cmd, nxt) for j, br in road.branches.items() if road.nodes[j]["kind"] == "junction" and len(br) >= 2 for cmd, nxt in br.items()
+            if branches is None or f"{j}>{cmd}" in branches]
+
+
+def checkpoint_point(road: hc.Roadmap, junction: str, nxt: str, fraction: float) -> tuple[float, float]:
+    """The point of the road where the robot stops for the checkpoint: `fraction` of the way from the junction to the next node (the robot's own rule)."""
+    x0, z0 = road.pos(junction)
+    x1, z1 = road.pos(nxt)
+    return x0 + fraction * (x1 - x0), z0 + fraction * (z1 - z0)
+
+
+def checkpoint_segments(road: hc.Roadmap, junction: str, nxt: str, point: tuple, worker: tuple, standoff: float, shift: float) -> list[tuple]:
+    """What the robot can drive for one checkpoint (besides the road): from the checkpoint point to the ask position, from there to the re-ask point,
+    and from both back to the junction and on to the next node."""
+    a = ask_position(worker, point, standoff)
+    r = reask_position(worker, a, standoff, shift)
+    j, n = road.pos(junction), road.pos(nxt)
+    return [(point[0], point[1], a[0], a[1]), (a[0], a[1], r[0], r[1]), (a[0], a[1], j[0], j[1]), (a[0], a[1], n[0], n[1]),
+            (r[0], r[1], j[0], j[1]), (r[0], r[1], n[0], n[1])]
+
+
+def plan_checkpoints(road: hc.Roadmap, physical: hc.Roadmap | None, plan: dict, rule: dict, cfg: dict, radius_m: float) -> dict:
+    """AUDIT.md 16.23: the provisional position of the checkpoint worker of every branch leaving a decision junction, {(junction, command): {...}}, planned after the
+    junction workers `plan` ({node: [(x, z), ...]}). The rule: beside the midpoint `fraction` of the branch, cfg["lateral_m"] to the right of the travel
+    direction, else to the left, then the next lateral distance (order: lateral outer, side inner). A position is taken when it is farther than radius_m
+    from every node (never a junction worker for the junction rules), at least min_worker_separation_m from every other worker, min_turning_point_m
+    from every turning point, and path_clearance_m from every road and every segment the robot can drive (the junction workers' and the checkpoints').
+    No candidate = ValueError."""
+    if cfg.get("positions"):                                          # AUDIT.md 16.26 item 1: the positions Unity sent; the spot is the anchor, no search
+        out = {}
+        for j, cmd, nxt in decision_branches(road, cfg.get("branches")):
+            pos = cfg["positions"].get(f"{j}>{cmd}")
+            if pos is None:
+                raise ValueError(f"checkpoints `positions` has no entry for {j}>{cmd}")
+            out[(j, cmd)] = {"x": float(pos["x"]), "z": float(pos["z"]), "point": tuple(float(c) for c in pos["anchor"]), "next": nxt,
+                             "side": "right" if float(pos["right_m"]) > 0 else "left", "lateral_m": abs(float(pos["right_m"]))}
+        return out
+    standoff, shift = float(rule["ask_standoff_m"]), float(rule["reask_shift_m"])
+    sep, turn, clr = float(rule["min_worker_separation_m"]), float(rule["min_turning_point_m"]), float(rule["path_clearance_m"])
+    eps = 1e-4
+    roads = _road_segments(road, physical)
+    turns = turning_points(road, physical)
+    nodes = [road.pos(n) for n in road.nodes]
+    drive: list = []
+    for node, pts in plan.items():
+        segs, _ = drivable_segments(road, node, pts, standoff, shift)
+        drive += [sg[:4] for sg in segs]
+    workers = [q for pts in plan.values() for q in pts]
+    out: dict = {}
+    for j, cmd, nxt in decision_branches(road, cfg.get("branches")):
+        pt = checkpoint_point(road, j, nxt, float(cfg["fraction"]))
+        a = math.radians(hc.yaw_to(pt[0], pt[1], *road.pos(nxt)))
+        right = (math.cos(a), -math.sin(a))
+        chosen = None
+        for lat in cfg["lateral_m"]:
+            for side in cfg["side_order"]:
+                sgn = 1.0 if side == "right" else -1.0
+                q = (pt[0] + sgn * right[0] * lat, pt[1] + sgn * right[1] * lat)
+                own = checkpoint_segments(road, j, nxt, pt, q, standoff, shift)
+                if (all(math.hypot(q[0] - n[0], q[1] - n[1]) > radius_m + eps for n in nodes)
+                        and all(math.hypot(q[0] - w[0], q[1] - w[1]) >= sep - eps for w in workers)
+                        and all(math.hypot(q[0] - t[0], q[1] - t[1]) >= turn - eps for t in turns)
+                        and all(_seg_dist(q[0], q[1], sg) >= clr - eps for sg in roads + drive + own)
+                        and all(_seg_dist(w[0], w[1], sg) >= clr - eps for w in workers for sg in own)):
+                    chosen = {"x": q[0], "z": q[1], "point": pt, "next": nxt, "side": side, "lateral_m": lat}
+                    break
+            if chosen:
+                break
+        if chosen is None:
+            raise ValueError(f"cannot place the checkpoint worker of {j} {cmd} (to {nxt}) at {cfg['fraction']:g} of the branch under the rules of AUDIT.md 16.23")
+        out[(j, cmd)] = chosen
+        workers.append((chosen["x"], chosen["z"]))
+        drive += checkpoint_segments(road, j, nxt, pt, (chosen["x"], chosen["z"]), standoff, shift)
+    return out
+
+
+def readability_p(model: dict, angle_deg: float) -> float:
+    """P(a pointing at this angle to the line of sight (0 = away from the camera, 180 = at it) is read as POINT in one frame), from a point_readability model."""
+    a = min(180.0, max(0.0, abs(angle_deg)))
+    for b in model["bins"]:
+        if b["lo"] <= a < b["hi"] or (b["hi"] >= 180 and a >= b["lo"]):
+            return float(b["p"])
+    return 0.0
 
 
 class ReaderLevelVision(VisionSim):
@@ -665,8 +773,16 @@ class ReaderLevelVision(VisionSim):
                     (shown == "STOP" and s["since_gesture_s"] is not None and s["since_gesture_s"] >= self.rc["window"]["stop_window_s"]) or \
                     (shown == "PROCEED" and s["phase"] == "holding" and s["hold_age_s"] >= self.rc["proceed"]["window_s"])
             command = self._degrade(shown) if ready else "NONE"
+            foreshortened = False
+            if command == "POINT" and self.g.point_readability is not None and s["world_angle_deg"] is not None:
+                # AUDIT.md 16.26.5 item 4: a pointing close to the line of sight is not read; the arm is up and fails the cue on length (the side view may start)
+                pr = readability_p(self.g.point_readability, abs(_wrap(s["world_angle_deg"] - hc.yaw_to(x, z, p.x, p.z))))
+                if pr < 1.0 and (pr <= 0.0 or self.rng.random() >= pr):
+                    command, foreshortened = "NONE", True
             r = gm.Reading(command, 0.9 if command != "NONE" else 0.0, "simulated", t, arm=s["arm"] if raised else None,
                            frame_class=shown, moving=moving, raised=raised, hold_s=s["hold_age_s"], valid_frames=10, n_frames=10)
+            if foreshortened:
+                r.point_fail = "length"
             r.arms = {s["arm"] if raised else "right": {"raised": raised, "path": s["amplitude"] if moving else 0.0, "moving": moving}}
             if command == "POINT":
                 r.point = self._point(s["world_angle_deg"], cam, yaw, shown, command)
@@ -698,6 +814,7 @@ class SimulatorV4:
         self._worker_rngs: dict[str, random.Random] = {}
         self._worker_lies: dict[str, str | None] = {}
         self._plan: dict = {}
+        self._cp_plan: dict = {}                                # T3: {(junction, command): checkpoint worker position}
         self.gestures: list[dict] = []                          # every gesture staged: node, worker, correct, shown, truthful
 
     def _positions_at(self, junction: str, placed: list, placed_by_node: dict | None = None) -> list[tuple[float, float]]:
@@ -715,9 +832,10 @@ class SimulatorV4:
             else:                                                  # the earlier symmetric pair
                 pts = place_beside(self.road, junction, n, lay["lateral_m"], lay["before_m"])
         elif lay["kind"] == "random":
+            extra_w, extra_s = self._fixed_checkpoints(rule)
             pts = place_random(self.road, junction, n, lay["half_size_m"], lay["min_road_m"], sep, self.seed, turn, margin, approach,
                                lay.get("max_draws", 10000), sp.physical_map, placed,
-                               {k: rule[k] for k in CLEARANCE_KEYS} if all(k in rule for k in CLEARANCE_KEYS) else None, placed_by_node)
+                               {k: rule[k] for k in CLEARANCE_KEYS} if all(k in rule for k in CLEARANCE_KEYS) else None, placed_by_node, extra_w, extra_s)
         elif lay["kind"] == "fixed":                       # tests / demonstrations: explicit (x, z) per node
             return [tuple(q) for q in lay["points"][junction]]
         else:
@@ -726,17 +844,47 @@ class SimulatorV4:
             check_placement(self.road, junction, pts, sep, turn, sp.physical_map, margin, approach, placed)
         return pts
 
+    def _checkpoints_first(self) -> bool:
+        """AUDIT.md 16.25.1: the checkpoint positions are fixed (planned before, and independent of, the junction workers) when checkpoints.json says "fixed_first"."""
+        cfg = self.spec.checkpoints
+        return bool(cfg and cfg.get("fixed_first"))
+
+    def _fixed_checkpoints(self, rule: dict) -> tuple[list, list]:
+        """(the fixed checkpoint workers, the segments the robot drives for them) the junction workers are drawn around; empty unless `fixed_first`."""
+        if not self._checkpoints_first() or not self._cp_plan:
+            return [], []
+        standoff, shift = float(rule["ask_standoff_m"]), float(rule["reask_shift_m"])
+        workers = [(cw["x"], cw["z"]) for cw in self._cp_plan.values()]
+        segs = [sg for (j, cmd), cw in self._cp_plan.items() for sg in checkpoint_segments(self.road, j, cw["next"], cw["point"], (cw["x"], cw["z"]), standoff, shift)]
+        return workers, segs
+
     def plan_workers(self) -> dict:
         """Plan every asking node of the run up front, in Unity's order (start node, then the junctions in file order), each against the workers of
-        the nodes before it (Unity's PlanRun). Returns {node: [(x, z), ...]}."""
+        the nodes before it (Unity's PlanRun). Returns {node: [(x, z), ...]}. With fixed checkpoints (16.25.1) the checkpoint workers count as placed."""
         plan: dict = {}
         if self.spec.layout is None or self.spec.layout["kind"] == "fixed":
             return plan
-        placed: list = []
+        placed: list = [(cw["x"], cw["z"]) for cw in self._cp_plan.values()] if self._checkpoints_first() else []
         for node in ask_nodes(self.road):
             plan[node] = self._positions_at(node, placed, dict(plan))
             placed += plan[node]
         return plan
+
+    def plan_checkpoints(self) -> dict:
+        """T3 (AUDIT.md 16.23): where the checkpoint workers stand, {(junction, command): {"x", "z", "point", "next", ...}}; {} when the spec has none.
+        cfg["fixed"] ({"J1>LEFT": [x, z]}) places them by hand (tests, demonstrations); else plan_checkpoints() after the junction workers."""
+        cfg = self.spec.checkpoints
+        if not cfg:
+            return {}
+        if cfg.get("fixed"):
+            out = {}
+            for key, q in cfg["fixed"].items():
+                j, cmd = key.split(">")
+                nxt = self.road.next(j, cmd)
+                out[(j, cmd)] = {"x": float(q[0]), "z": float(q[1]), "point": checkpoint_point(self.road, j, nxt, float(cfg["fraction"])), "next": nxt, "side": "fixed", "lateral_m": None}
+            return out
+        radius = self.c.ld.get("second_opinion_radius_m")
+        return plan_checkpoints(self.road, self.spec.physical_map, self._plan, self.spec.placement_rule or {}, cfg, float(radius) if radius is not None else 6.5)
 
     def _scene_at(self, junction: str) -> Scene:
         sp = self.spec
@@ -744,6 +892,9 @@ class SimulatorV4:
             pts = self._plan[junction] if junction in self._plan else self._positions_at(junction, [])
             people = [Person(i + 1, x, z, sp.worker_looks[i % len(sp.worker_looks)], "commander" if i == 0 else "bystander")
                       for i, (x, z) in enumerate(pts)]
+            for k, ((j, cmd), cw) in enumerate(self._cp_plan.items()):         # T3: the checkpoint workers of the branches leaving this junction
+                if j == junction:
+                    people.append(Person(100 + k, cw["x"], cw["z"], sp.worker_looks[(len(people)) % len(sp.worker_looks)], "bystander", cp=True))
             return Scene(people, sp.record_truthful)
         cmdr = Person(1, 0.0, 0.0, sp.commander_look, "commander")
         scene = junction_scene(self.road, junction, cmdr, [tuple(o) for o in sp.bystander_offsets_m], list(sp.bystander_looks))
@@ -843,11 +994,47 @@ class SimulatorV4:
                 who.extra_episodes = [who.episode] + who.extra_episodes
             who.episode = stop
 
+    def _stage_cp_ask(self, scene: Scene, t: float, cp: dict, goal: str, serial: int) -> None:
+        """The checkpoint worker the controller is asking shows PROCEED when the branch leads toward the goal and POINT back along the arrival road when it
+        does not; a liar (probability lie_probability, once per worker per run, its own generator) shows the opposite (AUDIT.md 16.23 rule 2)."""
+        sp, road = self.spec, self.road
+        j, cmd, nxt = cp["junction"], cp["branch"], cp["next"]
+        px, pz = cp["point"]
+        honest_proceed = road.reaches(nxt, goal)
+        w = self._asked_worker(scene)
+        key = f"{j}>{cmd}"
+        if sp.cp_lies is not None:
+            liar = key in sp.cp_lies
+        elif sp.lie_probability > 0.0:
+            skey = f"{self.seed}|cp:{key}|{w.id}"
+            if skey not in self._worker_lies:
+                self._worker_lies[skey] = self._worker_rng(f"cp:{key}", w.id).random() < sp.lie_probability
+            liar = bool(self._worker_lies[skey])
+        else:
+            liar = False
+        shows_proceed = honest_proceed != liar
+        self.gestures.append({"t": round(t, 3), "node": j, "worker": w.id, "serial": serial, "correct": "PROCEED" if honest_proceed else "BACK",
+                              "shown": "PROCEED" if shows_proceed else "BACK", "truthful": not liar, "kind": "checkpoint", "branch": cmd})
+        if shows_proceed:
+            w.episode = Episode("PROCEED", t, sp.start_delay_s, sp.gesturing_s, sp.hold_s, sp.returning_s, arm=sp.arm, clip=sp.clips["PROCEED"], truthful=not liar)
+        else:
+            back = hc.yaw_to(px, pz, *road.pos(j))
+            w.episode = Episode("POINT", t, sp.start_delay_s, sp.gesturing_s, sp.hold_s, sp.returning_s, arm=sp.arm, clip=sp.clips["POINT"],
+                                world_angle_deg=back, truthful=not liar)
+        w.extra_episodes = []
+
     def run(self, goal: str) -> dict:
         cfg, road, c = self.cfg, self.road, self.c
         rng_seed = self.seed
         self._worker_rngs, self._worker_lies, self.gestures = {}, {}, []
-        self._plan = self.plan_workers()
+        if self._checkpoints_first():                           # AUDIT.md 16.25.1: the checkpoints first, the junction workers around them
+            self._plan, self._cp_plan = {}, {}
+            self._cp_plan = self.plan_checkpoints()
+            self._plan = self.plan_workers()
+        else:
+            self._plan = self.plan_workers()
+            self._cp_plan = self.plan_checkpoints()
+        max_view = 0
         visions: dict[str, ReaderLevelVision] = {}
         x, z = road.pos(road.start)
         if "start_yaw_deg" in road.nodes[road.start]:
@@ -892,6 +1079,7 @@ class SimulatorV4:
                     truth += scene.truth_rows(t, yaw)
             while pend_people and pend_people[0][0] <= t:
                 _, latest_people_t, latest_people = pend_people.pop(0)
+                max_view = max(max_view, len(latest_people))
             while pend_persons and pend_persons[0][0] <= t:
                 _, latest_persons_t, latest_persons, latest_fov, latest_pan = pend_persons.pop(0)
             target = (cmd.target_x, cmd.target_z) if cmd.has_target else None
@@ -928,7 +1116,10 @@ class SimulatorV4:
                         next_360 = next_pan = next_truth = t
             if c.state == "ask" and scene is not None and (c.node, c.ask_serial) not in staged_asks:
                 staged_asks.add((c.node, c.ask_serial))
-                self._stage_ask(scene, t, c.node, goal, c.ask_serial)
+                if c.cp is not None and c.cp["stage"] == "dialog":
+                    self._stage_cp_ask(scene, t, c.cp, goal, c.ask_serial)
+                else:
+                    self._stage_ask(scene, t, c.node, goal, c.ask_serial)
             v = _ramp(v, max(-cfg.max_speed_mps, min(cfg.max_speed_mps, cmd.v)), cfg.max_accel_mps2, cfg.decel_mps2, cfg.dt)
             w = _ramp(w, max(-cfg.max_angular_speed_radps, min(cfg.max_angular_speed_radps, cmd.omega)),
                       cfg.max_angular_accel_radps2, cfg.max_angular_accel_radps2, cfg.dt)
@@ -962,7 +1153,7 @@ class SimulatorV4:
         return {"goal": goal, "outcome": outcome, "failure_reason": reason, "final_distance_m": round(final, 3),
                 "time_s": round(t, 2), "travelled_m": round(travelled, 2), "closest_person_m": round(closest, 2),
                 "frame_log": list(c.frame_log), "hud_log": hud_log, "truth_rows": truth, "frames": frames,
-                "gestures": list(self.gestures), **summ}
+                "gestures": list(self.gestures), "max_people_in_view": max_view, **summ}
 
 
 def _shift_record(rec: dict, off: float) -> dict:
@@ -1127,7 +1318,8 @@ def parse_experiment(name: str) -> tuple[str, str]:
 
 def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict | None = None,
                 control_path: str = "configs/v4/control.json", commander_path: str = "configs/v4/commander.json",
-                gcfg: GestureSimConfig | None = None, sim_cfg: SimConfig | None = None, hook=None, side: str = "right") -> dict:
+                gcfg: GestureSimConfig | None = None, sim_cfg: SimConfig | None = None, hook=None, side: str = "right",
+                checkpoints: dict | None = None) -> dict:
     """Experiment A1 to A4 / B1 to B4 for one run seed: the controller (lie-detection switches from `detection`, else the
     control config's own), the simulator, the goal and the map. Returns {"sim", "goal", "road", "v4", "spec", "experiment",
     "set", "seed", "lie_probability", "optimal_m"}; sim.run(goal) runs it. The goal and the placements come from the seed only."""
@@ -1167,7 +1359,8 @@ def scenario_ab(name: str, seed: int, detection: dict | None = None, scen: dict 
                      physical_map=hc.Roadmap(hc.load_json(hv.roadmap_path(v4))) if scen.get("physical_map_is_v4") else None,
                      avoid_people_m=clearance,
                      placement_rule={k: float(scen["placement_rule"][k]) for k in ("min_worker_separation_m", "min_turning_point_m", *CLEARANCE_KEYS)
-                                     if k in scen["placement_rule"]} if "placement_rule" in scen else None)
+                                     if k in scen["placement_rule"]} if "placement_rule" in scen else None,
+                     checkpoints=checkpoints)
     cfg = sim_cfg or SimConfig(timeout_s=float(scen["trial_timeout_s"]))
     sim = SimulatorV4(ctrl, cfg, gcfg or GestureSimConfig(), spec, seed)
     return {"sim": sim, "goal": goal, "road": road, "v4": v4, "spec": spec, "experiment": name, "set": which, "seed": seed,

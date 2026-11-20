@@ -1,0 +1,114 @@
+{
+ "label": "Readability of a pointing by its angle to the line of sight (AUDIT.md 16.26.5, item 4): P(read as POINT in a frame). Simulator input only.",
+ "reader": "reference",
+ "min_frames_per_bin": 20,
+ "bin_deg": 15,
+ "band_deg": [
+  45.0,
+  135.0
+ ],
+ "git_commit": "c066028c9480a0601c1da4cb866359b8c7cd6de2",
+ "zips": {
+  "S5": "75bbc8851a758a76c7140a20b8c24e10035d6c0095091d1b2429099c42d17d3f",
+  "STOP": "ca1173ac497eed26ea6e075547a5fae018fc98be7d13c056bae72164162755a5",
+  "D4*": "a39cb42906c12e7a5fbfbee77c78d5deedcd082dc1a01f1e3ceb659808cfbe34"
+ },
+ "bins": [
+  {
+   "lo": 0,
+   "hi": 15,
+   "p": 0.0,
+   "source": "band",
+   "held": 14,
+   "read": 0
+  },
+  {
+   "lo": 15,
+   "hi": 30,
+   "p": 0.0,
+   "source": "fitted",
+   "held": 20,
+   "read": 0
+  },
+  {
+   "lo": 30,
+   "hi": 45,
+   "p": 0.0,
+   "source": "fitted",
+   "held": 29,
+   "read": 0
+  },
+  {
+   "lo": 45,
+   "hi": 60,
+   "p": 0.2328,
+   "source": "fitted",
+   "held": 567,
+   "read": 132
+  },
+  {
+   "lo": 60,
+   "hi": 75,
+   "p": 0.6216,
+   "source": "fitted",
+   "held": 259,
+   "read": 161
+  },
+  {
+   "lo": 75,
+   "hi": 90,
+   "p": 0.4979,
+   "source": "fitted",
+   "held": 243,
+   "read": 121
+  },
+  {
+   "lo": 90,
+   "hi": 105,
+   "p": 0.3245,
+   "source": "fitted",
+   "held": 265,
+   "read": 86
+  },
+  {
+   "lo": 105,
+   "hi": 120,
+   "p": 0.5168,
+   "source": "fitted",
+   "held": 298,
+   "read": 154
+  },
+  {
+   "lo": 120,
+   "hi": 135,
+   "p": 0.5563,
+   "source": "fitted",
+   "held": 320,
+   "read": 178
+  },
+  {
+   "lo": 135,
+   "hi": 150,
+   "p": 0.6729,
+   "source": "fitted",
+   "held": 269,
+   "read": 181
+  },
+  {
+   "lo": 150,
+   "hi": 165,
+   "p": 0.0,
+   "source": "band",
+   "held": 0,
+   "read": 0
+  },
+  {
+   "lo": 165,
+   "hi": 180,
+   "p": 0.0,
+   "source": "fitted",
+   "held": 21,
+   "read": 0
+  }
+ ]
+}

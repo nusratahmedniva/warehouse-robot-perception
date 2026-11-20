@@ -250,7 +250,7 @@ class IsolationTests(unittest.TestCase):
     def test_v3_code_does_not_import_the_v4_simulator(self):
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)
-            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("hri_sim_v4.py", "run_experiments_ab_v4.py", "layout_check_v4.py", "analyse_a3_timeouts_v4.py"):   # the v4 runner of experiments A and B (2026-11-13); the layout check and the A3 timeout analysis of 16.20 (2026-11-17)
+            if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("hri_sim_v4.py", "run_experiments_ab_v4.py", "layout_check_v4.py", "analyse_a3_timeouts_v4.py", "run_t3_v4.py", "analyse_cp_rule_v4.py", "check_checkpoints_v4.py", "fit_point_readability_v4.py"):   # the v4 runner of experiments A and B (2026-11-13); the layout check and the A3 timeout analysis of 16.20 (2026-11-17); the T3 runner of 16.23 (2026-11-18); the checkpoint-rule analysis of 16.25 (2026-11-19); the check of Unity's checkpoint positions of 16.26 (2026-11-19); the fit of the simulator's readability model of 16.26.5 (2026-11-20, evaluation code that uses the simulator's one lookup function)
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

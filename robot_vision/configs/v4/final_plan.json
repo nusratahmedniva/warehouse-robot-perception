@@ -56,7 +56,7 @@
       "map": "roadmap",
       "roadmap": "configs/v4/roadmap.json",
       "lie_detection": "on",
-      "note": "Experiment A3: v4 map, GoalSequence(2) over E1..E6, truthful workers, 2 per node and 3 at J1 (beside)."
+      "note": "Experiment A3: v4 map, GoalSequence(2) over E1..E6, truthful workers, layout (i) of slot_table.csv: two workers at every node (AUDIT.md 16.21.2)."
     },
     "A4": {
       "zoom": null,
@@ -173,6 +173,25 @@
   },
   "superseded_settings_note": "The four v4 Task 2 settings of 2026-10-24 .. 2026-11-13, replaced on 2026-11-14 by the experiments A/B matrix (AUDIT.md 16.15 decision 1). Kept for the record only: no tool reads this key, Unity refuses these names as superseded (final_v4.json superseded_settings), and none was ever run as a final.",
   "settings_note": "null = not constrained by the setting. Every final session must lie wholly in the test split (data_splits_v4.guard_run with --final-evaluation); a setting's own constraints are checked on top. Which setting uses which test looks and clips is part of the plan: fill the setting notes in AUDIT.md section 14.",
+  "lie_detection_checkpoint": {
+    "declared": "2026-11-20 (AUDIT.md 16.26.9; replaces the T4 block of 16.25.2). The checkpoint workers (T3, T4) are NOT used in the finals (AUDIT.md 16.26.8.1: T4 gave +0.0 pp in B3 on and B4 on on fresh simulator seeds 101 to 140; the stopping rule of 16.24 applies). What the control file of a setting must say about them, besides the three rules of scenarios_ab.json detection: checkpoint OFF for every setting, detection on or off (the values below are the same for both labels, so 'on' is T0 exactly). final_guard_v4.control_problems compares every key listed here; a missing key counts as its default, and a file with any checkpoint key on (checkpoint or next_junction_back true, a checkpoint_branches or checkpoint_s_m list) is refused. checkpoint_fraction, checkpoint_scope and checkpoint_person_radius_m do not matter with the checkpoint off.",
+    "on": {
+      "checkpoint": false,
+      "next_junction_back": false,
+      "checkpoint_branches": null,
+      "checkpoint_s_m": null
+    },
+    "off": {
+      "checkpoint": false,
+      "next_junction_back": false,
+      "checkpoint_branches": null,
+      "checkpoint_s_m": null
+    }
+  },
+  "side_view": {
+    "declared": "2026-11-20 (AUDIT.md 16.26.9). The side view of AUDIT.md 16.26 item 2 stays in the controller, off. No final runs with it: final_guard_v4.control_problems refuses a control file whose side_view.enabled is true (an absent block is the default, false).",
+    "enabled": false
+  },
   "run_once": "Each setting is run once. A setting with a FINAL_DONE.json in its evaluation folder or in a bridge run folder cannot be started or evaluated again (final_guard_v4.py).",
   "test_assignment": {
     "A1": {
@@ -306,7 +325,7 @@
       ]
     }
   },
-  "test_assignment_note": "2026-11-14 (AUDIT.md 16.15): every one of the 13 settings uses the test looks sunbox_m_shirt_plaid (male slots 1 and 3) and sunbox_f_shirt_plaid (female slot 2) and the test clips point_mixamo_02 (POINT) and proceed_ik_03 (PROCEED), the two commands an experiment worker shows. DISCLOSED: with one test look per gender the third worker at J1 (A3, A4, B3, B4 and the _off twins) wears the same look as the first; development rotates two looks per gender. The earlier note (B7, plan (b), sunbox_f2 for the four Task 2 settings) is superseded with them.",
+  "test_assignment_note": "2026-11-14 (AUDIT.md 16.15): every one of the 13 settings uses the test looks sunbox_m_shirt_plaid (male slots 1 and 3) and sunbox_f_shirt_plaid (female slot 2) and the test clips point_mixamo_02 (POINT) and proceed_ik_03 (PROCEED), the two commands an experiment worker shows. UPDATED 2026-11-18 (AUDIT.md 16.24.3): since the layout of 16.21.2 every node has two workers (slot 1 male, slot 2 female), so no worker at J1 or elsewhere wears a repeated test look and the third male slot of the 16.15 assignment is not used; development rotates two looks per gender. The checkpoint workers of the detection-on settings (16.23, 16.24.3) are not part of this assignment: their number, looks and positions are Unity's to define. DROPPED 2026-11-20 (AUDIT.md 16.26.9): there are no checkpoint workers in the finals. The earlier note (B7, plan (b), sunbox_f2 for the four Task 2 settings) is superseded with them.",
   "unity_files_and_guard": {
     "freeze_list": "unity/Robotics-Warehouse/WarehouseProjectURP/Assets/WarehouseRobot/Avatar/Config/final_v4.json",
     "freeze_list_key": "freeze_files",
