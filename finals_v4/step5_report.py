@@ -23,7 +23,10 @@ Definitions (declared here, before any step 5 session was read):
                   wrong branch = accepted and not correct_branch; asked again = more than one ask; abort = no accepted
                   answer and no rejection (python_trial junction result not "accepted"); rejected = a lie-detection rejection.
   wrong-branch decision  the branch the robot drove from that node (dialogs.csv final_branch) is not the true branch toward B.
-Usage (from the repository root): robot_vision\\.venv\\Scripts\\python.exe finals_v4\\step5_report.py [manifest]
+  setting prefix  (2026-11-20, experiments_ab.md section 15 addendum 8) --prefix P keeps only the entries named P + one of the 13 final
+                  settings (SETTINGS) and drops P to pair a B setting with its A partner; the output names carry P. Without it every
+                  entry is read, as before.
+Usage (from the repository root): robot_vision\\.venv\\Scripts\\python.exe finals_v4\\step5_report.py [manifest] [--prefix P]
 """
 from __future__ import annotations
 
@@ -41,6 +44,14 @@ RV = REPO / "robot_vision"
 OUT = RV / "outputs"
 SHOWN_PHASES = ("gesturing", "holding")
 B_OF_A = {"B1": "A1", "B2_right": "A2_right", "B3": "A3", "B4": "A4"}
+SETTINGS = ("A1", "A2_right", "A2_left", "A3", "A4", "B1", "B2_right", "B3", "B4", "B1_off", "B2_right_off", "B3_off", "B4_off")
+
+
+def select(entries: list[dict], prefix: str) -> list[dict]:
+    """The manifest entries named prefix + a final setting (all entries for an empty prefix)."""
+    if not prefix:
+        return list(entries)
+    return [e for e in entries if e["setting"].startswith(prefix) and e["setting"][len(prefix):] in SETTINGS]
 
 
 def p(path: str) -> Path:
@@ -178,9 +189,18 @@ def fmt(x, n=1):
 
 
 def main(argv: list[str]) -> int:
-    manifest = Path(argv[1]) if len(argv) > 1 else OUT / "step5_sessions.json"
-    entries = json.loads(manifest.read_text(encoding="utf-8"))["sessions"]
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    args, prefix = list(argv[1:]), ""
+    if "--prefix" in args:
+        i = args.index("--prefix")
+        if i + 1 >= len(args):
+            raise SystemExit("--prefix needs a value, e.g. --prefix t0_")
+        prefix = args[i + 1]
+        del args[i:i + 2]
+    manifest = Path(args[0]) if args else OUT / "step5_sessions.json"
+    entries = select(json.loads(manifest.read_text(encoding="utf-8"))["sessions"], prefix)
+    if not entries:
+        raise SystemExit(f"{manifest}: no session{' with the prefix ' + repr(prefix) if prefix else ''}")
+    stamp = prefix + datetime.now().strftime("%Y%m%d_%H%M%S")
     md_path, dur_path, stop_path = (OUT / f"step5_report_{stamp}.md", OUT / f"step5_durations_{stamp}.csv",
                                     OUT / f"step5_stops_{stamp}.csv")
     for f in (md_path, dur_path, stop_path):
@@ -228,7 +248,8 @@ def main(argv: list[str]) -> int:
     md += ["## Set B against the matching A setting (development; same seed, so same goals and placements)", "",
            "| B setting | A setting | lies given / detected / corrected / fooled | mean time B - A (s) | mean trail B - A (m) | per-run pairs (trial: dt s, dtrail m, outcomes) |",
            "|---|---|---|---|---|---|"]
-    for b, a in [(b, B_OF_A[b.replace("_off", "")]) for b in per if b.replace("_off", "") in B_OF_A]:
+    base = {st: st[len(prefix):] for st in per}                      # the final setting name without the prefix
+    for b, a in [(b, prefix + B_OF_A[base[b].replace("_off", "")]) for b in per if base[b].replace("_off", "") in B_OF_A]:
         if a not in per:
             continue
         rb, ra = per[b]["runs"], per[a]["runs"]
