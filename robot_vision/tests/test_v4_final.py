@@ -235,7 +235,7 @@ class PlanAndControlFiles(unittest.TestCase):
         on = json.loads((ROOT / "configs/v4/experiments/control_lie_on.json").read_text())
         off = json.loads((ROOT / "configs/v4/experiments/control_lie_off.json").read_text())
         self.assertIn("lie_detection.second_opinion is False but setting B3 needs True", fg.control_problems("B3", off, fz.REPO)[0])
-        self.assertEqual(len(fg.control_problems("B3_off", on, fz.REPO)), 3)            # second opinion, reject impossible and (AUDIT.md 16.25.2) the checkpoint switch
+        self.assertEqual(len(fg.control_problems("B3_off", on, fz.REPO)), 2)            # second opinion and reject impossible (the checkpoint is off in both, AUDIT.md 16.26.9)
         a1 = json.loads((ROOT / "configs/v4/experiments/control_lie_on_a1.json").read_text())
         self.assertTrue(any("roadmap is" in x for x in fg.control_problems("A3", a1, fz.REPO)))
         backtrack = json.loads(json.dumps(on))
@@ -272,72 +272,92 @@ class PlanAndControlFiles(unittest.TestCase):
         self.assertTrue(all(c["available"] for c in pairs))
         self.assertFalse(any(c["available"] for c in ex.comparisons(["A1"], self.PLAN)))
 
-    # ---- AUDIT.md 16.25.2: the checkpoint switches of T4 ----
+    # ---- AUDIT.md 16.25.2, replaced by 16.26.9: the checkpoint switches are OFF in every setting (T4 dropped); the side view is off ----
     EXP = ROOT / "configs/v4/experiments"
-    CP_KEYS = ("checkpoint", "checkpoint_fraction", "checkpoint_scope", "checkpoint_person_radius_m", "checkpoint_branches", "next_junction_back")
+    CP_KEYS = ("checkpoint", "checkpoint_fraction", "checkpoint_scope", "checkpoint_person_radius_m", "checkpoint_branches", "checkpoint_s_m", "next_junction_back")
+    OFF_BLOCK = {"checkpoint": False, "next_junction_back": False, "checkpoint_branches": None, "checkpoint_s_m": None}
+    T4_FILE = {"checkpoint": True, "checkpoint_fraction": 0.5, "checkpoint_scope": "disputed", "checkpoint_person_radius_m": 5.0,
+               "checkpoint_branches": ["J1>FORWARD", "J1>RIGHT", "J2>RIGHT", "J3>LEFT", "J3>RIGHT", "J4>RIGHT", "J4>LEFT"], "next_junction_back": True}       # what the on files carried from 16.24.3 to 16.26.8
 
     def on_control(self):
         return json.loads((self.EXP / "control_lie_on.json").read_text(encoding="utf-8"))
 
-    def test_the_switches_are_the_three_rules_and_the_six_checkpoint_keys(self):
+    def test_the_switches_are_the_three_rules_and_the_seven_checkpoint_keys(self):
         self.assertEqual(fg.LIE_RULES, ("second_opinion", "reject_impossible", "backtrack"))
         self.assertEqual(fg.CHECKPOINT_SWITCHES, self.CP_KEYS)
         self.assertEqual(fg.SWITCHES, fg.LIE_RULES + fg.CHECKPOINT_SWITCHES)
 
-    def test_the_plan_block_is_t4_exactly_the_on_files_and_the_runners_t4(self):
+    def test_the_plan_block_is_checkpoint_off_for_every_setting_and_the_files_and_the_runners_t0_agree(self):
         import run_t3_v4 as rn
         block = self.PLAN["lie_detection_checkpoint"]
         self.assertEqual(set(block), {"declared", "on", "off"})
-        self.assertEqual(fg.checkpoint_switches("off", fz.REPO), {"checkpoint": False})
-        on = fg.checkpoint_switches("on", fz.REPO)
-        self.assertEqual(tuple(on), self.CP_KEYS)
-        for name in ("control_lie_on", "control_lie_on_a1", "control_lie_on_a2_right", "control_lie_on_a2_left"):
+        self.assertIn("16.26.9", block["declared"])
+        self.assertEqual(fg.checkpoint_switches("on", fz.REPO), self.OFF_BLOCK)
+        self.assertEqual(fg.checkpoint_switches("off", fz.REPO), self.OFF_BLOCK)                    # off for the detection-on settings too: T0 exactly
+        for name in ("control_lie_on", "control_lie_on_a1", "control_lie_on_a2_right", "control_lie_on_a2_left", "control_lie_off", "control_lie_off_a1", "control_lie_off_a2_right"):
             ld = json.loads((self.EXP / f"{name}.json").read_text(encoding="utf-8"))["lie_detection"]
-            self.assertEqual({k: ld[k] for k in self.CP_KEYS}, on, name)
+            self.assertFalse(ld.get("checkpoint", False), name)
+            self.assertFalse(ld.get("next_junction_back", False), name)
+            self.assertIsNone(ld.get("checkpoint_branches"), name)
+            self.assertIsNone(ld.get("checkpoint_s_m"), name)
         cp = json.loads((self.EXP / "checkpoints.json").read_text(encoding="utf-8"))
-        t4 = rn.detection_for("T4", "on", cp)
-        self.assertEqual({k: t4[k] for k in self.CP_KEYS}, on)
-        self.assertEqual(on["checkpoint_branches"], cp["branches"])
-        for off in ("control_lie_off", "control_lie_off_a1", "control_lie_off_a2_right"):
-            self.assertFalse(json.loads((self.EXP / f"{off}.json").read_text(encoding="utf-8"))["lie_detection"].get("checkpoint", False), off)
+        self.assertEqual(rn.detection_for("T0", "on", cp), {"second_opinion": True, "reject_impossible": True, "backtrack": False})       # T0 has no checkpoint key at all
+        self.assertEqual(self.PLAN["side_view"]["enabled"], False)
 
-    def test_each_checkpoint_key_wrong_in_a_detection_on_file_is_refused_with_one_problem(self):
-        wrong = {"checkpoint": False, "checkpoint_fraction": 0.4, "checkpoint_scope": "any", "checkpoint_person_radius_m": 4.0,
-                 "checkpoint_branches": ["J1>FORWARD", "J1>RIGHT"], "next_junction_back": False}
-        for k, v in wrong.items():
-            c = self.on_control()
-            c["lie_detection"][k] = v
-            problems = fg.control_problems("A3", c, fz.REPO)
-            self.assertEqual(len(problems), 1, (k, problems))
-            self.assertIn(f"lie_detection.{k} is {v!r} but setting A3 needs {fg.checkpoint_switches('on', fz.REPO)[k]!r}", problems[0])
-            c2 = self.on_control()
-            del c2["lie_detection"][k]                                                    # a missing key is its default: for a declared value that is a mismatch
-            self.assertEqual(len(fg.control_problems("A3", c2, fz.REPO)), 1, k)
+    def test_each_checkpoint_key_on_in_a_file_is_refused_with_one_problem_in_every_setting(self):
+        on_keys = {"checkpoint": True, "next_junction_back": True, "checkpoint_branches": ["J1>FORWARD", "J1>RIGHT"], "checkpoint_s_m": {"J1>FORWARD": 15.5}}
+        for setting, name in (("A3", "control_lie_on.json"), ("B3_off", "control_lie_off.json")):
+            for k, v in on_keys.items():
+                c = json.loads((self.EXP / name).read_text(encoding="utf-8"))
+                c["lie_detection"][k] = v
+                problems = fg.control_problems(setting, c, fz.REPO)
+                self.assertEqual(len(problems), 1, (setting, k, problems))
+                self.assertIn(f"lie_detection.{k} is {v!r} but setting {setting} needs {self.OFF_BLOCK[k]!r}", problems[0])
 
-    def test_a_detection_on_setting_with_a_file_without_t4_is_refused_for_every_key(self):
-        off = json.loads((self.EXP / "control_lie_off.json").read_text(encoding="utf-8"))
-        off["lie_detection"].update({k: v for k, v in self.on_control()["lie_detection"].items() if k in fg.LIE_RULES})      # the three rules of "on", no checkpoint keys: the earlier T0 file
-        problems = fg.control_problems("B3", off, fz.REPO)
-        self.assertEqual(len(problems), 6)
-        for k in self.CP_KEYS:
-            self.assertTrue(any(f"lie_detection.{k} is" in p for p in problems), k)
+    def test_the_values_that_do_not_matter_with_the_checkpoint_off_and_a_missing_key(self):
+        for setting, name in (("A3", "control_lie_on.json"), ("B3_off", "control_lie_off.json")):
+            c = json.loads((self.EXP / name).read_text(encoding="utf-8"))
+            c["lie_detection"].update({"checkpoint_fraction": 0.4, "checkpoint_scope": "anything", "checkpoint_person_radius_m": 1.0})
+            self.assertEqual(fg.control_problems(setting, c, fz.REPO), [], setting)                  # the fraction, the scope and the radius are not read with the checkpoint off
+            for k in self.OFF_BLOCK:
+                c2 = json.loads((self.EXP / name).read_text(encoding="utf-8"))
+                c2["lie_detection"].pop(k, None)                                                    # a missing key is its default, and the default is off
+                self.assertEqual(fg.control_problems(setting, c2, fz.REPO), [], (setting, k))
 
-    def test_a_detection_off_setting_must_have_checkpoint_false_and_ignores_the_other_keys(self):
+    def test_the_t4_file_of_16_24_3_is_refused_for_every_setting(self):
+        for setting, name in (("A3", "control_lie_on.json"), ("B3", "control_lie_on.json"), ("B3_off", "control_lie_off.json")):
+            c = json.loads((self.EXP / name).read_text(encoding="utf-8"))
+            c["lie_detection"].update(self.T4_FILE)
+            problems = fg.control_problems(setting, c, fz.REPO)
+            self.assertEqual(len(problems), 3, (setting, problems))                                  # the checkpoint, the vote at the next junction and the branch list
+            for k in ("checkpoint", "next_junction_back", "checkpoint_branches"):
+                self.assertTrue(any(f"lie_detection.{k} is" in p for p in problems), (setting, k))
+
+    def test_a_detection_off_setting_must_have_checkpoint_false(self):
         c = json.loads((self.EXP / "control_lie_off.json").read_text(encoding="utf-8"))
         self.assertEqual(fg.control_problems("B3_off", c, fz.REPO), [])                   # no checkpoint keys = false
         c["lie_detection"]["checkpoint"] = True
         problems = fg.control_problems("B3_off", c, fz.REPO)
         self.assertEqual(len(problems), 1)
         self.assertIn("lie_detection.checkpoint is True but setting B3_off needs False", problems[0])
-        c["lie_detection"].update({"checkpoint": False, "checkpoint_scope": "anything", "checkpoint_branches": ["x"]})
-        self.assertEqual(fg.control_problems("B3_off", c, fz.REPO), [])                   # the other keys do not matter when the checkpoint is off
-        self.assertEqual(len(fg.control_problems("B3_off", self.on_control(), fz.REPO)), 3)     # the detection-on file for an off setting: two rules and the checkpoint
+
+    def test_the_side_view_must_be_off_in_every_setting(self):
+        for setting, name in (("A3", "control_lie_on.json"), ("B3_off", "control_lie_off.json"), ("A1", "control_lie_on_a1.json")):
+            c = json.loads((self.EXP / name).read_text(encoding="utf-8"))
+            self.assertNotIn("side_view", c)                                                        # the files carry no block: the controller's default, off
+            self.assertEqual(fg.control_problems(setting, c, fz.REPO), [], setting)
+            c["side_view"] = {"enabled": False}
+            self.assertEqual(fg.control_problems(setting, c, fz.REPO), [], setting)
+            c["side_view"] = {"enabled": True}
+            problems = fg.control_problems(setting, c, fz.REPO)
+            self.assertEqual(len(problems), 1, setting)
+            self.assertIn(f"side_view.enabled is True but setting {setting} needs False", problems[0])
 
     def test_every_one_of_the_13_settings_passes_with_its_own_file(self):
         for setting, f in S.FINAL_CONTROL.items():
             self.assertEqual(fg.control_problems(setting, json.loads((ROOT / f).read_text(encoding="utf-8")), fz.REPO), [], setting)
 
-    def test_the_run_check_of_check_setting_refuses_a_bridge_config_with_a_wrong_checkpoint_switch(self):
+    def test_the_run_check_of_check_setting_refuses_a_bridge_config_with_a_checkpoint_switch_on(self):
         from types import SimpleNamespace
         pl = fg.plan(fz.REPO)
         spec = pl["settings"]["A3"]
@@ -348,11 +368,11 @@ class PlanAndControlFiles(unittest.TestCase):
             good = self.on_control()
             (bridge / "config_used" / "control.json").write_text(json.dumps(good), encoding="utf-8")
             self.assertEqual(fg._experiment_run_problems("A3", spec, pl, runs, fz.REPO), [])
-            good["lie_detection"]["checkpoint_scope"] = "any"
+            good["lie_detection"]["checkpoint"] = True
             (bridge / "config_used" / "control.json").write_text(json.dumps(good), encoding="utf-8")
             problems = fg._experiment_run_problems("A3", spec, pl, runs, fz.REPO)
             self.assertEqual(len(problems), 1)
-            self.assertIn("bridge_guide_20261119_000000: lie_detection.checkpoint_scope is 'any' but setting A3 needs 'disputed'", problems[0])
+            self.assertIn("bridge_guide_20261119_000000: lie_detection.checkpoint is True but setting A3 needs False", problems[0])
 
     def test_the_export_label_does_not_change(self):
         on, off = self.on_control()["lie_detection"], json.loads((self.EXP / "control_lie_off.json").read_text(encoding="utf-8"))["lie_detection"]
@@ -578,11 +598,11 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(f.read_text(encoding="utf-8"), real)
 
     def test_the_preflight_refuses_a_file_whose_checkpoint_switches_are_not_the_settings(self):
-        """AUDIT.md 16.25.2: the file name is right but the content has the checkpoint switches of another setting (T0 file for a detection-on setting, T4 file for an off one)."""
+        """AUDIT.md 16.25.2 / 16.26.9: the file name is right but the content has a checkpoint switch on (T4 is dropped: every setting needs the checkpoint OFF) or the side view on."""
         fz.require_frozen = lambda *a, **k: {}
         for setting, name, key, value, message in (
-                ("A3", "control_lie_on.json", "checkpoint_scope", "any", r"setting 'A3' refused: lie_detection.checkpoint_scope is 'any' but setting A3 needs 'disputed'"),
-                ("A3", "control_lie_on.json", "checkpoint", False, r"setting 'A3' refused: lie_detection.checkpoint is False but setting A3 needs True"),
+                ("A3", "control_lie_on.json", "next_junction_back", True, r"setting 'A3' refused: lie_detection.next_junction_back is True but setting A3 needs False"),
+                ("A3", "control_lie_on.json", "checkpoint", True, r"setting 'A3' refused: lie_detection.checkpoint is True but setting A3 needs False"),
                 ("B3_off", "control_lie_off.json", "checkpoint", True, r"setting 'B3_off' refused: lie_detection.checkpoint is True but setting B3_off needs False")):
             wrong = json.loads((ROOT / "configs/v4/experiments" / name).read_text(encoding="utf-8"))
             wrong["lie_detection"][key] = value

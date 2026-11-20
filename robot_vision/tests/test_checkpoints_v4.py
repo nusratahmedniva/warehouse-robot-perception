@@ -71,7 +71,11 @@ class Defaults(unittest.TestCase):
             ld = json.loads(f.read_text(encoding="utf-8")).get("lie_detection", {})
             if any(k in ld for k in ("checkpoint", "checkpoint_fraction", "checkpoint_scope")):
                 carrying.add(f.name)
-        self.assertEqual(carrying, set(ON_FILES))                         # AUDIT.md 16.24.3: control.json, the zoom files and the off files do not
+        self.assertEqual(carrying, set(ON_FILES))                         # the four on files say so (AUDIT.md 16.24.3); control.json, the zoom files and the off files do not
+        for name in ON_FILES:                                             # AUDIT.md 16.26.9: and what they say is OFF (T4 dropped)
+            ld = json.loads((ROOT / "configs/v4/experiments" / name).read_text(encoding="utf-8"))["lie_detection"]
+            self.assertEqual((ld["checkpoint"], ld["next_junction_back"]), (False, False), name)
+            self.assertFalse(any(k in ld for k in ("checkpoint_fraction", "checkpoint_scope", "checkpoint_person_radius_m", "checkpoint_branches")), name)
 
     def test_refusals(self):
         with self.assertRaisesRegex(ValueError, "second_opinion_radius_m"):
@@ -246,21 +250,21 @@ class VoteNotVeto(unittest.TestCase):
 
 
 class AdoptedConfigs(unittest.TestCase):
-    """AUDIT.md 16.24.3: T4 is switched on in the control files of the detection-on settings; the detection-off files ignore the checkpoints."""
+    """AUDIT.md 16.24.3 switched T4 on in the control files of the detection-on settings; AUDIT.md 16.26.9 dropped it (the final check of 16.26.8.1): the on files are T0 exactly,
+    and every control file ignores the checkpoints. The T4 behaviour itself stays in the controller and is tested above and below by its detection dict."""
     EXP = ROOT / "configs/v4/experiments"
 
-    def test_the_on_files_carry_t4_exactly_and_build_a_controller_with_it(self):
+    def test_the_on_files_are_t0_exactly_and_build_a_controller_with_the_checkpoint_and_the_side_view_off(self):
         base = json.loads((ROOT / "configs/v4/control.json").read_text(encoding="utf-8"))["lie_detection"]
         for name in ON_FILES:
             f = json.loads((self.EXP / name).read_text(encoding="utf-8"))["lie_detection"]
             flags = {k: v for k, v in f.items() if k != "why"}
-            self.assertEqual(flags, {**{k: v for k, v in base.items() if k != "why"}, **T4N}, name)         # the T4 detection of the runner (16.25.1 layout), every other key as control.json
-            self.assertEqual((f["backtrack"], f["checkpoint"], f["checkpoint_scope"], f["checkpoint_fraction"]), (False, True, "disputed", 0.5), name)
-            self.assertIn("16.24.3", f["why"]["checkpoint"])
+            self.assertEqual(flags, {**{k: v for k, v in base.items() if k != "why"}, **sv.DETECTION_ON, "checkpoint": False, "next_junction_back": False}, name)       # T0 = the three rules, every other key as control.json
+            self.assertEqual((f["second_opinion"], f["reject_impossible"], f["backtrack"], f["max_opinions"], f["second_opinion_radius_m"]), (True, True, False, 3, 6.5), name)
+            self.assertIn("16.26.9", f["why"]["checkpoint"])
             c = hv.make_controller_v4(str(self.EXP / name))
-            self.assertEqual((c.ld["checkpoint"], c.ld["checkpoint_scope"], c.ld["checkpoint_fraction"], c.ld["backtrack"]), (True, "disputed", 0.5, False), name)
-            self.assertEqual((f["checkpoint_branches"], f["next_junction_back"], f["checkpoint_person_radius_m"]), (CP_NEW["branches"], True, 5.0), name)       # AUDIT.md 16.25 / 16.25.1
-            self.assertIn("16.25.1", f["why"]["checkpoint"])
+            self.assertEqual((c.ld["checkpoint"], c.ld["next_junction_back"], c.ld["checkpoint_branches"], c.ld["backtrack"], c.sv["enabled"]), (False, False, None, False, False), name)
+            self.assertEqual({k: c.ld[k] for k in sv.DETECTION_ON}, sv.DETECTION_ON, name)
 
     def test_the_off_files_and_the_base_files_ignore_the_checkpoints(self):
         for rel in ("configs/v4/control.json", "configs/v4/control_zoom_on.json", "configs/v4/control_zoom_off.json",
@@ -275,26 +279,28 @@ class AdoptedConfigs(unittest.TestCase):
         self.assertNotIn("third worker at J1 (A3", note)
         self.assertIn("two workers", note)
         self.assertIn("16.24.3", note)
+        self.assertIn("16.26.9", note)                                                 # no checkpoint workers in the finals
         diffs = json.loads((ROOT / "configs/v4/analysis.json").read_text(encoding="utf-8"))["declared_differences"]
         d = diffs[-1]
-        self.assertTrue(d.startswith("Checkpoint workers (v4 only, T4;"))
-        for text in ("designed after seeing", "+20.0 pp", "-0.5 to +38.4", "p = 0.039", "supplementary only", "38 of 40", "one result counted twice", "provisional"):
+        self.assertTrue(d.startswith("Checkpoint workers (variants T3 and T4, simulator;"))
+        for text in ("NOT ADOPTED", "16.26.9", "16.26.8", "seeds 101 to 140", "+0.0 pp in B3 on (24/40 against 24/40)", "+0.0 pp in B4 on (23/40 against 23/40)", "readability model",
+                     "LIMITATION", "a lie toward a valid branch is not detectable from the available evidence", "two workers per node and consistent liars", "Simulator results only"):
             self.assertIn(text, d)
-        for text in ("CORRECTED 2026-11-19", "16.25.0.1", "NEXT junction", "+17.5 pp", "-3.2 to +36.2", "p = 0.065"):
-            self.assertIn(text, d)
-        self.assertEqual(sum("T4" in x for x in diffs), 1)
+        self.assertEqual(sum("T4" in x for x in diffs), 1)                             # the earlier T4 entry is replaced, not kept beside it
+        self.assertEqual(sum("Checkpoint workers" in x for x in diffs), 1)
 
     def run_file(self, name, seed, control):
         """A run driven by the control file itself (no detection override) in the scene of the 16.25.1 layout."""
         sc = sv.scenario_ab(name, seed, None, control_path=str(self.EXP / control), checkpoints=CP_NEW, sim_cfg=hs.SimConfig(timeout_s=900.0))
         return sc["sim"].run(sc["goal"])
 
-    def test_a_run_from_the_control_file_is_the_t4_run_of_the_runner(self):
+    def test_a_run_from_the_control_file_is_the_t0_run_of_the_runner(self):
         for name, control in (("A3", "control_lie_on.json"), ("A4", "control_lie_on.json"), ("B3", "control_lie_on.json"), ("B4", "control_lie_on.json")):
             for seed in (21, 26, 36, 40):
                 a = self.run_file(name, seed, control)
-                b = rn.one_run("T4", name, "on", seed, 900.0, CP_NEW, sv.load_scenarios())
+                b = rn.one_run("T0", name, "on", seed, 900.0, CP_NEW, sv.load_scenarios(), t0_workers=True)
                 self.assertEqual((a["outcome"], a["failure_reason"], a["time_s"], a["v4"]["route"]), (b["outcome"], b["failure_reason"], b["time_s"], b["route"]), (name, seed))
+                self.assertEqual(a["v4"]["checkpoint"]["log"], [], (name, seed))      # the robot asks no checkpoint worker
 
     def test_the_a_rows_are_unchanged_by_the_files(self):
         for name in ("A3", "A4"):
@@ -302,24 +308,29 @@ class AdoptedConfigs(unittest.TestCase):
             t4 = [self.run_file(name, s, "control_lie_on.json") for s in range(21, 31)]
             self.assertTrue(all(r["outcome"] == "SUCCESS" for r in t0 + t4), name)
             self.assertEqual(sum(r["v4"]["checkpoint"]["backtracks"] for r in t4), 0, name)
-            self.assertTrue(all(e["result"] == "proceed" for r in t4 for e in r["v4"]["checkpoint"]["log"]), name)
+            self.assertEqual([r["v4"]["checkpoint"]["log"] for r in t4], [[]] * len(t4), name)
+            self.assertEqual([(r["outcome"], r["time_s"]) for r in t0], [(r["outcome"], r["time_s"]) for r in t4], name)       # the file is T0: the same runs
 
-    def test_the_numbers_of_16_25_1_1_are_reproduced_from_the_control_file(self):
-        """Seeds 21 to 60, cap 900 s (AUDIT.md 16.25.1.1): B3 on and B4 on, T0 (the checkpoint workers present and ignored, the earlier 'on') against T4 (control_lie_on.json in the 16.25.1 layout)."""
+    def test_the_numbers_of_16_25_1_1_are_still_reproduced(self):
+        """Seeds 21 to 60, cap 900 s (AUDIT.md 16.25.1.1, the simulator then read every pointing): B3 on and B4 on. T0 (the checkpoint workers present and ignored) is now what the control file
+        is, so it is reproduced FROM THE FILE; T4 is reproduced from its detection dict (the code stays, off: AUDIT.md 16.26.9)."""
         want = {"T0": (23, 8, 9), "T4": (30, 6, 4, 13, 4, 1)}                   # successes, wrong goals, aborts [, backtracks, of them at the next junction, false backtracks]
         for name in ("B3", "B4"):
-            t0 = [sv.run_scenario(name, s, sv.DETECTION_ON, sim_cfg=hs.SimConfig(timeout_s=900.0), checkpoints=CP_NEW) for s in range(21, 61)]
-            t4 = [self.run_file(name, s, "control_lie_on.json") for s in range(21, 61)]
+            t0 = [self.run_file(name, s, "control_lie_on.json") for s in range(21, 61)]
+            t4 = []
+            for s in range(21, 61):
+                sc = sv.scenario_ab(name, s, T4N, checkpoints=CP_NEW, sim_cfg=hs.SimConfig(timeout_s=900.0))
+                t4.append(sc["sim"].run(sc["goal"]))
             count = lambda rs, why: sum(1 for r in rs if r["failure_reason"] == why)
             self.assertEqual((sum(r["outcome"] == "SUCCESS" for r in t0), count(t0, "wrong_goal"), count(t0, "aborted")), want["T0"], name)
             self.assertEqual((sum(r["outcome"] == "SUCCESS" for r in t4), count(t4, "wrong_goal"), count(t4, "aborted")), want["T4"][:3], name)
+            self.assertEqual(sum(r["v4"]["checkpoint"]["backtracks"] for r in t0), 0, name)
             self.assertEqual(sum(r["v4"]["checkpoint"]["backtracks"] for r in t4), want["T4"][3], name)
             self.assertEqual(sum(len(r["v4"]["checkpoint"]["next_junction_back"]) for r in t4), want["T4"][4], name)
             rows = [{"gestures": r["gestures"], "go": [{"node": d["node"], "branch": d["branch"], "correct": sc_road_correct(name, r, d)} for d in r["v4"]["decisions"] if d["event"] == "go"],
                      "checkpoint": r["v4"]["checkpoint"]} for r in t4]
             self.assertEqual(sum(rt.run_metrics(x)["false_backtracks"] for x in rows), want["T4"][5], name)
             self.assertEqual(sum(r["failure_reason"] == "timeout" for r in t0 + t4), 0, name)                                       # the 900 s cap truncates nothing
-            self.assertGreaterEqual(sum(r["outcome"] == "SUCCESS" for r in t4) - sum(r["outcome"] == "SUCCESS" for r in t0), 6)    # the 15 pp bar of 40 runs
 
     def test_the_numbers_of_16_25_0_1_are_still_reproduced_by_the_earlier_layout(self):
         """The model of 16.25.0.1 (9 checkpoints planned after the workers, no BACK vote): T4 = the old switches with CP (no `branches`): 30/40 in both rows, 14 backtracks, 2 false."""

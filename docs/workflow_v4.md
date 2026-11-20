@@ -51,7 +51,7 @@ Shared files change only by agreement. Repository: `github.com/nusratahmedniva/w
 5. **Approach** to 2.0 m and face them.
 6. **Ask:** show "Which direction?" and aim the pan-tilt camera (with zoom) at the commander's hand.
 7. **Read** the gesture (section 5).
-8. **Check for lies** (section 7): ask a second worker at the same junction, reject impossible directions; after taking a branch that has a checkpoint worker, stop at the middle of the branch and ask that worker too (a "back" counts only if the junction's own answers disagreed).
+8. **Check for lies** (section 7): ask a second worker at the same junction, reject impossible directions. (Checkpoint workers on the branches were tried and are not used: section 7.)
 9. **Return to the junction point**, then **take the branch** (return speed 0.8 m/s).
 10. **Repeat** at every junction until B.
 11. **End:** SUCCESS within 0.3 m of B. FAILURE on timeout, collision, abort or wrong goal.
@@ -119,30 +119,34 @@ Config: `robot_vision/configs/v4/gesture_reader.json`. Docs: `docs/gesture_reade
 | Second opinion | **On** | After an answer, ask another person **within 6.5 m of this junction whose nearest node is this junction**. Disagree → majority of three; with only two people, re-ask the first (counts twice) |
 | Reject impossible | **On** | Rejects answers that point back along the arrival road, toward no branch, or into a dead end. A mirror-image reading near the arrival road triggers a second view |
 | Backtrack | **Off** | Return and try another branch when every answer at a junction is rejected |
-| Checkpoint workers (T4) | **On** in the detection-on settings; present but ignored in detection-off | One worker beside the middle of each of 7 branches. PROCEED on the right branch, POINT back on a wrong one. A "back" sends the robot back to the junction only if that junction's answers disagreed (a vote, not a veto), once per junction; only a person near the checkpoint spot is asked (R = 5.0 m) |
-| "Back" at the next junction | **On** (with T4) | J1 to J2 and J2 to J4 have no checkpoint worker; there an honest worker of the next junction points BACK. After a disputed junction that answer, after the next junction's own second-opinion process, counts as the vote to go back; elsewhere it is rejected as before |
+| Checkpoint workers (T3, T4) | **Not used** (16.26.9) | Tried in the simulator and dropped (below). The robot ignores any checkpoint worker, the control files have `checkpoint` false, and Unity needs none |
+| "Back" at the next junction | **Off** | It belonged to T4 and is dropped with it |
 
-**Known weakness (16.21.3, 16.22), the reason for the checkpoint workers below.** With two workers and consistent liars, the tie rule always follows the **first** worker asked. In the simulator, B3 with detection on reached 11/20 and with detection off 10/20. A first-asked liar fooled the robot 19 times; a second opinion caught a lie only twice. Turning backtrack on adds just 1/20, because a lie toward a valid branch is never contradicted.
+**Known weakness (16.21.3, 16.22).** With two workers and consistent liars, the tie rule always follows the **first** worker asked. In the simulator, B3 with detection on reached 11/20 and with detection off 10/20. A first-asked liar fooled the robot 19 times; a second opinion caught a lie only twice. Turning backtrack on adds just 1/20, because a lie toward a valid branch is never contradicted.
 
-**Checkpoint workers (16.23 to 16.25.2, simulator).** Niva's proposal addresses that weakness: one worker partway along a branch, honest = PROCEED on the right branch and POINT back on a wrong one, lying at 20 % like everyone else (in detection-off runs the workers are present and ignored).
-- **T3 (a "back" always sends the robot back) is NOT adopted** (16.23.1): 6 lies caught and 6 false backtracks per row, so the net on successes was about zero (B3 on 11/20 to 11/20, B4 on 11/20 to 12/20).
-- **T4 (the checkpoint is a vote, not a veto) is adopted** by the stopping rule declared before the check (16.24.3): a "back" sends the robot back only if the junction's answers disagreed, otherwise it is logged and ignored. **Disclosed:** T4 was designed after seeing 16.23.1; its first out-of-sample gain was +20.0 pp in B3 on and B4 on (seeds 21 to 60, 40 runs), above the 15 pp bar, with no A row losing a success or backtracking; **after the simulator was found to have asked a worker of the next junction on 3 of 9 branches (16.25.0) the figure is +17.5 pp** (30/40 against 23/40; declared Newcombe 95 % interval -3.2 to +36.2, which touches zero; the paired sign test, 9 gained and 2 lost, p = 0.065, was computed after seeing the data and is supplementary only); B3 and B4 agree on all 40 seeds (one result counted twice); simulator only, checkpoint positions provisional until Unity's.
-- **Who is asked (16.25):** only a person within 5.0 m of the checkpoint spot, whose nearest spot it is and who is outside every junction's second-opinion zone; nobody qualifies = "no checkpoint person", carry on, no backtrack.
-- **Layout and "back" at the next junction (16.25.1, Niva's report):** 7 checkpoint workers at fixed positions (none on J1 to J2 and J2 to J4); the random workers of A4 and B4 are drawn around them. Simulator result (16.25.1.1): +17.5 pp again in B3 on and B4 on (23/40 to 30/40, 7 seeds gained, none lost), A rows 40/40 with no backtrack; per row 13 backtracks (4 at the next junction, 0 false there; 9 at checkpoints, 1 false).
-- **Cost:** longer runs. Longest successful T4 run 411 s (B3 on); the declared timeout rule would give about **630 s** (information only); the 260 final runs take about **10.8 h** of simulated time under T4 against 10.15 h for T0 (without overheads).
-- **Guard (16.25.2):** the final guard refuses a detection-on setting whose control file is not T4 exactly and a detection-off setting with the checkpoint on.
-- **Waiting on Unity:** Nusrat's checkpoint positions (AUDIT 16.26) and her checkpoint workers; until then the control files of the detection-on settings ask for workers Unity does not have yet (the robot stops at each spot, finds nobody and carries on).
+**Limitation (reported, `analysis.json`):** with two workers per node and consistent liars, a lie toward a valid branch is not detectable from the available evidence.
+
+**Checkpoint workers: tested in the simulator, NOT adopted (16.23 to 16.26.9).** Niva's proposal addressed that weakness: one worker partway along a branch, honest = PROCEED on the right branch and POINT back on a wrong one, lying at 20 % like everyone else (in detection-off runs the workers were present and ignored).
+- **T3 (a "back" always sends the robot back) was not adopted** (16.23.1): 6 lies caught and 6 false backtracks per row, net about zero (B3 on 11/20 to 11/20, B4 on 11/20 to 12/20).
+- **T4 (the checkpoint is a vote, not a veto) was adopted on 18 Nov** by the stopping rule declared before the check (16.24.3), then amended: +20.0 pp out of sample, corrected to +17.5 pp (16.25.0), +17.5 pp again with seven fixed positions and a BACK vote at the next junction (16.25.1.1). **All of that was in a simulator that read every pointing.** Disclosed at the time: T4 was designed after seeing T3; the Newcombe interval touched zero.
+- **Niva's report (16.26):** an honest BACK pointed 145 to 163 degrees from the camera is unreadable, 42 % of BACKs fall within 30 degrees of the camera line, and the 1.0 s POINT window held too few frames with two people in view. The simulator now models the readability of a pointing by its angle to the line of sight (fitted on the development data, 16.26.6; pessimistic by design, the same in T0 and T4).
+- **Final check (16.26.8.1):** T4 without the side view against T0 on fresh simulator seeds 101 to 140 (40 runs per row, 900 s, all 16 rows): **+0.0 pp in B3 on (24/40 against 24/40) and in B4 on (23/40 against 23/40)**, no A row changed. The bar was +15 pp. (Information only, seeds 21 to 60: +5.0 and +7.5 pp. The first rerun, with the side view on, was contaminated by a stall of the side view and is not evidence, 16.26.7.)
+- **Dropped on 20 Nov (16.26.9)** by the stopping rule declared before the final check: the four `control_lie_on*.json` files are T0 exactly (`checkpoint` false, `next_junction_back` false), `final_plan.json` and the guard expect checkpoint OFF for every setting and refuse a control file with any checkpoint key on, and **T0 is kept for the finals**. The checkpoint and side-view code stays in the controller and the simulator, off, with its tests; nothing is deleted.
+- **Side view (4a, 16.26 item 2):** built, off. Run in the simulator for the first time it showed a trigger defect (fixed) and a stall (A2 on, one run diagnosed, not fixed). It is not part of any final.
+- **POINT frames (4b):** the window stretch (variant (ii)) is **not built**; its dialog replay did not reproduce the live logs (the replay most likely used a reader different from the one the logs were read with), so the reference reader stays. Frame rate is measured in step 5 under final conditions (frames per window by 1, 2 and 3 or more people); any later decision on POINT frames is declared before it is computed (16.26.5).
+- **Unity:** needs no checkpoint workers. The checkpoint positions Niva sent (16.26 item 1) are kept in `checkpoints_unity.json` for the simulator analyses only; whether the point 2.0 m across a worker lies in the drivable area was never checked and no longer matters for the finals.
+- **Time:** the simulator's estimate for the 260 final runs under T0 is about 10.1 h of simulated time (16.26.8.1). The timeout comes from Unity's step-5 runs by the declared rule (section 8).
 
 ---
 
 ## 8. The final runs
 
 - **13 final settings:** A1, A2_right, A2_left, A3, A4 (detection on); B1, B2_right, B3, B4 (detection on); B1_off, B2_right_off, B3_off, B4_off. B2_left is not run.
-- **20 runs each = 260 runs**, in **four sittings of about 3 h each** (about 12 h; AUDIT.md 16.17); each B setting runs together with its OFF partner. The simulator's estimate of the 260 runs under T4 is about 10.8 h of simulated time without overheads (T0: 10.15 h; 16.25.1.1).
+- **20 runs each = 260 runs**, in **four sittings of about 3 h each** (about 12 h; AUDIT.md 16.17); each B setting runs together with its OFF partner. The simulator's estimate of the 260 runs under T0 is about 10.1 h of simulated time without overheads (16.26.8.1).
 - **Final seed 2**; development seed 1.
 - **Machine:** Nusrat's Windows PC (RTX 3060), strict run protocol: other apps closed (Chrome too), best-performance mode, enough free memory, resource log on.
 - **Active avatars:** at most 6. This drops to 5 if the strict-protocol timing rerun still breaks the limits (loop lag 100 ms, round trip 150 ms).
-- **Timeout rule:** 1.5 × the longest **successful** development run (on the new NavMesh, with the 420 s development timeout and the development-only goal override so E5/E6 are drawn), rounded up to 30 s, never below 270 s, one value for all settings. With the checkpoint workers the simulator suggests about 630 s (16.25.1.1; 660 s in the 9-checkpoint layout of 16.25.0.1, about 420 s without checkpoints), for information only: the real value comes from Unity's step-5 runs. The longest simulated T4 runs (about 411 to 432 s) are longer than a 420 s development timeout, which would truncate them (16.24.2.1).
+- **Timeout rule:** 1.5 × the longest **successful** development run (on the new NavMesh, with the 420 s development timeout and the development-only goal override so E5/E6 are drawn), rounded up to 30 s, never below 270 s, one value for all settings. There are no checkpoint workers (16.26.9). The real value comes from Unity's step-5 runs by this rule; for information only, the simulator's T0 durations give at most 510 s (B3 on, 16.26.8.1).
 - **Run-once guards:** `FINAL_RUN_DONE.json`, `FINAL_DONE.json`, `FINAL_EXPORT_DONE.json`. A finished setting can never be run or evaluated again.
 - **Acceptance = validity only:** leak test passed, frozen hashes match, split guard passed, all runs present, every outcome recorded. A watchdog stop is a result, not a reason to invalidate. There are no performance thresholds: results are reported whatever they are.
 
@@ -164,11 +168,11 @@ Config: `robot_vision/configs/v4/final_plan.json`.
 | # | Step | Owner | Status |
 |---|---|---|---|
 | 1 | Layout (i), floor 10 merged (PR #42); Unity's `clearance_layout` (section 6) | Both | **Done** (the Unity switch is Nusrat's) |
-| 2 | Checkpoint workers in the simulator: T3 not adopted, T4 adopted (16.24.3), corrected and amended in 16.25 to 16.25.1.1; the guard checks them (16.25.2); Unity's positions (16.26) | Anisha (+ Niva's positions) | **Done in the simulator; waiting for Unity's positions** |
+| 2 | Checkpoint workers in the simulator: T3 not adopted; T4 adopted (16.24.3), then dropped after the readability model and the final check (+0.0 pp on fresh seeds, 16.26.8.1, 16.26.9); T0 kept; the guard refuses any checkpoint key on | Anisha (+ Niva's positions) | **Done: dropped** |
 | 3 | Strict-protocol timing rerun: frames per window by 1/2/3+ people; active-avatar limit | Niva | In progress |
-| 4 | Checkpoint workers in Unity (7 branches, fixed positions, the BACK vote at J2 and J4 as in 16.25.1), matching the simulator | Niva + Anisha | Pending |
-| 5 | **Step 5:** all 13 settings on development data with the final rules, plus the blind avatar rehearsal | Niva runs, Anisha checks | Waiting on 3–4 |
-| 6 | Apply the timeout rule; fix anything step 5 finds | Anisha | Pending |
+| 4 | ~~Checkpoint workers in Unity~~ | Niva + Anisha | **Dropped** (16.26.9): Unity needs no checkpoint workers |
+| 5 | **Step 5:** all 13 settings on development data with the final rules (T0, no checkpoint workers), plus the blind avatar rehearsal; frames per window by 1/2/3+ people under final conditions | Niva runs, Anisha checks | Waiting on 3 |
+| 6 | Apply the timeout rule to Unity's step-5 runs; fix anything step 5 finds | Anisha | Pending |
 | 7 | **Freeze:** `python freeze_v4.py --freeze`, by Niva by hand only | Niva | Pending |
 | 8 | **Avatar experiment** (main): detection of person and hands across avatar kinds | Niva runs, Anisha analyses | Pending; protocol to confirm |
 | 9 | Four final sittings, Set A/B (260 runs) | Niva | Pending |
@@ -211,7 +215,7 @@ If CI shows "job was not acquired by Runner", that's GitHub capacity, not a test
 |---|---|
 | Decisions record | `AUDIT.md` (14 = v4 plan, 15 = Nusrat's changes, 16 = experiments A/B and every fix since) |
 | v4 configs | `robot_vision/configs/v4/` (`control.json`, `gesture_reader.json`, `final_plan.json`, `analysis.json`, `data_splits.json`, `frozen.json`) |
-| Experiments | `configs/v4/experiments/` (`scenarios_ab.json`, `control_lie_{on,off}*.json`, `roadmap_a1/a2_*.json`, `export_csv.json`, `checkpoints.json` (provisional checkpoint positions)) |
+| Experiments | `configs/v4/experiments/` (`scenarios_ab.json`, `control_lie_{on,off}*.json`, `roadmap_a1/a2_*.json`, `export_csv.json`, `checkpoints.json` and `checkpoints_unity.json` (checkpoint positions: simulator analyses only, no checkpoint workers in the finals), `point_readability.json` (the simulator's readability model)) |
 | Perception | `gesture_motion.py`, `gesture_adapter_v4.py`, `hri_perception_v4.py`, `commander_v4.py` |
 | Control | `hri_control_v4.py` |
 | Simulator | `hri_sim_v4.py`, `run_experiments_ab_v4.py`, `layout_check_v4.py`, `report_rows_ab_v4.py`, `report_tie_variants_v4.py`, `run_t3_v4.py`, `report_t3_v4.py`, `report_t4_oos_v4.py`, `analyse_cp_rule_v4.py` |
@@ -238,11 +242,15 @@ Outputs go to `robot_vision/outputs/` (git-ignored, about 5.5 GB on 18 November 
 | 17 Nov | "STOP before PROCEED" | Mechanism confirmed, no measurable effect, not changed (v3 code) | 16.19.3 |
 | 18 Nov | Tie-rule variants T1/T2 (backtrack) | +1/20 only, not adopted | 16.22 |
 | 18 Nov | Checkpoint workers, variant T3 (Niva's proposal) | **Not adopted**: 6 lies caught, 6 false backtracks per row, net about zero | 16.23, 16.23.1 |
-| 18 Nov | T4: the checkpoint is a vote, not a veto (designed after seeing T3) | **Adopted 19 Nov** by the stopping rule declared before the check; out of sample +20.0 pp (later corrected to +17.5 pp, next row); Newcombe interval touches zero; sign test supplementary; B3 and B4 one result counted twice; simulator only | 16.24 to 16.24.3 |
+| 18 Nov | T4: the checkpoint is a vote, not a veto (designed after seeing T3) | **Adopted 19 Nov** by the stopping rule declared before the check; out of sample +20.0 pp (later corrected to +17.5 pp, next row); Newcombe interval touches zero; sign test supplementary; B3 and B4 one result counted twice; simulator only. **Dropped 20 Nov (last rows)** | 16.24 to 16.24.3 |
 | 19 Nov | Who is asked at a checkpoint (R = 5.0 m); staging fix | The simulator had asked a worker of the next junction on 3 of 9 branches: T4's gain corrected from +20.0 to +17.5 pp (still above the 15 pp bar) | 16.25, 16.25.0, 16.25.0.1 |
 | 19 Nov | 7 checkpoints at fixed positions; "back" at the next junction is a vote (Niva's report) | +17.5 pp again (23/40 to 30/40); 13 backtracks per row, 4 at the next junction | 16.25.1, 16.25.1.1 |
-| 19 Nov | Final guard checks the checkpoint switches | A detection-on setting must have T4 exactly, a detection-off setting checkpoint false | 16.25.2 |
+| 19 Nov | Final guard checks the checkpoint switches | A detection-on setting must have T4 exactly, a detection-off setting checkpoint false. **Since 20 Nov: checkpoint OFF for every setting, side view off** | 16.25.2, 16.26.9 |
 | 19 Nov | `final_plan.json` `test_assignment_note`: no third worker at J1 | Documentation only | 16.24.3 |
+| 20 Nov | The simulator models the readability of a pointing by its angle to the line of sight (fitted on development data; pessimistic by design) | T4's gain did not hold under it; the same model in T0 and T4, not tuned | 16.26, 16.26.5, 16.26.6 |
+| 20 Nov | 4b: POINT window stretch (variant (ii)) | **Not built**: the dialog replay did not reproduce the live logs (the replay most likely used a different reader); reference reader kept; frame rate measured in step 5 | 16.26.3 to 16.26.5 |
+| 20 Nov | 4a: side view | Built, **off**; a trigger defect found and fixed in the simulator; a stall (A2 on) left unfixed; not part of any final | 16.26 (item 2), 16.26.6, 16.26.7 |
+| 20 Nov | Final check of T4 on fresh seeds 101 to 140, side view off; **T4 dropped, T0 kept** | **+0.0 pp** in B3 on and B4 on (bar +15 pp); the four on files are T0 exactly; the guard refuses a checkpoint key or the side view on; limitation: a lie toward a valid branch is not detectable from the available evidence | 16.26.8, 16.26.8.1, 16.26.9 |
 
 Also on the Unity side: the NavMesh fix (v4 now has its own asset). All development runs before it used the old NavMesh, so only runs on the new NavMesh feed the timeout rule.
 
@@ -250,9 +258,10 @@ Also on the Unity side: the NavMesh fix (v4 now has its own asset). All developm
 
 ## 14. Open questions
 
-- Do T4's checkpoint workers help in Unity as in the simulator (+17.5 pp, interval touching zero), with Unity's positions and the real lie rate of the checkpoint workers? (AUDIT 16.26 waits for Nusrat's file.)
-- Do they fit the active-avatar limit (the simulator has at most 4 people in view; Unity renders workers within 8.0 m, at most 6 active) and the timing limits?
-- Which person does the robot take for a checkpoint worker in Unity (R = 5.0 m; Unity's offsets from the spot must be at most about 4.7 m)?
+- What timeout do Unity's step-5 runs give by the declared rule (no checkpoint workers; the simulator's T0 durations suggest at most 510 s, information only)?
+- Frames per window by 1, 2 and 3 or more people under final conditions (Niva's strict-protocol rerun): the basis for any later decision on POINT frames, declared before it is computed.
+- How often are honest BACK pointings (145 to 163 degrees from the camera) unreadable in Unity, and what does a lost robot do then? (The simulator's readability model is a development-data fit, pessimistic by design.)
+- **Reported limitation:** with two workers per node and consistent liars, a lie toward a valid branch is not detectable from the available evidence.
 - What exactly is the avatar experiment's protocol (avatars, runs per avatar, what counts as "person detected" and "hand detected")?
 - Confirmation that v3's NavMesh asset and bake settings are byte-identical to before the fix.
 - Small cleanup left: one test scans all of `outputs/` and is slow (the `final_plan.json` `test_assignment_note` was fixed in 16.24.3).
@@ -268,8 +277,8 @@ Also on the Unity side: the NavMesh fix (v4 now has its own asset). All developm
 | Second opinion | Asking another worker at the same junction |
 | Re-ask shift | Moving 0.8 m sideways for a second view of an ambiguous point |
 | Mirror ambiguity | A pointing arm can be read toward or away from the camera; both readings are kept |
-| Checkpoint worker | A worker beside the middle of a branch who says whether the branch is right (PROCEED) or points back; T4 |
-| Disputed junction | A junction whose accepted answers named different branches; only there does a checkpoint's "back" send the robot back |
+| Checkpoint worker | A worker beside a branch who says whether the branch is right (PROCEED) or points back; variants T3 and T4, tested in the simulator and **not used** (16.26.9) |
+| Disputed junction | A junction whose accepted answers named different branches; in T4 (not used) only there does a checkpoint's "back" send the robot back |
 | Step 5 | Development runs of the full final matrix before the freeze |
 | Freeze | Recording SHA-256 hashes of every v4 config and Unity file in `frozen.json`; after it, nothing may change |
 | False STOP | A STOP read when no STOP was shown |

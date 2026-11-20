@@ -30,8 +30,9 @@ PLAN = "robot_vision/configs/v4/final_plan.json"
 MARKERS = {"run": "FINAL_RUN_DONE.json", "evaluation": "FINAL_DONE.json", "export": "FINAL_EXPORT_DONE.json"}
 SCENARIOS = "robot_vision/configs/v4/experiments/scenarios_ab.json"
 LIE_RULES = ("second_opinion", "reject_impossible", "backtrack")        # the a / b / c rules of the experiments (export_csv_v4.lie_detection_label letters)
-# AUDIT.md 16.25.2: the checkpoint workers of T4 (16.24.3, 16.25, 16.25.1); their expected values are final_plan.json lie_detection_checkpoint
-CHECKPOINT_SWITCHES = ("checkpoint", "checkpoint_fraction", "checkpoint_scope", "checkpoint_person_radius_m", "checkpoint_branches", "next_junction_back")
+# AUDIT.md 16.25.2 (T4: 16.24.3, 16.25, 16.25.1), replaced by 16.26.9: the checkpoint workers are NOT used in the finals. Every key listed in final_plan.json lie_detection_checkpoint must have the
+# plan's value (OFF for every setting): a control file with any checkpoint key on is refused. checkpoint_s_m (the per-branch spot of 16.26 item 1) is a checkpoint key too.
+CHECKPOINT_SWITCHES = ("checkpoint", "checkpoint_fraction", "checkpoint_scope", "checkpoint_person_radius_m", "checkpoint_branches", "checkpoint_s_m", "next_junction_back")
 SWITCHES = LIE_RULES + CHECKPOINT_SWITCHES
 EVAL_PREFIX = "hri_eval_final_v4"
 EXPORT_PREFIX = "export_csv_v4_final"
@@ -120,7 +121,7 @@ def detection_switches(label: str, repo: Path = REPO) -> dict:
 
 
 def checkpoint_switches(label: str, repo: Path = REPO) -> dict:
-    """The checkpoint switches 'on' (T4: every key) or 'off' (checkpoint false) means (final_plan.json lie_detection_checkpoint, AUDIT.md 16.25.2)."""
+    """The checkpoint switches a detection 'on' or 'off' setting must have (final_plan.json lie_detection_checkpoint; checkpoint OFF for both since AUDIT.md 16.26.9)."""
     return plan(repo)["lie_detection_checkpoint"][label]
 
 
@@ -134,8 +135,8 @@ def _same_switch(have, want) -> bool:
 def control_problems(setting: str, control: dict, repo: Path = REPO) -> list[str]:
     """What is wrong with this control config (the dict of a control file or of a bridge run's config_used/control.json) for the
     setting: its lie-detection switches must be those of the setting's lie_detection (on / off), its checkpoint switches those of the
-    same label in final_plan.json lie_detection_checkpoint (on = T4 exactly, off = checkpoint false; AUDIT.md 16.25.2) and its roadmap the
-    setting's map. A setting without those keys (none today) is not constrained."""
+    same label in final_plan.json lie_detection_checkpoint (checkpoint OFF for every setting; AUDIT.md 16.26.9, it was T4 for the detection-on settings in 16.25.2),
+    its side view off (final_plan.json side_view; absent block = off) and its roadmap the setting's map. A setting without those keys (none today) is not constrained."""
     spec = plan(repo)["settings"][setting]
     out = []
     if spec.get("lie_detection") is not None:
@@ -147,6 +148,9 @@ def control_problems(setting: str, control: dict, repo: Path = REPO) -> list[str
         for k in CHECKPOINT_SWITCHES:
             if k in cp and not _same_switch(have.get(k), cp[k]):
                 out.append(f"lie_detection.{k} is {have.get(k)!r} but setting {setting} needs {cp[k]!r} (detection {spec['lie_detection']}, final_plan.json lie_detection_checkpoint)")
+    want_sv = bool(plan(repo).get("side_view", {}).get("enabled", False))                  # AUDIT.md 16.26.9: the side view of 16.26 item 2 stays in the code, off
+    if bool((control.get("side_view") or {}).get("enabled", False)) != want_sv:
+        out.append(f"side_view.enabled is {bool((control.get('side_view') or {}).get('enabled', False))} but setting {setting} needs {want_sv} (final_plan.json side_view)")
     if spec.get("roadmap") is not None and _norm(control.get("roadmap")) != _norm(spec["roadmap"]):
         out.append(f"roadmap is {control.get('roadmap')!r} but setting {setting} needs {spec['roadmap']!r}")
     return out

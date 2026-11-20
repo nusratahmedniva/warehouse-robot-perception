@@ -731,13 +731,14 @@ class ExperimentFiles(unittest.TestCase):
                 for k in ("second_opinion", "reject_impossible", "backtrack"):
                     self.assertEqual(f["lie_detection"][k], scen["detection"][mode][k], (suffix, mode, k))
                 g, b = json.loads(json.dumps(f)), json.loads(json.dumps(base))
-                T4 = {"checkpoint": True, "checkpoint_fraction": 0.5, "checkpoint_scope": "disputed", "checkpoint_person_radius_m": 5.0,
-                      "checkpoint_branches": ["J1>FORWARD", "J1>RIGHT", "J2>RIGHT", "J3>LEFT", "J3>RIGHT", "J4>RIGHT", "J4>LEFT"], "next_junction_back": True}                    # AUDIT.md 16.24.3: the on files carry T4, the off files do not
+                T4 = ("checkpoint", "checkpoint_fraction", "checkpoint_scope", "checkpoint_person_radius_m", "checkpoint_branches", "next_junction_back")
+                OFF = {"checkpoint": False, "next_junction_back": False}                                                                      # AUDIT.md 16.26.9: the on files say it (T4 dropped), the off files do not
                 if mode == "on":
-                    self.assertEqual({k: g["lie_detection"].pop(k) for k in T4}, T4, suffix)
-                    self.assertIn("16.24.3", g["lie_detection"]["why"].pop("checkpoint"), suffix)
+                    self.assertEqual({k: g["lie_detection"].pop(k) for k in OFF}, OFF, suffix)
+                    self.assertFalse(any(k in g["lie_detection"] for k in T4), suffix)                                                          # no other checkpoint key
+                    self.assertIn("16.26.9", g["lie_detection"]["why"].pop("checkpoint"), suffix)
                 else:
-                    self.assertFalse(any(k in g["lie_detection"] for k in (*T4,)), suffix)
+                    self.assertFalse(any(k in g["lie_detection"] for k in T4), suffix)
                     self.assertNotIn("checkpoint", g["lie_detection"]["why"], suffix)
                 for d in (g, b):
                     d.pop("label"), d.pop("roadmap")
