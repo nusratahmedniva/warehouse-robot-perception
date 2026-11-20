@@ -25,7 +25,9 @@ namespace WarehouseRobot.ScenarioEditor
     /// B1..B4 (Scenario/Config/experiments_ab_unity.json); refused together with -finalSetting. -experimentLooks MALE|FEMALE: smoke check of the
     /// runner only, two existing development looks instead of the navigation looks (experiments_ab.md section 3). -experimentSide right|left
     /// (2026-11-14, development only): the A2 / B2 turn side for the session (experiments_ab.md section 7). -experimentGoals E5,E6,... (2026-11-17, development only, section 15 addendum 1 item 3c): one goal per
-    /// run in place of the seeded goals, on a random-endpoint map only; refused in a final. Since 2026-11-14 the final
+    /// run in place of the seeded goals, on a random-endpoint map only; refused in a final. -experimentForceLie NODE:COMMAND (2026-11-18,
+    /// development only, section 15 addendum 6): the first worker of that asking node lies with COMMAND in every run; refused in a final.
+    /// Since 2026-11-14 the final
     /// settings are the experiments (A1, A2_right, A2_left, A3, A4, B1, B2_right, B3, B4; final_v4.json): -finalSetting A2_left runs the
     /// final of A2 with the left turn; zoom_on, zoom_off, bystanders and zoom_on_repeat are superseded and refused. Since 2026-11-15
     /// (experiments_ab.md section 13) also B1_off, B2_right_off, B3_off, B4_off: Unity runs each as its on twin; the server runs it with
@@ -55,7 +57,7 @@ namespace WarehouseRobot.ScenarioEditor
         public static void Run()
         {
             float timeout = 1800f;
-            string checkDir = "", workers = "", finalSetting = "", experiment = "", experimentLooks = "", experimentSide = "", experimentGoals = "";
+            string checkDir = "", workers = "", finalSetting = "", experiment = "", experimentLooks = "", experimentSide = "", experimentGoals = "", experimentForceLie = "";
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
@@ -67,6 +69,7 @@ namespace WarehouseRobot.ScenarioEditor
                 if (args[i] == "-experimentLooks") experimentLooks = args[i + 1];
                 if (args[i] == "-experimentSide") experimentSide = args[i + 1];
                 if (args[i] == "-experimentGoals") experimentGoals = args[i + 1];
+                if (args[i] == "-experimentForceLie") experimentForceLie = args[i + 1];
             }
             SessionState.SetString(TrialRunnerV4.WorkersOverrideKey, workers);
             SessionState.SetString(TrialRunnerV4.FinalSettingKey, finalSetting);
@@ -74,6 +77,7 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.ExperimentLooksKey, experimentLooks);
             SessionState.SetString(TrialRunnerV4.ExperimentSideKey, experimentSide);
             SessionState.SetString(TrialRunnerV4.ExperimentGoalsKey, experimentGoals);
+            SessionState.SetString(TrialRunnerV4.ExperimentForceLieKey, experimentForceLie);
             if (checkDir.Length > 0) Directory.CreateDirectory(checkDir);
             EditorSceneManager.OpenScene(Scene);
             SessionState.SetBool(ActiveKey, true);
@@ -142,6 +146,7 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.ExperimentLooksKey, "");
             SessionState.SetString(TrialRunnerV4.ExperimentSideKey, "");
             SessionState.SetString(TrialRunnerV4.ExperimentGoalsKey, "");
+            SessionState.SetString(TrialRunnerV4.ExperimentForceLieKey, "");
             EditorApplication.update -= Poll;
             Debug.Log($"[TrialPlayV4] finished ({code}): {status}");
             EditorApplication.Exit(code);

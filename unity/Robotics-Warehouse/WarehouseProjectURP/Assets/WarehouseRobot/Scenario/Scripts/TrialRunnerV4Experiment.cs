@@ -23,6 +23,10 @@ namespace WarehouseRobot.Scenario
         public string goals_override = "";
         /// <summary>Section 15 addendum 1, item 3b: whether the path clearance and the ask-zone check were applied to the placement.</summary>
         public string clearance_rule = "";
+        /// <summary>Section 15 addendum 6: the checkpoint workers (variant T4): where, what they show, when they answer; "" without checkpoints.</summary>
+        public string checkpoint_rule = "";
+        /// <summary>Development only (section 15 addendum 6): the -experimentForceLie NODE:COMMAND text; "" otherwise.</summary>
+        public string force_lie = "";
         public float lie_probability;
         public List<string> placement = new List<string>();
         public List<string> workers_plan = new List<string>();
@@ -51,9 +55,13 @@ namespace WarehouseRobot.Scenario
         /// <summary>Editor session key: development only (TrialPlayV4 -experimentGoals E5,E6,...): one goal per run instead of the seeded
         /// goals, random-endpoint maps only, refused in a final (experiments_ab.md section 15 addendum 1, item 3c); "" = the seeded goals.</summary>
         public const string ExperimentGoalsKey = "WarehouseRobot.TrialRunnerV4.ExperimentGoals";
+        /// <summary>Editor session key: development only (TrialPlayV4 -experimentForceLie NODE:COMMAND): the first worker of that asking node
+        /// lies with COMMAND in every run (experiments_ab.md section 15 addendum 6); "" = the seeded lies only.</summary>
+        public const string ExperimentForceLieKey = "WarehouseRobot.TrialRunnerV4.ExperimentForceLie";
 #endif
         const string ExperimentsAsset = "Assets/WarehouseRobot/Scenario/Config/experiments_ab_unity.json";
-        string experimentName = "", expText = "", scenariosText = "", looksAbText = "", looksOverride = "", goalsOverride = "";
+        string experimentName = "", expText = "", scenariosText = "", looksAbText = "", looksOverride = "", goalsOverride = "", forceLie = "";
+        string forceLieNode, forceLieCommand;
         ExperimentsUnityConfig ecfg;
         ExperimentPlanAB eplan;
         ExperimentLooksFile elooks;
@@ -146,6 +154,12 @@ namespace WarehouseRobot.Scenario
                 eGoals.Clear();
                 eGoals.AddRange(given);
             }
+#if UNITY_EDITOR
+            forceLie = UnityEditor.SessionState.GetString(ExperimentForceLieKey, "");
+#endif
+            if (!ExperimentPlanAB.ParseForceLie(forceLie, Final, out forceLieNode, out forceLieCommand, out error))
+                return Fail(out error, $"experiment {experimentName}: {error}");
+            if (forceLieNode != null) Debug.LogWarning($"[TrialRunnerV4] development forced lie (-experimentForceLie): the first worker of {forceLieNode} shows {forceLieCommand} in every run");
             return true;
         }
 
@@ -164,9 +178,11 @@ namespace WarehouseRobot.Scenario
             {
                 var plan = eplan.PlanRun(eSeed, run, eGoals[run - 1], eMales, eFemales, free, out error);
                 if (plan == null) return false;
+                if (forceLieNode != null && (error = eplan.ApplyForceLie(plan, forceLieNode, forceLieCommand)) != null) return false;
                 var map = eplan.RunMap(eSeed, run, out _);
                 var looks = new List<string>();
                 foreach (var w in plan.Workers) looks.Add(w.Look);
+                foreach (var w in plan.Checkpoints) looks.Add(w.Look);
                 var clips = new List<string>();
                 foreach (var kv in eClips) clips.AddRange(kv.Value);
                 string split = splits.GuardRun(looks, clips, Final, out error);       // a final: wholly test; development: never test
@@ -215,16 +231,21 @@ namespace WarehouseRobot.Scenario
                 eTruthfulMat = GroundTruthLayer.NewMaterial(new Color(ecfg.truthful_rgb[0], ecfg.truthful_rgb[1], ecfg.truthful_rgb[2], 0.9f));
                 eLiarMat = GroundTruthLayer.NewMaterial(new Color(ecfg.liar_rgb[0], ecfg.liar_rgb[1], ecfg.liar_rgb[2], 0.9f));
             }
-            foreach (var pw in eRun.Workers)
+            var everyone = new List<PlannedWorker>(eRun.Workers);
+            everyone.AddRange(eRun.Checkpoints);
+            foreach (var pw in everyone)
             {
                 var p = new Vector3(pw.Position.x, y, pw.Position.z);
-                var node = ExperimentPlanAB.Pos(eMap.Node(pw.Node));
+                // a node's worker faces its node, a checkpoint worker (section 15 addendum 6) the road point beside it
+                var node = pw.Checkpoint != null ? pw.Checkpoint.Anchor : ExperimentPlanAB.Pos(eMap.Node(pw.Node));
                 var face = new Vector3(node.x - p.x, 0f, node.z - p.z);
-                var w = Spawn($"WorkerV4_{pw.Node}_{pw.Slot + 1}", pw.Look, pw.Id, p, Quaternion.LookRotation(face.sqrMagnitude > 1e-6f ? face : Vector3.forward, Vector3.up),
+                string name = pw.Checkpoint != null ? $"WorkerV4_CP_{pw.Checkpoint.From}_{pw.Checkpoint.Command}" : $"WorkerV4_{pw.Node}_{pw.Slot + 1}";
+                var w = Spawn(name, pw.Look, pw.Id, p, Quaternion.LookRotation(face.sqrMagnitude > 1e-6f ? face : Vector3.forward, Vector3.up),
                               run, out error, x => { x.extraLooks = extra; x.ReportTruthful = true; x.ReportActive = true; });
                 if (w == null) return false;
                 eWorkers[w] = pw;
-                eRings.Add(Ring(p, pw.Liar ? eLiarMat : eTruthfulMat, $"Stand {pw.Id} {pw.Node} {(pw.Liar ? "LIAR shows " + pw.ShownCommand : "truthful")}"));
+                eRings.Add(Ring(p, pw.Liar ? eLiarMat : eTruthfulMat, $"Stand {pw.Id} {(pw.Checkpoint != null ? "checkpoint " : "")}{pw.Node} " +
+                                                                     $"{(pw.Liar ? "LIAR shows " + pw.ShownCommand : "truthful " + pw.TrueCommand)}"));
             }
             if (eGoalMarker == null) eGoalMarker = new GameObject("ExperimentGoal").transform;
             eGoalMarker.position = GoalPosition(eRun.Goal, run);
@@ -306,19 +327,36 @@ namespace WarehouseRobot.Scenario
             eAsked.IsCommander = true;
             eAsked.SetQuestionVisible(true);
             var pw = eWorkers[eAsked];
-            // section 15 addendum 1, item 3a: outside its own node's zone the asked worker shows nothing (NONE in truth.jsonl)
-            var own = ExperimentPlanAB.Pos(eMap.Node(pw.Node));
-            eSilent = !ExperimentPlanAB.InAnswerZone(robot.transform.position, own, ecfg.answer_zone_radius_m);
-            if (eSilent)
+            if (pw.Checkpoint != null)
             {
-                float d = ExperimentPlanAB.Flat(robot.transform.position - own);
-                eAskRecords.Add(new ShownRecord { junction = pw.Node, shown = $"NONE (outside the {pw.Node} zone)", t_placed = Time.time });
-                Debug.Log($"[TrialRunnerV4] ask {question.Ask} (\"{bridge.ScreenText}\"): worker {pw.Id} {pw.Look} of {pw.Node} is asked {d.ToString("0.00", Inv)} m " +
-                          $"from {pw.Node} (zone {ecfg.answer_zone_radius_m.ToString("0.0", Inv)} m): it answers NONE");
-                return;
+                // section 15 addendum 6: a checkpoint worker answers only on its own branch, within the answer radius
+                eSilent = !ExperimentPlanAB.CheckpointAnswers(eMap, pw.Checkpoint, eAsked.transform.position, robot.transform.position, ecfg.checkpoints.answer_radius_m);
+                if (eSilent)
+                {
+                    float d = ExperimentPlanAB.Flat(robot.transform.position - eAsked.transform.position);
+                    eAskRecords.Add(new ShownRecord { junction = pw.Node, shown = "NONE (not on its branch or beyond its answer radius)", t_placed = Time.time });
+                    Debug.Log($"[TrialRunnerV4] ask {question.Ask} (\"{bridge.ScreenText}\"): checkpoint worker {pw.Id} {pw.Look} of {pw.Node} is asked {d.ToString("0.00", Inv)} m " +
+                              $"away (radius {ecfg.checkpoints.answer_radius_m.ToString("0.0", Inv)} m, on its branch only): it answers NONE");
+                    return;
+                }
+            }
+            else
+            {
+                // section 15 addendum 1, item 3a: outside its own node's zone the asked worker shows nothing (NONE in truth.jsonl)
+                var own = ExperimentPlanAB.Pos(eMap.Node(pw.Node));
+                eSilent = !ExperimentPlanAB.InAnswerZone(robot.transform.position, own, ecfg.answer_zone_radius_m);
+                if (eSilent)
+                {
+                    float d = ExperimentPlanAB.Flat(robot.transform.position - own);
+                    eAskRecords.Add(new ShownRecord { junction = pw.Node, shown = $"NONE (outside the {pw.Node} zone)", t_placed = Time.time });
+                    Debug.Log($"[TrialRunnerV4] ask {question.Ask} (\"{bridge.ScreenText}\"): worker {pw.Id} {pw.Look} of {pw.Node} is asked {d.ToString("0.00", Inv)} m " +
+                              $"from {pw.Node} (zone {ecfg.answer_zone_radius_m.ToString("0.0", Inv)} m): it answers NONE");
+                    return;
+                }
             }
             string gesture = pw.ShownCommand == ExperimentPlanAB.Forward && !string.IsNullOrEmpty(wcfg.forward_command) ? wcfg.forward_command : wcfg.commander_command;
-            var dir = ExperimentPlanAB.Direction(eMap, pw.Node, pw.ShownCommand);
+            var dir = pw.Checkpoint != null ? ExperimentPlanAB.CheckpointDirection(eMap, pw.Checkpoint, pw.ShownCommand)
+                                            : ExperimentPlanAB.Direction(eMap, pw.Node, pw.ShownCommand);
             var req = new GestureRequest { Command = gesture, AllowedClips = eClips[gesture], PointDirection = dir, Lie = pw.Liar };
             if (!eAsked.Request(req, out string err))
             {
@@ -348,10 +386,17 @@ namespace WarehouseRobot.Scenario
                            "another of LEFT/FORWARD/RIGHT/BACK (AUDIT.md 16.2 decision 2); experiments_ab.md section 4",
                 answer_rule = $"the active worker within {ecfg.ask_max_distance_m.ToString("0.0", Inv)} m nearest the pan-tilt camera axis answers a new ask; " +
                               $"only while the robot is within {ecfg.answer_zone_radius_m.ToString("0.0", Inv)} m of that worker's own node, else it shows nothing " +
-                              "(NONE; experiments_ab.md section 15 addendum 1, item 3a)",
+                              "(NONE; experiments_ab.md section 15 addendum 1, item 3a); a checkpoint worker only on its own branch (checkpoint_rule)",
                 activation_rule = $"active within {ecfg.activation_radius_m.ToString("0.0", Inv)} m of the robot or while gesturing; max {ecfg.max_active_avatars}",
                 navigation_looks_override = looksOverride,
                 goals_override = goalsOverride ?? "",
+                force_lie = forceLie ?? "",
+                checkpoint_rule = eRuns.Exists(r => r.Checkpoints.Count > 0)
+                    ? "section 15 addendum 6 (variant T4): one worker beside each listed decision branch (experiments_ab_unity.json checkpoints), the other decision branches " +
+                      "end at a junction whose honest workers point BACK; honest PROCEED (FORWARD) on a branch toward B, else POINT back toward its junction (BACK); a liar " +
+                      "(the set's lie_probability, per worker per run) shows the opposite; it answers only while the road nearest the robot is its branch and the robot is within " +
+                      $"{ecfg.checkpoints.answer_radius_m.ToString("0.0", Inv)} m of it, else NONE; fixed, the node workers placed around it under every rule"
+                    : "",
                 clearance_rule = eplan.Rule.PathClearanceM > 0f
                     ? $"active: no worker within {eplan.Rule.PathClearanceM.ToString("0.0#", Inv)} m of a drivable segment; ask positions within {eplan.Rule.AskZoneM.ToString("0.0#", Inv)} m of their node (clearance_layout slots)"
                     : "pending (clearance_layout inactive): section 3 slots, no clearance or ask-zone check (experiments_ab.md section 15 addendum 1, item 3b)",
@@ -364,6 +409,10 @@ namespace WarehouseRobot.Scenario
                 foreach (var w in r.Workers)
                     s.workers_plan.Add($"run {r.Run} worker {w.Id}: {w.Node} slot {w.Slot + 1}, {w.Look}, ({w.Position.x.ToString("0.00", Inv)}, {w.Position.z.ToString("0.00", Inv)}), " +
                                        (w.Liar ? $"LIAR shows {w.ShownCommand}{(w.ShownIsBranch ? "" : " (no such branch)")} (true {w.TrueCommand})" : $"truthful {w.TrueCommand}"));
+                foreach (var w in r.Checkpoints)
+                    s.workers_plan.Add($"run {r.Run} worker {w.Id}: checkpoint {w.Node} (s {w.Checkpoint.S.ToString("0.0", Inv)} m, right {w.Checkpoint.Right.ToString("0.0", Inv)} m), {w.Look}, " +
+                                       $"({w.Position.x.ToString("0.00", Inv)}, {w.Position.z.ToString("0.00", Inv)}), " +
+                                       (w.Liar ? $"LIAR shows {w.ShownCommand} (true {w.TrueCommand})" : $"truthful {w.TrueCommand}"));
             }
             return s;
         }

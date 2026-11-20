@@ -2413,3 +2413,516 @@ clearance (1.0 m) and ask-zone (5.5 m) checks on at Play. Values from addendum 3
 
 **Commits:** (1) this declaration, before the merge; (2) the merge of `origin/main` with the switch, the `Validate` change and the tests
 (the merge alone fails her two pins, so the switch goes into the merge commit). Each after both suites pass.
+
+### 2026-11-18, section 15 addendum 5: NavMesh check of layout (i), the strict-protocol timing rerun, facts for the backtracking design (declared before any run below)
+
+Nusrat's task of 2026-11-18. Branch `nusrat/v4-timing-backtrack` = `main` a3fc543 (the NavMesh fix of addendum 2, layout (i) active
+since addendum 4, Anisha's B1 floor 10 in `gesture_reader.json`, AUDIT.md 16.21.1). **Report only:** no Unity scene, config, script or
+behaviour changes; nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run, nothing is pushed.
+Development data, not a result. Nothing was run for this addendum before it was written; the only reads were of configs, code and the
+step-5 logs' formats.
+
+**Item 1, the NavMesh check of layout (i).**
+- **(a) Addendum 2's verification, unchanged** (Tools > Warehouse v4 > NavMesh > Verify, batch `NavMeshV4Menu.BatchVerify`; rules V1 to V4
+  as declared there). Its point set takes the "live" and the "pending" layout; both are now layout (i) (the block is active and the live
+  slots equal it), so the two halves are the same plans. Reported as such.
+- **(b) Added here: the workers.** For every planned run (layout (i); seeds 1 and 2, 20 runs; the 10 Unity settings A1, A2 right and left,
+  A3, A4, B1, B2 right and left, B3, B4; Unity's own planner `ExperimentPlanAB.PlanRun`):
+  - the paths: every road of the run's map and of the physical v4 map, and every drivable segment of item 3b's model with the v4 re-ask
+    shift 0.8 m (`ExperimentPlanAB.DrivableSegments`) of every asking node of the run, each as a NavMesh path by the bridge's rule (AMR
+    agent, both ends snapped within `snap_max_distance_m` 1.0 m), sampled every 0.05 m;
+  - **pass needs all three:** every path complete; no sample inside an obstacle footprint (not widened, as V1); **no sample within the
+    robot's half-width, 0.30 m (`robot.json` `robot_width_m` 0.60 / 2), of the centre of any worker of that run**;
+  - reported: the least worker distance (and where), the paths closer than 0.60 m (Python's person-in-path corridor half-width) and closer
+    than 1.0 m (the placement clearance, so far checked on straight lines only).
+  - Tool: a **temporary Editor script** (as addendum 2's diagnosis), run in batch mode, then deleted; it is not committed, and its source is
+    copied into the output folder. It also exports, for item 3c, every plan's workers, map and goal, and the obstacle footprints (not
+    widened) with their groups. It changes nothing in the scene.
+
+**Item 2, the strict-protocol timing rerun** (AUDIT.md 16.19.2 item 1: "if B2_right still exceeds the limits, the active-avatar limit
+goes from 6 to 5", Anisha's rule, declared there before this rerun).
+- **Sessions,** each run once, in this order, with `finals_v4/run_session_v4.ps1 -Rehearsal -Trials 3` (development seed 1, development
+  looks and clips, the development timeout 420 s, the setting's control file, Unity in the Editor window, one Unity start and one server
+  per session):
+  1. `-Experiment A2 -Side left`;
+  2. `-Experiment A3 -ExperimentGoals "E5,E3,E1"`: run 1 is forced to E5 (A > J1 > J2 > J4 > E5, the deepest route); runs 2 and 3 keep the
+     goals that seed 1 gave step 5's A3 runs 2 and 3 (E3, E1). E5 replaces step 5's E2 in run 1;
+  3. `-Experiment B2 -Side right`.
+  A session that fails is reported as it stands and not rerun.
+- **Nusrat's decision (2026-11-18, before this declaration was committed and before any run):** the three sessions are **not run in
+  this task**. The machine had 2.5 GB free with the VS Code / Claude Code session open (step 5: 3.3 to 4.6 GB). Nusrat runs them with
+  the launcher commands above, under the protocol below; then `step5_session_checks.ps1` per session (with the setting names
+  `timing_A2_left`, `timing_A3`, `timing_B2_right`, so that step 5's entries in `step5_sessions.json` stay as they are) and the report
+  tool on a manifest of the three. The report tool is committed with this task's results, with the definitions below; it was checked
+  only on step 5's A3 logs (output outside the repository).
+- **Strict run protocol:** before each session, the run-protocol note (`run_protocol_v4.ps1`, written by the launcher); Windows power mode
+  Best performance on mains; no browser and no other program the user opened, except the VS Code / Claude Code session that runs the
+  sessions, which cannot be closed. Whatever the note lists as still running is disclosed.
+- **Checks, every session:** the launcher's B11 check REHEARSAL VALID, and `finals_v4/step5_session_checks.ps1` (leak test in Unity and
+  in Python, every `truth.jsonl` accepted by `gesture_data.py`, `export_csv_v4.py --session` written).
+- **Measures** (definitions fixed here; a new report tool `finals_v4/timing_rerun_report.py`, evaluation only, read-only on the sessions):
+  - **frames per 2 s window by people in view (1 / 2 / 3+)**: Anisha's B2 definition (`analyse_proceed_stop_v4.b2_counts`): for every
+    pan-tilt frame of `model_outputs.jsonl` within a run, the number of pan-tilt frames in the 2.0 s ending at it, grouped by the people in
+    that frame (3 = three or more; 0 shown apart); n, median, p10. Twice: over all frames, and over the **gesture windows** only (frames
+    while the dialog reads: `decisions.csv` state ask, read or wait at the frame time). The same for the 360 frames by the people in the
+    360 frame. Also the share of gesture-window frames with fewer than 10 frames in their 2 s (the floor) and fewer than 12.
+  - **frame drop rate**: per camera, Unity's `summary.json` `frames` (dropped / (sent + dropped)), and Python's skipped frames
+    (`perception.csv` `skipped_before`, summed, over the frames processed).
+  - **processing time per frame**: `perception.csv` `total_ms` (and `decode_ms`, `model_ms`) per camera, median / p95 / max, and for
+    the pan-tilt frames by people in the frame.
+  - **PROCEED holds accepted with floor 10**: per dialog of the export's `dialogs.csv` whose commander showed PROCEED, accepted or not;
+    and the PROCEED windows the reader passed (`v4_log.jsonl` arm `proceed.ok` true) with fewer than 12 valid frames, i.e. passed only
+    through the floor.
+  - **safety stops**: STOP-gesture episodes, true or false (`step5_report.py`'s definition); person-in-path episodes (`decisions.csv`
+    safety "person in path"); **person-in-path recoveries**: Anisha's recovery events in `python_trial_###.json` (started, detour,
+    interrupted, waiting) and how each ended.
+  - **watchdog stops, round trip, loop lag, free memory**: `summary.json` (watchdog stops reported by Unity; round trip all messages p99 /
+    max; loop lag p99 / max; available memory min; hard paging max), against `configs/v4/bridge.json`'s limits (loop lag p99 25 ms / max
+    100 ms; round trip p99 50 ms / max 150 ms).
+  - Reported against Anisha's rule above: whether B2_right exceeds a limit. **The active-avatar limit is not changed here** (report only);
+    if the rule triggers, the change is for Nusrat and Anisha.
+- **Zip for Anisha** (`robot_vision/outputs/timing_rerun_logs_<time>.zip`, read-only on the outputs): per session `decisions.csv`,
+  `model_outputs.jsonl`, `v4_log.jsonl`, `perception.csv`, `summary.json`, `resources.csv`, `loop_lag.csv`, `python_trial_###.json`, every
+  `run_###/truth.jsonl`, the export, the protocol notes and the report; a `README.md` with every file's size and SHA-256; the zip's SHA-256
+  recorded here.
+
+**Item 3c, facts for the backtracking design: one checkpoint worker on every branch** (geometry only; a new report tool
+`finals_v4/checkpoint_feasibility_v4.py` on top of `layout_search_v4.py`'s port and item 1's plan export).
+- **Branch:** every road from an asking node (start or junction) to its next node in `branches` of `corridor`, `turn`, `turn_left` and
+  `roadmap`.
+- **Candidates:** one worker at distance s from the branch's start node along the road (0.5 m steps) and lateral offset l to either side
+  (1.0 to 4.5 m, 0.5 m steps). The checkpoint's anchor is the road point at s.
+- **Placement rules** (every existing value, with the checkpoint treated as one more asking point with one worker; layout (i)'s workers
+  placed): P1 at least 3.0 m from every other worker; P2 at least 3.0 m from every asking node of the run's map and the physical map and
+  from every other checkpoint's anchor (and every node worker 3.0 m from the anchor); P3 a free cell of the ground-truth grid; P4 1.0 m
+  from every road; P5 1.0 m from every drivable segment of every asking node (0.8 m shift, every order, the tie, every branch); P6 every
+  worker, the checkpoint's own included, 1.0 m from the checkpoint's own drive: from each end of the branch to the checkpoint's ask
+  position (2.0 m from it toward that end) and its re-ask point (0.8 m), and from those on to both ends of the branch (continue and turn
+  back); P7 those ask points on the v4 NavMesh (V2's cell classification, as addendum 3); P8 those ask points within 5.5 m of the anchor;
+  P9 at every asking node, the checkpoint worker at least 1.0 m farther from the robot than that node's first worker over the last 3.0 m
+  of its arrival road (the bystander rule); P10 at most 6 active avatars (8.0 m, every 0.5 m along every road), per plan.
+- **Answer rules**, reported beside them (so that a checkpoint is not taken for a junction's worker or the other way round): Q1 Python's
+  second opinion: the checkpoint worker is not within 6.5 m (`second_opinion_radius_m`) of an asking node that is its nearest node of the
+  map; Q2 Unity's answerer: the checkpoint worker is more than 3.5 m (`ask_max_distance_m`) from every ask position and re-ask point of
+  every asking node, and every node worker more than 3.5 m from the checkpoint's ask points; Q3 (stricter, the zone rule's own reason):
+  the anchor at least 12.0 m (2 x 6.0 m) from every asking node, so no answer zones overlap.
+- **Reported per branch of every map:** whether any candidate meets P1 to P10 (and with Q1 to Q3); where none does, the binding rule(s):
+  the candidates that pass when one rule alone is dropped, and the rules broken most often. A4 and B4 (random): the proposed checkpoints
+  checked against every plan's drawn workers (count of plans where a rule fails, and which).
+- **Proposed position per branch** (choice rule fixed here): meets P1 to P10 and Q1 to Q2; then not visible (below) from any ask position
+  or re-ask point of the branch's start node; then s nearest the middle of the branch; then the smallest |l|; then the right side.
+- **Visibility, per plan** (seeds 1 and 2, the 10 settings), without and with the proposed checkpoints:
+  - a person is in view of a camera at robot position R when it is rendered (within 8.0 m of the robot: `activation_radius_m`), within
+    the detection range 12 m (`hri_perception.json` evaluation `detection_range_m`), and the straight line from R to it crosses no
+    footprint of the tall obstacle groups (`Shelves`, `Walls`; not the 0.13 m stations), from item 1's export;
+  - 360 camera: every direction. Pan-tilt camera: within half its horizontal field of view, 2 atan(tan(30 deg) x 730 / 530) = 77.1 deg
+    at the default 60 deg (zoom only narrows it), of the pan direction: toward the asked worker at an ask point, the robot's heading while
+    driving (step 5's `decisions.csv`: pan command 0 in every navigate row);
+  - **at each ask point** (every ask position and re-ask point of every asking node and checkpoint of the plan) and **while driving** (every
+    0.5 m along the plan's route from the start to its goal): the number of people in each view; **every ask with 3 or more people in a
+    view is flagged**; per plan the most in view while driving and where;
+  - per plan, the active avatars (P10's count) against the limit 6, without and with the checkpoints.
+- Not modelled: Python turning its approach point by 30-degree steps near another person; a robot standing off the modelled points.
+
+**Commits:** (1) this declaration; (2) the results recorded below, with the two report tools. Each after both suites pass.
+
+*Results (2026-11-18; declaration 3ead71b, every run below on that commit, tree clean apart from the two uncommitted report tools).*
+
+**Item 1 (a), addendum 2's verification: PASSED** (`robot_vision/outputs/navmesh_v4_check_20261118_214518/`).
+- V1: 800 planned runs (the "live" and "pending" halves are both layout (i)). 2,492 points: corridor 23, turn 36, turn_left 36, roadmap
+  2,397. All on the NavMesh (snap 0.000 m).
+- **2,873,119 paths: all complete, none entering a footprint.**
+- Least clearance to a footprint: 0.369 m at (-10.39, -4.27), a rack, in `roadmap`; 0.390 m in the other maps. 83,898 paths come closer
+  than 0.40 m. As in addendum 2, this still clears the robot's 0.30 m half-width.
+- Negative control passed: rack centres 1.24 / 1.26 / 1.29 m off the NavMesh; (6.25, -5) to (-6.25, -5) goes around the rack, 12.82 m,
+  least clearance 0.502 m.
+- V2 (hard rule) passed, the same counts as addendum 2: 10,740 / 1,310 / 252 stricter / 19 looser, 0 inside a footprint. The Edit-mode
+  grid equals run_001's saved Play grid cell for cell.
+- V4 passed on all four maps.
+
+**Item 1 (b), the workers: PASSED** (`robot_vision/outputs/worker_path_check_20261118_214612/`; the temporary script ran in batch mode and
+was deleted with its `.meta`; its source is `TempWorkerPathCheck.cs.txt` there; `git status` clean afterwards).
+- 400 plans (layout (i), `clearance_layout` active; 10 settings x seeds 1, 2 x 20 runs). 37,130 NavMesh paths (6,163 distinct): every
+  end snapped, every path complete, none entering a footprint.
+- **No path within 0.30 m of a worker; none within 0.60 m or 1.0 m either.** The NavMesh paths keep the straight-line clearance.
+- Least worker distance per setting:
+  - A1 / B1 1.955 m;
+  - A2 right / B2 right 1.194 m;
+  - A2 left / B2 left 1.502 m;
+  - A3 / B3 1.173 m;
+  - A4 / B4 1.001 m (seed 2 run 7: J4's ask position (-17.40, 0.22) to E5 passes worker 9 at (-17.52, 1.96)).
+- The export (`plans.json`, `footprints.json`) feeds item 3c.
+
+**Item 2, the timing rerun: NOT RUN** (Nusrat's decision above). No session, no report and no zip exist yet. The report tool
+`finals_v4/timing_rerun_report.py` is committed. It was checked on step 5's A3 logs, outside the repository; its frames-per-window
+counts reproduce Anisha's B2 figures for step 5 (pan-tilt median 15 / 10 / 8 with 1 / 2 / 3+ people). It writes the zip with its
+SHA-256. Anisha's 6 -> 5 rule is therefore still open.
+
+**Item 3c, checkpoints** (`robot_vision/outputs/checkpoint_feasibility_v4_20261118_214624/`; `finals_v4/checkpoint_feasibility_v4.py`).
+- **Port check:** the port's layout (i) equals Unity's planned workers in 320 of 320 beside plans. Its active-avatar count without
+  checkpoints equals Unity's `MaxActive` per setting (2 or 3).
+- **Feasibility per branch** (one checkpoint at a time; candidates every 0.5 m along, 1.0 to 4.5 m to either side):
+
+| map | branch | length (m) | meet P1-P10 | + Q1-Q2 | + Q3 | where, or the binding rule |
+|---|---|---|---|---|---|---|
+| corridor | A -> B | 40.0 | 47 | 39 | 39 | only s 1.0-3.0 or 37.0-39.5 (near an end) |
+| turn, turn_left, roadmap | A -> B / J1 | 20.0 | 14 | **0** | 0 | all at s 1.0-4.5, all within 6.5 m of A, their nearest node: **Q1** |
+| turn | B RIGHT -> C | 20.0 | 66 | 66 | 66 | s 14.5-19.5 |
+| turn_left | B LEFT -> C | 20.0 | 59 | 48 | 48 | s 1.0-19.5 (the far part valid) |
+| roadmap | J1 FORWARD -> E1 | 20.0 | 52 | 51 | 51 | s 2.0-19.5 (the far part valid) |
+| roadmap | J1 RIGHT -> J3 | 12.5 | 1 | 1 | 0 | one spot, (12.25, -4.00): fails Q3, seen from J1's ask points |
+| roadmap | J1 LEFT -> J2 | 12.5 | 14 | **0** | 0 | all within 6.5 m of J1 or J2, their nearest node: **Q1** |
+| roadmap | J2 FORWARD -> J4 | 12.5 | **0** | 0 | 0 | **P6** (44 candidates valid if dropped; P1 8, P2 6, P3 5) |
+| roadmap | J2 -> E2, J3 -> E3, J3 -> E4, J4 -> E5, J4 -> E6 | 20.0 | 51-78 | 51-63 | 51-61 | s 14.5-19.5 (E3, E6: 1.0-19.5) |
+
+- **Answer: not on every branch.**
+  - All rules (P1-P10 + Q1-Q2) can be met on 10 of the 15 branches.
+  - Not on 5:
+    - the start branch A -> B / J1 of turn, turn_left and roadmap (Q1);
+    - J1 LEFT -> J2 (Q1);
+    - J2 FORWARD -> J4 (P6).
+  - Q3 (12.0 m between answer zones) cannot hold on any 12.5 m junction-to-junction branch.
+- **The binding rule for "partway" is P6, the checkpoint's own drive.** At mid-branch every candidate 2.5 m or more to the side breaks
+  only P6; nearer the road it also breaks P5 (the node drives along the road).
+  - What breaks it: the straight drive from the checkpoint's re-ask point (0.8 m to the robot's right) on to the far end of the branch
+    passes the worker. Measured on J1 -> E1 at s 10 m: 0.77 m at 4.5 m to the side, 0.18 m at 2.5 m (the ask point itself: 1.33 / 0.80 m).
+  - So under the declared model a checkpoint can stand only within about 5.5 m of a branch end, not mid-branch.
+  - Mid-branch would need the robot to return to the road before driving on, which Python's `_target` does not model (a straight line
+    to the next node). Or it would need a smaller re-ask shift at checkpoints. Either is for Nusrat and Anisha.
+- **Proposed positions** (declared choice rule; each passes the joint check with the other checkpoints of its map):
+  - 4.5 to 5.5 m before the end of the branch (s 14.5 to 15.5 of 20 m; the corridor 3.0 m before B), 3.5 to 4.5 m to the left, not
+    seen from the start node's ask points:
+    - corridor A -> B: (2.75, 17.00);
+    - turn B -> C: (20.75, 4.50);
+    - turn_left B -> C: (-8.25, -4.50);
+    - J1 -> E1: (2.25, 15.50);
+    - J2 -> E2: (-10.25, 15.50);
+    - J3 -> E3: (14.75, 15.50);
+    - J3 -> E4: (23.25, -14.50);
+    - J4 -> E5: (-23.25, 14.50);
+    - J4 -> E6: (-14.75, -15.50).
+  - J1 -> J3: the only spot, (12.25, -4.00), which is seen from J1's ask points.
+  - **No proposal under the answer rules:**
+    - A -> B / J1: fallback (10.25, -15.50) meets P1-P10 only and fails Q1;
+    - J1 -> J2: fallback (1.25, 3.50) also fails Q1;
+    - J2 -> J4: none.
+- **A4 / B4 (random workers):** the proposed checkpoints checked against each of the 40 plans' drawn workers.
+  - J1 -> J3 fails in 28 (P6) and 31 (Q2) plans.
+  - J1 -> E1 fails in 1 plan (P6), J3 -> E4 in 1 (P6), J4 -> E6 in 2 (P6).
+  - The fallbacks fail in every plan (Q1).
+  - So fixed checkpoints and random workers conflict at J1 -> J3.
+- **Active avatars,** with every proposed checkpoint (fallbacks included): at most 2 / 3 / 5 / 5 (A1 / A2 / A3 / A4, the same for B),
+  against the limit 6. **No plan exceeds it.**
+- **People in view.**
+  - Without checkpoints:
+    - pan-tilt: never 3 or more at any ask point (at most 2), nor while driving;
+    - 360: 3 people at 520 of 3,840 ask points in A3 / B3 (J1 280, J3 240), at 15 of 3,819 in A4 / B4 (J1), and never in A1 / A2 /
+      B1 / B2;
+    - driving, 360: at most 3.
+  - With the proposed checkpoints:
+    - pan-tilt: still never 3 or more at an ask point;
+    - 360, asks with 3 or more: A2 / B2 440 of 1,280 (all at A's asks, from the A -> B fallback beside A); A3 / B3 1,880 of 3,840;
+      A4 / B4 1,722 of 3,819;
+    - driving, 360: at most 5 (A3 / A4), pan-tilt at most 2.
+  - Every flagged ask is in `asks.csv`. The fallbacks next to A and J1 cause a large share of the increase.
+- **Reading for Anisha's B2 / floor 10** (geometry, not timing): in layout (i) the modelled pan-tilt view at an ask never holds 3 people.
+  Step 5 ran the section 3 layout (three workers at J1 in A3), so its 3+ pan-tilt frames (median 8 per 2 s) are not comparable. In
+  layout (i), frames with 3 or more people at an ask would come only from the robot standing off the modelled points. The rerun will
+  show it.
+
+### 2026-11-18, section 15 addendum 6: checkpoint workers (variant T4), declared before any change or run below
+
+Nusrat's task of 2026-11-18 ("checkpoint workers, adopted by Anisha, T4"). Branch `nusrat/v4-timing-backtrack` (continued, after 8acd539).
+Unity side and `finals_v4/` only: nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen, no final is run, nothing
+is pushed. Development data, not a result. Before this declaration nothing was run; the only reads were of the maps, configs and code, of
+addendum 5's outputs and of Anisha's branch `origin/anisha/v4-tie-rule` (AUDIT.md 16.22-16.23, variant T3, simulator only, not merged into
+main). "T4" is not written down anywhere yet; this addendum takes Nusrat's task text as its definition: T3's checkpoint workers with Unity's
+positions of addendum 5, and the next junction's workers where no checkpoint position exists. Every truth field name is from
+`docs/protocol_v3.md`; no new field is added (one is proposed to Anisha in the report).
+
+**Item 1, facts (read from `configs/v4/roadmap.json` and `ExperimentPlanAB`; no run).**
+- Decision junctions (a junction with two or more branches) exist only on the map `roadmap` (experiments A3, A4, B3, B4 and the `_off`
+  settings B3_off, B4_off). `corridor` (A1, B1) and `turn` / `turn_left` (A2, B2) have one branch per node: no decision branch, no
+  checkpoint (as T3).
+- Decision branches: J1 FORWARD -> E1, J1 RIGHT -> J3, J1 LEFT -> J2; J2 FORWARD -> J4, J2 RIGHT -> E2; J3 LEFT -> E3, J3 RIGHT -> E4;
+  J4 RIGHT -> E5, J4 LEFT -> E6 (9).
+- Where a wrong branch leads (endpoints have no workers; every junction has its two workers of layout (i)):
+  - J1, goal E1: RIGHT -> J3 (workers), LEFT -> J2 (workers). Goal E3 / E4: FORWARD -> E1 (empty endpoint), LEFT -> J2 (workers). Goal
+    E2 / E5 / E6: FORWARD -> E1 (empty), RIGHT -> J3 (workers).
+  - J2 (reached on the right path only for E2, E5, E6): goal E2: FORWARD -> J4 (workers); goal E5 / E6: RIGHT -> E2 (empty).
+  - J3 (goal E3 / E4) and J4 (goal E5 / E6): the wrong branch ends at the other endpoint (empty).
+  - So three wrong branches lead to a junction with workers (J1 RIGHT, J1 LEFT, J2 FORWARD); every other wrong branch ends at an empty
+    endpoint.
+- What an honest worker at the next junction shows when the robot arrives there on a wrong path: `ExperimentPlanAB.TruthfulCommand` gives
+  BACK at a node none of whose branches reaches the goal (AUDIT.md 16.11 item 4, since section 4), and the worker POINTs along the arrival
+  road toward the previous junction (`Direction(map, node, BACK)` = the arrival heading turned 180 deg; the map is a tree, so the arrival
+  road is the one road into the junction: J2 and J3 from J1, J4 from J2). A liar there shows a wrong valid branch of that junction (both
+  are wrong). **Unity's answer rule already does what item 2 asks; it is not changed**, only pinned by new Edit Mode tests.
+- Seen from Python on main (read, not changed): with `reject_impossible` on, a POINT back along the arrival road is rejected ("arrival")
+  and, backtrack being off, the asks run out and the robot aborts; with it off the answer is dropped silently and the ask runs out. Using
+  the next junction's BACK as evidence needs Anisha's controller (her T3 rule 3 still rejects "back" at junctions): for Anisha.
+
+**Item 2, coverage (roadmap).** A checkpoint on every decision branch with a valid spot (addendum 5's proposals that met P1-P10 and Q1-Q2):
+
+| decision branch | covered by |
+|---|---|
+| J1 FORWARD -> E1 | checkpoint (2.25, 15.50) |
+| J1 RIGHT -> J3 | checkpoint (12.25, -4.00), and J3's workers |
+| J1 LEFT -> J2 | J2's workers (no valid spot, addendum 5: Q1) |
+| J2 FORWARD -> J4 | J4's workers (no valid spot, addendum 5: P6) |
+| J2 RIGHT -> E2 | checkpoint (-10.25, 15.50) |
+| J3 LEFT -> E3 | checkpoint (14.75, 15.50) |
+| J3 RIGHT -> E4 | checkpoint (23.25, -14.50) |
+| J4 RIGHT -> E5 | checkpoint (-23.25, 14.50) |
+| J4 LEFT -> E6 | checkpoint (-14.75, -15.50) |
+
+Unity checks the coverage when it plans a run: every decision branch of the run's map has a checkpoint or leads to an asking node; else the
+run is refused.
+
+**Item 3, the checkpoint workers** (new block `checkpoints` in `Scenario/Config/experiments_ab_unity.json`, read by `ExperimentPlanAB`).
+- Positions: per entry the map, the branch (junction and command), `s_m` along the branch from the junction and `right_m` to the right of
+  the travel direction (negative = left), as addendum 5's table: J1 FORWARD 15.5 / -4.0; J1 RIGHT 6.0 / +4.0; J2 RIGHT 15.5 / -4.0; J3 LEFT
+  15.5 / -4.0; J3 RIGHT 14.5 / -4.5; J4 RIGHT 14.5 / -4.5; J4 LEFT 15.5 / -4.0. The anchor is the road point at `s_m`. A run's map gets the
+  entries of its own name only (so `roadmap`: A3, A4, B3, B4).
+- Same template (`WorkerV4.prefab`) and the run's navigation looks (development or final split, as every worker); gender alternates in the
+  file order (first male), look `looks[(k / 2 + run - 1) % n]` for the k-th checkpoint of the map. Ids follow the node workers' ids in file
+  order, so every node worker keeps its id, its look and its lie draw (the junction liars are those of addendum 4).
+- Honest: PROCEED (`worker_v4.json` `forward_command`) on a branch whose next node reaches the goal (true command FORWARD); otherwise POINT
+  back along the branch toward its junction (true command BACK; direction = junction minus next node, horizontal). A liar shows the
+  opposite (FORWARD <-> BACK). Lie probability = the set's (`scenarios_ab.json`: B 0.2, A 0), drawn once per worker per run from the
+  existing seeded stream (session seed, run, worker id, the lie salt), the same answer every time it is asked in the run.
+- Answer rule: who answers is unchanged (the active worker within 3.5 m nearest the pan-tilt axis). A checkpoint worker then shows its
+  answer only while (a) the road of the run's map nearest to the robot's centre is its branch, strictly (by more than 0.001 m; at a node,
+  where roads meet, it is silent), and (b) the robot's centre is within `checkpoints.answer_radius_m` 3.5 m of it. Otherwise it is the
+  commander but shows nothing (truth NONE), as a node worker outside its zone. Node workers' rule (6.0 m zone of their node) is unchanged.
+- Truth rows: exactly as every worker (`TruthLogger` over every spawned worker): `true_command` PROCEED (`point_angle_deg` -1) or POINT
+  (the angle to the robot's forward axis), `gesture_truthful` false while a liar gestures, the extra field `active`. No role field: which
+  ids are checkpoints is in `session.json` `workers_plan` (one line per worker, as now, with "checkpoint J1 RIGHT -> J3") and in a new
+  `session.json` string `checkpoint_rule`; Unity's `truth_run###.json` `shown` records name a checkpoint's ask `J1 RIGHT -> J3`.
+- Detection-off settings: Unity runs each as its on twin (section 13), so B3_off / B4_off plan the same checkpoints at the same places with
+  the same lies; only Python ignores them.
+- Stand rings and the minimap/ask markers as for the other workers (green / magenta-red).
+
+**Item 4, placement.** Checkpoints are fixed and placed first; every node's workers are then placed with the checkpoints counted as workers
+under every rule, and each checkpoint is checked under every rule once the run's node workers stand. With the existing values (separation
+3.0 m, turning points 3.0 m, clearance 1.0 m, standoff 2.0 m, re-ask shift 0.8 m, bystander margin of the layout: beside 1.0 m, random
+0.25 m, over the last 3.0 m, answerer 3.5 m, active avatars 6 within 8.0 m):
+- node workers (added to the existing checks): 3.0 m from every checkpoint and from every checkpoint's anchor; 1.0 m from every checkpoint's
+  own drive; farther than 3.5 m from every checkpoint ask point; every checkpoint at least the bystander margin farther than the node's
+  first worker over the last 3.0 m of the arrival road; every checkpoint 1.0 m from this node's drives (the existing "placed workers"
+  check) and farther than 3.5 m from this node's ask points;
+- each checkpoint (addendum 5's P1-P10, Q1-Q2 with P7 and P8 as Unity can check them): 3.0 m from every other worker (P1); 3.0 m from every
+  asking node of the run's map and the physical map and from every other checkpoint's anchor (P2); a free cell with no collider (P3,
+  Unity's existing check); 1.0 m from every road (P4); 1.0 m from every node drive and every other checkpoint's drive (P5); every worker, it
+  included, 1.0 m from its own drive (P6: from each end of the branch to its ask position and re-ask point, and from those to both ends);
+  its ask points on free cells (P7; the NavMesh itself in item 5); at each of its ask points its answer rule holds (P8); P9 above; at most
+  6 active avatars (P10, the existing `MaxActive`, now over every worker); not within `checkpoints.second_opinion_radius_m` 6.5 m (a copy of
+  `configs/v4/control.json` `lie_detection.second_opinion_radius_m`, pinned by a test) of an asking node that is its nearest node (Q1);
+  Q2 above.
+- Beside (A3, B3): layout (i) slots unchanged; any broken rule refuses the run. Random (A4, B4): the existing seeded draws, a draw is
+  rejected while any rule above fails (redraws per node in `session.json` `placement`, as now; up to `random_max_draws` 100,000).
+- **Stop rule:** if any run of seeds 1 and 2 (20 runs each) of A3, A4, B3, B4 cannot be planned, STOP and report (nothing else below runs).
+
+**Item 5, checks.**
+- Edit Mode tests (new `HRI/Tests/CheckpointWorkersTests.cs`, and the existing tests that pin plans or `MaxActive` updated where the
+  checkpoints change them, each change listed in the report): the config and its copies; the positions; the coverage table; truthful /
+  lying commands and directions; the next junction's BACK on every wrong path; the answer rule; every run of seeds 1 and 2 of the 13
+  settings planned (rules re-checked independently in the test); redraw counts; active avatars <= 6.
+- NavMesh: `Tools > Warehouse v4 > NavMesh > Verify` (addendum 2, unchanged rules) with the checkpoints' ask points added to its point set
+  (a committed change of `NavMeshV4Menu`), and addendum 5 item 1 (b)'s worker check repeated with the checkpoints as workers and their own
+  drives as paths (the same kind of temporary Editor script, run in batch mode and deleted; source copied into its output folder), which
+  also exports every plan with its checkpoints.
+- Positions and people in view: a new report tool `finals_v4/checkpoint_layout_report_v4.py` (evaluation only, read-only), on that export,
+  with addendum 5's view model unchanged (rendered within 8.0 m, range 12 m, line of sight past Shelves and Walls, pan-tilt half field
+  77.1 / 2 deg toward the asked worker): the exact positions table and, per ask point (node asks and checkpoint asks), the people in the 360
+  and the pan-tilt view; asks with 3 or more flagged; the most while driving; active avatars per plan.
+- Leak test: Unity's own (session.json) and `gt_path.py session` on the smoke session.
+- **Smoke (development, one Play trial):** B3, seed 1, development looks, 1 trial, `-experimentGoals E1` (J1's true branch FORWARD) and a
+  new development-only option `-experimentForceLie J1:RIGHT` (TrialPlayV4; the launcher's `-ExperimentForceLie`): the first worker (slot
+  1) of J1 lies and shows RIGHT, recorded in `session.json` `force_lie`; refused in a final, for a node that is not an asking node, or a
+  command equal to the node's true command in a run. Python: main's server with B3's control file (`control_lie_on.json`), as step 5.
+  **Known before the run:** main's controller never asks a checkpoint (T3's checkpoint states are on Anisha's unmerged branch), so a
+  checkpoint can gesture in this trial only if an ask happens within its answer rule. What the trial can show: J1's forced lie, the robot
+  on the wrong branch J1 -> J3 past its checkpoint (planned BACK), and J3's honest workers pointing BACK. It is reported as it happens and
+  not rerun.
+
+**Item 6:** the launcher commands for step 5 (13 settings, 3 runs each, `-ExperimentGoals` E5 / E6 on the random-endpoint settings, the
+blind avatar rehearsal) and the analysis commands, in the report; Nusrat runs them.
+
+**Commits:** (1) this declaration; (2) the checkpoint workers (config, planner, runner, force-lie option, launcher passthrough, NavMesh
+verify points, tests); (3) the checks' results and the report tool. Each after both suites pass.
+
+*Results (2026-11-18/19; declaration be1a08f, implementation 7d8ab30; every check below ran on 7d8ab30).*
+
+**Items 1 and 2:** as declared; nothing in Unity's answer rule changed for the next junction. Coverage on the roadmap: 7 checkpoints, J1 LEFT
+-> J2 and J2 FORWARD -> J4 by the next junction's workers (Edit Mode test `Coverage_EveryDecisionBranch`; 11 off-route junction cases all
+BACK toward the arrival road, `NextJunction_PointsBackOnEveryWrongPath`).
+
+**Items 3 and 4, the planner** (commit 7d8ab30: `checkpoints` block, `ExperimentPlanAB` `Checkpoints` / `CheckpointDrive` /
+`CheckpointAnswers` / `CheckpointDirection` / `CheckpointProblem` / `CheckpointsAroundNode`, `RunPlanAB.Checkpoints`, runner spawning and answer
+rule, `session.json` `checkpoint_rule` and `force_lie`, `-experimentForceLie`, the launcher's `-ExperimentForceLie`, Verify points).
+- **Every run of seeds 1 and 2 of the 10 Unity settings is planned** (stop rule not triggered): with `free` = null (Edit Mode test) and
+  with Play's own position check (ground-truth grid and capsule test, the export below).
+- A3 / B3: the node workers keep their places, ids, looks and lies (`NodeWorkers_UnchangedInTheBesideLayout`); no redraws.
+- A4 / B4 (random): the node workers are redrawn around the checkpoints. With Play's check, redraws per run 3,538 / 15,656.5 / 55,851 (min
+  / median / max over 40 runs); per node J1 median 12,860.5, max 54,366 of `random_max_draws` 100,000 (A 505, J2 4,640, J3 2,849, J4 2,526
+  at most). **J1 is the binding node: the J1 -> J3 checkpoint (P6, Q2) leaves a small part of J1's 6 m square; seeds 1 and 2 stay under
+  the limit, other seeds are not checked.** With `free` = null the 40 runs need 266,262 redraws in all (Play's check rejects more cells, so
+  Play's random positions differ from the Edit Mode test's, as before).
+- Active avatars: at most 4 in A3, A4, B3, B4 (2 elsewhere), limit 6.
+- Changed existing test: `ExperimentClearanceTests.Before()` switches the checkpoints off (the pre-addendum-4 configs it pins had none).
+- Unity Edit Mode 357/357 (12 new tests in `HRI/Tests/CheckpointWorkersTests.cs`), Python 1284 OK (9 skipped).
+
+**Item 5, the checks.**
+- **NavMesh Verify: PASSED** (`robot_vision/outputs/navmesh_v4_check_20261118_235705/`): 800 planned runs, 2,524 points (checkpoint ask
+  points included; 0 off the NavMesh), 2,950,319 paths, 0 not complete, 0 entering a footprint; control, V2 (252 stricter / 19 looser) and
+  V4 as before.
+- **Worker and checkpoint path check: PASSED** (`robot_vision/outputs/checkpoint_check_20261118_235303/`; temporary script
+  `TempCheckpointCheck`, run in batch mode with Play's position check, deleted with its `.meta`, source `TempCheckpointCheck.cs.txt` there):
+  400 plans, 48,270 NavMesh paths (11,200 checkpoint drives), every end snapped, all complete, none entering a footprint, **none within
+  0.30, 0.60 or 1.0 m of a worker** (checkpoints included); least 1.000 m (A4 seed 1 run 1, a J1 drive), least on a checkpoint drive
+  1.001 m (A4 seed 2 run 9, J3 RIGHT -> E4); every checkpoint ask point on the NavMesh (largest snap 0.000 m).
+- **Positions and people in view** (`robot_vision/outputs/checkpoint_layout_report_v4_20261118_235345/`, `finals_v4/checkpoint_layout_report_v4.py`):
+
+| branch | s / right (m) | worker x, z | to its junction / next node (m) |
+|---|---|---|---|
+| J1 FORWARD -> E1 | 15.5 / -4.0 | 2.25, 15.50 | 16.01 / 6.02 |
+| J1 RIGHT -> J3 | 6.0 / +4.0 | 12.25, -4.00 | 7.21 / 7.63 |
+| J2 RIGHT -> E2 | 15.5 / -4.0 | -10.25, 15.50 | 16.01 / 6.02 |
+| J3 LEFT -> E3 | 15.5 / -4.0 | 14.75, 15.50 | 16.01 / 6.02 |
+| J3 RIGHT -> E4 | 14.5 / -4.5 | 23.25, -14.50 | 15.18 / 7.11 |
+| J4 RIGHT -> E5 | 14.5 / -4.5 | -23.25, 14.50 | 15.18 / 7.11 |
+| J4 LEFT -> E6 | 15.5 / -4.0 | -14.75, -15.50 | 16.01 / 6.02 |
+
+  - Identical in every plan. The independent Python port of addendum 5's rules finds **no failure** in any plan.
+  - **Pan-tilt: never 3 or more people at any ask.** Node asks: at most 2 (A3 / B3 360 of 2,400 asks with 2); checkpoint asks: always 1
+    (the checkpoint alone).
+  - 360 at node asks, 3 or more: A3 / B3 920 of 2,400 (max 4; at J1 and J3), A4 / B4 626 of 2,369 (max 4); A1, A2, B1, B2 never (2).
+  - 360 at checkpoint asks, 3 or more: 160 of 1,120 in each of A3, A4, B3, B4, all at the J1 -> J3 checkpoint (J1's and J3's workers in
+    view; max 4); every other checkpoint ask sees only its own worker.
+  - While driving: at most 4 in 360, at most 1 (A3 / B3) or 2 (A4 / B4) in pan-tilt.
+- **Smoke trial (development, not a result):** B3, seed 1, 1 trial, goal E1 (`-experimentGoals`, seeded E2), `-experimentForceLie J1:RIGHT`,
+  main's server with `control_lie_on.json`. Unity `trials_development_Task2_B3_20261118_235842`, bridge `bridge_guide_20261118_235726`.
+  - Checks: the launcher's B11 check **REHEARSAL VALID** (leak test passed in Unity, `session.json` `leak_test.passed` true, and in Python,
+    `gt_path.py session`; split guard; every truth and run file accepted); `step5_session_checks.ps1 -Setting smoke_t4_B3` **ALL CHECKS
+    PASSED** (`gesture_data.py --messages`, export `export_csv_v4_20261119_000411`).
+  - 17 workers in `truth.jsonl` (ids 11-17 the checkpoints, with rows every frame, `active` false while far).
+  - Outcome: FAILURE, aborted at J3 at 213.8 s; 0 collisions, closest person 1.24 m; 0 watchdog stops; round trip max 115.7 ms; loop lag
+    p99 22 ms, **max 147 ms (over the 100 ms limit; VS Code / Claude Code session open, free memory 3.9 GB before the session)**.
+  - What happened: A, two PROCEED read FORWARD. J1: worker 3 (forced liar) POINT RIGHT, read RIGHT; the second opinion, worker 4, PROCEED
+    read FORWARD; the tie re-asked worker 3 (second view) and the robot took RIGHT, **following the lie**. It drove J1 -> J3 past the
+    J1 -> J3 checkpoint (worker 12), which **was not asked** (main's controller has no checkpoint state); in this run worker 12 is itself a
+    seeded liar (it would show FORWARD, true BACK). At J3, on the wrong path for E1: **worker 7 (honest) pointed BACK twice** (truth POINT,
+    -40.6 to +2.0 deg to the robot's forward axis, `gesture_truthful` true); Python read NONE both times (insufficient history, cues not met;
+    no rejection was logged). Worker 8, a seeded liar, pointed RIGHT (true BACK), read NONE; then the abort.
+  - **Not shown: a checkpoint pointing back.** No checkpoint was asked, so no checkpoint gestured (all their truth rows NONE). As
+    declared, this needs Anisha's checkpoint controller. The next junction's contradiction was shown by Unity but not read by the reader.
+
+### 2026-11-19, section 15 addendum 7: BACK readability, the abeam checkpoint ask, the side-view re-ask (declared before any change below)
+
+Nusrat's decision of 2026-11-19 on the BACK diagnosis: options 4a and 4b (Python, Anisha), option 1 (checkpoints asked abeam); not option 2
+(moving junction slot 1), not option 3 (raising the arm). **Decided after development results** (the B3 smoke trial of addendum 6 and the
+diagnosis below), not before any data; disclosed as such. Branch `nusrat/v4-timing-backtrack` (after 7c5adc6). Unity side and `finals_v4/`
+only: nothing under `robot_vision/`, `docs/` or `external/` changes (her code and tests are only run; Python changes are proposed in
+`robot_vision/outputs/for_anisha_back_reading/`, not applied); nothing is frozen, no final is run, nothing is pushed. Development looks and
+clips only; no perception on avatar-experiment looks. At most one Unity Play session at a time.
+
+**The diagnosis (recorded; tool `finals_v4/back_read_diagnosis_v4.py`, committed with this declaration; output
+`robot_vision/outputs/back_read_diagnosis_20261119_203250/`).** Smoke trial `trials_development_Task2_B3_20261118_235842` /
+`bridge_guide_20261118_235726`, J3, honest worker 7 pointing BACK twice, read NONE both times. The tool re-runs Anisha's reader
+(`hri_perception_v4.PersonsPipeline`, the run's own `config_used`) on the logged model outputs; it equals the logged readings in 37 of 37.
+- Logged stage: `insufficient_history` ("fewer than 6 valid frames of 10 expected", "raised right arm has fewer than 6 valid frames"): the
+  pan-tilt ran at 4.35-4.40 frames/s with two people in its frame (worker 7 and J1's worker 4, 7.4 m behind), so the 1.0 s window held 4-5
+  frames. Never classified; no `reject_impossible` rejection.
+- Underlying cause, geometry: the arm pointed 144.8 deg (ask 1) and 163.5 deg (ask 2, after the 0.8 m re-ask shift) from the worker-to-camera
+  line, i.e. nearly straight away from the camera. POINT cue in 0 of 19 and 0 of 18 raised frames: image arm length median 0.78 and 0.36
+  shoulder widths (needs 0.8), elbow 98 and 28 deg (needs 140), segment disagreement 50 and 105 deg (at most 45). Worker found, pan aimed
+  (within about 3 deg of the image centre), no zoom (60 deg). The clip is aimed (IK hand on the shown direction; script stance 15 deg, torso
+  20 deg).
+- Planner geometry (addendum 6 export): honest BACK at J2-J4 slot 1 median 145-154 deg (away), slot 2 median 36-45 deg (toward); 4,264 of
+  10,228 honest BACK asks within 30 deg of the camera line; POINT LEFT 92 of 6,692, RIGHT 218 of 8,600.
+- Development POINT asks (step-5 sessions, 42 with a hold), angle to the camera line: 45-135 deg: **33 asks, 27 read as POINT, 20 with the
+  correct direction**; 135-180 deg: 6 asks, 0 read; below 30 deg: 1 ask, 0 read. **Correction:** the report of the diagnosis said "27 of 39"
+  for the 45-135 deg band; the CSV (`dev_point_asks.csv`) gives 27 of 33. The threshold below uses the correct count.
+
+**(1) The abeam checkpoint ask model (replaces addendum 6's model of approaching a checkpoint from either end of its branch).**
+- The robot reaches a checkpoint only from its junction (T4: the checkpoint of the branch just taken). It drives along the branch to the
+  checkpoint's anchor (the road point at `s_m`, `CheckpointBranch.Anchor`), its **stop point**, and approaches the worker from there: the
+  first ask point A is `ask_standoff_m` 2.0 m from the worker on the line from the worker to the anchor (abeam: 2.0 m off the road where
+  `right_m` is 4.0, 2.5 m where it is 4.5). Re-ask point R: the controller's 0.8 m shift from A (unchanged rule). Side-view point C: (2).
+- Its own drive (P5, P6, the 1.0 m clearance): anchor -> A; A -> R; A -> C; every ask point (A, R, C) -> both ends of its branch (on, or
+  back to the junction). The road from the junction to the anchor is a road (P4). The approach from the far end is no longer modelled.
+- Every other rule of addendum 6 (P1-P10, Q1, Q2, the answer rule, the positions) is unchanged; P7 and P8 now apply to A, R and C.
+- Fact for Anisha (Part C): her T4 stops at `checkpoint_fraction` 0.5 of the branch and asks only a person within
+  `checkpoint_person_radius_m` 5.0 m of that spot. With Unity's positions six of the seven checkpoint workers are 6.36-6.80 m from her
+  midpoint (only J1 RIGHT -> J3, 4.01 m, qualifies), so her robot would not ask them. With the stop at the anchor every checkpoint worker is
+  4.0 or 4.5 m from the spot. Her stop point must become the anchor (`s_m` per branch); Part C proposes it.
+
+**(2) The side-view re-ask (4a; Python decides it, Unity's plans and checks allow for it).**
+- Trigger (Python): an ask of a dialog ends without an accepted answer while asks remain, and during that ask the commander's arm was raised
+  in at least 2 valid frames and the POINT cue (`frame_flags` `point_ok`) failed in every valid raised frame of that arm (the
+  foreshortening pattern of worker 7). The second ask is then taken from a side-view point C instead of the 0.8 m re-ask point; it is the
+  dialog's second ask (it uses an ask, like the re-ask it replaces), at most once per dialog. Otherwise the re-ask is unchanged.
+- Candidates: on the 2.0 m circle (`approach_distance_m`) around the worker, the robot's ask position turned about the worker by 90, 75 or
+  60 deg, to the robot's right (as it faces the worker: the side of the existing 0.8 m re-ask) or left, **in this order: 90 right, 90 left,
+  75 right, 75 left, 60 right, 60 left. The first valid candidate is taken; if none is valid, the 0.8 m re-ask point** (the existing rule).
+- Valid, as Python can know it: (a) floor: with the candidate as its navigation target, Unity's telemetry reports `nav_status` complete and
+  `nav_target_snap_m` at most `approach_tolerance_m` 0.15 m (existing protocol fields; one candidate per tick); (b) people: at least
+  2 x `corridor_half_width_m` = 1.2 m from every other person of the 360 camera (as `_clear_approach_point`). Unity models (a) with Play's
+  position check (ground-truth grid and capsule test; null = free in Edit Mode tests) and checks on the NavMesh that the chosen point snaps
+  within 0.15 m and that its path from A is complete; (b) with every other worker of the run (rendered or not: conservative).
+- Tie rule: the order above (right before left at the same angle); the arm's image direction is not used. Reason: turned by 90 deg, either
+  side moves any angle within 45 deg of the camera line (0-45 or 135-180 deg) into 45-135 deg; at 75 and 60 deg only one side does, and the
+  reader cannot tell "toward" from "away" (mirror readings).
+- Unity's rules for the chosen point C, as for every modelled ask point: a node's worker: C within the answer zone minus its margin
+  (6.0 - margin, `AskZoneM`); A -> C and C -> the next node of every branch of the node keep the 1.0 m clearance from every worker (this
+  node's, earlier nodes', checkpoints). A checkpoint: the answer rule holds at C (P8), no other worker within 3.5 m of C, A -> C and C ->
+  both ends keep 1.0 m from every worker. Applied during placement (an A4 / B4 draw is rejected, an A3 / B3 slot set refused) and rechecked
+  over the whole plan once every worker stands. Applied to the first ask point of every modelled dialog (every worker of every asking node in
+  every order of addendum 1 item 3b, and every checkpoint).
+- Config: new block `side_view` in `Scenario/Config/experiments_ab_unity.json` (`active` true, `angles_deg` [90, 75, 60],
+  `person_clearance_m` 1.2, `snap_m` 0.15) and `checkpoints.ask_model` "abeam". With `side_view.active` false the planner is as before.
+- The side view takes longer than the 0.8 m shift; the expected extra seconds per side-view ask are computed from Unity's paths and reported
+  for the timeout rule (Part F); the timeout is not changed here.
+
+**(3) The pass threshold for Part D, set now, before any recording.**
+- Per ask, the live dialog is replayed on the reader's readings frame by frame (Anisha's `hri_control.GestureDialog`, unchanged, with the
+  v4 values: hold 0.5 s, window 5.0 s, `max_none_gap_s` 0.3): a POINT reading becomes a direction with her `resolve_point` (max gap 30 deg)
+  over the node's branch directions plus BACK (the arrival road at a junction, the junction's direction at a checkpoint) as a candidate
+  direction; PROCEED becomes FORWARD. "Read as shown": the reader gives the shown command (POINT or PROCEED) in consecutive readings for at
+  least 0.5 s during the ask. "Correct": the dialog accepts the shown direction.
+- **A spot passes when (a) read as shown >= 27/33 = 0.818 of its asks (with 6 asks: at least 5) and, for a POINT spot, (b) correct >=
+  20/33 = 0.606 (with 6 asks: at least 4)**: the development rates of the 45-135 deg band above, (a) the like-for-like figure Nusrat named,
+  (b) the same band's direction rate (a BACK read as POINT in the wrong direction is no use).
+- Verdict condition: the recording at the pan-tilt's nominal 10 Hz, one person in view, reader unchanged. Also reported against the same
+  threshold, not deciding: the same frames thinned to 4.4 frames/s (the two-person rate of the smoke trial: the frame nearest to each
+  1/4.4 s step), with the reader unchanged and with Part C's 4b floor applied in memory only.
+
+**Part D, the recordings (development looks and clips only).** A new Play tool (Editor window, not batch; nothing connects to Python) builds
+B3's plan (beside; development seed 1, run 1; the positions are the same in every run) and, per spot, spawns one worker (template, a
+development navigation look, alternating male / female over the asks) where the plan puts it, facing its node (a checkpoint: its anchor) as
+the runner does, a pan-tilt camera (`robot_unity_v4.json` settings, level, 60 deg, facing the worker) at the spot's robot position, waits for
+the worker to turn to the robot, requests the gesture as the runner does (POINT with the shown world direction `Direction` /
+`CheckpointDirection`, or PROCEED; development clips; arm forced: 3 asks right, 3 left; a new seeded variation run per ask), shows the
+question and records frames at 10 Hz from the question for 5.0 s (the ask window), with protocol-3 headers and the truth.
+- Spots (26): every checkpoint from A with BACK (7) and with PROCEED (7); J2, J3, J4 (arrival roads J1 -> J2, J1 -> J3, J2 -> J4), each slot
+  1 from its first ask point (2.0 m toward the node) and from its side-view point, each slot 2 from its first ask point (2.0 m toward slot
+  1's ask point: the second opinion) and from its side-view point, BACK (12). 6 asks per spot.
+- Reading: `look_check_v4.py` unchanged on the recordings (its own report), and a new evaluation tool `finals_v4/back_readability_v4.py`
+  (the real models through `look_check_v4.RealDetector`, her reader, the replayed dialog, the three frame-rate conditions). Per spot: person
+  found, valid hand-linked frames per window, command and direction read, read-as-shown and correct rates against the threshold.
+- If a spot fails the verdict condition: at most 2 rounds of Unity-side improvement, each declared in its own addendum before any change,
+  then stop and report.
+
+**Part E (truth role field), conditional.** `role` ("node" / "checkpoint") is added to `truth.jsonl` rows only if, on a copy of a
+development session's `truth.jsonl` with the field added, Anisha's truth validators (`gesture_data.py`, `gt_path.py session`) and her full
+suite pass; otherwise it stays out and the README for her proposes it. The field is an extra field (protocol_v3.md: extra fields are
+ignored), not in her table; she decides whether it enters it.
+
+**Part F (freeze readiness; nothing frozen):** the B9 freeze list in `final_v4.json` covers every new or changed Unity runtime file; FinalGuard
+and the split guard cover checkpoint workers; `run_session_v4.ps1 -DryRun` for the 13 settings with the step-5 arguments and dry checks of the
+blind rehearsal and avatar-experiment commands; `step5_session_checks.ps1` and `step5_report.py` handle checkpoint and side-view asks and the
+`t4_` prefix (changed where they do not).
+
+**Commits:** (1) this declaration with the diagnosis tool; (2) the implementation (config, planner, Verify points, Play tool, tests,
+analysis tools); (3) the results. Each after both suites pass. No merge.

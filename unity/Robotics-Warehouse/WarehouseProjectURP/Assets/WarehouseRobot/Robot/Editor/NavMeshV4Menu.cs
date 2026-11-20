@@ -242,6 +242,12 @@ namespace WarehouseRobot.EditorTools
                                                                       lc.ask_standoff_m, lc.reask_shift_m, out var asks);
                                     foreach (var a in asks) AddPoint(points, mapName, a, "ask", $"{layout} {setting} seed {seed} run {run} {g.Key}");
                                 }
+                                // section 15 addendum 6: the checkpoint workers' ask points (both ends of the branch, re-ask points included)
+                                foreach (var cp in r.Checkpoints)
+                                {
+                                    ExperimentPlanAB.CheckpointDrive(map, cp.Checkpoint, cp.Position, lc.ask_standoff_m, lc.reask_shift_m, out var cpAsks);
+                                    foreach (var a in cpAsks) AddPoint(points, mapName, a, "ask", $"{layout} {setting} seed {seed} run {run} checkpoint {cp.Node}");
+                                }
                             }
                         }
                     }
