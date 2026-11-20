@@ -2555,3 +2555,24 @@ ALL CHECKS PASSED (setting name `smoke_t0_B3`); Anisha's guard accepts the contr
     J3: the honest worker's BACK was read NONE in both dialogs (as in addendum 6's smoke trial); abort. Timing: 0 watchdog stops, round trip
     max 37.7 ms, loop lag max 53 ms, 0 bridge errors; **free memory minimum 195 MB** (VS Code / Claude Code open; step 5 runs with it closed).
 - **Not done here:** no step-5 session, no avatar rehearsal, no freeze, no final, no timeout set, no push.
+
+#### 2026-11-20, addendum 8 amendment 1: step 5 draws E5 and E6 in the random-endpoint settings (declared before step 5 runs)
+
+**Omission corrected.** Addendum 8 (items 6 and 7, and the step-5 commands handed to Nusrat with it) ran and recorded the step-5 settings
+with `-Rehearsal -Trials 3` only. That drops the development-only goal override that AUDIT.md 16.20.5 decision 2 (Anisha, 2026-11-17) makes
+part of the runs that feed the timeout rule: "applied to **Unity's step-5 rerun, which uses the 420 s development timeout and the
+development-only goal override, so that E5 and E6 are drawn.**" (see also 16.19 item 4: "the longest routes of the finals' goal order are E5
+and E6, which set the timeout"). It was not dropped on purpose and is not a default (the launcher's `-ExperimentGoals` is empty by default;
+section 15 addendum 1 item 3c). The 900 s development timeout of addendum 8 item 4 replaces the 420 s of 16.20.5 and is unchanged here.
+
+**The rule.** Step 5 passes `-ExperimentGoals "E5,E6,E5"` (trial 1 E5, trial 2 E6, trial 3 E5; `TrialRunnerV4Experiment` gives run r the
+r-th goal, `ExperimentGoalsOverrideTests.Override_OneGoalPerRun_InTheGivenOrder_SpacesIgnored`) to the six random-endpoint settings **A3, B3,
+B3_off, A4, B4, B4_off**; the other seven (A1, B1, B1_off, A2_right, B2_right, B2_right_off, A2_left) have fixed goals and get none (the
+launcher refuses goals on a fixed-goal map). Development only: the launcher and Unity refuse `-ExperimentGoals` in a final. With
+`-Trials N` other than 3 the list alternates E5, E6 for N runs. Placements and lies are seeded per run and do not depend on the goal.
+
+**Where it applies.** Nusrat's step-5 run script (`E:\run_tonight.ps1`, outside the repository: each launcher call and session check in its
+own child process, UTF-8 transcripts without absolute paths (the rule of step5_session_checks.ps1), the avatar rehearsal on the
+folders of its own run) passes the goals to those six settings; its
+dry run (`-DryRun`, prefix `dry_`) prints the six launcher command lines with `-experimentGoals E5,E6,E5`. Nothing in the repository's
+code or configs changes. Addendum 8's smoke trial (B3, seeded goal E2) and dry runs stand as recorded (development checks, not step 5).
