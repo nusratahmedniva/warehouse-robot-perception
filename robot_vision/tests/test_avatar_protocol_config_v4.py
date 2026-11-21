@@ -34,6 +34,11 @@ class AvatarProtocolConfigTests(unittest.TestCase):
         doc = (repo / "docs/avatar_experiment_protocol_v4.md").read_text(encoding="utf-8")
         audit = (repo / "AUDIT.md").read_text(encoding="utf-8")
         self.assertIn("#### 16.31.1 DECLARED", audit)
+        self.assertIn("### 16.31.5", audit)
+        for needle in ("less than 0.100 s from its 0.1 s mark", "never by inspecting images", "pan-tilt camera only", "LAST final sitting",
+                       "about 3 h", "recordings.jsonl", "pose \"posed\"", "facing", "INVALID, not failing"):          # Nusrat's review, AUDIT 16.31.5
+            self.assertIn(needle.lower(), doc.lower(), f"doc: {needle}")
+            self.assertIn(needle.lower(), audit.lower(), f"AUDIT: {needle}")
         for needle in ("2000", "seed 1", "at least 2 sequences", "at least 10 single", "never a Wilson interval over frames"):
             self.assertIn(needle.lower(), doc.lower(), needle)
 
