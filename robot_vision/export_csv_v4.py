@@ -19,6 +19,8 @@ FINAL mode (2026-11-14, AUDIT.md 16.15; the finals of experiments A and B, evalu
         says (final_guard_v4.check_setting), and S was not exported before (its own marker FINAL_EXPORT_DONE.json, written last). Writes
         <output_root>/export_csv_v4_final_<S>_<time>/ with runs.csv, dialogs.csv, summary.json (the counts of the setting: SUCCESS with a Wilson
         95 % interval, failure kinds, medians, lies, stops), export.json, config_used/, run.json. No threshold is changed here.
+        A setting interrupted by an infrastructure failure and resumed once (AUDIT.md 16.30.1) is exported as ONE session from its two parts
+        (--session twice); summary.json "interruption" names the declaration, the reason and the interrupted run (listed, not scored).
   --final-combine FOLDER [...]   ONE combined table over the per-setting export folders (each with its marker, no setting twice): every setting,
         then A vs B per scenario, B detection on vs off, A2 right vs left, every rate with its count and a Wilson 95 % interval, the difference
         in percentage points with a Newcombe (Wilson-based) 95 % interval, only as a description. Derived from the exports (no test data is read again): rerunnable into a new folder.
@@ -508,8 +510,9 @@ def export_final(setting: str, pairs, repo: Path | None = None, output_root: Pat
     (out / "config_used" / cfg_path.name).write_bytes(cfg_path.read_bytes())
     write_csv(out / "runs.csv", run_rows, cfg["runs"], cfg.get("empty", ""))
     write_csv(out / "dialogs.csv", dialog_rows, cfg["dialogs"], cfg.get("empty", ""))
+    interruption = fg.interruption_report(fg.resume_plan(output_root, setting, pairs, repo))      # AUDIT.md 16.30.1: None when there was none
     dio.write_json(out / "summary.json", {"setting": setting, "summary": sm,
-                                          "plan_entry": fg.plan(repo)["settings"][setting]})
+                                          "plan_entry": fg.plan(repo)["settings"][setting], "interruption": interruption})
     dio.write_json(out / "export.json", {"final_setting": setting, "runs": len(run_rows), "asks": len(dialog_rows),
                                          "runs_columns": [c["field"] for c in cfg["runs"]], "dialogs_columns": [c["field"] for c in cfg["dialogs"]],
                                          "definitions": {"runs": RUN_FIELDS, "dialogs": DIALOG_FIELDS},

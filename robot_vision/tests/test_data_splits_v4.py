@@ -65,7 +65,8 @@ class ConfigTests(unittest.TestCase):
 
     def test_one_style_for_the_sunbox_family(self):
         s = ds.load()
-        self.assertEqual(set(s["styles"]), set(s["looks"]))
+        navigation = {n for n, r in s["looks"].items() if r in ("development", "test")}      # the avatar_experiment looks have a kind group, not a style
+        self.assertEqual(set(s["styles"]), navigation)
         self.assertEqual(set(s["styles"].values()), {"sunbox"})
 
     def test_every_gesture_has_a_development_and_a_test_clip(self):
