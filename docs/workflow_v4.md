@@ -173,8 +173,8 @@ Config: `robot_vision/configs/v4/final_plan.json`.
 | 4 | ~~Checkpoint workers in Unity~~ | Niva + Anisha | **Dropped** (16.26.9): Unity needs no checkpoint workers |
 | 5 | **Step 5:** all 13 settings on development data with the final rules (T0, no checkpoint workers), plus the blind avatar rehearsal; frames per window by 1/2/3+ people | Niva runs, Anisha checks | **Done 2026-11-21, reviewed in AUDIT 16.28:** 13 of 13 sessions valid, 26/39 runs succeeded; run protocol not fully met (Chrome open, power plan Balanced); **the avatar rehearsal Play part failed its format check (146/270 groups, timeout): Niva fixes and repeats it before the freeze** |
 | 6 | Apply the timeout rule to Unity's step-5 runs; fix anything step 5 finds | Anisha | **Done: 480 s** (16.29); stall dump off for the finals (16.27); the STOP reading used is logged per control step (16.29) |
-| 7 | **Freeze:** `python freeze_v4.py --freeze`, by Niva by hand only, after the smoke check with the stall dump off and the repeated avatar rehearsal Play (`docs/handoff_freeze_v4.md`) | Niva | Pending |
-| 8 | **Avatar experiment** (main): detection of person and hands across avatar kinds | Niva runs, Anisha analyses | Pending; protocol to confirm |
+| 7 | **Freeze:** `python freeze_v4.py --freeze`, by Niva by hand only, after the smoke check with the stall dump off and the repeated avatar rehearsal Play (`docs/handoff_freeze_v4.md`) | Niva | Pending; **the avatar-experiment looks must be listed in `data_splits.json` before it (the freeze hashes that file; AUDIT 16.30.3)**; an interrupted final follows `docs/handoff_freeze_v4.md` section 8 (AUDIT 16.30.1) |
+| 8 | **Avatar experiment** (main): detection of person and hands across avatar kinds | Niva runs, Anisha analyses | Pending; protocol to confirm; looks and splits still open (Niva's list) |
 | 9 | Four final sittings, Set A/B (260 runs) | Niva | Pending |
 | 10 | Final evaluation, CSV export, statistics, figures, archive with hashes | Anisha | Pending |
 | 11 | Paper (related work doc started) | Both | Pending |

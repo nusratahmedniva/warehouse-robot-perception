@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 import commander_v4 as cm  # noqa: E402
+import data_splits_v4 as ds  # noqa: E402
 import export_csv_v4 as ex  # noqa: E402
 import hri_control_v4 as hv  # noqa: E402
 import gesture_data as gd  # noqa: E402
@@ -274,6 +275,141 @@ class Runner(unittest.TestCase):
         a = [sv.run_scenario("B4", s, sv.DETECTION_ON) for s in (1, 2, 3)]
         b = [sv.run_scenario("B4", s, sv.DETECTION_ON) for s in (1, 2, 3)]
         self.assertEqual(ab.summarise(tables(a)[0][0]), ab.summarise(tables(b)[0][0]))
+
+
+class NewColumns(unittest.TestCase):
+    """AUDIT.md 16.31.6 decision 2: dialogs.csv clip, look_role, clip_role; runs.csv stop_gestures_true / _false, resume_from_run, resume_of,
+    interrupted. Simulator sessions; the roles come from data_splits.json."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.results = [sv.run_scenario("B3", s_, sv.DETECTION_ON) for s_ in range(1, 3)]
+        (cls.rr, cls.dr), cls.runs = tables(cls.results, "cols")
+        cls.splits = ds.load()
+
+    def test_the_columns_are_known_defined_and_appended_before_the_identifiers(self):
+        for f in ("stop_gestures_true", "stop_gestures_false", "resume_from_run", "resume_of", "interrupted"):
+            self.assertIn(f, ex.RUN_FIELDS)
+        for f in ("clip", "look_role", "clip_role"):
+            self.assertIn(f, ex.DIALOG_FIELDS)
+        runs = [c["field"] for c in CFG["runs"]]
+        dialogs = [c["field"] for c in CFG["dialogs"]]
+        self.assertEqual(runs[runs.index("watchdog_stops") + 1:runs.index("watchdog_stops") + 6],
+                         ["stop_gestures_true", "stop_gestures_false", "resume_from_run", "resume_of", "interrupted"])
+        self.assertEqual(runs[-3:], ["session", "run", "trial"])
+        self.assertEqual(dialogs[dialogs.index("t_s") + 1:dialogs.index("t_s") + 4], ["clip", "look_role", "clip_role"])
+        self.assertEqual(dialogs[-3:], ["session", "run", "trial"])
+
+    def test_the_clip_and_the_roles_of_every_ask(self):
+        self.assertTrue(self.dr)
+        for d in self.dr:
+            if d["command_shown"] in ("POINT", "PROCEED", "WAIT", "STOP"):
+                self.assertTrue(d["clip"], d)
+                self.assertEqual(d["clip_role"], self.splits["clips"][d["clip"]])
+            else:
+                self.assertEqual((d["clip"], d["clip_role"]), ("", None))                  # NONE: nobody gestures, no clip
+            self.assertEqual(d["look_role"], self.splits["looks"][d["look"]])
+
+    def test_roles_follow_data_splits_and_an_unlisted_name_leaves_the_cell_empty(self):
+        sp = {**self.splits, "looks": {**self.splits["looks"], "sunbox_m1": "test"},
+              "clips": {k: v for k, v in self.splits["clips"].items() if k != "point_mixamo_01"}}
+        _, dr = ex.build_tables(self.runs, splits=sp)
+        point = [d for d in dr if d["clip"] == "point_mixamo_01"]
+        self.assertTrue(point)
+        self.assertTrue(all(d["clip_role"] is None for d in point))                          # not listed: empty, never guessed
+        self.assertTrue(all(d["look_role"] == "test" for d in dr if d["look"] == "sunbox_m1"))
+        for f in ("clip", "look_role", "clip_role"):                                        # and the CSV cells
+            self.assertEqual(ex._fmt(point[0][f]), point[0][f] or "")
+
+    def test_without_the_resume_keys_the_resume_columns_are_empty(self):
+        for r in self.rr:
+            self.assertEqual((r["resume_from_run"], r["resume_of"], r["interrupted"]), (None, None, None))
+
+    def test_a_resumed_session_names_its_start_and_marks_the_interrupted_run(self):
+        tmp = Path(tempfile.mkdtemp())
+        u, b = session(self.results, tmp, "resumed", extra={"resume_from_run": 2, "resume_of": "trials_part1", "start_run": 2})
+        runs = ev.load_sessions([(u, b)], gd.load_config())
+        rr, _ = ex.build_tables(runs)
+        self.assertEqual([(r["trial"], r["resume_from_run"], r["resume_of"], r["interrupted"]) for r in rr],
+                         [(1, 2, "trials_part1", False), (2, 2, "trials_part1", True)])
+        self.assertEqual([ex._fmt(r["interrupted"]) for r in rr], ["false", "true"])
+
+    def test_a_non_integer_resume_key_is_not_a_resume(self):
+        tmp = Path(tempfile.mkdtemp())
+        u, b = session(self.results, tmp, "odd", extra={"resume_from_run": "2", "resume_of": "x"})
+        rr, _ = ex.build_tables(ev.load_sessions([(u, b)], gd.load_config()))
+        self.assertEqual({(r["resume_from_run"], r["resume_of"], r["interrupted"]) for r in rr}, {(None, None, None)})
+
+
+class StopGestureSplit(unittest.TestCase):
+    """AUDIT.md 16.31.6: accepted STOP gesture episodes of a run, split by truth (the definitions of finals_v4/step5_report.py, 16.28)."""
+    PHASES = ["gesturing", "holding"]
+
+    @staticmethod
+    def truth(*rows):
+        from types import SimpleNamespace
+        return [SimpleNamespace(time_s=t, worker_id=w, true_command=c, phase=ph) for t, w, c, ph in rows]
+
+    @staticmethod
+    def decisions(*rows):
+        return [{"trial": str(tr), "time_s": str(t), "safety": s} for tr, t, s in rows]
+
+    def run(self, truth, trial=1):
+        from types import SimpleNamespace
+        return SimpleNamespace(trial=trial, truth=truth)
+
+    def test_a_true_and_a_false_episode(self):
+        run = self.run(self.truth((0.0, 1, "NONE", "idle"), (5.0, 1, "STOP", "gesturing"), (9.0, 1, "NONE", "idle"), (20.0, 2, "PROCEED", "holding")))
+        dec = self.decisions((1, 4.0, ""), (1, 6.0, "STOP gesture"), (1, 6.1, "STOP gesture"), (1, 7.0, ""), (1, 21.0, "STOP gesture"))
+        self.assertEqual(ex.stop_gestures(run, dec, self.PHASES), (1, 1))             # the first: worker 1 showed STOP; the second: only PROCEED
+
+    def test_consecutive_rows_are_one_episode_and_a_gap_or_another_trial_breaks_it(self):
+        run = self.run(self.truth((0.0, 1, "STOP", "holding")))
+        dec = self.decisions((1, 1.0, "STOP gesture"), (1, 1.1, "STOP gesture"), (1, 1.2, ""), (1, 1.3, "STOP gesture"), (2, 1.4, "STOP gesture"),
+                             (2, 1.5, "STOP gesture"))
+        self.assertEqual(ex.stop_gestures(run, dec, self.PHASES), (2, 0))             # two episodes of trial 1; trial 2's are not this run's
+        self.assertEqual(ex.stop_gestures(self.run(run.truth, trial=2), dec, self.PHASES), (1, 0))
+        dec = self.decisions((1, 1.0, "STOP gesture"), (2, 1.1, "STOP gesture"), (1, 1.2, "STOP gesture"))
+        self.assertEqual(ex.stop_gestures(run, dec, self.PHASES), (2, 0))             # a row of another trial between ends an episode
+
+    def test_the_latest_truth_row_and_the_phase_decide(self):
+        run = self.run(self.truth((0.0, 1, "STOP", "gesturing"), (2.0, 1, "STOP", "returning"), (3.0, 1, "NONE", "idle")))
+        self.assertEqual(ex.stop_gestures(run, self.decisions((1, 1.0, "STOP gesture")), self.PHASES), (1, 0))
+        self.assertEqual(ex.stop_gestures(run, self.decisions((1, 2.5, "STOP gesture")), self.PHASES), (0, 1))   # STOP but the hand is returning
+        self.assertEqual(ex.stop_gestures(run, self.decisions((1, 3.5, "STOP gesture")), self.PHASES), (0, 1))   # a later NONE row
+        self.assertEqual(ex.stop_gestures(run, self.decisions((1, -1.0, "STOP gesture")), self.PHASES), (0, 1))  # before any truth row
+
+    def test_any_worker_showing_stop_makes_it_true(self):
+        run = self.run(self.truth((0.0, 1, "POINT", "holding"), (0.0, 2, "STOP", "holding")))
+        self.assertEqual(ex.stop_gestures(run, self.decisions((1, 1.0, "STOP gesture")), self.PHASES), (1, 0))
+
+    def test_no_episode_is_zero_and_no_usable_decisions_csv_is_not_evaluated(self):
+        run = self.run(self.truth((0.0, 1, "STOP", "holding")))
+        self.assertEqual(ex.stop_gestures(run, self.decisions((1, 1.0, "")), self.PHASES), (0, 0))
+        self.assertEqual(ex.stop_gestures(run, None, self.PHASES), (None, None))
+
+    def test_read_decisions_needs_the_safety_column(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            self.assertIsNone(ex.read_decisions(d))                                       # no file
+            (d / "decisions.csv").write_text("trial,time_s,rtt_ms\n1,0.1,0.5\n", encoding="utf-8")
+            self.assertIsNone(ex.read_decisions(d))                                       # no safety column (the simulator's file)
+            (d / "decisions.csv").write_text("trial,time_s,safety\n1,0.1,STOP gesture\n", encoding="utf-8")
+            self.assertEqual(ex.read_decisions(d), [{"trial": "1", "time_s": "0.1", "safety": "STOP gesture"}])
+
+    def test_the_run_row_uses_the_bridge_decisions_and_is_empty_without_them(self):
+        results = [sv.run_scenario("B3", 1, sv.DETECTION_ON)]
+        tmp = Path(tempfile.mkdtemp())
+        u, b = session(results, tmp, "stops")
+        runs = ev.load_sessions([(u, b)], gd.load_config())
+        rr, _ = ex.build_tables(runs)
+        self.assertEqual((rr[0]["stop_gestures_true"], rr[0]["stop_gestures_false"]), (None, None))     # the simulator's decisions.csv has no safety column
+        # a real-shaped file: one STOP gesture episode while the worker holds a POINT (nobody shows STOP): false
+        hold = next(t for t in runs[0].truth if t.true_command == "POINT" and t.phase == "holding")
+        (b / "decisions.csv").write_text(f"trial,time_s,safety\n1,{hold.time_s + 0.01},STOP gesture\n1,{hold.time_s + 0.11},STOP gesture\n", encoding="utf-8")
+        rr, _ = ex.build_tables(runs)
+        self.assertEqual((rr[0]["stop_gestures_true"], rr[0]["stop_gestures_false"]), (0, 1))
+        self.assertEqual([ex._fmt(rr[0][k]) for k in ("stop_gestures_true", "stop_gestures_false")], ["0", "1"])
 
 
 class Isolation(unittest.TestCase):

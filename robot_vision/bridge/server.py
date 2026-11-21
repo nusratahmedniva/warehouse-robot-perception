@@ -531,17 +531,19 @@ def check_final_control(setting: str, control_config: str | Path) -> None:
         raise SystemExit(f"setting {setting!r} must run with --control-config {want} (got {control_config})")
 
 
-def preflight_final(cfg: dict, mode: str, setting: str, control_config: str | Path = V4_CONTROL) -> None:
+def preflight_final(cfg: dict, mode: str, setting: str, control_config: str | Path = V4_CONTROL, resume_marker: str | Path | None = None) -> dict | None:
     """Before a v4 final run starts (SystemExit otherwise): protocol 3 in guide mode, the v4 configs frozen with every hash
-    matching, the setting known and not run before, the control file the setting's own (P11), and its zoom switch, map and
-    lie-detection switches what the setting says."""
+    matching, the setting known and not started before, the control file the setting's own (P11), and its zoom switch, map and
+    lie-detection switches what the setting says. A setting that was started (FINAL_SETTING.json, with or without FINAL_RUN_DONE.json) starts
+    again only as the ONE declared resume (AUDIT.md 16.30.1): resume_marker = its FINAL_INTERRUPTION.json (file or folder). Returns that
+    declaration for a resume, None for a fresh start."""
     import final_guard_v4 as fg
     import freeze_v4 as fz
     if cfg["protocol_version"] < 3 or mode != "guide":
         raise SystemExit("--final-setting is for the v4 study: --mode guide with configs/v4/bridge.json (protocol 3)")
     fz.require_frozen()
     fg.check_name(setting)
-    fg.ensure_not_done(dio.resolve(cfg["paths"]["output_root"]), setting, "run")
+    declaration = fg.check_start(dio.resolve(cfg["paths"]["output_root"]), setting, resume_marker, fz.sha256_lf(fz.REPO / fz.FROZEN_REL))
     check_final_control(setting, control_config)
     spec = fg.plan()["settings"][setting]
     want = spec.get("zoom")
@@ -552,6 +554,7 @@ def preflight_final(cfg: dict, mode: str, setting: str, control_config: str | Pa
     bad = fg.control_problems(setting, control)       # 2026-11-14: the map and the lie-detection switches of the setting
     if bad:
         raise SystemExit(f"setting {setting!r} refused: " + "; ".join(bad))
+    return declaration
 
 
 def make_perception_worker_v4(out: Path, perception_config: str | Path, reader_config: str | Path,
@@ -596,17 +599,25 @@ def record_inference_devices(path: Path, info: dict, perception) -> dict | None:
 async def run(cfg: dict, cfg_path: Path, mode: str, duration_s: float | None, mute_after_s: float | None = None,
               perception: str = "off", perception_config: str = "configs/hri_perception.json",
               task: str = "Task2", exit_on_disconnect: bool = False, resource_log: bool = False,
-              final_setting: str | None = None, control_config: str = V4_CONTROL) -> Path:
+              final_setting: str | None = None, control_config: str = V4_CONTROL, resume_marker: str | None = None) -> Path:
     from bridge import diagnostics as diag
     from bridge import machine_state
-    if final_setting:                              # a v4 FINAL: frozen configs, once per setting (final_guard_v4.py)
-        preflight_final(cfg, mode, final_setting, control_config)
+    declaration = None
+    if resume_marker and not final_setting:
+        raise SystemExit("--resume-marker belongs to --final-setting (AUDIT.md 16.30.1)")
+    if final_setting:                              # a v4 FINAL: frozen configs, once per setting (final_guard_v4.py), or its one declared resume
+        declaration = preflight_final(cfg, mode, final_setting, control_config, resume_marker)
     out = dio.new_run_dir(cfg, f"bridge_{mode}")
     if final_setting:
         import final_guard_v4 as fg
         import freeze_v4 as fz
-        dio.write_json(out / "FINAL_SETTING.json", {"setting": final_setting, "frozen_sha256": fz.sha256_lf(fz.REPO / fz.FROZEN_REL),
-                                                    "started": datetime.now().isoformat(timespec="seconds")})
+        frozen_sha = fz.sha256_lf(fz.REPO / fz.FROZEN_REL)
+        dio.write_json(out / "FINAL_SETTING.json", {"setting": final_setting, "frozen_sha256": frozen_sha,
+                                                    "started": datetime.now().isoformat(timespec="seconds"),
+                                                    **({"resume_from_run": declaration["resume_from_run"]} if declaration else {})})
+        if declaration:                            # the one declared resume: written before the first trial, never overwritten
+            fg.write_resume(out, final_setting, declaration, Path(resume_marker).parent.name if Path(resume_marker).is_file() else Path(resume_marker).name,
+                            frozen_sha)
     used = [cfg_path]
     if perception == "vision":
         import hri_perception as hpm
@@ -763,6 +774,9 @@ def main(argv: list[str] | None = None) -> None:
                     help="v4 FINAL run of this setting (A1, A2_right, A2_left, A3, A4, B1, B2_right, B3, B4, B1_off, B2_right_off, B3_off, B4_off; "
                          "final_plan.json), with its own --control-config (FINAL_CONTROL): needs configs/v4/frozen.json "
                          "frozen with every hash matching; refused if the setting was already run (final_guard_v4.py)")
+    ap.add_argument("--resume-marker", default=None,
+                    help="with --final-setting: the FINAL_INTERRUPTION.json (file or its folder) of an infrastructure interruption declared with "
+                         "final_guard_v4.py --declare-interruption (AUDIT.md 16.30.1). A started final is refused without it; one resume only")
     ap.add_argument("--control-config", default=V4_CONTROL,
                     help="protocol 3 only: the v4 control file (default configs/v4/control.json). Session options are copies "
                          "of it (e.g. configs/v4/control_zoom_off.json); a final setting must use its own file (P11)")
@@ -782,7 +796,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         asyncio.run(run(cfg, cfg_path, args.mode, args.duration_s, args.mute_after_s, args.perception,
                         args.perception_config, args.task or "Task2", args.exit_on_disconnect, args.resource_log,
-                        args.final_setting, args.control_config))
+                        args.final_setting, args.control_config, args.resume_marker))
     except KeyboardInterrupt:
         pass
 
