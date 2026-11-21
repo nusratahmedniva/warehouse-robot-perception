@@ -30,7 +30,9 @@ namespace WarehouseRobot.ScenarioEditor
     /// final of A2 with the left turn; zoom_on, zoom_off, bystanders and zoom_on_repeat are superseded and refused. Since 2026-11-15
     /// (experiments_ab.md section 13) also B1_off, B2_right_off, B3_off, B4_off: Unity runs each as its on twin; the server runs it with
     /// the lie-detection-off control file of its final config. -startRun k (2026-11-21, development only, experiments_ab.md section 15
-    /// addendum 10): the session drives runs k..N of its N runs with exactly the plans of a full session (SessionResumeV4); refused in a final.
+    /// addendum 10): the session drives runs k..N of its N runs with exactly the plans of a full session (SessionResumeV4); refused in a final
+    /// unless -resumeMarker DECLARATION (addendum 13, AUDIT.md 16.30.1 and 16.31.3) names the declared interruption it resumes, which must match.
+    /// -bridgeFolder NAME (addendum 13, required in a final): the run folder of this final's server, whose start marker is not an earlier final.
     /// </summary>
     [InitializeOnLoad]
     public static class TrialPlayV4
@@ -57,6 +59,7 @@ namespace WarehouseRobot.ScenarioEditor
         {
             float timeout = 1800f;
             string checkDir = "", workers = "", finalSetting = "", experiment = "", experimentLooks = "", experimentSide = "", experimentGoals = "", startRun = "";
+            string resumeMarker = "", bridgeFolder = "";            // addendum 13
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
@@ -69,6 +72,8 @@ namespace WarehouseRobot.ScenarioEditor
                 if (args[i] == "-experimentSide") experimentSide = args[i + 1];
                 if (args[i] == "-experimentGoals") experimentGoals = args[i + 1];
                 if (args[i] == "-startRun") startRun = args[i + 1];
+                if (args[i] == "-resumeMarker") resumeMarker = Path.GetFullPath(Path.Combine(RepoRoot, args[i + 1]));   // relative = to the repo root
+                if (args[i] == "-bridgeFolder") bridgeFolder = Path.GetFileName(args[i + 1].TrimEnd('/', '\\'));
             }
             SessionState.SetString(TrialRunnerV4.WorkersOverrideKey, workers);
             SessionState.SetString(TrialRunnerV4.FinalSettingKey, finalSetting);
@@ -77,6 +82,8 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.ExperimentSideKey, experimentSide);
             SessionState.SetString(TrialRunnerV4.ExperimentGoalsKey, experimentGoals);
             SessionState.SetString(TrialRunnerV4.StartRunKey, startRun);
+            SessionState.SetString(TrialRunnerV4.ResumeMarkerKey, resumeMarker);
+            SessionState.SetString(TrialRunnerV4.BridgeFolderKey, bridgeFolder);
             if (checkDir.Length > 0) Directory.CreateDirectory(checkDir);
             EditorSceneManager.OpenScene(Scene);
             SessionState.SetBool(ActiveKey, true);
@@ -146,6 +153,8 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.ExperimentSideKey, "");
             SessionState.SetString(TrialRunnerV4.ExperimentGoalsKey, "");
             SessionState.SetString(TrialRunnerV4.StartRunKey, "");
+            SessionState.SetString(TrialRunnerV4.ResumeMarkerKey, "");
+            SessionState.SetString(TrialRunnerV4.BridgeFolderKey, "");
             EditorApplication.update -= Poll;
             Debug.Log($"[TrialPlayV4] finished ({code}): {status}");
             EditorApplication.Exit(code);

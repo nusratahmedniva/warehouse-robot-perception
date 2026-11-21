@@ -2910,3 +2910,99 @@ role in both forms of the file; the Edit record's new keys).
   compiled already, so this shows the record and the flags, not a compile caught.
 - *Not run:* no Play run: the Play warm-up records and the session warm-up are first exercised by the repeated rehearsal Play part and the next
   session (a rehearsal session before any final is advised: a session that cannot draw a look stops before its leak test).
+
+### 2026-11-21, section 15 addendum 13: the resume of an interrupted final, Unity's and the launcher's part of Anisha's rule (declared before any change below)
+
+Nusrat's task of 2026-11-21 (evening): implement every Unity and launcher item of Anisha's AUDIT.md 16.31.3 (branch `anisha/v4-prefreeze-2`, merged into
+this branch by addendum 12 item 4), on her rule 16.30.1 and her cross-check 16.31.4, with tests and a dry run; no Play, no freeze, no push; if
+not every item is built and tested by 01:00 the branch is left uncommitted and the finals use the no-resume rule. Her names, read in her code and
+used exactly: `resume_from_run` (the run k where the session resumes), `resume_of` (the folder name of the interrupted part-1 Unity session),
+`--resume-marker` (the declaration folder that `final_guard_v4.py --resume-info SETTING` names: `resume_marker`); `start_run` stays and equals
+`resume_from_run` in a resumed final. Her markers (`final_guard_v4.MARKERS`, each keyed `setting`): `FINAL_SETTING.json` (a final was started),
+`FINAL_RUN_DONE.json`, `FINAL_INTERRUPTION.json` (the declaration), `FINAL_RESUME.json`, `FINAL_INVALID.json`, `FINAL_DONE.json`,
+`FINAL_EXPORT_DONE.json`. Nothing under `robot_vision/`, `docs/` or `external/` is edited.
+
+**16.31.3 item 1: `-startRun k` in a final only with the declared interruption; the launcher asks Python.**
+- Launcher `run_session_v4.ps1 -Resume` (a final only; refused with `-Rehearsal`): runs `final_guard_v4.py --resume-info <setting>` (with
+  `--output-root`); a refusal stops the launcher (exit 2) with Python's reason. From its JSON: `resume_from_run` becomes Unity's `-startRun k`, the
+  declaration folder (`resume_marker`, under the output root) becomes Unity's new `-resumeMarker <folder>` and the server's
+  `--resume-marker <folder>`; the server's preflight is called with it. `-StartRun` by hand in a final stays refused (k comes only from Python).
+- `SessionResumeV4.Parse(text, runs, final, declaredResume, ...)`: in a final, `-startRun k` only with a declaration (`-resumeMarker`), and a
+  declaration needs `-startRun k`; development unchanged. The old message for a final without a declaration stays ("refused in a final") and now
+  names `--declare-interruption` and `-resumeMarker`.
+- New `-OutputRoot <folder>` of the launcher, `-DryRun` only (refused otherwise): the marker lookups and `--resume-info` read that folder (the dry run
+  below). A real session always uses the configured outputs folder.
+
+**16.31.3 item 2: Unity reads the declaration and refuses unless it matches.** New `Avatar/Scripts/FinalResumeV4.cs` (with its `.meta`):
+`Read(folder or file)` and `Problems(...)`: refused unless the declaration is a `FINAL_INTERRUPTION.json` in a folder directly under the output root
+and the only one for the setting; its `setting` is the final setting; `resume_from_run` equals `-startRun` and lies in 1..N; its `seed` equals the
+session's seed; its `goal_order` equals the full order Unity planned for all N runs; its `frozen_sha256` equals the SHA-256 (LF) of `frozen.json` now
+and `FinalGuardV4.FreezeProblems` is empty; it names part 1's Unity and bridge folders; and no `FINAL_INVALID.json`, `FINAL_DONE.json` or
+`FINAL_EXPORT_DONE.json` exists for the setting. `TrialRunnerV4.Run` checks it after the goal order is made and BEFORE the session folder is
+created, so a refusal writes nothing (status "not started: refused: resume of ...", TrialPlayV4 exits 1). A second resume is refused by Python's
+server at its start (it writes `FINAL_RESUME.json` before Unity starts), as 16.31.3 item 2 says; Unity does not repeat it.
+
+**16.31.3 item 3: `session.json`.** New last fields `resume_from_run` (k in a declared resume, 0 otherwise) and `resume_of` (the declaration's
+`unity_folder`, "" otherwise), after `shader_warm_up`; `start_run` stays (k). `summary_unity.json` gets the same two keys.
+
+**16.31.3 item 4: the start guard.** `FinalGuardV4.EarlierFinal(outputRoot, setting, cfg, currentBridgeFolder, resume)` (the 3-argument form
+stays): Unity's done file of the setting always refuses (a complete session is never resumed); Python's `FINAL_RUN_DONE.json` AND now its start
+marker `FINAL_SETTING.json` refuse unless they lie in this session's own server folder (the server writes its start marker before Unity starts)
+or, in a declared resume, in the declaration's part-1 bridge folder. So a fresh start after a hard crash (only `FINAL_SETTING.json` left) is
+refused. To know its own server folder a final now needs `-bridgeFolder <name>` (TrialPlayV4; the launcher passes the server's run folder);
+without it a final is refused. The launcher's own pre-checks follow the same rule (`FINAL_SETTING.json` is a blocker too; `-Resume` exempts the
+part-1 bridge folder only). The refusal text keeps "already run as a final" (pinned by tests) and adds how to declare and resume.
+
+**16.31.3 item 5: the done file covers runs k..N.** `FinalGuardV4.DoneJson(..., startRun, resumeFromRun, resumeOf)` adds `start_run`,
+`runs_driven` (N - k + 1; `successes` counts those), `resume_from_run` and `resume_of`; a full session writes 1, N, 0, "". Still no key `setting`.
+
+**16.31.3 item 6: the B11 check.** `check_session_v4.ps1 -ResumeMarker <declaration>`: `-Final -StartRun k` is accepted only with it (refused,
+exit 2, without), and only when the declaration and part 2's `session.json` agree (`setting` = `final_setting`, `resume_from_run` = k in both,
+`start_run` = k, `resume_of` = the declaration's `unity_folder`, `-U` is not part 1); `-ResumeMarker` without `-Final` is refused. The seven
+`Report` criteria, their numbers and labels do not change (pinned by Anisha's `test_v4_frozen.py`). The launcher passes it. Part 1 is not checked
+alone (16.31.3 item 6); the evaluation's command printed by the launcher lists both parts (`--session U1 B1 --session U2 B2`).
+
+**16.31.3 item 7: part 1 kept.** Nothing deletes or renames anything; the launcher makes the run-protocol note for part 2 as for any session.
+
+**16.31.3 item 8: a second interruption.** Python's `--declare-interruption` with part 2's folders writes `FINAL_INVALID.json`; then
+`--resume-info` refuses, so the launcher's `-Resume` refuses (exit 2), and Unity's check refuses a part 3 (the invalid marker).
+
+**Tests.** Edit Mode `Avatar/Tests/FinalResumeTests.cs` (new, with its `.meta`), refusal and acceptance per item: Python's marker names equal those
+of `final_guard_v4.py`; the declaration read as folder or file; the matching declaration accepted; each mismatch refused (setting, k, seed, goal
+order changed or shorter, frozen hash changed or unreadable, freeze problems, k out of range); invalid, evaluated, exported or a second declaration
+refused, another setting's markers ignored; a declaration outside the output root refused; `-startRun` in a final only with a declaration; the start
+guard (own server folder skipped, a silent restart refused, the declared part 1 accepted with its start and run markers, any other start marker
+refused, a complete session never resumed); the done file of runs k..N; source checks that the runner checks before creating its folder, writes
+the keys and needs `-bridgeFolder`, and that TrialPlayV4 passes and clears the two new keys. `finals_v4/test_resume_dryrun_v4.py` (new; Windows)
+runs the dry run below in a temporary folder and asserts each step.
+
+**Dry run (no Play, no server, no real final): `finals_v4/resume_dryrun_v4.py`** writes `robot_vision/outputs/resume_dryrun_<time>/` (its
+synthetic output root is one level further down, so no real guard sees its markers): part 1 of B3 interrupted at run 4; the launcher without
+`-Resume` refused ("already started"); Anisha's `--declare-interruption`; `--resume-info`; the launcher with `-Resume` (`-startRun 4
+-resumeMarker`, `-bridgeFolder`, `--resume-marker`, the check with `-StartRun 4 -ResumeMarker`, the evaluation with both parts); the server's start
+(her `check_start` and `write_resume`, as `bridge.server` does); part 2 with Unity's keys; the check refused without the marker and with a wrong
+`session.json`, accepted with it; her `resume_plan`: resumed, no problem; a second interruption: `FINAL_INVALID.json`, `--resume-info` and the
+launcher refuse. The report (`report.json`, `report.md`) lists each step.
+
+**Not changed / limits.** Python's files; the development `-startRun` (no declaration, as before); a resumed final has never run in Play (its first
+real use would be a final); the C# checks run in Edit Mode on synthetic folders only.
+
+**Addendum 13, as built (2026-11-21).** Implemented as declared, every item of 16.31.3. Files: `Avatar/Scripts/FinalResumeV4.cs` (new, with its
+`.meta`), `Avatar/Scripts/FinalGuardV4.cs` (`EarlierFinal` with the start marker, own server folder and declared part 1; `Problems` passes them;
+`DoneJson` with `start_run`, `runs_driven`, `resume_from_run`, `resume_of`), `HRI/Scripts/V4/SessionResumeV4.cs` (`declaredResume`),
+`Scenario/Scripts/TrialRunnerV4.cs` (`-resumeMarker`, `-bridgeFolder` required in a final, the declaration checked before the session folder,
+`session.json` / `summary_unity.json` / done file keys), `Scenario/Editor/TrialPlayV4.cs` (`-resumeMarker`, `-bridgeFolder`), `finals_v4/run_session_v4.ps1`
+(`-Resume`, `-OutputRoot`, `FINAL_SETTING.json` blocker, `--resume-info`, `--resume-marker`, `-bridgeFolder`, both parts in the evaluation command),
+`finals_v4/check_session_v4.ps1` (`-ResumeMarker`), `Avatar/Tests/FinalResumeTests.cs` (new, with its `.meta`; 10 tests), `finals_v4/resume_dryrun_v4.py`
+and `finals_v4/test_resume_dryrun_v4.py` (new).
+- *Order:* this declaration was written into this file before any code change of it; it is committed together with the code, after both suites
+  passed, because the task allowed a commit only if every item was built and tested by 01:00 (otherwise nothing of it is committed).
+- *Tests:* Unity Edit Mode 371 of 371 (361 + 10); `finals_v4` 15 of 15 (14 + the dry-run test); Python suite as in the commit message.
+- *Dry run:* `robot_vision/outputs/resume_dryrun_20261121_212605/` (`report.md`; a first run at 21:16 was deleted by me because its report kept absolute paths, which `test_run_paths` refuses under outputs/; the report now names the run folder and the repository instead): all 16 steps shown, among them the launcher without `-Resume`
+  refused ("already started"), Anisha's declaration and `--resume-info` (run 4), the launcher with `-Resume` (`-startRun 4 -resumeMarker`,
+  `-bridgeFolder`, `--resume-marker`, the check with `-StartRun 4 -ResumeMarker`, the evaluation with both parts), the check refused without the
+  marker and with a `session.json` that says `resume_from_run` 0, accepted with the matching one, her `resume_plan` with no problem, and after a
+  second interruption `FINAL_INVALID.json` with `--resume-info` and `-Resume` refused. The launcher's other paths, dry run: a rehearsal and a fresh
+  final as before (a final's Unity command now ends with `-bridgeFolder`), `-Resume` with `-Rehearsal` refused, `-OutputRoot` without `-DryRun`
+  refused.
+- *Not run:* a resumed final in Play (none can be made before the freeze; its first real use would be a final).

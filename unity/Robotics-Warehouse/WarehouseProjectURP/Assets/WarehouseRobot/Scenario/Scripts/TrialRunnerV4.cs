@@ -64,6 +64,10 @@ namespace WarehouseRobot.Scenario
         public int start_run = 1;
         // 2026-11-21 (addendum 12): the shader warm-up of every look of the session, before the leak test
         public List<ShaderWarmUpRecord> shader_warm_up = new List<ShaderWarmUpRecord>();
+        // 2026-11-21 (addendum 13, AUDIT.md 16.31.3 item 3 and 16.31.4): a declared resume of a final: k (= start_run) and part 1's Unity
+        // session folder; 0 and "" in every other session
+        public int resume_from_run;
+        public string resume_of = "";
     }
 
     /// <summary>
@@ -116,9 +120,16 @@ namespace WarehouseRobot.Scenario
         public const string FinalSettingKey = "WarehouseRobot.TrialRunnerV4.FinalSetting";
         /// <summary>Editor session key: the first run to drive (TrialPlayV4 -startRun k; section 15 addendum 10); "" = run 1.</summary>
         public const string StartRunKey = "WarehouseRobot.TrialRunnerV4.StartRun";
+        /// <summary>Editor session key (addendum 13): the declared interruption a final resumes (TrialPlayV4 -resumeMarker); "" = none.</summary>
+        public const string ResumeMarkerKey = "WarehouseRobot.TrialRunnerV4.ResumeMarker";
+        /// <summary>Editor session key (addendum 13): the run folder of this final's server (TrialPlayV4 -bridgeFolder, from the launcher).</summary>
+        public const string BridgeFolderKey = "WarehouseRobot.TrialRunnerV4.BridgeFolder";
 #endif
         /// <summary>Section 15 addendum 10: the session plans all TrialTotal runs and drives runs startRun..TrialTotal (SessionResumeV4).</summary>
         int startRun = 1;
+        // addendum 13: a declared resume of a final (FinalResumeV4) and this final's server run folder
+        string resumeMarker = "", resumeFile = "", bridgeFolder = "";
+        FinalInterruptionV4 resumeDecl;
         // Stage F (2026-11-13, upgrade_design.md section 13): a final session of one setting, guarded by FinalGuardV4
         const string FinalConfigAsset = "Assets/WarehouseRobot/Avatar/Config/final_v4.json";
         string finalSetting = "", finalCfgText = "", finalPlanText = "", frozenText = "", fexpText = "";
@@ -299,9 +310,21 @@ namespace WarehouseRobot.Scenario
             }
             catch (Exception e) { return Fail(out error, $"final {finalSetting}: cannot read {FinalConfigAsset}, final_plan.json or frozen.json: {e.Message}"); }
             string outputRoot = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
+#if UNITY_EDITOR
+            resumeMarker = UnityEditor.SessionState.GetString(ResumeMarkerKey, "");
+            bridgeFolder = UnityEditor.SessionState.GetString(BridgeFolderKey, "");
+#endif
+            // addendum 13: the server's own start marker is not an earlier final, so a final needs to know its server's run folder
+            if (string.IsNullOrEmpty(bridgeFolder))
+                return Fail(out error, $"final {finalSetting} refused: -bridgeFolder (the server's run folder, passed by run_session_v4.ps1) is required in a final");
+            if (resumeMarker.Length > 0)
+            {
+                resumeDecl = FinalResumeV4.Read(resumeMarker, out resumeFile, out string readError);
+                if (resumeDecl == null) return Fail(out error, $"final {finalSetting} refused: -resumeMarker: {readError}");
+            }
             var problems = FinalGuardV4.Problems(fcfg, finalSetting, finalPlanText, frozenText,
                 p => { string f = RepoFile(p); return File.Exists(f) ? FinalGuardV4.Sha256Lf(File.ReadAllBytes(f)) : null; },
-                outputRoot, cfgName != "trials.json");
+                outputRoot, cfgName != "trials.json", bridgeFolder, resumeDecl);
 #if UNITY_EDITOR
             if (UnityEditor.SessionState.GetString(WorkersOverrideKey, "").Length > 0)
                 problems.Add("-workersConfig is refused with -finalSetting (the setting names its workers config)");
@@ -378,7 +401,11 @@ namespace WarehouseRobot.Scenario
 #if UNITY_EDITOR
             startText = UnityEditor.SessionState.GetString(StartRunKey, "");
 #endif
-            if (!SessionResumeV4.Parse(startText, TrialTotal, Final, out startRun, out string startError)) return Fail(out error, "refused: " + startError);
+#if UNITY_EDITOR
+            if (!Final && UnityEditor.SessionState.GetString(ResumeMarkerKey, "").Length > 0)
+                return Fail(out error, "refused: -resumeMarker is for a declared resume of a final only (a development session starts at run k without one)");
+#endif
+            if (!SessionResumeV4.Parse(startText, TrialTotal, Final, resumeDecl != null, out startRun, out string startError)) return Fail(out error, "refused: " + startError);
             plans.Clear();
             if (Experiment && !SetupExperiment(mode, out error)) return false;
             for (int run = 1; run <= TrialTotal && !Experiment; run++)
@@ -507,6 +534,22 @@ namespace WarehouseRobot.Scenario
             var gp = new GoalSequence(seed);
             for (int i = 0; i < TrialTotal; i++) order.Add(endpoints[gp.NextGoalIndex(endpoints.Count)]);
             if (Experiment) { order = new List<string>(eGoals); endpoints = ExperimentPlanAB.Endpoints(eplan.Map); }
+            // addendum 13 (AUDIT.md 16.31.3 item 2): a declared resume must match before anything is written (refused: no folder)
+            if (resumeDecl != null)
+            {
+                string root = Path.GetFullPath(Path.Combine(repoRoot, "robot_vision", cfg.output_root));
+                string frozenFile = RepoFile(fcfg.frozen);
+                var rp = FinalResumeV4.Problems(resumeDecl, resumeFile, root, finalSetting, startRun, TrialTotal, seed, order,
+                    File.Exists(frozenFile) ? FinalGuardV4.Sha256Lf(File.ReadAllBytes(frozenFile)) : null,
+                    FinalGuardV4.FreezeProblems(fcfg, frozenText, p => { string f = RepoFile(p); return File.Exists(f) ? FinalGuardV4.Sha256Lf(File.ReadAllBytes(f)) : null; }));
+                if (rp.Count > 0)
+                {
+                    Status = "not started: refused: resume of " + finalSetting + ": " + string.Join("; ", rp);
+                    Debug.LogError("[TrialRunnerV4] " + Status);
+                    yield break;
+                }
+                Debug.Log($"[TrialRunnerV4] declared resume of {finalSetting} from run {startRun} ({Path.GetFileName(Path.GetDirectoryName(resumeFile))}; part 1 {resumeDecl.unity_folder})");
+            }
 
             SessionFolder = NewFolder(Final ? $"trials_final_{cfg.task}_{finalSetting}" : Experiment ? $"trials_{mode}_{cfg.task}_{experimentName}" : $"trials_{mode}_{cfg.task}");
             string used = Path.Combine(SessionFolder, "config_used");
@@ -585,6 +628,8 @@ namespace WarehouseRobot.Scenario
             session.leak_test = leak;
             session.start_run = startRun;
             session.shader_warm_up = new List<ShaderWarmUpRecord>(sessionWarmUps);
+            session.resume_from_run = resumeDecl != null ? startRun : 0;
+            session.resume_of = resumeDecl != null ? resumeDecl.unity_folder : "";
             if (startRun > 1) Debug.Log($"[TrialRunnerV4] -startRun {startRun}: runs {startRun}..{TrialTotal} of {TrialTotal}, with the plans of the full session");
             foreach (var w in allWorkers)
                 session.workers.Add($"{w.name} worker_id {w.workerId} ({w.transform.position.x.ToString("0.00", Inv)}, {w.transform.position.z.ToString("0.00", Inv)})");
@@ -827,14 +872,15 @@ namespace WarehouseRobot.Scenario
                 }
             }
 
-            string summary = $"{{\n  \"study\": \"v4\",\n  \"trials\": {TrialTotal},\n  \"successes\": {Successes},\n  \"mode\": \"{mode}\",\n  \"task\": \"{cfg.task}\",\n  \"seed\": {seed},\n  \"start_run\": {startRun}\n}}\n";
+            string summary = $"{{\n  \"study\": \"v4\",\n  \"trials\": {TrialTotal},\n  \"successes\": {Successes},\n  \"mode\": \"{mode}\",\n  \"task\": \"{cfg.task}\",\n  \"seed\": {seed},\n  \"start_run\": {startRun},\n  \"resume_from_run\": {(resumeDecl != null ? startRun : 0)},\n  \"resume_of\": \"{(resumeDecl != null ? resumeDecl.unity_folder : "")}\"\n}}\n";
             GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, "summary_unity.json"), summary);
             if (Final && Completed == TrialTotal)
             {
                 // Stage F: the setting's run-once marker, written last (a session that stops early writes none)
                 ReadGit(out var commit, out _);
                 GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, fcfg.done_file),
-                    FinalGuardV4.DoneJson(finalSetting, TrialTotal, Successes, commit, Path.GetFileName(SessionFolder), DateTime.Now.ToString("s", Inv)));
+                    FinalGuardV4.DoneJson(finalSetting, TrialTotal, Successes, commit, Path.GetFileName(SessionFolder), DateTime.Now.ToString("s", Inv),
+                                          startRun, resumeDecl != null ? startRun : 0, resumeDecl != null ? resumeDecl.unity_folder : ""));
             }
             Status = startRun > 1 ? $"done: {Successes}/{TrialTotal - startRun + 1} SUCCESS (runs {startRun}..{TrialTotal})" : $"done: {Successes}/{TrialTotal} SUCCESS";
             Debug.Log($"[TrialRunnerV4] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
