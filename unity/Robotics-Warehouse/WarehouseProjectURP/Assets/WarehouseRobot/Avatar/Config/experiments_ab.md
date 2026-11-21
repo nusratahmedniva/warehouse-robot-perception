@@ -2708,3 +2708,94 @@ folder reports its folder relative to `robot_vision/` (an absolute path in a rep
   refused; without `-StartRun` the dry run is as before. `check_session_v4.ps1`: `-StartRun 4 -Runs 3` and `-Final -StartRun 2` refused (exit 2).
 - *Not run:* no Play session with `-startRun` (development check for Nusrat when wanted: e.g. B3 with `-Trials 3 -StartRun 2`, then compare
   `session.json` `workers_plan`, `goal_order` and run 2's `truth.jsonl` liars with the full session `trials_development_Task2_B3_*` of step 5).
+
+### 2026-11-21, section 15 addendum 11: the avatar rehearsal's cyan frames, the avatar-experiment look role, the clip of Edit takes, section 8 corrected (declared before any change below)
+
+Nusrat's task of 2026-11-21, after the avatar rehearsal's Play part failed its format check. Branch `nusrat/v4-rehearsal-fixes` from origin/main
+`21a4eaf`. Nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen; no session, final, look check or avatar run is made;
+nothing is pushed. One file of the B9 freeze list changes: `looks_ab.json` (item 2), so its hash moves before the freeze (nothing is frozen yet).
+`look_check_play_ab.json`, `look_check.json`, `worker_v4.json`, the scene and the prefab do not change. The checker
+(`finals_v4/avatar_rehearsal_check.py`) does not change: its rules, the 0 error-shader-pixel rule included, stay as in addendum 10.
+
+**Diagnosis (read only, before this entry).** The Play part (launcher 15:10 to 17:20, commit `21a4eaf`, run folder
+`look_check_play_ab_20261121_151205`) finished: 15 looks, 270 of 270 groups (2 sequences + 16 singles each), 4 860 recordings, 11 460 frames, Unity
+exit 0 after 131 min, no timeout. The play-only check `avatar_rehearsal_check_20261121_172439` failed on one rule only: **38 frames with exact cyan
+(0, 255, 255) pixels** (527 520 pixels in all; 0 magenta). All 38 are `anime_f_01`, command NONE, at J2: 8 singles and 1 sequence of 11 frames at
+2.0 m (20 089 to 25 042 cyan pixels per frame) and the same takes at 4.0 m (5 284 to 6 080), recorded between Time.time 5124.86 and 5128.80 s.
+That window is the first render of any anime material in the session (the looks run in rounds of one look per junction, and each look is at J2 one
+round before J1; `anime_f_01` at J2 is worker 22 of round 11 of 15). Its next take (POINT at 5130.98 s), its J1 round, `anime_f_02_outfit_short`, `anime_f_03_bangs_parted` and `cartoon_boxo_01` have
+none. The anime materials are URP Lit with `_ALPHATEST_ON` and `_EMISSION`, keywords no earlier look uses (Sunbox: specular set-up, no alpha test,
+no emission), so their variants were compiled at that moment: the Unity log shows two shader compilers launched during Play. Everything else passed:
+no missing group, every sequence frame count, 540 sequences timed with the largest |offset| 0.0887 s (< 0.100 s), every header, 30 of 30 truth files.
+The frames were deleted by `--delete-frames` after the report (22 920 files, 4.85 GB), as the blind rule says (`docs/handoff_freeze_v4.md` section 3).
+Classification: **a real recording problem** (the Editor's still-compiling placeholder in recorded frames), not a checker problem and not a
+run-condition hitch. It is the failure of section 5 addendum 2 (2026-11-14: 56 of 76 `anime_f_01` NONE frames, first renders of new materials):
+the menu's session switch `ShaderUtil.allowAsyncCompilation = false`, set when the scene loads (`LookCheckPlayMenu.OnSceneLoaded`), does not stop
+it, and the earlier remedy was a second run once the variants were cached. No tolerance changes.
+
+**Item 1. Shader warm-up and a synchronous capture render (`LookCheckPlayDriver`).**
+- After a round's workers are spawned and before their first take, a warm-up: every camera of every site is put on the site's facing line at its
+  nominal distance (2.0 and 4.0 m, pan-tilt height, looking at the stand) and rendered once per frame until (a) at least 3 renders, (b) the last 2
+  renders of every camera have no exact cyan or magenta pixel, and (c) the Editor reports no shader compiling (`ShaderUtil.anythingCompiling`); at
+  most 120 s, else the run fails (`failed: shader warm-up ...`). The warm-up draws from no seeded stream (pose, variation, clip and STOP streams are
+  untouched), so every take's camera pose, variation and clip is the same as without it; it writes no recording. The next take's `PlaceCameras`
+  sets the camera poses as before.
+- Every capture render (warm-up and recording) turns `ShaderUtil.allowAsyncCompilation` off around `Camera.Render()` and restores it (Unity's
+  per-call use; Editor only). The menu's session switch stays.
+- `recordings.jsonl` Play rows get `magenta_pixels` and `cyan_pixels`: exact colours as the checker counts them, summed over the recording's frames,
+  counted in the write task (off the main thread, so capture timing is unchanged). `run_info.json` gets `shader_warm_up` (rounds, renders, the
+  longest warm-up, error-shader pixels seen during warm-ups). A recording with such pixels is logged as a warning; the checker judges it.
+- The pure parts go into WarehouseAvatar (new `Avatar/Scripts/ShaderWarmUp.cs` with its `.meta`): the pixel count on an RGBA32 buffer and the stop
+  rule, with the constants 3 renders, 2 clean renders, 120 s. They are operating limits of the capture, not evaluation thresholds; set before any run.
+- Not changed: `TrialRunnerV4` (sessions and finals keep the same session switch; see the limitation below), the Edit look check (0 cyan pixels in
+  every Edit run so far; it renders in the Editor, not in Play).
+- Tests (Edit Mode, WarehouseAvatar): exact cyan and magenta counted, near colours not counted, an odd buffer length refused; the stop rule (too few
+  renders, a dirty render, still compiling, the 120 s limit).
+- Limitation, not changed here: `TrialRunnerV4` relies on the same session switch, so the first frames of a look whose shader variants are not yet
+  compiled could reach Python cyan. The finals use the Sunbox looks (variants compiled in every earlier session); a check of the finals' first
+  frames is for Nusrat's decision.
+
+**Item 2 (task item 0). The avatar-experiment look role and `GuardRun`.**
+- Anisha's finding: `DataSplitsV4.GuardRun` would accept a lone avatar-experiment look. Today it refuses those looks only because
+  `data_splits.json` does not list them; once it lists them (her hand-off note, section 5 (b)) a trial session could use one.
+- `looks_ab.json`: role `avatar_experiment` (today `candidate`) for the six looks of its `avatar_experiment` list that are in no split of
+  `data_splits.json`: `mixamo_worker`, `sunbox_m2`, `anime_f_01`, `anime_f_02_outfit_short`, `anime_f_03_bangs_parted`, `cartoon_boxo_01`. The
+  navigation looks keep `candidate`; `worker_v4.json` and `look_check.json` do not change.
+- `LookEntry.RoleAvatarExperiment`. `ExperimentLooks.Validate`: a role is `candidate` or `avatar_experiment`; a navigation look never has
+  `avatar_experiment`; a look with that role is in the `avatar_experiment` list.
+- `DataSplitsV4.Parse(splits, looksAb)` keeps the ids of the looks with that role; `GuardRun` refuses any of them first, in development and final
+  mode, alone or with other looks, whatever split `data_splits.json` gives it ("... is an avatar-experiment look (looks_ab.json role
+  avatar_experiment): refused in every trial session; only the avatar experiment's look checks record it"). `TrialRunnerV4`, the one runtime reader
+  of `data_splits.json` (Task 2, STOP, experiments A/B and the finals all go through it), passes `looks_ab.json`.
+- The avatar experiment (Edit `LookCheckMenu.RunExperiment` / `BatchRunExperiment`, Play `LookCheckPlayMenu` / `LookCheckPlayDriver`) never calls
+  `GuardRun` and records these looks as before; the Edit rows' `role` column now says `avatar_experiment` for them.
+- Tests: (a) refused: each of the six alone, in development and final mode, beside a development look, and after adding it as development to a copy
+  of `data_splits.json`; (b) the avatar experiment keeps them: `looks_ab.json` validates, every look with the role is in its `avatar_experiment` list,
+  every look of that list missing from `data_splits.json` has the role and no listed look has it, and the navigation looks pass `GuardRun` as before.
+
+**Item 3 (task item 1). The clip of each take.**
+- Play: `recordings.jsonl` `clip` (the `worker_v4.json` clip name; "" for NONE) beside `look`, `command`, `distance_m`, `arm`, `junction`, `take`,
+  e.g. `{"name":"anime_f_01__POINT__2.0__left_s2_j2_point_mixamo_02", ..., "command":"POINT","arm":"left","clip":"point_mixamo_02","junction":"J2",
+  ..., "take":2, ..., "distance_m":2.0, ...}`; and every truth row (`truth/*.jsonl` `clip`). No change.
+- Edit: none. Edit takes are held poses from `look_check.json` variants (`PoseSpec`), not animation clips. The Edit row gets `clip` "" and `pose`
+  "posed" (appended after the earlier fields, which keep their order). The record class moves from `LookCheckMenu` (Editor) to WarehouseAvatar
+  (`LookCheckEditRecord`, same fields) so that a test can pin it. Test: a record's JSON has `look`, `command`, `distance_m`, `arm`, `take`, `clip` ""
+  and `pose` "posed".
+
+**Item 4 (task item 2). The avatar-session marker.** It exists; no new key: `avatar_experiment_part` ("edit" or "play" in the official run, "" in an
+engineering check) in `run_info.json` of each part, and the run-once markers `AVATAR_EXPERIMENT_STARTED.json` / `AVATAR_EXPERIMENT_DONE.json` with
+the same key (`AvatarExperimentGuard.MarkerJson`).
+
+**Item 5 (task item 3). Resume names: not changed.** `resume_from_run`, `resume_of` and `--resume-marker` appear on no branch of origin (all refs,
+2026-11-21, `anisha/v4-prefreeze` included, which main already contains) and nowhere in the working tree. Unity's names stay `start_run`
+(`session.json`, `summary_unity.json`), `-startRun` and `-StartRun` until Anisha names hers **[A]**.
+
+**Item 6 (task item 4). Section 8 corrected in place**, with a dated note at its top: 15 looks (`anime_f_02_outfit_short`,
+`anime_f_03_bangs_parted` added in section 10); PROCEED recorded (section 10 item 5); `cartoon_boxo_01` in Play too (addenda 9 to 13); `sunbox_m2`
+in no split, role `avatar_experiment` (item 2); counts of the Play and Edit parts as run on 2026-11-20/21; the run-once guard exists (section 10 item 6).
+
+**Item 7 (task item 5). `SOURCES.txt`: nothing to fix.** Its line 12 reads `anime_f_03_bangs_parted.fbx`, the file name and the `looks_ab.json` id;
+the earlier `anime_f_03_hairback.fbx` was corrected by Nusrat (section 11).
+
+**Order.** This declaration is committed alone; then items 1, 2, 3 and 6 with their tests in one commit after Unity Edit Mode and the Python suite
+pass. Then Nusrat repeats the Play part and the play-only check (about 2 h 15 min); a repeat is a new run folder, the failed one is kept.
