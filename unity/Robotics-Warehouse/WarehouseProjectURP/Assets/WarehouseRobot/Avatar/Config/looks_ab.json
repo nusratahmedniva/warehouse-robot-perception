@@ -124,7 +124,7 @@
                       { "name": "No Hat", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
     },
     {
-      "id": "sunbox_m2", "family": "sunbox", "role": "candidate", "kind": "sunbox", "kind_group": "stylised_human",
+      "id": "sunbox_m2", "family": "sunbox", "role": "avatar_experiment", "kind": "sunbox", "kind_group": "stylised_human",
       "gender": "male", "person": "sunbox_m2", "costume": "tshirt_white_cap", "navigation": false, "proposed_split": "",
       "source": "As look_check.json (Phase 2A candidate, excluded from worker_v4.json: face keypoints rarely found): male base, darker skin, T-shirt, tracksuit pants, cap",
       "licence": "Unity Asset Store Standard EULA (use in a published study allowed; the pack is never redistributed, git-ignored)",
@@ -134,7 +134,7 @@
                       { "name": "Baseball cap", "variation": 0 }, { "name": "No Glasses", "variation": 0 } ] }
     },
     {
-      "id": "mixamo_worker", "family": "mixamo", "role": "candidate", "kind": "prefab", "kind_group": "realistic_human",
+      "id": "mixamo_worker", "family": "mixamo", "role": "avatar_experiment", "kind": "prefab", "kind_group": "realistic_human",
       "gender": "male", "person": "mixamo_worker", "costume": "workwear", "navigation": false, "proposed_split": "",
       "source": "Mixamo character used as the v3 worker (Assets/WarehouseRobot/Characters/worker.fbx, git-ignored), as look_check.json",
       "licence": "Adobe Mixamo terms (royalty-free use in projects; the files are never redistributed, git-ignored)",
@@ -143,7 +143,7 @@
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     },
     {
-      "id": "anime_f_01", "family": "vroid", "role": "candidate", "kind": "prefab", "kind_group": "anime",
+      "id": "anime_f_01", "family": "vroid", "role": "avatar_experiment", "kind": "prefab", "kind_group": "anime",
       "gender": "female", "person": "anime", "costume": "default", "navigation": false, "proposed_split": "",
       "source": "Nusrat's own VRoid character exported as FBX (unity/downloads/characters_v4/anime_f_01.fbx, git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters)",
       "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, re-checked 2026-11-14): made in VRoid Studio, converted to FBX in Blender (VRM Add-on); VRoid Studio Guidelines allow any use, commercial included, of models made with it and its preset items unless an item carries special clauses (none used); never redistributed, git-ignored (experiments_ab.md section 6)",
@@ -151,7 +151,7 @@
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     },
     {
-      "id": "anime_f_02_outfit_short", "family": "vroid", "role": "candidate", "kind": "prefab", "kind_group": "anime",
+      "id": "anime_f_02_outfit_short", "family": "vroid", "role": "avatar_experiment", "kind": "prefab", "kind_group": "anime",
       "gender": "female", "person": "anime", "costume": "outfit_short", "navigation": false, "proposed_split": "",
       "variant_of": "anime_f_01", "variant_changes": "the outfit, sleeves included: a different outfit with short sleeves (forearms and hands uncovered); hair, face and body as anime_f_01. Its skeleton lies 1.55 mm from anime_f_01's as a whole (probe_variants_20261114_184319): an export difference, accepted by Nusrat (experiments_ab.md section 11 item 5)",
       "source": "Nusrat's controlled variant of anime_f_01 made in VRoid Studio (unity/downloads/characters_v4/anime_f_02_outfit_short.fbx, sha256 d94b472a..., git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters; experiments_ab.md section 10)",
@@ -160,7 +160,7 @@
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     },
     {
-      "id": "anime_f_03_bangs_parted", "family": "vroid", "role": "candidate", "kind": "prefab", "kind_group": "anime",
+      "id": "anime_f_03_bangs_parted", "family": "vroid", "role": "avatar_experiment", "kind": "prefab", "kind_group": "anime",
       "gender": "female", "person": "anime", "costume": "default", "navigation": false, "proposed_split": "",
       "variant_of": "anime_f_01", "variant_changes": "only the bangs: parted so both eyes are visible; outfit, face and body as anime_f_01",
       "source": "Nusrat's controlled variant of anime_f_01 made in VRoid Studio (unity/downloads/characters_v4/anime_f_03_bangs_parted.fbx, sha256 a3cf3439..., git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters; experiments_ab.md section 10)",
@@ -169,7 +169,7 @@
       "sunbox": { "gender": "", "skin": 0, "hair_style": 0, "hair_material": 0, "facial_hair_style": 0, "clothing": [] }
     },
     {
-      "id": "cartoon_boxo_01", "family": "cartoon", "role": "candidate", "kind": "prefab", "kind_group": "cartoon_non_human",
+      "id": "cartoon_boxo_01", "family": "cartoon", "role": "avatar_experiment", "kind": "prefab", "kind_group": "cartoon_non_human",
       "gender": "none", "person": "boxo", "costume": "default", "navigation": false, "proposed_split": "",
       "source": "Nusrat's own procedurally generated character, thumb + 3 fingers; VERSION 3 since 2026-11-14 (edge loops every 2.5 cm, shorter thumb near the wrist, sha256 4a69abed..., experiments_ab.md section 12 addendum 5; Humanoid fingers mapped by the Mixamo names, addendum 6; v2 00fbf466... and v1 431e6cb2... in unity/downloads/superseded/) (unity/downloads/characters_v4/cartoon_boxo_01.fbx, git-ignored; imported by Tools > Warehouse v4 > Experiments > Import Characters)",
       "licence": "Nusrat's own character (unity/downloads/characters_v4/SOURCES.txt, re-checked 2026-11-14): generated procedurally (unity/tools/avatars/make_cartoon_boxo.py, v3) and rigged with Mixamo's auto-rigger; Adobe's Mixamo FAQ: the user keeps the rights to their own creations, royalty-free use in personal, commercial and non-profit projects, no ML training on Mixamo content (none here); never redistributed, git-ignored (experiments_ab.md section 6)",

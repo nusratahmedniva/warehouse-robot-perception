@@ -311,7 +311,7 @@ namespace WarehouseAvatar.EditorTools
                                     WriteNew(Path.Combine(recDir, name + ".png"), png);
                                     WriteNew(Path.Combine(recDir, name + ".json"), LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, 0, arm, v, Phase(0)));
                                 }
-                                lines.Append(JsonUtility.ToJson(new RecordingRecord
+                                lines.Append(JsonUtility.ToJson(new LookCheckEditRecord
                                 {
                                     name = name, kind = v.sequence ? "sequence" : "frame", look = look.id, family = look.family, role = look.role,
                                     command = c.command, arm = arm, take = v.take, distance_m = d, vertical_fov_deg = fov, n_frames = n,
@@ -336,15 +336,6 @@ namespace WarehouseAvatar.EditorTools
             return $"{recordings} recordings ({frames} frames) of {rows.Count(r => r.status == "ok")} usable looks ({rows.Count} listed) in {rel}. " +
                    string.Join("; ", rows.Select(r => $"{r.id}: {r.status}")) +
                    $". Next, from robot_vision/: look_check_v4.py --input {Path.GetRelativePath(Path.Combine(repo, "robot_vision"), recDir).Replace('\\', '/')}";
-        }
-
-        [Serializable]
-        class RecordingRecord
-        {
-            public string name, kind, look, family, role, command, arm, take;
-            public float distance_m, vertical_fov_deg, azimuth_front_deg, elevation_deg, spread_deg;
-            public bool forearm_up;
-            public int n_frames, magenta_pixels;
         }
 
         [Serializable] class InventoryFile { public LookInventoryRow[] looks; }

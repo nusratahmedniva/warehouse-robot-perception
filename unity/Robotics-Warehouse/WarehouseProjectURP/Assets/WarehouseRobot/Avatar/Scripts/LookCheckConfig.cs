@@ -280,6 +280,9 @@ namespace WarehouseAvatar
     {
         public const string KindPrefab = "prefab", KindSunbox = "sunbox";
         public const string RoleCandidate = "candidate", RolePipelineTest = "pipeline_test_only";
+        /// <summary>experiments_ab.md section 15 addendum 11: a looks_ab.json look recorded only by the avatar experiment's look checks;
+        /// DataSplitsV4.GuardRun refuses it in every trial session.</summary>
+        public const string RoleAvatarExperiment = "avatar_experiment";
 
         public string id;
         public string family;
@@ -291,6 +294,22 @@ namespace WarehouseAvatar
         /// <summary>Optional material put on every renderer slot (the v3 worker's URP material); "" = keep the asset's.</summary>
         public string material_override;
         public SunboxLook sunbox;
+    }
+
+    /// <summary>
+    /// One row of the Edit-mode look check's recordings.jsonl (moved from LookCheckMenu in experiments_ab.md section 15 addendum 11; the
+    /// earlier fields keep their order). Edit takes are held poses from look_check.json variants (PoseSpec), never an animation clip:
+    /// clip is "" and pose is "posed" (a Play row's clip names the worker_v4.json clip).
+    /// </summary>
+    [Serializable]
+    public class LookCheckEditRecord
+    {
+        public const string PosePosed = "posed";
+        public string name, kind, look, family, role, command, arm, take;
+        public float distance_m, vertical_fov_deg, azimuth_front_deg, elevation_deg, spread_deg;
+        public bool forearm_up;
+        public int n_frames, magenta_pixels;
+        public string clip = "", pose = PosePosed;
     }
 
     [Serializable]

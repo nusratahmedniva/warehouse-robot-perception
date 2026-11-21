@@ -361,9 +361,13 @@ namespace WarehouseRobot.Scenario
             wcfg = TrialWorkersConfig.Parse(workersText);
             var errors = wcfg.Validate();
             if (errors.Count > 0) return Fail(out error, "trial_workers_v4.json: " + string.Join("; ", errors));
-            try { splitsText = File.ReadAllText(RepoFile(wcfg.data_splits)); }
-            catch (Exception e) { return Fail(out error, "cannot read " + wcfg.data_splits + ": " + e.Message); }
-            splits = DataSplitsV4.Parse(splitsText);
+            // experiments_ab.md section 15 addendum 11: with the looks_ab.json roles, so no avatar-experiment look enters a session
+            try
+            {
+                splitsText = File.ReadAllText(RepoFile(wcfg.data_splits));
+                splits = DataSplitsV4.Parse(splitsText, File.ReadAllText(Path.Combine(Application.dataPath, "..", ExperimentLooks.AssetPath)));
+            }
+            catch (Exception e) { return Fail(out error, "cannot read " + wcfg.data_splits + " or " + ExperimentLooks.AssetPath + ": " + e.Message); }
 
             string mode = FinalRunGuard.Mode(cfg.mode);
             if (!SetupStopSession(out error)) return false;
