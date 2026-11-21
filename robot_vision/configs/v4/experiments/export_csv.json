@@ -115,6 +115,21 @@
       "field": "watchdog_stops"
     },
     {
+      "field": "stop_gestures_true"
+    },
+    {
+      "field": "stop_gestures_false"
+    },
+    {
+      "field": "resume_from_run"
+    },
+    {
+      "field": "resume_of"
+    },
+    {
+      "field": "interrupted"
+    },
+    {
       "field": "session"
     },
     {
@@ -216,6 +231,15 @@
       "field": "t_s"
     },
     {
+      "field": "clip"
+    },
+    {
+      "field": "look_role"
+    },
+    {
+      "field": "clip_role"
+    },
+    {
       "field": "session"
     },
     {
@@ -230,5 +254,6 @@
     "correct": "The plan's 'correct' can mean the reader was right (command_read == command_shown) or the decision was right; the exporter gives three columns, correct (the command read is the command shown), correct_direction (the branch read is the branch shown) and correct_branch (the branch read is the true branch toward B). Keep the ones the faculty means.",
     "lies": "lies_given counts lying gestures in truth.jsonl; detected, corrected and fooled are defined in the docstring of export_csv_v4.py and in export.json."
   },
-  "declared_2026_11_14": "Added 2026-11-14 (AUDIT.md 16.15, before the finals): final_setting, max_distance_from_optimal_m, share_within_corridor and watchdog_stops, after the other run columns. This file is deliberately NOT frozen (16.10.1): the combined table of the finals reads summary.json, not these columns. 2026-11-14 (AUDIT.md 16.16.2): 'setting' falls back to the bridge control file's label when Unity's session.json has none, and the column lie_detection (always from the control file) follows it."
+  "declared_2026_11_14": "Added 2026-11-14 (AUDIT.md 16.15, before the finals): final_setting, max_distance_from_optimal_m, share_within_corridor and watchdog_stops, after the other run columns. This file is deliberately NOT frozen (16.10.1): the combined table of the finals reads summary.json, not these columns. 2026-11-14 (AUDIT.md 16.16.2): 'setting' falls back to the bridge control file's label when Unity's session.json has none, and the column lie_detection (always from the control file) follows it.",
+  "declared_2026_11_21": "Added 2026-11-21 (AUDIT.md 16.31.6, Anisha, after Nusrat's answers): runs.csv stop_gestures_true, stop_gestures_false (accepted STOP gesture episodes split by truth), resume_from_run, resume_of, interrupted (from session.json; empty when the session is not resumed); dialogs.csv clip, look_role, clip_role (from truth.jsonl and data_splits.json). Appended as extras before session / run / trial: the plan's columns keep their order. Still not frozen (16.10.1)."
 }

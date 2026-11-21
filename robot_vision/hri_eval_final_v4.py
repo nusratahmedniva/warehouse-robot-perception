@@ -151,7 +151,7 @@ def evaluate_final(setting: str, pairs, repo: Path = fz.REPO, output_root: Path 
     res["splits"] = "TEST looks and clips only (data_splits_v4.guard_run, final evaluation), frozen configs verified"
     res["watchdog_stops"] = watchdog_block(runs)                     # B11(a): a result, never a refusal
     res["interruption"] = fg.interruption_report(fg.resume_plan(output_root, setting, pairs, repo))   # AUDIT.md 16.30.1: None when there was none
-    run_rows, _ = ex.build_tables(runs, ecfg)                         # the experiment's own numbers (AUDIT.md 16.15 item 6)
+    run_rows, _ = ex.build_tables(runs, ecfg, ds.load(repo / "robot_vision/configs/v4/data_splits.json"))   # the experiment's own numbers (AUDIT.md 16.15 item 6)
     res["experiment"] = {"setting": setting, "plan_entry": fg.plan(repo)["settings"][setting],
                          "summary": ex.summarize(run_rows, ex.wilson_z(repo)), "runs_table": run_rows}
     out = dio.new_run_dir({"paths": {"output_root": str(output_root)}}, f"{fg.EVAL_PREFIX}_{setting}")

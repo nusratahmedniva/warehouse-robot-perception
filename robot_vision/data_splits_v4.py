@@ -8,8 +8,8 @@ config are placeholders. Like data_splits.guard it raises SystemExit.
 Third role (AUDIT.md 16.31, 16.31.2, 2026-11-21): a LOOK may have the role "avatar_experiment": it is never used for navigation,
 development or the A/B finals, it is for the evaluation of the avatar experiment only, and no value is ever set from it. guard_run
 refuses such a look in every mode, alone or mixed. The avatar experiment has its own guard, guard_avatar_experiment: every name listed
-(any role), the session marked as an avatar-experiment session, the frozen hashes matching; the development/test mixing rule does not
-apply to it. A clip is only development or test.
+(any role), the session an OFFICIAL avatar-experiment run (run_info.json avatar_experiment_part 'edit' or 'play' and the run-once markers,
+AUDIT.md 16.31.6), the frozen hashes matching; the development/test mixing rule does not apply to it. A clip is only development or test.
 """
 
 from __future__ import annotations
@@ -119,23 +119,76 @@ def guard_run(looks: Iterable[str], clips: Iterable[str], final_evaluation: bool
     return split
 
 
-def guard_avatar_experiment(looks: Iterable[str], clips: Iterable[str], session_marked: bool, splits: dict | None = None,
+AVATAR_PARTS = ("edit", "play")
+AVATAR_RUN_INFO = "run_info.json"
+AVATAR_STARTED = "AVATAR_EXPERIMENT_STARTED.json"
+AVATAR_DONE = "AVATAR_EXPERIMENT_DONE.json"
+
+
+def load_avatar_session(folder: str | Path) -> dict:
+    """The session record of an avatar-experiment run folder (Unity's look_check_play_ab_<time>/ or look_check_ab_<time>/): run_info.json and the
+    two run-once markers, each None when absent or unreadable. AUDIT.md 16.31.6 decision 1 (Q6 closed by Nusrat, 2026-11-21)."""
+    folder = Path(folder)
+
+    def read(name):
+        try:
+            return json.loads((folder / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    return {"folder": folder.name, "run_info": read(AVATAR_RUN_INFO), "started": read(AVATAR_STARTED), "done": read(AVATAR_DONE)}
+
+
+def avatar_session_problems(session: dict | None) -> list[str]:
+    """What is wrong with the session record as an OFFICIAL avatar-experiment run (empty = fine): run_info.json with avatar_experiment_part
+    'edit' or 'play' ('' = an engineering check, refused as not official), both markers with the same part, the same commit in run_info and
+    both markers, and the markers' folder equal to the run folder's name."""
+    if not isinstance(session, dict):
+        return ["no session record: the avatar guard needs the run folder's run_info.json and markers"]
+    info, started, done = session.get("run_info"), session.get("started"), session.get("done")
+    if not isinstance(info, dict):
+        return [f"no {AVATAR_RUN_INFO} in the run folder: the session is not marked as an avatar-experiment session"]
+    part = info.get("avatar_experiment_part")
+    if part == "":
+        return ["avatar_experiment_part is empty in run_info.json: this is an engineering check, not an official avatar-experiment run"]
+    if part not in AVATAR_PARTS:
+        return [f"avatar_experiment_part {part!r} in run_info.json is not one of {AVATAR_PARTS}"]
+    out = []
+    for name, marker, kind in ((AVATAR_STARTED, started, "started"), (AVATAR_DONE, done, "done")):
+        if not isinstance(marker, dict):
+            out.append(f"no {name}: " + ("the run did not start as an official run" if kind == "started" else
+                                         "the part did not finish (an interrupted part follows the interruption rule, which is not built)"))
+            continue
+        if marker.get("marker") != kind:
+            out.append(f"{name} says marker {marker.get('marker')!r}, expected {kind!r}")
+        if marker.get("avatar_experiment_part") != part:
+            out.append(f"{name} has avatar_experiment_part {marker.get('avatar_experiment_part')!r} but run_info.json has {part!r}")
+        if marker.get("git_commit") != info.get("git_commit"):
+            out.append(f"{name} has git_commit {marker.get('git_commit')!r} but run_info.json has {info.get('git_commit')!r}")
+        if session.get("folder") and marker.get("folder") != session["folder"]:
+            out.append(f"{name} names the folder {marker.get('folder')!r}, not {session['folder']!r}")
+    return out
+
+
+def guard_avatar_experiment(looks: Iterable[str], clips: Iterable[str], session: dict, splits: dict | None = None,
                             repo: Path | None = None) -> dict:
-    """The guard of the avatar experiment (AUDIT.md 16.31 decision b, 16.31.2). SystemExit unless: the session is marked as an
-    avatar-experiment session (session_marked; how it is marked is open, so the caller gives the result), the v4 configs are frozen
-    with every hash matching (the experiment runs after the freeze, so nothing can be tuned on it), and every look and clip name is
-    listed in data_splits.json, in ANY role (an empty clip name is refused; unknown is never assumed). The development/test mixing
-    rule of guard_run does not apply: a group shows every clip of a command on every look. Returns {"look_roles", "clip_roles",
-    "kind_groups"} for the report by role; the results are reported split by look role and clip role, not refused for mixing."""
+    """The guard of the avatar experiment (AUDIT.md 16.31 decision b, 16.31.2, wired to the session marker by 16.31.6). SystemExit unless:
+    the session record (load_avatar_session) shows an OFFICIAL run (avatar_experiment_part 'edit' or 'play', both run-once markers, one commit),
+    the v4 configs are frozen with every hash matching (the experiment runs after the freeze, so nothing can be tuned on it), and every look and
+    clip name is listed in data_splits.json, in ANY role (an empty clip name is refused; unknown is never assumed). The development/test
+    mixing rule of guard_run does not apply: a group shows every clip of a command on every look. Returns {"part", "commit", "status",
+    "look_roles", "clip_roles", "kind_groups"}; the results are reported split by look role and clip role, not refused for mixing."""
     import freeze_v4 as fz
-    if session_marked is not True:
-        raise SystemExit("the session is not marked as an avatar-experiment session: the avatar guard refuses it.")
+    problems = avatar_session_problems(session)
+    if problems:
+        raise SystemExit("the session is not an official avatar-experiment session: " + "; ".join(problems))
     fz.require_frozen(repo if repo is not None else fz.REPO)
     splits = splits if splits is not None else load()
     looks, clips = sorted(set(looks)), sorted(set(clips))
     if not looks:
         raise SystemExit("no avatar look given: the avatar experiment cannot be checked without it.")
-    out = {"look_roles": {}, "clip_roles": {}, "kind_groups": {}}
+    out = {"part": session["run_info"]["avatar_experiment_part"], "commit": session["run_info"].get("git_commit"),
+           "status": (session["done"] or {}).get("status", ""), "look_roles": {}, "clip_roles": {}, "kind_groups": {}}
     for kind, names, table, key in (("look", looks, splits["looks"], "look_roles"), ("clip", clips, splits["clips"], "clip_roles")):
         for name in names:
             if name == "":

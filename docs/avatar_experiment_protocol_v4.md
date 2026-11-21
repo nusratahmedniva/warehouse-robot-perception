@@ -1,6 +1,6 @@
 # The avatar experiment: protocol for Nusrat's review
 
-Written by Anisha's side (Python). **Declared 2026-11-21 by Anisha, before any recording** (`AUDIT.md` 16.30 to 16.31.5, section 16.31.1 is the same protocol with its reasons; **changed on 2026-11-21 after your review, 16.31.5**). Three things in it are still waiting for your answer (marked **PENDING**: the session marker, the meaning of a group, the counts of section 2); none changes what is counted or how. One item (the Edit-mode floor, section 4) is a gap I found while writing this text and needs Anisha's confirmation. Please read it and tell us what is wrong, impossible or unclear in Unity; do not change anything on your side because of it before we agree.
+Written by Anisha's side (Python). **Declared 2026-11-21 by Anisha, before any recording** (`AUDIT.md` 16.30 to 16.31.5, section 16.31.1 is the same protocol with its reasons; **changed on 2026-11-21 after your review, 16.31.5**). Two things in it are still waiting for your answer (marked **PENDING**: the meaning of a group, the counts of section 2; the session marker is closed, AUDIT 16.31.6); none changes what is counted or how. One item (the Edit-mode floor, section 4) is a gap I found while writing this text and needs Anisha's confirmation. Please read it and tell us what is wrong, impossible or unclear in Unity; do not change anything on your side because of it before we agree.
 
 ## 1. The question, in one sentence
 
@@ -108,12 +108,12 @@ No retuning. No look replaced for failing: a failing look is reported as failed 
 
 ## 10. The guard
 
-Python refuses to report an avatar experiment unless: every look and clip name is listed in `data_splits.json` (any role); the session is marked as an avatar-experiment session; the frozen hashes match (the experiment runs after the freeze, so nothing can be tuned on it). The development/test mixing rule does not apply here. The report is written once.
+Python refuses to report an avatar experiment unless: every look and clip name is listed in `data_splits.json` (any role); the session is an official avatar-experiment run (`avatar_experiment_part` "edit" or "play" in `run_info.json`, and both run-once markers with the same part and commit); the frozen hashes match (the experiment runs after the freeze, so nothing can be tuned on it). The development/test mixing rule does not apply here. The report is written once.
 
 ## 11. What we need from you
 
 1. **Q5 is closed** (the clip per take comes from `recordings.jsonl`). **One thing to add on your side:** the Edit writer's rows have no `clip` and no `pose` field yet; please write `clip` "" and `pose` "posed" for Edit takes (until then an Edit row is counted `not_evaluated`).
-2. **PENDING Q6:** how is an **avatar-experiment session marked**? (Candidates: `AVATAR_EXPERIMENT_STARTED.json` and `AVATAR_EXPERIMENT_DONE.json`, the commit in `run_info.json`.)
+2. **Q6 is closed:** the session is marked by `avatar_experiment_part` ("edit" / "play") in `run_info.json` plus the run-once markers; Python reads them from the run folder, and an engineering check ("") is refused as not official.
 3. **PENDING:** what a **group** is in Unity's recording order, and the option that resumes a look check (section 7).
 4. Do the counts in section 2 match what Unity records (18 groups and 764 frames per look in Play; 144 takes per look for the four commands; NONE takes per distance)? Does anything in section 6 (INVALID) describe a failure that cannot be detected from the recording or from Unity's own record?
 5. **Before the freeze (must fix):** Unity's `DataSplitsV4.GuardRun` accepts a run whose looks all have one role (a lone `avatar_experiment` look); see `docs/handoff_freeze_v4.md` section 5.

@@ -119,6 +119,8 @@ class CallersTests(unittest.TestCase):
         for f in sorted(ROOT.glob("*.py")) + sorted((ROOT / "bridge").glob("*.py")):
             if f.name in ("data_splits_v4.py", "data_splits.py"):
                 continue
+            if f.name == "export_csv_v4.py":          # AUDIT.md 16.31.6: it only LABELS rows (look_role, clip_role) of runs that guard_run has already accepted
+                continue
             text = f.read_text(encoding="utf-8")
             if re.search(r"split_of_look|split_of_clip", text) or re.search(r'splits\[\s*["\']looks["\']\s*\]|splits\.get\(\s*["\']looks["\']', text):
                 offenders.append(f.name)
@@ -136,37 +138,106 @@ class CallersTests(unittest.TestCase):
 
 
 class AvatarGuardTests(unittest.TestCase):
+    """guard_avatar_experiment, wired to the session marker (AUDIT.md 16.31.6 decision 1; Q6 closed): run_info.json avatar_experiment_part and the
+    run-once markers AVATAR_EXPERIMENT_STARTED.json / AVATAR_EXPERIMENT_DONE.json of the run folder."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.repo = tf.final_repo(Path(self.tmp.name) / "r")
+        self.root = Path(self.tmp.name)
+        self.repo = tf.final_repo(self.root / "r")
         self.splits = ds.load(self.repo / "robot_vision/configs/v4/data_splits.json")
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def guard(self, looks, clips, marked=True, repo=None, splits=None):
-        return ds.guard_avatar_experiment(looks, clips, marked, splits or self.splits, repo or self.repo)
+    def run_folder(self, part="play", name="look_check_play_ab_20261122_090000", commit="abc123", started=True, done=True, **edit):
+        """An official run folder as Unity leaves it: run_info.json and the two markers (MarkerJson: marker, part, commit, folder, written)."""
+        d = self.root / name
+        d.mkdir(exist_ok=True)
+        info = {"avatar_experiment_part": part, "git_commit": commit, "status": "finished"}
+        info.update(edit.get("run_info", {}))
+        (d / "run_info.json").write_text(json.dumps(info), encoding="utf-8")
+        for flag, file, kind in ((started, ds.AVATAR_STARTED, "started"), (done, ds.AVATAR_DONE, "done")):
+            if flag:
+                m = {"avatar_experiment_part": part, "marker": kind, "git_commit": commit, "folder": name, "written": "2026-11-22T09:00:00"}
+                m.update(edit.get(kind, {}))
+                (d / file).write_text(json.dumps(m), encoding="utf-8")
+        return d
 
-    def test_accepts_every_role_together_and_reports_the_roles_and_kinds(self):
+    def guard(self, looks, clips, folder=None, repo=None, splits=None, session=None):
+        session = session if session is not None else ds.load_avatar_session(folder or self.run_folder())
+        return ds.guard_avatar_experiment(looks, clips, session, splits or self.splits, repo or self.repo)
+
+    def test_accepts_every_role_together_and_reports_the_part_the_roles_and_kinds(self):
         out = self.guard(["mixamo_worker", "sunbox_f2", "sunbox_m1", "anime_f_01"], ["point_ik_01", "point_mixamo_02", "wait_ik_02"])
+        self.assertEqual((out["part"], out["commit"], out["status"]), ("play", "abc123", ""))
         self.assertEqual(out["look_roles"], {"anime_f_01": "avatar_experiment", "mixamo_worker": "avatar_experiment", "sunbox_f2": "test",
                                              "sunbox_m1": "development"})
         self.assertEqual(out["clip_roles"], {"point_ik_01": "development", "point_mixamo_02": "test", "wait_ik_02": "test"})
         self.assertEqual(out["kind_groups"], {"anime_f_01": "anime", "mixamo_worker": "realistic_human", "sunbox_f2": "stylised_human",
                                               "sunbox_m1": "stylised_human"})
 
-    def test_the_session_must_be_marked(self):
-        for marked in (False, None, "yes", 1):
-            with self.assertRaisesRegex(SystemExit, "not marked as an avatar-experiment session"):
-                self.guard(["anime_f_01"], [], marked=marked)
+    def test_both_official_parts_are_accepted_and_the_done_status_is_reported(self):
+        self.assertEqual(self.guard(["anime_f_01"], [], self.run_folder("edit", "look_check_ab_20261122_080000"))["part"], "edit")
+        self.assertEqual(self.guard(["anime_f_01"], [], self.run_folder("play", "look_check_play_ab_y"))["part"], "play")
+        d = self.run_folder("play", "look_check_play_ab_z")
+        m = json.loads((d / ds.AVATAR_DONE).read_text())
+        m["status"] = "timeout"
+        (d / ds.AVATAR_DONE).write_text(json.dumps(m))
+        self.assertEqual(self.guard(["anime_f_01"], [], d)["status"], "timeout")                 # reported, not judged here
+
+    def test_an_engineering_check_is_refused_as_not_official(self):
+        with self.assertRaisesRegex(SystemExit, "avatar_experiment_part is empty.*engineering check, not an official"):
+            self.guard(["anime_f_01"], [], self.run_folder(part=""))
+
+    def test_other_parts_and_missing_or_unreadable_files_are_refused(self):
+        with self.assertRaisesRegex(SystemExit, "'finals' in run_info.json is not one of"):
+            self.guard(["anime_f_01"], [], self.run_folder(part="finals"))
+        d = self.run_folder(name="look_check_play_ab_nr")
+        (d / "run_info.json").unlink()
+        with self.assertRaisesRegex(SystemExit, "no run_info.json"):
+            self.guard(["anime_f_01"], [], d)
+        with self.assertRaisesRegex(SystemExit, "no session record"):
+            ds.guard_avatar_experiment(["anime_f_01"], [], None, self.splits, self.repo)
+        d = self.run_folder(name="look_check_play_ab_ns", started=False)
+        with self.assertRaisesRegex(SystemExit, "no AVATAR_EXPERIMENT_STARTED.json"):
+            self.guard(["anime_f_01"], [], d)
+        d = self.run_folder(name="look_check_play_ab_nd", done=False)                           # a crashed run has the started marker only
+        with self.assertRaisesRegex(SystemExit, "no AVATAR_EXPERIMENT_DONE.json: the part did not finish"):
+            self.guard(["anime_f_01"], [], d)
+        d = self.run_folder(name="look_check_play_ab_bad")
+        (d / ds.AVATAR_DONE).write_text("{not json")
+        with self.assertRaisesRegex(SystemExit, "no AVATAR_EXPERIMENT_DONE.json"):
+            self.guard(["anime_f_01"], [], d)
+
+    def test_a_part_commit_kind_or_folder_that_disagrees_is_refused(self):
+        with self.assertRaisesRegex(SystemExit, r"AVATAR_EXPERIMENT_DONE.json has avatar_experiment_part 'edit' but run_info.json has 'play'"):
+            self.guard(["anime_f_01"], [], self._tamper("look_check_play_ab_p", ds.AVATAR_DONE, avatar_experiment_part="edit"))
+        with self.assertRaisesRegex(SystemExit, "AVATAR_EXPERIMENT_STARTED.json has git_commit 'zzz' but run_info.json has 'abc123'"):
+            self.guard(["anime_f_01"], [], self._tamper("look_check_play_ab_c", ds.AVATAR_STARTED, git_commit="zzz"))
+        with self.assertRaisesRegex(SystemExit, "says marker 'started', expected 'done'"):
+            self.guard(["anime_f_01"], [], self._tamper("look_check_play_ab_k", ds.AVATAR_DONE, marker="started"))
+        with self.assertRaisesRegex(SystemExit, "names the folder 'elsewhere'"):
+            self.guard(["anime_f_01"], [], self._tamper("look_check_play_ab_f", ds.AVATAR_STARTED, folder="elsewhere"))
+
+    def _tamper(self, name, file, **changes):
+        d = self.run_folder(name=name)
+        m = json.loads((d / file).read_text())
+        m.update(changes)
+        (d / file).write_text(json.dumps(m))
+        return d
 
     def test_not_frozen_or_a_changed_config_is_refused(self):
         with self.assertRaisesRegex(SystemExit, "not frozen"):
-            ds.guard_avatar_experiment(["anime_f_01"], [], True, self.splits)                  # the real repository is not frozen
+            ds.guard_avatar_experiment(["anime_f_01"], [], ds.load_avatar_session(self.run_folder()), self.splits)   # the real repository is not frozen
         f = self.repo / fz.V4_DIR / "gesture_reader.json"
         f.write_text(f.read_text() + " ")
         with self.assertRaises(SystemExit):
             self.guard(["anime_f_01"], [])
+
+    def test_the_session_is_checked_before_the_names(self):
+        with self.assertRaisesRegex(SystemExit, "not an official avatar-experiment session"):
+            self.guard(["nobody"], [], self.run_folder(part=""))
 
     def test_every_name_must_be_listed_in_any_role(self):
         with self.assertRaisesRegex(SystemExit, "look 'nobody' is not listed"):

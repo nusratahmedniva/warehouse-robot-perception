@@ -43,6 +43,7 @@ Writes a new folder <output_root>/export_csv_v4_<time>/ with runs.csv, dialogs.c
 from __future__ import annotations
 
 import argparse
+import bisect
 import csv
 import json
 import math
@@ -87,6 +88,14 @@ RUN_FIELDS = {
     "share_within_corridor": "share of trail points within gt_path's near distance of the optimal path (the corridor); empty without gt_path files",
     "watchdog_stops": "Unity watchdog stops while this run was running (bridge messages.jsonl); empty when the bridge log has no telemetry of the run (B11(a): a result)",
     "second_opinion_on": "the switch of the control config used", "reject_impossible_on": "the switch", "backtrack_on": "the switch",
+    "stop_gestures_true": "accepted STOP gesture episodes of this run in which a worker was showing STOP (AUDIT.md 16.31.6): an episode = consecutive rows of the bridge's decisions.csv "
+                          "of this trial with safety 'STOP gesture', starting at the first; TRUE when at its first row some worker's latest truth row has true_command STOP in the "
+                          "phase gesturing or holding; empty (not evaluated) when the bridge folder has no decisions.csv or it has no safety column",
+    "stop_gestures_false": "the other accepted STOP gesture episodes of this run (nobody was showing STOP at the first row: a false STOP); empty like stop_gestures_true",
+    "resume_from_run": "session.json 'resume_from_run' of a resumed final session (AUDIT.md 16.30.1); empty when the session is not resumed",
+    "resume_of": "session.json 'resume_of': the Unity session folder of the interrupted first part; empty when the session is not resumed",
+    "interrupted": "resumed session only: true for the run whose number is resume_from_run (interrupted in the first part, scored from this session), false for its other runs; "
+                   "empty when the session is not resumed (the interrupted attempt itself is not a row: the evaluation lists it)",
 }
 DIALOG_FIELDS = {
     "experiment": "as in runs.csv", "set": "as in runs.csv", "session": "", "run": "", "trial": "", "seed": "",
@@ -104,6 +113,10 @@ DIALOG_FIELDS = {
     "distance_est_m": "the robot's 360-camera estimate at the ask", "decision": "accepted / rejected:<reason> / unclear",
     "decision_reason": "the controller's logged reasons for this ask", "outvoted": "the answer was outvoted by the others (second opinion)",
     "withdrawn": "the answer was withdrawn by a backtrack", "final_branch": "the branch the robot took at this visit",
+    "clip": "the animation clip the commander of the ask window showed (truth.jsonl 'clip': the most common non-empty clip of that worker's rows in the shown phases with the "
+            "shown command); empty for NONE or when no row carries a clip (AUDIT.md 16.31.6)",
+    "look_role": "role of 'look' in data_splits.json (development / test); empty when not listed",
+    "clip_role": "role of 'clip' in data_splits.json (development / test); empty when the clip is empty or not listed",
     "arrival_candidate": "true when one of the two depth readings (the pointed direction and its mirror image) of the frames that gave branch_read, or of the "
                          "ask's frames when nothing was accepted, was the arrival road; empty when no frame carried a resolution",
 }
@@ -193,9 +206,60 @@ def _road_for(run: ev.Run, cache: dict) -> hc.Roadmap:
     return cache[key]
 
 
-def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap, watchdog: dict | None = None) -> tuple[dict, list[dict]]:
+_READ = object()
+
+
+def read_decisions(bridge: Path) -> list[dict] | None:
+    """The rows of a bridge folder's decisions.csv, or None when there is no file or it has no 'safety' column (the STOP episodes cannot be told)."""
+    path = Path(bridge) / "decisions.csv"
+    if not path.is_file():
+        return None
+    with path.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if "safety" not in (reader.fieldnames or []) or "trial" not in reader.fieldnames or "time_s" not in reader.fieldnames:
+            return None
+        return list(reader)
+
+
+def stop_gestures(run: ev.Run, decisions: list[dict] | None, phases) -> tuple[int | None, int | None]:
+    """(true, false) accepted STOP gesture episodes of the run, with the definitions of finals_v4/step5_report.py (AUDIT.md 16.28, 16.31.6): an
+    episode = consecutive decisions.csv rows of the trial with safety 'STOP gesture', starting at the first; TRUE when some worker's latest truth
+    row at that time has true_command STOP in a shown phase. (None, None) without a usable decisions.csv: not evaluated, not 0."""
+    if decisions is None:
+        return None, None
+    starts, prev_on, prev_trial = [], False, None
+    for r in decisions:
+        on = r.get("safety", "") == "STOP gesture"
+        trial = int(r["trial"])
+        if on and (not prev_on or trial != prev_trial) and trial == run.trial:
+            starts.append(float(r["time_s"]))
+        prev_on, prev_trial = on, trial
+    by_worker: dict[int, list] = defaultdict(list)
+    for t in run.truth:
+        by_worker[t.worker_id].append(t)
+    for rows_ in by_worker.values():
+        rows_.sort(key=lambda t: t.time_s)
+    true = 0
+    for t0 in starts:
+        shown = False
+        for rows_ in by_worker.values():
+            k = bisect.bisect_right([t.time_s for t in rows_], t0) - 1
+            if k >= 0 and rows_[k].true_command == "STOP" and rows_[k].phase in phases:
+                shown = True
+                break
+        true += shown
+    return true, len(starts) - true
+
+
+def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap, watchdog: dict | None = None, splits: dict | None = None,
+               decisions_csv=_READ) -> tuple[dict, list[dict]]:
     """(the runs.csv row as a dict of every known field, the dialogs.csv rows) of one run. watchdog = the counts of the run's bridge
-    folder (hri_eval_final_v4.bridge_watchdog_counts), None when it has no messages.jsonl."""
+    folder (hri_eval_final_v4.bridge_watchdog_counts), None when it has no messages.jsonl. splits = data_splits.json (the roles of
+    look and clip; the repository's own when None). decisions_csv = the rows of the bridge's decisions.csv (read_decisions; read here when not given; the controller's decisions of
+    python_trial_###.json are another thing)."""
+    splits = splits if splits is not None else ds.load()
+    if decisions_csv is _READ:
+        decisions_csv = read_decisions(Path(run.bridge_dir)) if run.bridge_dir is not None else None
     unity, bridge = Path(run.unity_dir), Path(run.bridge_dir)
     session = _json(unity / "session.json") or {}
     truth_run = _json(unity / f"truth_run{run.trial:03d}.json") or {}
@@ -281,9 +345,13 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap, watchdog: dict | None 
             t_read = rec.get("t_accept") if accepted else (rejected["t"] if rejected else None)
             true_d, look = ev._true_distance(run, t0, a["robot"])
             est = a.get("distance_est_m", -1.0)
+            clips_shown = Counter(r.clip for r in arow if shown != "NONE" and r.true_command == shown and r.phase in phases and r.clip)
+            clip = clips_shown.most_common(1)[0][0] if clips_shown else ""
+            look_name = arow[0].look if arow else (crow_all[0].look if crow_all else look)
             rows.append({
                 "junction": node, "visit": seen_nodes[node], "dialog": opinion, "worker": worker,
-                "look": arow[0].look if arow else (crow_all[0].look if crow_all else look), "ask": a.get("ask"),
+                "look": look_name, "look_role": splits["looks"].get(look_name) if look_name else None,
+                "clip": clip, "clip_role": splits["clips"].get(clip) if clip else None, "ask": a.get("ask"),
                 "serial": a["serial"], "t_s": round(t0 - t0_run, 3), "command_shown": shown, "direction_shown": direction,
                 "branch_shown": branch_shown, "truthful": truthful, "command_read": read_cmd, "branch_read": branch_read,
                 "true_branch": true_branch,
@@ -321,7 +389,13 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap, watchdog: dict | None 
         max_dist, share = meas.get("max_distance_from_optimal_m"), meas.get("share_within_near_distance")
     elif truth_run.get("optimal_m") is not None:
         trail_m, optimal_m, source = truth_run.get("travelled_m"), truth_run["optimal_m"], "road_route"
+    stop_true, stop_false = stop_gestures(run, decisions_csv, phases)
+    resume_k = session.get("resume_from_run")
+    resumed = isinstance(resume_k, int) and not isinstance(resume_k, bool)
     run_row = {
+        "stop_gestures_true": stop_true, "stop_gestures_false": stop_false,
+        "resume_from_run": resume_k if resumed else None, "resume_of": session.get("resume_of") if resumed else None,
+        "interrupted": (run.trial == resume_k) if resumed else None,
         "experiment": session.get("experiment", truth_run.get("experiment")), "set": session.get("set", truth_run.get("set")),
         "lie_probability": session.get("lie_probability"), "setting": session.get("lie_detection") or lie_detection_label(ld), "lie_detection": lie_detection_label(ld),
         "final_setting": session.get("final_setting"), "session": run.session, "run": run.name, "trial": run.trial,
@@ -348,17 +422,21 @@ def run_tables(run: ev.Run, ecfg: dict, road: hc.Roadmap, watchdog: dict | None 
     return run_row, rows
 
 
-def build_tables(runs: list, ecfg: dict | None = None) -> tuple[list[dict], list[dict]]:
+def build_tables(runs: list, ecfg: dict | None = None, splits: dict | None = None) -> tuple[list[dict], list[dict]]:
     import hri_eval_final_v4 as ef            # lazy: hri_eval_final_v4 imports this module
     ecfg = ecfg if ecfg is not None else ev.load_config()
+    splits = splits if splits is not None else ds.load()
     roads: dict = {}
     wd: dict = {}
+    dec: dict = {}
     run_rows, dialog_rows = [], []
     for run in runs:
         key = str(run.bridge_dir)
         if key not in wd:                      # one read of each bridge log, not one per run
             wd[key] = ef.bridge_watchdog_counts(Path(run.bridge_dir)) if run.bridge_dir is not None else None
-        rr, dr = run_tables(run, ecfg, _road_for(run, roads), wd[key])
+        if key not in dec:                     # likewise decisions.csv
+            dec[key] = read_decisions(Path(run.bridge_dir)) if run.bridge_dir is not None else None
+        rr, dr = run_tables(run, ecfg, _road_for(run, roads), wd[key], splits, dec[key])
         run_rows.append(rr)
         dialog_rows += dr
     return run_rows, dialog_rows
@@ -498,7 +576,7 @@ def export_final(setting: str, pairs, repo: Path | None = None, output_root: Pat
     check_columns(cfg)
     gcfg, ecfg = gd.load_config(repo / "robot_vision/configs/v4/gesture_data.json"), ev.load_config(repo / "robot_vision/configs/v4/eval_dev.json")
     runs = ef.gate(setting, pairs, output_root, gcfg, repo, kind="export")      # frozen, not exported, leak test, test split, the setting's checks
-    run_rows, dialog_rows = build_tables(runs, ecfg)
+    run_rows, dialog_rows = build_tables(runs, ecfg, ds.load(repo / "robot_vision/configs/v4/data_splits.json"))
     for r in run_rows:
         r["final_setting"] = r.get("final_setting") or setting
     sm = summarize(run_rows, wilson_z(repo))
