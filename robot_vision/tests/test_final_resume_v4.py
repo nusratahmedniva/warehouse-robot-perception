@@ -397,6 +397,56 @@ class EvaluationTests(ResumeBase):
         self.refused([(u3, b3), p2], "the parts must be")
 
 
+class ResumeInfoTests(ResumeBase):
+    """AUDIT.md 16.31.2 item 3: what the launcher asks before it passes -StartRun k and --resume-marker."""
+
+    def test_the_declaration_gives_the_run_the_marker_and_the_seed_and_goal_order(self):
+        u1, b1 = self.part1()
+        marker = self.declare(u1, b1)
+        info = fg.resume_info(self.out, SETTING, self.repo)
+        self.assertEqual((info["resume_from_run"], info["resume_marker"], info["seed"], info["goal_order"]), (2, marker.parent.name, 7, GOALS))
+        self.assertEqual((info["part_1"], info["frozen_sha256"]), ({"unity": u1.name, "bridge": b1.name}, self.sha))
+        rec = fg.check_start(self.out, SETTING, info["resume_marker"] and self.out / info["resume_marker"], self.sha, self.repo)
+        self.assertEqual(rec["resume_from_run"], info["resume_from_run"])                 # the server accepts exactly what the info names
+
+    def test_refusals_with_the_reason(self):
+        with self.assertRaisesRegex(SystemExit, "no final was started"):
+            fg.resume_info(self.out, SETTING, self.repo)
+        u1, b1 = self.part1()
+        with self.assertRaisesRegex(SystemExit, "no interruption is declared"):
+            fg.resume_info(self.out, SETTING, self.repo)
+        marker = self.declare(u1, b1)
+        u2, b2 = self.part2(u1)
+        self.resume(marker, b2)
+        with self.assertRaisesRegex(SystemExit, "already resumed once"):
+            fg.resume_info(self.out, SETTING, self.repo)
+        d = self.out / "ev"
+        d.mkdir()
+        fg.write_done(d, SETTING, "evaluation")
+        with self.assertRaisesRegex(SystemExit, "already evaluated"):
+            fg.resume_info(self.out, SETTING, self.repo)
+        with self.assertRaisesRegex(SystemExit, "unknown final setting"):
+            fg.resume_info(self.out, "nonsense", self.repo)
+
+    def test_an_invalid_setting_has_no_resume(self):
+        d = self.out / "inv"
+        d.mkdir()
+        fg.write_done(d, SETTING, "invalid", {"reason": "x"})
+        with self.assertRaisesRegex(SystemExit, "declared invalid"):
+            fg.resume_info(self.out, SETTING, self.repo)
+
+    def test_the_command_line_prints_json(self):
+        u1, b1 = self.part1()
+        self.declare(u1, b1)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(fg.main(["--resume-info", SETTING, "--output-root", str(self.out)]), 0)
+        self.assertEqual(json.loads(buf.getvalue())["resume_from_run"], 2)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as c:
+            fg.main(["--resume-info", SETTING, "--status"])
+        self.assertEqual(c.exception.code, 2)
+
+
 class StatusTests(ResumeBase):
     def test_status_lists_every_setting_and_its_state(self):
         rows = {r["setting"]: r for r in fg.status(self.out, self.repo)}

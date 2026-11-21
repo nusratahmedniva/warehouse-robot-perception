@@ -176,6 +176,32 @@ def check_start(output_root, setting: str, resume_marker=None, frozen_sha: str |
     return rec
 
 
+def resume_info(output_root, setting: str, repo: Path = REPO) -> dict:
+    """What the launcher needs to resume a declared interruption (AUDIT.md 16.31.2 item 3): the run to resume from (Unity's -StartRun k), the
+    declaration folder (the server's --resume-marker), and the seed and goal order the declaration recorded (Unity compares its own with
+    them). SystemExit with the reason when no resume is allowed: nothing started, no declaration, already resumed, invalid, evaluated or exported."""
+    check_name(setting, repo)
+    m = _all_markers(output_root, setting)
+    if m["invalid"]:
+        raise SystemExit(f"{setting}: declared invalid ({m['invalid'][0].parent.name}): no resume.")
+    for kind, what in (("evaluation", "evaluated"), ("export", "exported")):
+        if m[kind]:
+            raise SystemExit(f"{setting}: already {what} ({m[kind][0].parent.name}): no resume.")
+    if not (m["started"] or m["run"]):
+        raise SystemExit(f"{setting}: no final was started: there is nothing to resume (start it normally).")
+    if not m["interruption"]:
+        raise SystemExit(f"{setting}: no interruption is declared: declare it first (final_guard_v4.py --declare-interruption), then ask again.")
+    if len(m["interruption"]) > 1:
+        raise SystemExit(f"{setting}: more than one declared interruption: no resume.")
+    if m["resume"]:
+        raise SystemExit(f"{setting}: already resumed once ({m['resume'][0].parent.name}): a second resume is never made; declare the second "
+                         "interruption (the setting becomes invalid).")
+    d = _read(m["interruption"][0])
+    return {"setting": setting, "resume_from_run": d["resume_from_run"], "resume_marker": m["interruption"][0].parent.name,
+            "seed": d.get("seed"), "goal_order": d.get("goal_order"), "part_1": {"unity": d["unity_folder"], "bridge": d["bridge_folder"]},
+            "frozen_sha256": d.get("frozen_sha256")}
+
+
 def write_resume(folder, setting: str, declaration: dict, declaration_folder: str, frozen_sha: str) -> Path:
     """The server writes this into the bridge folder of the resumed run, before the first trial (never overwrites)."""
     return write_done(folder, setting, "resume", {"resume_from_run": declaration["resume_from_run"], "interruption_folder": declaration_folder,
@@ -685,6 +711,9 @@ def main(argv=None) -> int:
     ap.add_argument("--declare-interruption", metavar="SETTING", default=None,
                     help="declare that the final of SETTING was interrupted by an infrastructure failure before run --run finished (needs --run, --reason, "
                          "--evidence, --unity-folder, --bridge-folder); after a resume, the same command declares the second interruption: the setting becomes invalid")
+    ap.add_argument("--resume-info", metavar="SETTING", default=None,
+                    help="print, as JSON, what the launcher needs to resume the declared interruption of SETTING (run to resume from = Unity's -StartRun k, "
+                         "the --resume-marker folder, seed and goal order of the declaration), or refuse with the reason (AUDIT.md 16.31.2)")
     ap.add_argument("--run", type=int, default=None, help="the run that was interrupted (it has no outcome; runs before it have)")
     ap.add_argument("--reason", default=None, help="what failed, one line")
     ap.add_argument("--evidence", nargs="+", default=None, help="files or folders: the Event Viewer export, the crash log, the server and Unity logs")
@@ -697,13 +726,16 @@ def main(argv=None) -> int:
     ap.add_argument("--runs-per-setting", type=int, default=STEP5_RUNS_PER_SETTING)
     ap.add_argument("--out", default=None, help="also write the report to this new file (an existing file is refused)")
     a = ap.parse_args(argv)
-    if sum(bool(x) for x in (a.status, a.declare_interruption, a.timeout_from)) != 1:
-        ap.error("give exactly one of --status, --declare-interruption SETTING, --timeout-from SOURCE")
-    if a.status or a.declare_interruption:
+    if sum(bool(x) for x in (a.status, a.declare_interruption, a.resume_info, a.timeout_from)) != 1:
+        ap.error("give exactly one of --status, --declare-interruption SETTING, --resume-info SETTING, --timeout-from SOURCE")
+    if a.status or a.declare_interruption or a.resume_info:
         import decision_io as dio
         root = dio.resolve(a.output_root or "outputs")
         if a.status:
             print(status_text(status(root)))
+            return 0
+        if a.resume_info:
+            print(json.dumps(resume_info(root, a.resume_info), indent=2))
             return 0
         missing = [n for n, v in (("--run", a.run), ("--reason", a.reason), ("--evidence", a.evidence), ("--unity-folder", a.unity_folder),
                                   ("--bridge-folder", a.bridge_folder)) if v in (None, [])]
