@@ -2576,3 +2576,28 @@ own child process, UTF-8 transcripts without absolute paths (the rule of step5_s
 folders of its own run) passes the goals to those six settings; its
 dry run (`-DryRun`, prefix `dry_`) prints the six launcher command lines with `-experimentGoals E5,E6,E5`. Nothing in the repository's
 code or configs changes. Addendum 8's smoke trial (B3, seeded goal E2) and dry runs stand as recorded (development checks, not step 5).
+
+### 2026-11-21, section 15 addendum 9: the launcher ignores Unity Hub's helper (declared before any change below)
+
+Nusrat's task of 2026-11-21, after step 5 (13 of 13 settings REHEARSAL VALID, `robot_vision/outputs/t0_step5_night_summary_20261120_211406.txt`).
+Branch `nusrat/v4-launcher-hub-helper`, new from main affe652. Only `finals_v4/run_session_v4.ps1` changes (plus this entry): nothing under
+`robot_vision/`, `docs/` or `external/`, no Unity code, scene or config; nothing is frozen, no session or final is run, nothing is pushed.
+
+**Why.** The launcher refuses a session while any process named `Unity` runs (`Get-Process -Name "Unity"`: "a Unity Editor is running: close
+it first"). Unity Hub starts its own helper `<Hub folder>\resources\unity.exe` (command line `unity.exe serve`): not an Editor, it never opens
+the project, but it has the same process name. On 2026-11-20 it made the launcher refuse every remaining setting of one step-5 attempt (12
+transcripts `robot_vision/outputs/aborted_20261120_night/step5_launcher_t0_*.txt`, "STOPPED: a Unity Editor is running"), and in the attempt
+that completed, the night script (outside the repository) had to stop the helper before t0_B1_off (summary: "LEFTOVER before t0_B1_off:
+unity PID 4060, hub_helper, ...: stopped"). Stopping a process of the Hub is a workaround; the launcher itself should not count the helper.
+
+**The rule.** A process named `Unity` is Unity Hub's helper, and the check ignores it, only when both hold: (a) its executable is
+`resources\unity.exe` (any case) in a folder that also holds `Unity Hub.exe` (the Hub's install folder, wherever the Hub is installed; on
+Nusrat's PC `E:\Unity\Unity Hub`); (b) its command line can be read and has the argument `serve`. Every other process named `Unity` still
+blocks, also one whose path or command line cannot be read (the check never guesses). An ignored helper is listed as a note ("ignored: Unity
+Hub's helper unity.exe serve, PID n"), in `-DryRun` too. The launcher still never stops a process. Everything else is unchanged: the other
+blockers, every refusal of a final, the session steps, the run protocol. `run_session_v4.ps1` is not on the B9 freeze list
+(`freeze_v4.py` `unity_files`) and no test reads it; the step-5 sessions are not affected (the launcher is the same in every other respect).
+
+**Checks before the commit.** A fake helper (a copy of a harmless program named `unity.exe` in a scratch `<folder>\resources\` beside an empty
+`Unity Hub.exe`, started with the argument `serve`) is ignored by `-DryRun`; the same copy without `serve`, and without the `Unity Hub.exe`
+beside it, blocks; with no process named Unity the dry run lists no Unity blocker. Both suites (Unity Edit Mode, Python) pass.
