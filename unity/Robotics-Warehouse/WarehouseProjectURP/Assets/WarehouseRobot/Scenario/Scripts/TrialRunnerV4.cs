@@ -62,6 +62,8 @@ namespace WarehouseRobot.Scenario
         public string note = "goal B, the grid, the optimal path, the trail and the worker truth live only in Unity's files (this folder); Python's inference code never receives them";
         // 2026-11-21 (experiments_ab.md section 15 addendum 10): the first run this session drives (TrialPlayV4 -startRun); 1 = a full session
         public int start_run = 1;
+        // 2026-11-21 (addendum 12): the shader warm-up of every look of the session, before the leak test
+        public List<ShaderWarmUpRecord> shader_warm_up = new List<ShaderWarmUpRecord>();
     }
 
     /// <summary>
@@ -527,6 +529,17 @@ namespace WarehouseRobot.Scenario
                 GroundTruthFiles.WriteNew(Path.Combine(used, "frozen.json"), frozenText);
             }
 
+            // experiments_ab.md section 15 addendum 12: every look of the session is drawn once (no seeded draw) before the leak test and run 1
+            yield return WarmUpSessionLooks();
+            if (warmUpError != null)
+            {
+                string why = "shader warm-up: " + warmUpError;
+                Status = "not started: " + why;
+                Debug.LogError("[TrialRunnerV4] " + why);
+                GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, "NOT_STARTED.txt"), why + "\n");
+                yield break;
+            }
+
             // Leak test from the pose of the first driven trial's start (its workers in place: run 1, or run k of -startRun k), with that trial's
             // ground truth drawn (A, B, path) and the blocked cells.
             if (!ResetForTrial(order[startRun - 1], startRun, out error))
@@ -571,6 +584,7 @@ namespace WarehouseRobot.Scenario
             session.grid_cell_size_m = gt.Grid.CellSize; session.grid_widening_m = gt.Grid.InflationM; session.grid_report = gt.GridReport;
             session.leak_test = leak;
             session.start_run = startRun;
+            session.shader_warm_up = new List<ShaderWarmUpRecord>(sessionWarmUps);
             if (startRun > 1) Debug.Log($"[TrialRunnerV4] -startRun {startRun}: runs {startRun}..{TrialTotal} of {TrialTotal}, with the plans of the full session");
             foreach (var w in allWorkers)
                 session.workers.Add($"{w.name} worker_id {w.workerId} ({w.transform.position.x.ToString("0.00", Inv)}, {w.transform.position.z.ToString("0.00", Inv)})");

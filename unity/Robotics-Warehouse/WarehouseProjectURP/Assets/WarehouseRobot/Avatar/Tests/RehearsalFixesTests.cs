@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -23,6 +24,19 @@ namespace WarehouseAvatar.Tests
         static readonly string[] AvatarOnly =
             { "mixamo_worker", "sunbox_m2", "anime_f_01", "anime_f_02_outfit_short", "anime_f_03_bangs_parted", "cartoon_boxo_01" };
 
+        /// <summary>data_splits.json text with one look's role set in its flat "looks" table (replaced there, or added when absent); other
+        /// tables (kind_groups, styles) are left as they are. Used by the addendum 11 and 12 tests.</summary>
+        public static string SetLookRole(string splitsText, string look, string role)
+        {
+            int open = splitsText.IndexOf("\"looks\": {", StringComparison.Ordinal);
+            Assert.GreaterOrEqual(open, 0, "data_splits.json has a flat looks table");
+            int body = open + "\"looks\": {".Length, close = splitsText.IndexOf('}', body);
+            string table = splitsText.Substring(body, close - body);
+            var entry = new Regex("\"" + Regex.Escape(look) + "\"\\s*:\\s*\"[^\"]*\"");
+            table = entry.IsMatch(table) ? entry.Replace(table, $"\"{look}\": \"{role}\"", 1) : $"\n    \"{look}\": \"{role}\"," + table;
+            return splitsText.Substring(0, body) + table + splitsText.Substring(close);
+        }
+
         static byte[] Pixels(params (byte r, byte g, byte b, byte a)[] px)
         {
             var buf = new byte[px.Length * 4];
@@ -43,7 +57,7 @@ namespace WarehouseAvatar.Tests
             ShaderWarmUp.ErrorShaderPixels(new byte[0], out magenta, out cyan);
             Assert.AreEqual(0, magenta + cyan);
             Assert.Throws<ArgumentException>(() => ShaderWarmUp.ErrorShaderPixels(new byte[7], out _, out _));
-            Assert.Throws<ArgumentException>(() => ShaderWarmUp.ErrorShaderPixels(null, out _, out _));
+            Assert.Throws<ArgumentException>(() => ShaderWarmUp.ErrorShaderPixels((byte[])null, out _, out _));
         }
 
         [Test]
@@ -70,6 +84,7 @@ namespace WarehouseAvatar.Tests
         {
             var splits = DataSplitsV4.Parse(SplitsText(), LooksAbText());
             CollectionAssert.AreEquivalent(AvatarOnly, splits.AvatarExperimentLooks);
+            CollectionAssert.IsSubsetOf(DataSplitsV4.Parse(SplitsText()).AvatarExperimentLooks, AvatarOnly, "data_splits.json and looks_ab.json agree");
             foreach (var id in AvatarOnly)
                 foreach (bool final in new[] { false, true })
                 {
@@ -78,8 +93,8 @@ namespace WarehouseAvatar.Tests
                     Assert.IsNull(splits.GuardRun(new[] { "sunbox_m1", id }, new string[0], final, out error), $"{id} beside sunbox_m1, final {final}");
                     StringAssert.Contains(id, error);
                 }
-            // Anisha's case: the look is listed in data_splits.json (as she will list the avatar-experiment looks); still refused
-            string listed = SplitsText().Replace("\"looks\": {", "\"looks\": {\n    \"anime_f_01\": \"development\",\n    \"sunbox_m2\": \"test\",");
+            // Anisha's case: data_splits.json gives the look a development or test split; still refused (addendum 12: whatever role it has there)
+            string listed = SetLookRole(SetLookRole(SplitsText(), "anime_f_01", "development"), "sunbox_m2", "test");
             var withListed = DataSplitsV4.Parse(listed, LooksAbText());
             Assert.AreEqual("development", DataSplitsV4.Parse(listed).GuardRun(new[] { "anime_f_01" }, new string[0], false, out _),
                             "without the roles a listed look would pass: the finding");
@@ -99,7 +114,9 @@ namespace WarehouseAvatar.Tests
             foreach (var id in f.avatar_experiment)
             {
                 var look = f.looks.FirstOrDefault(l => l.id == id);
-                bool listed = plain.Looks.ContainsKey(id);
+                // addendum 12: listed = a development or test split; absent or role avatar_experiment = the avatar experiment's own look
+                bool listed = plain.Looks.TryGetValue(id, out string role) && role != DataSplitsV4.AvatarExperimentRole;
+                if (plain.Looks.ContainsKey(id) && !listed) CollectionAssert.Contains(plain.AvatarExperimentLooks, id);
                 if (look == null) { Assert.IsTrue(listed, $"{id} (worker_v4.json) is in a split"); continue; }
                 Assert.AreEqual(listed ? LookEntry.RoleCandidate : LookEntry.RoleAvatarExperiment, look.role, id);
             }
@@ -145,7 +162,8 @@ namespace WarehouseAvatar.Tests
             StringAssert.Contains("\"clip\":\"\"", json);
             StringAssert.Contains("\"pose\":\"posed\"", json);
             string[] keys = { "name", "kind", "look", "family", "role", "command", "arm", "take", "distance_m", "vertical_fov_deg", "azimuth_front_deg",
-                              "elevation_deg", "spread_deg", "forearm_up", "n_frames", "magenta_pixels", "clip", "pose" };
+                              "elevation_deg", "spread_deg", "forearm_up", "n_frames", "magenta_pixels", "clip", "pose",
+                              "cyan_pixels", "shaders_compiling", "shaders_compiling_frames" };     // the last three: addendum 12
             int at = -1;
             foreach (var k in keys)
             {

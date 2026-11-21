@@ -2889,3 +2889,24 @@ leak test; the data_splits role (refused with `Parse(json)` alone; the two sourc
 
 **Not run.** No Play run (Nusrat's rehearsal repeat and the next session exercise the Play warm-ups). The Edit warm-up is exercised once by an Edit
 engineering check of one look in batch mode (`-lookCheckLooks sunbox_m1`, no `-avatarExperiment`; its folder is kept and named in the as-built note).
+
+**Addendum 12, as built (2026-11-21).** Items 1 to 3 implemented as declared; item 4 (the merge) follows in its own commit. Files:
+`Avatar/Scripts/ShaderWarmUp.cs` (`ShaderWarmUpRecord`, `ShaderWarmUpTracker`, `DifferingPixels`, `FreeLayer`, `SessionLooks`, the Color32 count,
+`RecordFile`), `Avatar/PlayCheck/LookCheckPlayDriver.cs` (record per round, `shader_warm_up.jsonl`, `RenderInto` returns the compile flag,
+`shaders_compiling` / `shaders_compiling_frames` per recording), `Avatar/Editor/LookCheckMenu.cs` (`WarmUpEdit` per look and distance, synchronous
+render with the flag, `cyan_pixels` and the flags per Edit row, `shader_warm_up.jsonl`), `Avatar/Scripts/LookCheckConfig.cs` (the Edit record's
+three fields), `Avatar/Scripts/TrialWorkersV4.cs` (`DataSplitsV4.AvatarExperimentRole`, read from data_splits.json), `Scenario/Scripts/TrialRunnerV4.cs`
+(the call before the leak test, `NOT_STARTED.txt` on a refusal, `session.json` `shader_warm_up`), `Scenario/Scripts/TrialRunnerV4WarmUp.cs` (new, with
+its `.meta`), `Avatar/Tests/WarmUpRecordTests.cs` (new, with its `.meta`; 7 tests), `Avatar/Tests/RehearsalFixesTests.cs` (follows the data_splits
+role in both forms of the file; the Edit record's new keys).
+- *A test of mine corrected while building:* the tracker test first expected "continue" after three renders with two clean ones; the rule says
+  done, so the test was wrong (its second render made dirty, the expected counts adjusted). One compile error (an ambiguous `null` argument after
+  the Color32 overload) fixed in the test.
+- *Tests:* Unity Edit Mode 361 of 361 (354 + 7). Python suite as in the commit message.
+- *Edit smoke check (declared; an engineering check, not the avatar experiment):* `-executeMethod WarehouseAvatar.EditorTools.LookCheckMenu.BatchRunExperiment
+  -lookCheckLooks sunbox_m1` in batch mode, `robot_vision/outputs/look_check_ab_20261121_202302/` (log `warmup_edit_smoke_20261121_202126.log`):
+  126 recordings, 566 frames; `shader_warm_up.jsonl` has 2 records (2.0 m: 3 renders in 3.47 s; 4.0 m: 3 renders in 0.12 s; no compile seen, 0
+  error pixels, status done); every row has `clip` "", `pose` "posed", `cyan_pixels` 0, `shaders_compiling` false. The variants of `sunbox_m1` were
+  compiled already, so this shows the record and the flags, not a compile caught.
+- *Not run:* no Play run: the Play warm-up records and the session warm-up are first exercised by the repeated rehearsal Play part and the next
+  session (a rehearsal session before any final is advised: a session that cannot draw a look stops before its leak test).

@@ -310,6 +310,11 @@ namespace WarehouseAvatar
         public bool forearm_up;
         public int n_frames, magenta_pixels;
         public string clip = "", pose = PosePosed;
+        /// <summary>Addendum 12: exact cyan pixels over the recording's frames; ShaderUtil.anythingCompiling just before or after the render
+        /// of a frame of this recording, and those frame indices (a held sequence repeats one render).</summary>
+        public int cyan_pixels;
+        public bool shaders_compiling;
+        public List<int> shaders_compiling_frames = new List<int>();
     }
 
     [Serializable]

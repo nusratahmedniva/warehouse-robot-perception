@@ -13,6 +13,8 @@ namespace WarehouseAvatar
     public sealed class DataSplitsV4
     {
         public const string Development = "development";
+        /// <summary>Addendum 12 (Anisha's AUDIT.md 16.31.2): the data_splits.json role of a look recorded only by the avatar experiment.</summary>
+        public const string AvatarExperimentRole = "avatar_experiment";
         public readonly Dictionary<string, string> Looks = new Dictionary<string, string>(StringComparer.Ordinal);
         public readonly Dictionary<string, string> Clips = new Dictionary<string, string>(StringComparer.Ordinal);
         public readonly List<string> FinalEvaluationSplits = new List<string>();
@@ -21,7 +23,8 @@ namespace WarehouseAvatar
         /// experiment's look checks). <see cref="GuardRun"/> refuses them in every trial session, whatever split this file gives them.</summary>
         public readonly HashSet<string> AvatarExperimentLooks = new HashSet<string>(StringComparer.Ordinal);
 
-        /// <summary>data_splits.json with the roles of looks_ab.json (addendum 11): the trial runner's reader.</summary>
+        /// <summary>data_splits.json with the roles of looks_ab.json (addendum 11): the trial runner's reader. Since addendum 12 a look whose
+        /// data_splits.json role is avatar_experiment is refused also when looks_ab.json is not given (<see cref="Parse(string)"/>).</summary>
         public static DataSplitsV4 Parse(string json, string looksAbJson)
         {
             var s = Parse(json);
@@ -37,6 +40,7 @@ namespace WarehouseAvatar
             s.Placeholder = Regex.IsMatch(json, "\"placeholder\"\\s*:\\s*true");
             ReadObject(json, "looks", s.Looks);
             ReadObject(json, "clips", s.Clips);
+            foreach (var kv in s.Looks) if (kv.Value == AvatarExperimentRole) s.AvatarExperimentLooks.Add(kv.Key);    // addendum 12
             var m = Regex.Match(json, "\"final_evaluation_splits\"\\s*:\\s*\\[([^\\]]*)\\]");
             if (m.Success)
                 foreach (Match v in Regex.Matches(m.Groups[1].Value, "\"([^\"]+)\"")) s.FinalEvaluationSplits.Add(v.Groups[1].Value);

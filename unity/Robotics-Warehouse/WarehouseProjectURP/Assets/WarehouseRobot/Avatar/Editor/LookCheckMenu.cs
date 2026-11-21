@@ -253,6 +253,7 @@ namespace WarehouseAvatar.EditorTools
             var rest = new PoseSpec { Command = LookCheckConfig.None, ElevationDeg = -Mathf.Atan2(1f, cfg.hand.rest_outward) * Mathf.Rad2Deg };
             var rows = new List<LookInventoryRow>();
             var lines = new StringBuilder();
+            var warmLines = new StringBuilder();         // addendum 12: shader_warm_up.jsonl
             int recordings = 0, frames = 0;
             foreach (var look in cfg.looks)
             {
@@ -274,6 +275,9 @@ namespace WarehouseAvatar.EditorTools
                         measured = true;
                     }
                     ApplyStage(stage, cfg, pt, d, fov);
+                    // addendum 12: the posed look is drawn until the warm-up rule holds, before its first recorded render at this distance
+                    spawned.Poser.Apply(rest);
+                    warmLines.Append(JsonUtility.ToJson(WarmUpEdit(stage.checkCamera, pt.width_px, pt.height_px, look.id, d))).Append('\n');
                     foreach (var c in cfg.commands)
                         foreach (string arm in c.arm_labelled ? cfg.recording.arms : new[] { "" })
                             foreach (var v in c.variants)
@@ -281,8 +285,11 @@ namespace WarehouseAvatar.EditorTools
                                 bool proceed = c.command == LookCheckConfig.Proceed;
                                 double Phase(int i) => proceed ? PoseSpec.From(c.command, arm, v, i / 10.0).ForearmDeg : double.NaN;
                                 spawned.Poser.Apply(PoseSpec.From(c.command, arm, v));
-                                var px = Render(stage.checkCamera, pt.width_px, pt.height_px, out byte[] png);
+                                var px = Render(stage.checkCamera, pt.width_px, pt.height_px, out byte[] png, out bool compiling0);
                                 int magenta = LookInventory.MagentaPixels(px, cfg.render.magenta_tolerance);
+                                ShaderWarmUp.ErrorShaderPixels(px, out _, out int cyan0);         // addendum 12
+                                int cyan = 0;
+                                var compFrames = new List<int>();
                                 maxMagenta = Mathf.Max(maxMagenta, magenta);
                                 string name = LookCheckConfig.RecordingName(look.id, c.command, d, arm, v.take);
                                 int n = v.sequence ? (proceed ? cfg.recording.proceed_sequence_frames : cfg.recording.sequence_frames) : 1;
@@ -293,14 +300,19 @@ namespace WarehouseAvatar.EditorTools
                                     Directory.CreateDirectory(seqDir);
                                     for (int i = 0; i < n; i++)          // a held pose: the same render for every frame of the second
                                     {
+                                        bool frameCompiling = compiling0;
+                                        int frameCyan = cyan0;
                                         if (proceed && i > 0)
                                         {
                                             // PROCEED (experiments_ab.md section 10 addendum 1): a posed swing, every frame rendered at its time i / 10 s
                                             spawned.Poser.Apply(PoseSpec.From(c.command, arm, v, i / 10.0));
-                                            px = Render(stage.checkCamera, pt.width_px, pt.height_px, out png);
+                                            px = Render(stage.checkCamera, pt.width_px, pt.height_px, out png, out frameCompiling);
+                                            ShaderWarmUp.ErrorShaderPixels(px, out _, out frameCyan);
                                             magenta = Mathf.Max(magenta, LookInventory.MagentaPixels(px, cfg.render.magenta_tolerance));
                                             maxMagenta = Mathf.Max(maxMagenta, magenta);
                                         }
+                                        cyan += frameCyan;
+                                        if (frameCompiling) compFrames.Add(i);
                                         string stem = Path.Combine(seqDir, LookCheckConfig.FrameStem(i));
                                         WriteNew(stem + ".png", png);
                                         WriteNew(stem + ".json", LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, i, arm, v, Phase(i)));
@@ -308,6 +320,8 @@ namespace WarehouseAvatar.EditorTools
                                 }
                                 else
                                 {
+                                    cyan += cyan0;
+                                    if (compiling0) compFrames.Add(0);
                                     WriteNew(Path.Combine(recDir, name + ".png"), png);
                                     WriteNew(Path.Combine(recDir, name + ".json"), LookCheckConfig.HeaderJson(pt.width_px, pt.height_px, fov, pt.height_m, 0, arm, v, Phase(0)));
                                 }
@@ -317,6 +331,7 @@ namespace WarehouseAvatar.EditorTools
                                     command = c.command, arm = arm, take = v.take, distance_m = d, vertical_fov_deg = fov, n_frames = n,
                                     azimuth_front_deg = v.azimuth_front_deg, elevation_deg = v.elevation_deg, forearm_up = v.forearm_up,
                                     spread_deg = v.spread_deg, magenta_pixels = magenta,
+                                    cyan_pixels = cyan, shaders_compiling = compFrames.Count > 0, shaders_compiling_frames = compFrames,
                                 })).Append('\n');
                                 recordings++;
                                 frames += n;
@@ -327,6 +342,7 @@ namespace WarehouseAvatar.EditorTools
             }
             ClearStage(stage);
             WriteNew(Path.Combine(outDir, "recordings.jsonl"), lines.ToString());
+            WriteNew(Path.Combine(outDir, ShaderWarmUp.RecordFile), warmLines.ToString());
             WriteNew(Path.Combine(outDir, "inventory.json"), JsonUtility.ToJson(new InventoryFile { looks = rows.ToArray() }, true));
             var info = RunInfo(repo, cfgAsset.text, robotAsset.text, looksSubset);
             info.avatar_experiment_part = official != null ? AvatarExperimentConfig.Edit : "";
@@ -339,6 +355,34 @@ namespace WarehouseAvatar.EditorTools
         }
 
         [Serializable] class InventoryFile { public LookInventoryRow[] looks; }
+
+        /// <summary>
+        /// Addendum 12: the Edit look check's shader warm-up of one look at one distance (the posed look, rest pose): the check camera renders
+        /// until ShaderWarmUp's rule holds (at least 3 renders, the last 2 without cyan or magenta, nothing compiling); after 120 s of real
+        /// time the run fails. The record (clock: the Editor's timeSinceStartup) goes into shader_warm_up.jsonl of the run folder.
+        /// </summary>
+        static ShaderWarmUpRecord WarmUpEdit(Camera cam, int w, int h, string look, float distance)
+        {
+            string Local() => DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss.fff", CultureInfo.InvariantCulture);
+            var rec = new ShaderWarmUpRecord
+            {
+                part = ShaderWarmUpRecord.Edit, looks = look, stands = "LookCheck stage", clock = ShaderWarmUpRecord.ClockEditor,
+                cameras = "check camera at " + distance.ToString("0.0", CultureInfo.InvariantCulture) + " m",
+            };
+            var tracker = new ShaderWarmUpTracker(rec, EditorApplication.timeSinceStartup, EditorApplication.timeSinceStartup, ShaderUtil.anythingCompiling, Local());
+            while (true)
+            {
+                var px = Render(cam, w, h, out _, out bool compiling);
+                ShaderWarmUp.ErrorShaderPixels(px, out int magenta, out int cyan);
+                double now = EditorApplication.timeSinceStartup;
+                var state = tracker.AfterRender(magenta + cyan, compiling, now, now, Local());
+                if (state == ShaderWarmUp.State.Done) return rec;
+                if (state == ShaderWarmUp.State.TimedOut)
+                    throw new InvalidOperationException($"shader warm-up of {look} at {distance} m not done after {ShaderWarmUp.MaxSeconds} s " +
+                                                        $"({rec.renders} renders, last clean streak {rec.last_clean_streak}, compiling {rec.compiling_at_end})");
+                System.Threading.Thread.Sleep(20);
+            }
+        }
 
         [Serializable]
         class RunInfoRecord
@@ -520,17 +564,25 @@ namespace WarehouseAvatar.EditorTools
         }
 
         /// <summary>One frame as the pan-tilt camera renders it (ARGB32 target with depth, as PanTiltCamera); PNG and pixels.</summary>
-        static Color32[] Render(Camera cam, int w, int h, out byte[] png)
+        static Color32[] Render(Camera cam, int w, int h, out byte[] png) => Render(cam, w, h, out png, out _);
+
+        /// <summary>Addendum 12: the render compiles its shader variants synchronously (ShaderUtil.allowAsyncCompilation off around it, restored
+        /// after); <paramref name="compiling"/>: ShaderUtil.anythingCompiling just before or just after the render.</summary>
+        static Color32[] Render(Camera cam, int w, int h, out byte[] png, out bool compiling)
         {
             var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32) { name = "LookCheckImage" };
             var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
             var previousActive = RenderTexture.active;
             var previousTarget = cam.targetTexture;
+            compiling = ShaderUtil.anythingCompiling;
+            bool async = ShaderUtil.allowAsyncCompilation;
+            ShaderUtil.allowAsyncCompilation = false;
             try
             {
                 rt.Create();
                 cam.targetTexture = rt;
                 cam.Render();
+                compiling |= ShaderUtil.anythingCompiling;
                 RenderTexture.active = rt;
                 tex.ReadPixels(new Rect(0, 0, w, h), 0, 0, false);
                 tex.Apply(false);
@@ -539,6 +591,7 @@ namespace WarehouseAvatar.EditorTools
             }
             finally
             {
+                ShaderUtil.allowAsyncCompilation = async;
                 cam.targetTexture = previousTarget;
                 RenderTexture.active = previousActive;
                 rt.Release();
