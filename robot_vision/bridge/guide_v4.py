@@ -17,14 +17,18 @@ class GuideControllerV4(GuideController):
     def __init__(self, controller: hv.ControllerV4, worker, out_dir, log_every: int = 2, route: str = "Task2",
                  hud_cfg: dict | None = None):
         super().__init__(controller, worker, out_dir, log_every, route, protocol_version=3, hud_cfg=hud_cfg)
-        self._v4_file = None
+        self._v4_file = self._stop_file = None
         if self.out is not None:
             self._v4_file = (self.out / "v4_log.jsonl").open("x", encoding="utf-8", buffering=1)
+            controller.stop_log_enabled = True                         # AUDIT.md 16.29 item 3 (instrument only): which STOP reading the controller used, per control step
+            self._stop_file = (self.out / "stop_reading.jsonl").open("x", encoding="utf-8", buffering=1)
 
     def close(self) -> None:
         super().close()
         if self._v4_file is not None:
             self._v4_file.close()
+        if self._stop_file is not None:
+            self._stop_file.close()
 
     def _tick_input(self, h: dict) -> hv.TickInputV4:
         pose = h["pose"]
@@ -59,4 +63,7 @@ class GuideControllerV4(GuideController):
         if self._v4_file is not None:
             for row in self.c.pop_frame_log():
                 self._v4_file.write(json.dumps({"trial": self.trial, **row}, separators=(",", ":")) + "\n")
+        if self._stop_file is not None:
+            for row in self.c.pop_stop_log():
+                self._stop_file.write(json.dumps({"trial": self.trial, **row}, separators=(",", ":")) + "\n")
         return reply

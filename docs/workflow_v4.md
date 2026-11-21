@@ -142,11 +142,11 @@ Config: `robot_vision/configs/v4/gesture_reader.json`. Docs: `docs/gesture_reade
 ## 8. The final runs
 
 - **13 final settings:** A1, A2_right, A2_left, A3, A4 (detection on); B1, B2_right, B3, B4 (detection on); B1_off, B2_right_off, B3_off, B4_off. B2_left is not run.
-- **20 runs each = 260 runs**, in **four sittings of about 3 h each** (about 12 h; AUDIT.md 16.17); each B setting runs together with its OFF partner. The simulator's estimate of the 260 runs under T0 is about 10.1 h of simulated time without overheads (16.26.8.1).
+- **20 runs each = 260 runs**, in **four sittings of about 3 h each** (about 12 h; AUDIT.md 16.17); each B setting runs together with its OFF partner. From the step-5 durations and session times the 260 runs take about 12.2 h (setup once per session) to 14.0 h (setup per run) of wall time, in sittings of 2.8 to 3.6 h (AUDIT.md 16.29.1); the simulator's figure is about 10.1 h of simulated time without overheads (16.26.8.1).
 - **Final seed 2**; development seed 1.
 - **Machine:** Nusrat's Windows PC (RTX 3060), strict run protocol: other apps closed (Chrome too), best-performance mode, enough free memory, resource log on.
 - **Active avatars:** at most 6. This drops to 5 if the strict-protocol timing rerun still breaks the limits (loop lag 100 ms, round trip 150 ms).
-- **Timeout rule:** 1.5 × the longest **successful** development run (on the new NavMesh, with the 420 s development timeout and the development-only goal override so E5/E6 are drawn), rounded up to 30 s, never below 270 s, one value for all settings. There are no checkpoint workers (16.26.9). The real value comes from Unity's step-5 runs by this rule; for information only, the simulator's T0 durations give at most 510 s (B3 on, 16.26.8.1).
+- **Timeout: 480 s, applied 2026-11-21** (`final_plan.json` `timeout_s`, AUDIT.md 16.29). The rule: 1.5 × the longest **successful** development run, rounded up to 30 s, never below 270 s, one value for all settings, computed once over the pooled step-5 runs of all 13 settings (`python final_guard_v4.py --timeout-from <step-5 zip>`). Step 5 (3 runs per setting, 900 s development timeout, goals E5, E6, E5 where declared): longest successful run 301.4 s (A4 trial 3), 1.5 × 301.4 = 452.2, so 480 s; 26 of 39 runs succeeded, none timed out, the failures give no duration (AUDIT.md 16.28).
 - **Run-once guards:** `FINAL_RUN_DONE.json`, `FINAL_DONE.json`, `FINAL_EXPORT_DONE.json`. A finished setting can never be run or evaluated again.
 - **Acceptance = validity only:** leak test passed, frozen hashes match, split guard passed, all runs present, every outcome recorded. A watchdog stop is a result, not a reason to invalidate. There are no performance thresholds: results are reported whatever they are.
 
@@ -171,9 +171,9 @@ Config: `robot_vision/configs/v4/final_plan.json`.
 | 2 | Checkpoint workers in the simulator: T3 not adopted; T4 adopted (16.24.3), then dropped after the readability model and the final check (+0.0 pp on fresh seeds, 16.26.8.1, 16.26.9); T0 kept; the guard refuses any checkpoint key on | Anisha (+ Niva's positions) | **Done: dropped** |
 | 3 | Strict-protocol timing rerun: frames per window by 1/2/3+ people; active-avatar limit | Niva | In progress |
 | 4 | ~~Checkpoint workers in Unity~~ | Niva + Anisha | **Dropped** (16.26.9): Unity needs no checkpoint workers |
-| 5 | **Step 5:** all 13 settings on development data with the final rules (T0, no checkpoint workers), plus the blind avatar rehearsal; frames per window by 1/2/3+ people under final conditions | Niva runs, Anisha checks | Waiting on 3 |
-| 6 | Apply the timeout rule to Unity's step-5 runs; fix anything step 5 finds | Anisha | Pending |
-| 7 | **Freeze:** `python freeze_v4.py --freeze`, by Niva by hand only | Niva | Pending |
+| 5 | **Step 5:** all 13 settings on development data with the final rules (T0, no checkpoint workers), plus the blind avatar rehearsal; frames per window by 1/2/3+ people | Niva runs, Anisha checks | **Done 2026-11-21, reviewed in AUDIT 16.28:** 13 of 13 sessions valid, 26/39 runs succeeded; run protocol not fully met (Chrome open, power plan Balanced); **the avatar rehearsal Play part failed its format check (146/270 groups, timeout): Niva fixes and repeats it before the freeze** |
+| 6 | Apply the timeout rule to Unity's step-5 runs; fix anything step 5 finds | Anisha | **Done: 480 s** (16.29); stall dump off for the finals (16.27); the STOP reading used is logged per control step (16.29) |
+| 7 | **Freeze:** `python freeze_v4.py --freeze`, by Niva by hand only, after the smoke check with the stall dump off and the repeated avatar rehearsal Play (`docs/handoff_freeze_v4.md`) | Niva | Pending |
 | 8 | **Avatar experiment** (main): detection of person and hands across avatar kinds | Niva runs, Anisha analyses | Pending; protocol to confirm |
 | 9 | Four final sittings, Set A/B (260 runs) | Niva | Pending |
 | 10 | Final evaluation, CSV export, statistics, figures, archive with hashes | Anisha | Pending |
@@ -258,8 +258,7 @@ Also on the Unity side: the NavMesh fix (v4 now has its own asset). All developm
 
 ## 14. Open questions
 
-- What timeout do Unity's step-5 runs give by the declared rule (no checkpoint workers; the simulator's T0 durations suggest at most 510 s, information only)?
-- Frames per window by 1, 2 and 3 or more people under final conditions (Niva's strict-protocol rerun): the basis for any later decision on POINT frames, declared before it is computed.
+- Frames per window by 1, 2 and 3 or more people: measured in step 5 (AUDIT.md 16.28 item 4): one person 13 to 15 frames per 2 s window (5,740 windows), two people 9.5 to 15 (only 188 windows), no window with three or more. This is the basis for any later decision on POINT frames (a floor or a stretch), which is declared before it is computed (16.26.5); none is taken.
 - How often are honest BACK pointings (145 to 163 degrees from the camera) unreadable in Unity, and what does a lost robot do then? (The simulator's readability model is a development-data fit, pessimistic by design.)
 - **Reported limitation:** with two workers per node and consistent liars, a lie toward a valid branch is not detectable from the available evidence.
 - What exactly is the avatar experiment's protocol (avatars, runs per avatar, what counts as "person detected" and "hand detected")?

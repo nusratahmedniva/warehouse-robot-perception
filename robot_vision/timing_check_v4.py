@@ -157,7 +157,9 @@ def markdown(rep: dict) -> str:
           f"Garbage collection: {json.dumps(rep['result']['gc_pauses'])}", "", "## Perception", "",
           "```json", json.dumps(rep["result"]["perception"], indent=2), "```", "",
           f"Memory (resident, sampled): {json.dumps(rep.get('memory'))}", "",
-          f"## Stall stacks: {rep['result']['stall_dumps']} dump(s) in stall_tracebacks.txt", ""]
+          f"## Stall stacks: {rep['result']['stall_dumps']} dump(s) in stall_tracebacks.txt"
+          + (" (the stack dump was OFF, AUDIT.md 16.27: no file is written, so 0 says nothing about stalls; the loop lag numbers above are the measurement)"
+             if (rep["result"].get("loop_lag") or {}).get("stall_dump") is False else ""), ""]
     if rep["stall_traceback_excerpt"]:
         L += ["```", rep["stall_traceback_excerpt"], "```", ""]
     L += [f"Server run folder: `{rep['server_run_folder']}`. Replay client: `replay/` here.", ""]

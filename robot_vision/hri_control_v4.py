@@ -390,6 +390,8 @@ class ControllerV4(hc.Controller):
         self.fov_cmd = -1.0
         self.commander_changes: list[dict] = []
         self.frame_log: list[dict] = []                       # one row per new pan-tilt frame read in the READ state
+        self.stop_log_enabled = False                         # AUDIT.md 16.29 item 3 (instrument only): bridge/guide_v4.py sets it; off = nothing is collected, as before
+        self.stop_log: list[dict] = []                        # one row per control step: which STOP reading was used (reading or reading_stopped)
         self._row: dict | None = None
         self.abort_note = ""
         self.ask_serial = 0                                   # how many times the question was shown (re-asks, extra views)
@@ -995,6 +997,26 @@ class ControllerV4(hc.Controller):
         out, self.frame_log = self.frame_log, []
         return out
 
+    def pop_stop_log(self) -> list[dict]:
+        out, self.stop_log = self.stop_log, []
+        return out
+
+    def _log_stop_reading(self, inp: TickInputV4, sr: dict, applies: bool) -> None:
+        """AUDIT.md 16.29 item 3, INSTRUMENT ONLY (it reads, it changes nothing the controller does): one row per control step saying which reading of every fresh person the controller
+        used for the STOP decision, so that C2s (16.19.7) is provable from the logs. Called before step() replaces the readings. used / src: 'reading_stopped' = the short-window STOP
+        reading (C2s applies: the switch is on, the state is one of stop_rule.states and |v| is below robot_stopped_speed_mps, and the person has a stopped reading), else 'reading' =
+        the reader's own. stop_used = the ids whose USED reading is STOP, stop_other = the ids whose OTHER reading is STOP (what the other reading would have said)."""
+        people = []
+        for p in self._fresh_persons(inp):
+            cur = p.reading.command
+            alt = p.reading_stopped.command if p.reading_stopped is not None else None
+            from_stopped = applies and p.reading_stopped is not None
+            people.append({"id": p.track_id, "reading": cur, "stopped": alt, "used": alt if from_stopped else cur, "src": "reading_stopped" if from_stopped else "reading"})
+        self.stop_log.append({"t": round(inp.time_s, 3), "pt": inp.persons_time_s, "state": self.state, "v": round(inp.v, 3), "switch": bool(sr.get("still_when_robot_stopped")),
+                              "applies": applies, "used": "reading_stopped" if applies else "reading", "people": people,
+                              "stop_used": [q["id"] for q in people if q["used"] == "STOP"],
+                              "stop_other": [q["id"] for q in people if (q["reading"] if q["src"] == "reading_stopped" else q["stopped"]) == "STOP"]})
+
     # -- the READ state (and its wait mode) --
     def _tick(self, inp, cmd):
         if self.state == "read":
@@ -1130,7 +1152,10 @@ class ControllerV4(hc.Controller):
     # -- the tick --
     def step(self, inp: TickInputV4) -> CommandV4:
         sr = self.v4.get("stop_rule", {})
-        if sr.get("still_when_robot_stopped") and self.state in sr.get("states", ()) and abs(inp.v) < sr["robot_stopped_speed_mps"]:
+        applies = bool(sr.get("still_when_robot_stopped") and self.state in sr.get("states", ()) and abs(inp.v) < sr["robot_stopped_speed_mps"])
+        if self.stop_log_enabled:
+            self._log_stop_reading(inp, sr, applies)                  # instrument only, before the readings are replaced
+        if applies:
             # C2s (AUDIT.md 16.19.7): the robot stands still, so every person's reading is the one with the short-window stillness rule for STOP; while it
             # moves the readings are the reader's own, exactly as before
             inp.persons = [replace(p, reading=p.reading_stopped) if p.reading_stopped is not None else p for p in inp.persons]
