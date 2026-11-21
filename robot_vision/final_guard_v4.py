@@ -11,6 +11,13 @@ Three markers, all written with mode 'x' (never overwritten), found by scanning 
   were written; its own marker, so that exporting does not block evaluating and the other way round.
 A started run or evaluation that did not finish writes no marker and does not block (as in v3).
 
+Interruptions (AUDIT.md 16.30.1): a final of a setting that was STARTED (FINAL_SETTING.json in its bridge folder, written before the first trial)
+cannot be started again silently, whether or not FINAL_RUN_DONE.json exists. An infrastructure failure (server, Unity or machine dies before a
+run finishes) is declared with `python final_guard_v4.py --declare-interruption SETTING --run K ...` (FINAL_INTERRUPTION.json); the session may
+then be resumed ONCE from run K (the server's --resume-marker writes FINAL_RESUME.json); a second interruption makes the setting invalid
+(FINAL_INVALID.json). `python final_guard_v4.py --status` lists every setting's state. The evaluation and the export score a resumed setting
+as one session (resume_plan).
+
 check_setting: a final session must be what its setting says (zoom flag, bystanders, number of runs, seed, task, Unity mode
 final; for an experiment setting also its looks and clips, the control file the bridge ran with and the experiment and set Unity
 recorded), from configs/v4/final_plan.json. timeout_from_development, development_timeout: the declared timeout rule (AUDIT.md 16.15 decision 2, corrected in 16.16 decision 4).
@@ -37,7 +44,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 PLAN = "robot_vision/configs/v4/final_plan.json"
-MARKERS = {"run": "FINAL_RUN_DONE.json", "evaluation": "FINAL_DONE.json", "export": "FINAL_EXPORT_DONE.json"}
+MARKERS = {"run": "FINAL_RUN_DONE.json", "evaluation": "FINAL_DONE.json", "export": "FINAL_EXPORT_DONE.json",
+           "started": "FINAL_SETTING.json", "interruption": "FINAL_INTERRUPTION.json", "resume": "FINAL_RESUME.json", "invalid": "FINAL_INVALID.json"}
+INTERRUPTION_PREFIX = "final_interruption"
+INVALID_PREFIX = "final_invalid"
 SCENARIOS = "robot_vision/configs/v4/experiments/scenarios_ab.json"
 LIE_RULES = ("second_opinion", "reject_impossible", "backtrack")        # the a / b / c rules of the experiments (export_csv_v4.lie_detection_label letters)
 # AUDIT.md 16.25.2 (T4: 16.24.3, 16.25, 16.25.1), replaced by 16.26.9: the checkpoint workers are NOT used in the finals. Every key listed in final_plan.json lie_detection_checkpoint must have the
@@ -96,6 +106,316 @@ def write_done(folder: str | Path, setting: str, kind: str, info: dict | None = 
     with p.open("x", encoding="utf-8") as f:
         f.write(json.dumps(rec, indent=2, default=str) + "\n")
     return p
+
+
+# ---------------------------------------------------------------- interruptions and the one resume (AUDIT.md 16.30.1)
+
+def frozen_sha256(repo: Path = REPO) -> str:
+    import freeze_v4 as fz
+    return fz.sha256_lf(repo / fz.FROZEN_REL)
+
+
+def _read(path) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _all_markers(output_root, setting: str) -> dict:
+    return {k: markers(output_root, setting, k) for k in MARKERS}
+
+
+def _marker_file(path, kind: str) -> Path:
+    """A marker given as the file or as the folder that holds it."""
+    p = Path(path)
+    if p.is_dir():
+        p = p / MARKERS[kind]
+    if not p.is_file():
+        raise SystemExit(f"{path}: no {MARKERS[kind]} there")
+    return p
+
+
+def completed_runs(unity_folder) -> list[int]:
+    """The runs of a Unity session folder that have an outcome: truth_run###.json exists (Unity writes it when a run ends)."""
+    return sorted(int(f.name[9:12]) for f in Path(unity_folder).glob("truth_run[0-9][0-9][0-9].json"))
+
+
+def check_start(output_root, setting: str, resume_marker=None, frozen_sha: str | None = None, repo: Path = REPO) -> dict | None:
+    """Called by the server before a final starts (bridge.server.preflight_final). SystemExit unless this start is allowed. Returns None for a
+    fresh start, or the declaration (FINAL_INTERRUPTION.json content) when this start is the declared resume."""
+    check_name(setting, repo)
+    m = _all_markers(output_root, setting)
+    if m["invalid"]:
+        raise SystemExit(f"final setting {setting!r} was declared invalid ({m['invalid'][0].parent.name}): it is reported as invalid and never rerun.")
+    for kind, what in (("evaluation", "evaluated"), ("export", "exported")):
+        if m[kind]:
+            raise SystemExit(f"final setting {setting!r} was already {what} as a final ({m[kind][0].parent.name}): no start and no resume after that.")
+    if not (m["started"] or m["run"]):                                 # nothing started yet
+        if resume_marker is not None:
+            raise SystemExit(f"--resume-marker: no final of {setting!r} was started, so there is nothing to resume.")
+        return None
+    where = (m["started"] or m["run"])[0].parent.name
+    if not m["interruption"]:
+        raise SystemExit(
+            f"final setting {setting!r} was already run as a final (started: {where}). Finals are run once: the earlier run stands. If an infrastructure failure "
+            f"(server, Unity or machine) ended it before a run finished, declare it first: python final_guard_v4.py --declare-interruption {setting} "
+            "--run K --reason TEXT --evidence PATH ... --unity-folder U --bridge-folder B (AUDIT.md 16.30.1).")
+    if len(m["interruption"]) > 1:
+        raise SystemExit(f"final setting {setting!r} has more than one declared interruption: the setting is not started again; report it.")
+    if m["resume"]:
+        raise SystemExit(
+            f"final setting {setting!r} was already resumed once ({m['resume'][0].parent.name}). A second resume is never made. If the resumed part was "
+            "interrupted too, declare it with --declare-interruption: the setting becomes invalid and is reported as such (B11).")
+    if resume_marker is None:
+        raise SystemExit(f"an interruption of {setting!r} is declared ({m['interruption'][0].parent.name}): start the resume with "
+                         f"--resume-marker {m['interruption'][0].parent.name} (once, from run {_read(m['interruption'][0])['resume_from_run']}).")
+    given = _marker_file(resume_marker, "interruption")
+    if given.resolve() != m["interruption"][0].resolve():
+        raise SystemExit(f"--resume-marker {resume_marker} is not the declaration of {setting!r} ({m['interruption'][0].parent.name}).")
+    rec = _read(given)
+    if frozen_sha is not None and rec.get("frozen_sha256") != frozen_sha:
+        raise SystemExit(f"configs/v4/frozen.json changed since the interruption of {setting!r} was declared: the resume is refused.")
+    return rec
+
+
+def write_resume(folder, setting: str, declaration: dict, declaration_folder: str, frozen_sha: str) -> Path:
+    """The server writes this into the bridge folder of the resumed run, before the first trial (never overwrites)."""
+    return write_done(folder, setting, "resume", {"resume_from_run": declaration["resume_from_run"], "interruption_folder": declaration_folder,
+                                                  "frozen_sha256": frozen_sha})
+
+
+def _evidence_record(evidence, output_root) -> list[dict]:
+    out, root = [], Path(output_root).resolve()
+    for e in evidence:
+        p = Path(e)
+        if not p.exists():
+            raise SystemExit(f"evidence {e}: not found")
+        files = [p] if p.is_file() else sorted(q for q in p.rglob("*") if q.is_file())
+        for q in files:
+            try:
+                shown = q.resolve().relative_to(root).as_posix()
+            except ValueError:
+                shown = q.name + " (outside the output root: send it with the zip)"
+            out.append({"path": shown, "bytes": q.stat().st_size, "sha256": hashlib.sha256(q.read_bytes()).hexdigest()})
+    if not out:
+        raise SystemExit("the evidence is empty: name the Event Viewer export, the crash log or the server and Unity logs")
+    return out
+
+
+def _check_part(setting: str, unity: Path, bridge: Path, first_run: int, run: int) -> dict:
+    """Runs first_run to run-1 have an outcome and a python_trial file, run has no outcome, nothing is later; returns Unity's session.json."""
+    if not unity.is_dir() or not (unity / "session.json").is_file():
+        raise SystemExit(f"--unity-folder {unity}: not a Unity session folder (no session.json)")
+    if not (bridge / MARKERS["started"]).is_file() or _read(bridge / MARKERS["started"]).get("setting") != setting:
+        raise SystemExit(f"--bridge-folder {bridge}: not a bridge run folder of the final {setting!r} (no FINAL_SETTING.json for it)")
+    session = _read(unity / "session.json")
+    if session.get("final_setting") not in (None, "", setting):
+        raise SystemExit(f"{unity.name}: Unity ran final setting {session['final_setting']!r}, not {setting!r}")
+    done = completed_runs(unity)
+    if done != list(range(first_run, run)):
+        raise SystemExit(f"{unity.name}: runs with an outcome are {done}, but an interruption of run {run} needs exactly runs {first_run} to {run - 1} "
+                         f"(a run that has an outcome is a result, not an interruption; run {run} must have none)")
+    missing = [i for i in done if not (bridge / f"python_trial_{i:03d}.json").is_file()]
+    if missing:
+        raise SystemExit(f"{bridge.name}: runs {missing} have an outcome in Unity but no python_trial file: not declared; ask Anisha")
+    for key in ("seed", "goal_order"):
+        if session.get(key) in (None, []):
+            raise SystemExit(f"{unity.name}: session.json has no {key}: the resume could not be checked")
+    return session
+
+
+def declare_interruption(setting: str, run: int, reason: str, evidence: list, unity_folder, bridge_folder, output_root, repo: Path = REPO) -> Path:
+    """Declare an infrastructure interruption of the final of this setting before run `run` finished (AUDIT.md 16.30.1). Writes
+    <output_root>/final_interruption_<setting>_<time>/FINAL_INTERRUPTION.json, or, when the setting was already resumed once, the second
+    interruption: <output_root>/final_invalid_<setting>_<time>/FINAL_INVALID.json. Returns the marker. SystemExit when refused."""
+    check_name(setting, repo)
+    n = int(plan(repo)["runs_per_setting"])
+    if not (reason or "").strip():
+        raise SystemExit("--reason is required: what failed, in one line")
+    if not 1 <= run <= n:
+        raise SystemExit(f"--run {run}: the setting has runs 1 to {n}")
+    root = Path(output_root)
+    m = _all_markers(root, setting)
+    if m["invalid"]:
+        raise SystemExit(f"{setting!r} is already declared invalid ({m['invalid'][0].parent.name})")
+    for kind, what in (("evaluation", "evaluated"), ("export", "exported")):
+        if m[kind]:
+            raise SystemExit(f"{setting!r} was already {what} ({m[kind][0].parent.name}): an interruption is not declared after that")
+    if not (m["started"] or m["run"]):
+        raise SystemExit(f"no final of {setting!r} was started (no FINAL_SETTING.json under {root}): nothing to declare")
+    if len(m["interruption"]) > 1:
+        raise SystemExit(f"{setting!r} has more than one declared interruption")
+    unity, bridge = Path(unity_folder), Path(bridge_folder)
+    ev_rec = _evidence_record(evidence, root)
+    sha = frozen_sha256(repo)
+    started_file = bridge / MARKERS["started"]
+    if started_file.is_file() and _read(started_file).get("frozen_sha256") != sha:
+        raise SystemExit("configs/v4/frozen.json changed since this run started: no declaration")
+    base = {"resume_from_run": run, "interrupted_run": run, "reason": reason.strip(), "evidence": ev_rec, "frozen_sha256": sha,
+            "unity_folder": unity.name, "bridge_folder": bridge.name, "outcome_of_interrupted_run": "interrupted (infrastructure)"}
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if m["resume"]:                                                    # the resumed part was interrupted too: the setting is invalid
+        resume = _read(m["resume"][0])
+        if bridge.resolve() != m["resume"][0].parent.resolve():
+            raise SystemExit(f"--bridge-folder must be the resumed run's folder {m['resume'][0].parent.name}")
+        k1 = int(resume["resume_from_run"])
+        if run < k1:
+            raise SystemExit(f"--run {run} is before the resume point {k1}")
+        session = _check_part(setting, unity, bridge, k1, run)
+        out = root / f"{INVALID_PREFIX}_{setting}_{stamp}"
+        out.mkdir()
+        return write_done(out, setting, "invalid", {**base, "rule": "second interruption in the same setting (AUDIT.md 16.30.1 rule 5, B11)",
+                                                    "first_interruption": m["interruption"][0].parent.name, "resume_folder": m["resume"][0].parent.name,
+                                                    "seed": session["seed"]})
+    if m["interruption"]:
+        raise SystemExit(f"an interruption of {setting!r} is already declared ({m['interruption'][0].parent.name}): resume it once (--resume-marker) "
+                         "instead of declaring another")
+    starts = [p.parent.resolve() for p in m["started"]]
+    if starts != [bridge.resolve()]:
+        raise SystemExit(f"--bridge-folder must be the one bridge run folder of the started final ({[p.name for p in map(Path, starts)]})")
+    session = _check_part(setting, unity, bridge, 1, run)
+    out = root / f"{INTERRUPTION_PREFIX}_{setting}_{stamp}"
+    out.mkdir()
+    return write_done(out, setting, "interruption", {**base, "seed": session["seed"], "goal_order": session["goal_order"],
+                                                     "completed_runs": list(range(1, run))})
+
+
+def _part_pair(pairs, folder_name: str):
+    for u, b in pairs:
+        if Path(b).name == folder_name:
+            return Path(u), Path(b)
+    return None
+
+
+def resume_plan(output_root, setting: str, pairs, repo: Path = REPO) -> dict:
+    """What the evaluation and the export need for a setting that may have been interrupted: {"resumed": bool, "problems": [str], "include":
+    callable(unity_dir, trial) -> bool or None, "declaration": dict or None, "interrupted": [{"unity", "run"}]}. No test data is read here (only
+    markers and the session.json of each part). Without any interruption marker it returns resumed False and no filter."""
+    m = _all_markers(output_root, setting)
+    plan_ = {"resumed": False, "problems": [], "include": None, "declaration": None, "resume": None, "interrupted": []}
+    pr = plan_["problems"]
+    if m["invalid"]:
+        pr.append(f"setting declared invalid ({m['invalid'][0].parent.name}: {_read(m['invalid'][0]).get('reason')}): reported as invalid, not evaluated")
+    if not m["interruption"]:
+        stray = [Path(b).name for _, b in pairs if (Path(b) / MARKERS["resume"]).is_file()]
+        if stray or m["resume"]:
+            pr.append("a resumed run (FINAL_RESUME.json) without a declared interruption")
+        return plan_
+    if len(m["interruption"]) > 1:
+        pr.append("more than one declared interruption")
+        return plan_
+    if not m["resume"]:
+        pr.append(f"an interruption is declared ({m['interruption'][0].parent.name}) but the session was never resumed: a partial session is not scored; "
+                  "it is reported as interrupted")
+        return plan_
+    if len(m["resume"]) > 1:
+        pr.append("more than one resume")
+        return plan_
+    plan_["resumed"] = True
+    decl, resume = _read(m["interruption"][0]), _read(m["resume"][0])
+    plan_["declaration"], plan_["resume"] = decl, resume
+    k, sha = int(decl["resume_from_run"]), frozen_sha256(repo)
+    if len(pairs) != 2:
+        pr.append(f"a resumed setting is evaluated as TWO session parts (--session twice), got {len(pairs)}")
+    p1, p2 = _part_pair(pairs, decl["bridge_folder"]), _part_pair(pairs, m["resume"][0].parent.name)
+    if p1 is None or p2 is None:
+        pr.append(f"the parts must be the declaration's bridge folder {decl['bridge_folder']} and the resumed run's {m['resume'][0].parent.name}")
+        return plan_
+    (u1, b1), (u2, b2) = p1, p2
+    if u1.name != decl["unity_folder"]:
+        pr.append(f"part 1 Unity folder {u1.name} is not the declaration's {decl['unity_folder']}")
+    if u1.resolve() == u2.resolve():
+        pr.append("the two parts have the same Unity session folder: the resumed session is a new Unity session")
+    if int(resume.get("resume_from_run", -1)) != k or resume.get("interruption_folder") != m["interruption"][0].parent.name:
+        pr.append("the resume marker does not answer this declaration (run number or declaration folder differ)")
+    shas = {"declaration": decl.get("frozen_sha256"), "resume": resume.get("frozen_sha256"), "now": sha}
+    for tag, b in (("part 1", b1), ("part 2", b2)):
+        f = b / MARKERS["started"]
+        shas[tag] = _read(f).get("frozen_sha256") if f.is_file() else None
+    if len(set(shas.values())) != 1:
+        pr.append(f"the frozen hashes differ between the parts, the declaration, the resume and now: {shas}")
+    try:
+        s1, s2 = _read(u1 / "session.json"), _read(u2 / "session.json")
+    except (OSError, ValueError) as e:
+        pr.append(f"session.json unreadable: {e}")
+        return plan_
+    if not (s1.get("seed") == s2.get("seed") == decl.get("seed")):
+        pr.append(f"the seed differs: part 1 {s1.get('seed')}, part 2 {s2.get('seed')}, declaration {decl.get('seed')}")
+    if not (s1.get("goal_order") == s2.get("goal_order") == decl.get("goal_order")):
+        pr.append("the goal order differs between part 1, part 2 and the declaration")
+    if s2.get("resume_from_run") != k:
+        pr.append(f"part 2 session.json records resume_from_run {s2.get('resume_from_run')!r}, the declaration says {k}")
+    if s2.get("resume_of") != u1.name:
+        pr.append(f"part 2 session.json records resume_of {s2.get('resume_of')!r}, part 1 is {u1.name}")
+    plan_["interrupted"] = [{"unity": u1.name, "run": int(d.name[4:])} for d in sorted(u1.glob("run_[0-9][0-9][0-9]")) if int(d.name[4:]) >= k]
+    early = [int(d.name[4:]) for d in sorted(u2.glob("run_[0-9][0-9][0-9]")) if int(d.name[4:]) < k]
+    if early:
+        pr.append(f"part 2 has runs {early} before the resume point {k}: the resumed session starts at run {k}")
+    r1, r2 = u1.resolve(), u2.resolve()
+    plan_["include"] = lambda unity, trial: (Path(unity).resolve() == r1 and trial < k) or (Path(unity).resolve() == r2 and trial >= k)
+    return plan_
+
+
+def trial_problems(runs: list, n: int) -> list[str]:
+    """After loading a resumed setting: the scored runs are 1 to n, each once."""
+    got = sorted(r.trial for r in runs)
+    return [] if got == list(range(1, n + 1)) else [f"the scored runs are {got}, a resumed setting needs runs 1 to {n} once each"]
+
+
+def interruption_report(plan_: dict) -> dict | None:
+    """What the evaluation and the export state about an interruption (None when there was none)."""
+    d = plan_.get("declaration")
+    if not d:
+        return None
+    return {"resumed": plan_["resumed"], "interrupted_run": d["interrupted_run"], "outcome_of_interrupted_run": d["outcome_of_interrupted_run"],
+            "reason": d["reason"], "evidence": d["evidence"], "part_1": {"unity": d["unity_folder"], "bridge": d["bridge_folder"]},
+            "interrupted_runs_listed_not_scored": plan_["interrupted"], "scored_as_one_session": plan_["resumed"],
+            "resume": plan_.get("resume"), "frozen_sha256": d["frozen_sha256"], "seed": d.get("seed"),
+            "rule": "AUDIT.md 16.30.1: completed runs stand; the interrupted run has no outcome and is not scored; one resume from that run"}
+
+
+def interruption_markdown(rep: dict | None) -> str:
+    if not rep:
+        return ""
+    L = ["## Interruption and resume (AUDIT.md 16.30.1; reported, not hidden)", "",
+         f"- Run {rep['interrupted_run']} was interrupted by an infrastructure failure: **{rep['outcome_of_interrupted_run']}**, no outcome, not scored.",
+         f"- Reason given: {rep['reason']}",
+         f"- Evidence: {', '.join(e['path'] for e in rep['evidence'])}",
+         f"- Part 1: {rep['part_1']['unity']} / {rep['part_1']['bridge']}; the session was resumed once from run {rep['interrupted_run']} "
+         "(same seed, goal order, configs and frozen hashes, checked) and is scored as one session.",
+         "- Interrupted run folders listed, not scored: " + (", ".join(f"{x['unity']}/run_{x['run']:03d}" for x in rep["interrupted_runs_listed_not_scored"]) or "none"), ""]
+    return "\n".join(L) + "\n"
+
+
+def status(output_root, repo: Path = REPO) -> list[dict]:
+    """One record per setting: what exists, so that every interruption and resume can be reported."""
+    out = []
+    for s in settings(repo):
+        m = _all_markers(output_root, s)
+        rec = {"setting": s, "started_folders": [p.parent.name for p in m["started"]], "run_done": [p.parent.name for p in m["run"]],
+               "interruption": None, "resume": [p.parent.name for p in m["resume"]], "invalid": None,
+               "evaluated": [p.parent.name for p in m["evaluation"]], "exported": [p.parent.name for p in m["export"]]}
+        if m["interruption"]:
+            d = _read(m["interruption"][0])
+            rec["interruption"] = {"folder": m["interruption"][0].parent.name, "run": d.get("interrupted_run"), "reason": d.get("reason")}
+        if m["invalid"]:
+            rec["invalid"] = {"folder": m["invalid"][0].parent.name, "reason": _read(m["invalid"][0]).get("reason")}
+        rec["state"] = ("invalid" if rec["invalid"] else "resumed" if rec["resume"] else "interrupted (declared, not resumed)" if rec["interruption"]
+                        else "started (no declaration)" if rec["started_folders"] or rec["run_done"] else "fresh")
+        out.append(rec)
+    return out
+
+
+def status_text(rows: list[dict]) -> str:
+    L = [f"{'setting':<16}{'state':<38}{'evaluated':<10}{'exported':<10}details"]
+    for r in rows:
+        det = []
+        if r["interruption"]:
+            det.append(f"interrupted run {r['interruption']['run']} ({r['interruption']['folder']}): {r['interruption']['reason']}")
+        if r["resume"]:
+            det.append("resumed in " + ", ".join(r["resume"]))
+        if r["invalid"]:
+            det.append(f"INVALID ({r['invalid']['folder']}): {r['invalid']['reason']}")
+        L.append(f"{r['setting']:<16}{r['state']:<38}{'yes' if r['evaluated'] else 'no':<10}{'yes' if r['exported'] else 'no':<10}{'; '.join(det)}")
+    return "\n".join(L)
 
 
 def timeout_from_development(longest_s: float, floor_s: float = 270.0, factor: float = 1.5, step_s: float = 30.0) -> float:
@@ -359,13 +679,41 @@ def step5_timeout_report(runs: list[dict], ignored: list[str]) -> tuple[list[str
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="The development timeout from the pooled step-5 runs of all 13 settings (AUDIT.md 16.20.5.1).")
-    ap.add_argument("--timeout-from", nargs="+", required=True, metavar="SOURCE",
+    ap = argparse.ArgumentParser(description="Final guards: the development timeout from the pooled step-5 runs of all 13 settings (AUDIT.md 16.20.5.1), "
+                                             "the state of every final (--status) and the declaration of an infrastructure interruption (AUDIT.md 16.30.1).")
+    ap.add_argument("--status", action="store_true", help="print the state of every final setting (fresh, started, interrupted, resumed, invalid, evaluated, exported)")
+    ap.add_argument("--declare-interruption", metavar="SETTING", default=None,
+                    help="declare that the final of SETTING was interrupted by an infrastructure failure before run --run finished (needs --run, --reason, "
+                         "--evidence, --unity-folder, --bridge-folder); after a resume, the same command declares the second interruption: the setting becomes invalid")
+    ap.add_argument("--run", type=int, default=None, help="the run that was interrupted (it has no outcome; runs before it have)")
+    ap.add_argument("--reason", default=None, help="what failed, one line")
+    ap.add_argument("--evidence", nargs="+", default=None, help="files or folders: the Event Viewer export, the crash log, the server and Unity logs")
+    ap.add_argument("--unity-folder", default=None, help="the Unity session folder of the interrupted part")
+    ap.add_argument("--bridge-folder", default=None, help="the bridge run folder of the interrupted part")
+    ap.add_argument("--output-root", default=None, help="the outputs folder (default: configs' outputs)")
+    ap.add_argument("--timeout-from", nargs="+", default=None, metavar="SOURCE",
                     help="the step-5 zip of finals_v4/step5_zip_v4.py (read in place), the step-5 manifest .json, or NAME=<Unity session folder> (e.g. t0_A3=outputs/trials_development_...)")
     ap.add_argument("--prefix", default=STEP5_PREFIX, help="the setting prefix of the step-5 sessions (default t0_)")
     ap.add_argument("--runs-per-setting", type=int, default=STEP5_RUNS_PER_SETTING)
     ap.add_argument("--out", default=None, help="also write the report to this new file (an existing file is refused)")
     a = ap.parse_args(argv)
+    if sum(bool(x) for x in (a.status, a.declare_interruption, a.timeout_from)) != 1:
+        ap.error("give exactly one of --status, --declare-interruption SETTING, --timeout-from SOURCE")
+    if a.status or a.declare_interruption:
+        import decision_io as dio
+        root = dio.resolve(a.output_root or "outputs")
+        if a.status:
+            print(status_text(status(root)))
+            return 0
+        missing = [n for n, v in (("--run", a.run), ("--reason", a.reason), ("--evidence", a.evidence), ("--unity-folder", a.unity_folder),
+                                  ("--bridge-folder", a.bridge_folder)) if v in (None, [])]
+        if missing:
+            ap.error("--declare-interruption also needs " + ", ".join(missing))
+        marker = declare_interruption(a.declare_interruption, a.run, a.reason, a.evidence, dio.resolve(a.unity_folder), dio.resolve(a.bridge_folder), root)
+        print(f"{marker.name} written: {marker.parent}")
+        print("invalid: the setting is never rerun and is reported as invalid." if marker.name == MARKERS["invalid"]
+              else f"Resume once from run {a.run} with --resume-marker {marker.parent.name} (same seed, goal order, configs, frozen hashes).")
+        return 0
     settings = list(plan()["settings"])
     sessions, read = load_step5_sources(a.timeout_from)
     pooled = pool_step5(sessions, settings, a.prefix, a.runs_per_setting)
