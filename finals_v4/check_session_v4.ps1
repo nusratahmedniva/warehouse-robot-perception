@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory = $true)][string]$U,      # Unity session folder, e.g. outputs\trials_final_Task2_zoom_on_<time>
     [Parameter(Mandatory = $true)][string]$B,      # bridge run folder, e.g. outputs\bridge_guide_<time>
     [int]$Runs = 0,                                # runs expected; a final: runs_per_setting of final_plan.json (another number is refused)
+    [int]$StartRun = 1,                            # a development session resumed at run k (TrialPlayV4 -startRun; experiments_ab.md section 15 addendum 10): runs k..Runs expected; a final: 1 only
     [switch]$Final,                                # a final: frozen hashes, the test split and the run-once markers are required
     [string]$Protocol = ""                         # the pre-session run-protocol note (free memory, programs running)
 )
@@ -23,6 +24,8 @@ if ($Final) {
     if ($Runs -eq 0) { $Runs = [int]$plan.runs_per_setting }
     if ($Runs -ne [int]$plan.runs_per_setting) { "REFUSED: a final has runs_per_setting = $($plan.runs_per_setting) runs (final_plan.json), not $Runs"; exit 2 }
 } elseif ($Runs -lt 1) { "REFUSED: give -Runs (the runs of this development session)"; exit 2 }
+if ($Final -and $StartRun -ne 1) { "REFUSED: a final runs all its runs (-StartRun is for a resumed development session)"; exit 2 }
+if ($StartRun -lt 1 -or $StartRun -gt $Runs) { "REFUSED: -StartRun $StartRun is outside 1..$Runs"; exit 2 }
 $fail = 0
 # $ok: $true PASS, $false FAIL (counted), $null N/A (development only; not counted)
 function Report($n, $ok, $what) {
@@ -32,7 +35,7 @@ function ReadJson($path) { if (Test-Path $path) { Get-Content $path -Raw | Conve
 function Numbers($names, $pattern) { @($names | ForEach-Object { if ($_ -match $pattern) { [int]$Matches[1] } } | Sort-Object) }
 "session: $U"
 "bridge:  $B"
-"$(if ($Final) { 'FINAL' } else { 'development' }), $Runs runs expected"
+"$(if ($Final) { 'FINAL' } else { 'development' }), $Runs runs expected$(if ($StartRun -gt 1) { " (resumed: runs $StartRun..$Runs)" })"
 Push-Location $rv
 try {
     $s = ReadJson (Join-Path $U "session.json")
@@ -66,14 +69,14 @@ sys.exit(1 if bad else 0)
     $splitOk = ($LASTEXITCODE -eq 0)
     Report 3 $splitOk "split guard passed (data_splits_v4.guard_run, final_evaluation $([bool]$Final)): $splitOut"
 
-    $want = @(1..$Runs)
+    $want = @($StartRun..$Runs)
     $rows = @(Import-Csv (Join-Path $U "results_unity.csv") -ErrorAction SilentlyContinue)
     $rowNums = @($rows | ForEach-Object { [int]$_.trial } | Sort-Object)
     $dirNums = Numbers ($runDirs | ForEach-Object Name) '^run_(\d{3})$'
     $pyNums = Numbers (Get-ChildItem $B -File -Filter "python_trial_*.json" -ErrorAction SilentlyContinue | ForEach-Object Name) '^python_trial_(\d{3})\.json$'
     $same = { param($a) ($a -join ",") -eq ($want -join ",") }
     $allRuns = (& $same $rowNums) -and (& $same $dirNums) -and (& $same $pyNums)
-    Report 4 $allRuns "all runs present: results_unity.csv trials [$($rowNums -join ',')], run_### [$($dirNums -join ',')], python_trial_### [$($pyNums -join ',')]; expected 1..$Runs"
+    Report 4 $allRuns "all runs present: results_unity.csv trials [$($rowNums -join ',')], run_### [$($dirNums -join ',')], python_trial_### [$($pyNums -join ',')]; expected $StartRun..$Runs"
 
     $have = (Test-Path (Join-Path $U "summary_unity.json")) -and ($null -ne $sum)
     $markers = (Test-Path (Join-Path $U "UNITY_FINAL_DONE.json")) -and (Test-Path (Join-Path $B "FINAL_RUN_DONE.json"))
