@@ -98,7 +98,21 @@ $blockers = @()
 $notes = @()
 $branch = (git -C $repo rev-parse --abbrev-ref HEAD).Trim()
 $dirty = @(git -C $repo status --porcelain --untracked-files=no)
-if (Get-Process -Name "Unity" -ErrorAction SilentlyContinue) { $blockers += "a Unity Editor is running: close it first (the session opens the project itself)" }
+# Unity Hub's helper is not an Editor (experiments_ab.md section 15 addendum 9): <Hub folder>\resources\unity.exe, where <Hub folder> holds
+# Unity Hub.exe, started with the argument serve. Every other process named Unity blocks, also one whose path or command line cannot be read.
+function Test-HubHelper($path, $cmd) {
+    if (-not $path -or -not $cmd -or (Split-Path $path -Leaf) -ne "unity.exe") { return $false }
+    $res = Split-Path $path -Parent
+    if ((Split-Path $res -Leaf) -ne "resources" -or -not (Test-Path -LiteralPath (Join-Path (Split-Path $res -Parent) "Unity Hub.exe"))) { return $false }
+    return $cmd -match '(^|[\s"])serve([\s"]|$)'
+}
+$unityBlocking = @()
+foreach ($u in @(Get-Process -Name "Unity" -ErrorAction SilentlyContinue)) {
+    $c = Get-CimInstance Win32_Process -Filter "ProcessId=$($u.Id)" -ErrorAction SilentlyContinue
+    if ($c -and (Test-HubHelper $c.ExecutablePath $c.CommandLine)) { $notes += "ignored: Unity Hub's helper unity.exe serve, PID $($u.Id) (not an Editor)" }
+    else { $unityBlocking += $u.Id }
+}
+if ($unityBlocking.Count) { $blockers += "a Unity Editor is running (PID $($unityBlocking -join ', ')): close it first (the session opens the project itself)" }
 if ($Rehearsal) {
     if ($branch -ne "main" -or $dirty.Count) { $notes += "branch $branch, $($dirty.Count) tracked change(s) (the procedure rehearses on an up-to-date main)" }
 } else {
