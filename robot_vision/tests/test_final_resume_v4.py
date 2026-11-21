@@ -59,8 +59,10 @@ class ResumeBase(unittest.TestCase):
         return u, b
 
     def part2(self, u1: Path, name="p2", seed=7, goals=None, resume_from=2, sha=None, resume_of=True, early_run=False):
-        """Part 2: the resumed session, from run 2."""
-        extra = {"goal_order": goals or GOALS, "resume_from_run": resume_from, **({"resume_of": u1.name} if resume_of else {})}
+        """Part 2: the resumed session, from run 2. Like Unity's, its session.json carries start_run (the run it started at) next to the
+        keys of our rule, resume_from_run and resume_of (AUDIT.md 16.31.4)."""
+        extra = {"goal_order": goals or GOALS, "resume_from_run": resume_from, "start_run": resume_from,
+                 **({"resume_of": u1.name} if resume_of else {})}
         u, b = tf.session(self.out, name, n=2, seed=seed, extra=extra)
         (u / "truth_run001.json").unlink()
         (b / "python_trial_001.json").unlink()
@@ -378,6 +380,44 @@ class EvaluationTests(ResumeBase):
             self.refused([p1, (self.out / "trials_p2", self.out / "bridge_p2")], pattern)
             s[key] = keep
             f.write_text(json.dumps(s))
+
+    def edit_part2(self, **changes):
+        """Rewrite keys of part 2's session.json (a value of None removes the key); returns the two parts."""
+        p1, _, _ = self.resumed()
+        f = self.out / "trials_p2" / "session.json"
+        sj = json.loads(f.read_text())
+        for k, v in changes.items():
+            if v is None:
+                sj.pop(k, None)
+            else:
+                sj[k] = v
+        f.write_text(json.dumps(sj))
+        return [p1, (self.out / "trials_p2", self.out / "bridge_p2")]
+
+    def test_a_resumed_final_needs_start_run_equal_to_resume_from_run(self):
+        """AUDIT.md 16.31.4: both keys are required and must agree (and equal the declaration's k); neither is an alias of the other."""
+        for change, pattern in (({"start_run": None}, "records start_run None: a resumed final needs the whole number"),
+                                ({"start_run": 1}, r"start_run 1 but resume_from_run 2: a resumed final must have start_run == resume_from_run"),
+                                ({"start_run": 3}, r"start_run 3 but resume_from_run 2"),
+                                ({"start_run": "2"}, "records start_run '2'"),
+                                ({"start_run": True}, "records start_run True"),
+                                ({"start_run": 2.0}, "records start_run 2.0"),
+                                ({"resume_from_run": None}, "records resume_from_run None"),                 # start_run alone is refused
+                                ({"resume_from_run": 3}, r"start_run 2 but resume_from_run 3")):             # and so is a mismatch the other way
+            with self.subTest(change=change):
+                tmp = self.__class__()                                                                    # a fresh fixture per case
+                tmp.setUp()
+                try:
+                    pairs = tmp.edit_part2(**change)
+                    tmp.refused(pairs, pattern)
+                finally:
+                    tmp.tearDown()
+
+    def test_start_run_equal_to_k_is_accepted_and_part_one_is_not_checked_for_it(self):
+        p1, p2, _ = self.resumed()
+        s1 = json.loads((p1[0] / "session.json").read_text())
+        self.assertNotIn("start_run", s1)                                                                  # part 1 has none here: it is not checked
+        ef.evaluate_final(SETTING, [p1, p2], self.repo, self.out)
 
     def test_changed_frozen_hash_between_the_parts_is_refused(self):
         p1, p2, _ = self.resumed()

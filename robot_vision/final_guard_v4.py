@@ -369,6 +369,12 @@ def resume_plan(output_root, setting: str, pairs, repo: Path = REPO) -> dict:
         pr.append("the goal order differs between part 1, part 2 and the declaration")
     if s2.get("resume_from_run") != k:
         pr.append(f"part 2 session.json records resume_from_run {s2.get('resume_from_run')!r}, the declaration says {k}")
+    start = s2.get("start_run")                  # AUDIT.md 16.31.4: Unity's own record of the run it started at must agree (both keys are required; no alias)
+    if isinstance(start, bool) or not isinstance(start, int):
+        pr.append(f"part 2 session.json records start_run {start!r}: a resumed final needs the whole number start_run equal to resume_from_run {k}")
+    elif start != s2.get("resume_from_run"):
+        pr.append(f"part 2 session.json records start_run {start} but resume_from_run {s2.get('resume_from_run')!r}: a resumed final must have "
+                  f"start_run == resume_from_run (the declaration says {k})")
     if s2.get("resume_of") != u1.name:
         pr.append(f"part 2 session.json records resume_of {s2.get('resume_of')!r}, part 1 is {u1.name}")
     plan_["interrupted"] = [{"unity": u1.name, "run": int(d.name[4:])} for d in sorted(u1.glob("run_[0-9][0-9][0-9]")) if int(d.name[4:]) >= k]
