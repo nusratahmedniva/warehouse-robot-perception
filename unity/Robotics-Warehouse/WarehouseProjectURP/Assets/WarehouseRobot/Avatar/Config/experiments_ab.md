@@ -2576,3 +2576,135 @@ own child process, UTF-8 transcripts without absolute paths (the rule of step5_s
 folders of its own run) passes the goals to those six settings; its
 dry run (`-DryRun`, prefix `dry_`) prints the six launcher command lines with `-experimentGoals E5,E6,E5`. Nothing in the repository's
 code or configs changes. Addendum 8's smoke trial (B3, seeded goal E2) and dry runs stand as recorded (development checks, not step 5).
+
+### 2026-11-21, section 15 addendum 9: the launcher ignores Unity Hub's helper (declared before any change below)
+
+Nusrat's task of 2026-11-21, after step 5 (13 of 13 settings REHEARSAL VALID, `robot_vision/outputs/t0_step5_night_summary_20261120_211406.txt`).
+Branch `nusrat/v4-launcher-hub-helper`, new from main affe652. Only `finals_v4/run_session_v4.ps1` changes (plus this entry): nothing under
+`robot_vision/`, `docs/` or `external/`, no Unity code, scene or config; nothing is frozen, no session or final is run, nothing is pushed.
+
+**Why.** The launcher refuses a session while any process named `Unity` runs (`Get-Process -Name "Unity"`: "a Unity Editor is running: close
+it first"). Unity Hub starts its own helper `<Hub folder>\resources\unity.exe` (command line `unity.exe serve`): not an Editor, it never opens
+the project, but it has the same process name. On 2026-11-20 it made the launcher refuse every remaining setting of one step-5 attempt (12
+transcripts `robot_vision/outputs/aborted_20261120_night/step5_launcher_t0_*.txt`, "STOPPED: a Unity Editor is running"), and in the attempt
+that completed, the night script (outside the repository) had to stop the helper before t0_B1_off (summary: "LEFTOVER before t0_B1_off:
+unity PID 4060, hub_helper, ...: stopped"). Stopping a process of the Hub is a workaround; the launcher itself should not count the helper.
+
+**The rule.** A process named `Unity` is Unity Hub's helper, and the check ignores it, only when both hold: (a) its executable is
+`resources\unity.exe` (any case) in a folder that also holds `Unity Hub.exe` (the Hub's install folder, wherever the Hub is installed; on
+Nusrat's PC `E:\Unity\Unity Hub`); (b) its command line can be read and has the argument `serve`. Every other process named `Unity` still
+blocks, also one whose path or command line cannot be read (the check never guesses). An ignored helper is listed as a note ("ignored: Unity
+Hub's helper unity.exe serve, PID n"), in `-DryRun` too. The launcher still never stops a process. Everything else is unchanged: the other
+blockers, every refusal of a final, the session steps, the run protocol. `run_session_v4.ps1` is not on the B9 freeze list
+(`freeze_v4.py` `unity_files`) and no test reads it; the step-5 sessions are not affected (the launcher is the same in every other respect).
+
+**Checks before the commit.** A fake helper (a copy of a harmless program named `unity.exe` in a scratch `<folder>\resources\` beside an empty
+`Unity Hub.exe`, started with the argument `serve`) is ignored by `-DryRun`; the same copy without `serve`, and without the `Unity Hub.exe`
+beside it, blocks; with no process named Unity the dry run lists no Unity blocker. Both suites (Unity Edit Mode, Python) pass.
+
+### 2026-11-21, section 15 addendum 10: the avatar checker's timing rule and play-only check; a session that starts at run k (declared before any change below)
+
+Nusrat's task of 2026-11-21, items 3 and 5. Branch `nusrat/v4-launcher-hub-helper`, after addendum 9. Nothing under `robot_vision/`, `docs/` or
+`external/` changes; nothing is frozen; no session, final, look check or avatar run is made; nothing is pushed. No file of the B9 freeze list
+changes (`final_v4.json` `freeze_files`: configs, the scene, the prefab; no `.cs` file and no `finals_v4/` script is on it), so no frozen hash moves.
+
+**Part 1. `finals_v4/avatar_rehearsal_check.py`.**
+
+*What the checker judges.* Only the blind rehearsal of the avatar experiment. The real avatar experiment (section 8 step 5) is judged by Anisha's
+`look_check_v4.py`, unchanged, and nothing else is run on it. That tool has no frame-step rule: it gives each header's `time_s` to the reader and
+refuses a PROCEED sequence shorter than the reader's window (`proceed.window_s`, 2.0 s). Neither the old nor the new timing rule below touches a
+result of the experiment.
+
+*Why the timing rule changes (a rule changed after seeing a result: disclosed).* The rehearsal of 2026-11-20 (`avatar_rehearsal_check_20261121_001920`)
+flagged 122 Play sequences, every one only because a step was shorter than 0.09 s (152 of their 1 640 steps; shortest 0.036 s; none longer than
+0.2 s). Unity's capture rule (`LookCheckPlayDriver.CaptureIdle` and `Perform`) takes frame i at the first rendered frame at or after its mark
+t0 + 0.1 i s (PROCEED: frames 1.. from frame 0's real time + 0.001 s), so a late frame followed by a short step back onto the 10 Hz grid is the rule
+working; a minimum step is stricter than the rule it was meant to describe and fails every Play run. Before choosing the tolerance I had seen, from
+the steps of the 122 flagged sequences in that report, offsets from -0.018 to +0.091 s; the tolerance is set from the capture rule (one sampling
+interval), not from those numbers.
+
+*The rule (replaces "every step at least 0.09 s").* For every sequence whose headers all carry `time_s`, with frame 0 as the anchor (Unity's own t0
+of a non-PROCEED sequence is not in the header): (a) the times strictly increase; (b) every step is at most 0.2 s (unchanged); (c) every frame lies
+within **0.100 s (exclusive)** of its mark: |t_i - m_i| < 0.100 s, m_i = t_0 + 0.1 i, plus 0.001 s for PROCEED frames i >= 1 (as Unity times them).
+0.100 s is one 10 Hz interval: a frame that far from its mark sits in its neighbour's slot. Everything else of the check is unchanged (coverage and
+missing groups, sequence frame counts, error-shader pixels, truth files, the frame deletion). The report adds, per part, the largest |offset|
+(`timing_offset_max_s`) and the number of sequences timed (`sequences_timed`), so a later reading needs no frame.
+
+*Play-only check.* `--edit` becomes optional. Without it the Edit part is not checked in that run (the report says so and names no Edit folder), the
+verdict covers the parts checked, and `--delete-frames` deletes the frames of the checked parts only. Why: the rehearsal repeats only its Play part
+(Anisha's `docs/handoff_freeze_v4.md` section 3); the Edit part of 2026-11-20 passed with 0 problems and its frames are deleted, so it cannot be
+checked again.
+
+*A part without its recording folder fails (a fault found while reading the checker for this entry).* `check_folder` returns early, with only a
+problem, when a run folder has no `looks_check*` folder, and the verdict counted only parts that carry `missing_groups`, so such a part was left out
+and the check could print PASSED for a Play folder whose frames are gone. From now on that part counts with its problem and fails. No earlier
+verdict changes (2026-11-20's check had both recording folders).
+
+*Test.* `finals_v4/test_avatar_rehearsal_check.py` (unittest; no frame, no model): an exact 10 Hz grid passes; a late frame followed by a short step
+passes; the worst flagged sequence of 2026-11-20 (steps from its report.json) passes; a frame 0.100 s from its mark fails; slow drift past 0.1 s fails;
+equal or decreasing times fail; a step over 0.2 s fails; PROCEED marks carry the 1 ms; a play-only call parses and an Edit folder is no longer
+required; a play-only verdict leaves the Edit part out; missing groups still fail; a part without its recording folder fails. Run from the
+repository root: `robot_vision\.venv\Scripts\python.exe -m unittest discover -s finals_v4 -p "test_*.py"` (macOS:
+`robot_vision/.venv/bin/python -m unittest discover -s finals_v4 -p "test_*.py"`). CI runs `robot_vision/tests` only, so this third suite is run by
+hand before every commit that touches `finals_v4/`.
+
+*Checks on 2026-11-20's Play folder.* Its frames and headers were deleted by the night run's `--delete-frames` at 00:19 (`frames_deleted.json`,
+10 800 files), so the checker cannot read it again. Instead: (1) the new rule on the frame times of the 122 flagged sequences rebuilt from report.json's
+steps (3 decimals; the rounding adds at most 0.0005 s per step); (2) the same rule on the time_s of every header of the last complete Play run that
+still has them, `look_check_play_ab_20261114_043454` (6 384 headers; no PROCEED then; headers read as JSON only, no image opened). The 124
+missing groups of the timeout stay reported: the coverage rule does not change.
+
+**Part 2. A session that starts at run k.**
+
+*Can it be done today?* No. `TrialPlayV4` has no such option, `TrialRunnerV4.Trials` always runs 1..N, the launcher only sets the number of runs
+(`-Trials`) and `check_session_v4.ps1` criterion 4 expects runs 1..N.
+
+*What is already per run.* Every element of run k is a function of (session seed, k, goal of run k), and no state passes from one run to the next:
+the goals of all N runs come from one `GoalSequence(seed)` (`ExperimentPlanAB.Goals`; Task 2: `TrialRunnerV4.Run`), or the N goals of
+`-experimentGoals`; the placement from `PlanRun(seed, run, goal)` (`Rng(seed, run, node, salt)`); the A2 side from `RunMap(seed, run)`; the looks from
+(node, run, slot); the liars from `DrawLie(seed, run, worker id)`; each worker's variation stream from `WorkerV4.SetRun(session seed, run)`; the STOP
+stream from `SeededRandom.For(seed, run, 9973)`; the Task 2 commander and clips from `TrialRunWorkers.Plan(run, ...)`. Python names its
+`python_trial_###.json` from the `trial_index` that Unity sends, so run k is trial k on both sides.
+
+*The change.*
+- `TrialPlayV4 -startRun k` passes k to the runner (an Editor session key, cleared at the end like the others).
+- `TrialRunnerV4`: the rule of a new pure class `SessionResumeV4` (`HRI/Scripts/V4`, new file with its `.meta`): k must be a whole number within
+  1..N (N = the session's number of runs), else the session does not start ("refused: -startRun ..."); empty = 1. **Refused with `-finalSetting`**
+  (any k; see below). The session plans and checks all N runs exactly as now (the same plans, splits, goals and placement record in session.json),
+  takes the leak test from the start of run k (the first run it drives) and drives runs k..N. `session.json` gets `start_run` (1 in every full
+  session; a new last field of `SessionV4`, so every earlier field keeps its order) and `summary_unity.json` gets `start_run`; the status line reads
+  `done: S/(N-k+1) SUCCESS (runs k..N)` when k > 1.
+- Launcher `run_session_v4.ps1 -StartRun k` (rehearsal only; refused in a final; refused unless 1 <= k <= `-Trials`): passes `-startRun k` to Unity;
+  `launch_prep --trials N` and `-ExperimentGoals` (still one goal per run of all N) are unchanged; the B11 check gets `-StartRun k`.
+- `check_session_v4.ps1 -StartRun k` (default 1): criterion 4 expects runs k..N in `results_unity.csv`, `run_###` and `python_trial_###`; a final
+  refuses k other than 1. Its `Report` lines and labels do not change (Anisha's `test_v4_frozen.py` pins them).
+
+*Test (Edit Mode, `HRI/Tests/SessionResumeTests.cs`, new file with its `.meta`).* For each of the 8 experiments, seeds 1 and 2, N = 3 (k = 2, 3) and
+N = 20 (k = 2, 11, 20): a fresh `ExperimentPlanAB` (as a new Unity session builds it) plans runs k..N from the goals over all N runs; every run is equal
+field by field (goal, map, redraws, max active, and each worker's id, node, slot, position, gender, look, liar, true and shown command) to the same run
+of a full session planned in order 1..N on another fresh object (the resumed object never plans runs 1..k-1, so no state of earlier runs can enter).
+That the comparison covers lies is checked too (Set B draws liars over 20 runs). Plus the range rule: 0, N + 1 and a non-number refused, empty = 1,
+any k refused in a final. The test covers the experiments A/B (the finals and step 5); the Task 2 and STOP-session paths use the same loop and the
+same per-run plans (`TrialRunWorkers.Plan(run, ...)`, `stopItems[run - 1]`) and are not tested separately.
+
+*Not changed: the run-once guards.* A resumed FINAL stays refused: when an interrupted final's server exits with a trial file it writes
+`FINAL_RUN_DONE.json`, which both Python's guard and Unity's `FinalGuardV4.EarlierFinal` read. How a resumed final counts, and which guard accepts it,
+is Anisha's interruption rule (not in the repository on 2026-11-21) and needs her guard first; Unity's guard then follows in a declared change.
+**For Anisha [A]:** a resumed session is a second Unity session folder and bridge run folder holding runs k..N; her evaluation and export tools must
+accept a session that starts at run k and pair it with the interrupted one (not checked here).
+
+**Addendum 10, as built (2026-11-21).** Implemented as declared. Files: `finals_v4/avatar_rehearsal_check.py`, `finals_v4/test_avatar_rehearsal_check.py`
+(new), `Scenario/Editor/TrialPlayV4.cs`, `Scenario/Scripts/TrialRunnerV4.cs`, `HRI/Scripts/V4/SessionResumeV4.cs` (new), `HRI/Tests/SessionResumeTests.cs`
+(new), `finals_v4/run_session_v4.ps1`, `finals_v4/check_session_v4.ps1`. One detail added while building, same rule: a part without its recording
+folder reports its folder relative to `robot_vision/` (an absolute path in a report under `outputs/` fails Anisha's `test_run_paths`).
+- *Checker tests:* 14 of 14 pass (`finals_v4`, the command above).
+- *2026-11-20's Play folder (rebuilt times):* the 122 flagged sequences pass the new rule, 0 fail; largest |offset| 0.091 s. Its 124 missing groups stay
+  in that report; the folder itself can no longer be checked (frames and headers deleted), so the verdict of a rerun is the repeated Play part.
+- *`look_check_play_ab_20261114_043454` (headers only):* 336 sequences (NONE 48, POINT 96, STOP 96, WAIT 96), 0 fail the new rule; 216 of them had
+  failed the old 0.09 s minimum step. Largest |offset| **0.096 s**: 4 ms inside the tolerance. A single hitch of 0.1 s or more in the repeated Play part
+  will fail it, as declared; that would be reported, not tuned.
+- *Launcher and check (dry runs, nothing run):* `-Experiment B3 -Rehearsal -Trials 3 -StartRun 2 -ExperimentGoals "E5,E6,E5"` passes
+  `-experimentGoals E5,E6,E5 -startRun 2` to Unity and `-Runs 3 -StartRun 2` to the check; `-StartRun 4` and `0` (of 3) refused; any `-StartRun` in a final
+  refused; without `-StartRun` the dry run is as before. `check_session_v4.ps1`: `-StartRun 4 -Runs 3` and `-Final -StartRun 2` refused (exit 2).
+- *Not run:* no Play session with `-startRun` (development check for Nusrat when wanted: e.g. B3 with `-Trials 3 -StartRun 2`, then compare
+  `session.json` `workers_plan`, `goal_order` and run 2's `truth.jsonl` liars with the full session `trials_development_Task2_B3_*` of step 5).

@@ -7,6 +7,7 @@ param(
     [switch]$DryRun,                                  # print every command without running it (only read-only lookups run)
     [int]$Trials = 3,                                 # rehearsal only: the number of runs (launch_prep --trials)
     [string]$ExperimentGoals = "",                    # rehearsal only, random-endpoint maps (A3, A4, B3, B4): one goal per run, e.g. "E5,E6,E5" (TrialPlayV4 -experimentGoals; experiments_ab.md section 15 addendum 1, item 3c)
+    [int]$StartRun = 1,                               # rehearsal only: drive runs k..N of the -Trials N runs, with the plans of the full session (TrialPlayV4 -startRun; experiments_ab.md section 15 addendum 10); -ExperimentGoals still gives all N goals
     [string]$UnityExe = ""                            # default: Unity Hub's editor of ProjectSettings/ProjectVersion.txt
 )
 # One v4 session, end to end (2026-11-13; Avatar/Config/final_procedure_v4.md). Since 2026-11-14 the finals are the experiments A/B
@@ -83,10 +84,15 @@ if ($Rehearsal) {
         if ($goalList.Count -ne $Trials) { Say "REFUSED: -ExperimentGoals gives $($goalList.Count) goal(s) for -Trials $Trials (one per run)"; exit 2 }
         $unityMode += @("-experimentGoals", ($goalList -join ","))
     }
+    if ($PSBoundParameters.ContainsKey("StartRun")) {
+        if ($StartRun -lt 1 -or $StartRun -gt $Trials) { Say "REFUSED: -StartRun $StartRun is outside 1..$Trials (-Trials)"; exit 2 }
+        $unityMode += @("-startRun", $StartRun)
+    }
     $sessionPattern = "trials_development_$($trialsCfg.task)_${Experiment}_*"
 } else {
     if ($PSBoundParameters.ContainsKey("Trials")) { Say "REFUSED: -Trials is for a rehearsal only (a final runs runs_per_setting = $($plan.runs_per_setting))"; exit 2 }
     if ($ExperimentGoals) { Say "REFUSED: -ExperimentGoals is for a rehearsal only (a final takes its goals from final_seed)"; exit 2 }
+    if ($PSBoundParameters.ContainsKey("StartRun")) { Say "REFUSED: -StartRun is for a rehearsal only: the run-once guards refuse a second session of a final setting (a resumed final needs Anisha's interruption rule in both guards first; experiments_ab.md section 15 addendum 10)"; exit 2 }
     $timeout = $plan.timeout_s
     $runs = [int]$plan.runs_per_setting
     $unityMode = @("-finalSetting", $name)
@@ -98,7 +104,21 @@ $blockers = @()
 $notes = @()
 $branch = (git -C $repo rev-parse --abbrev-ref HEAD).Trim()
 $dirty = @(git -C $repo status --porcelain --untracked-files=no)
-if (Get-Process -Name "Unity" -ErrorAction SilentlyContinue) { $blockers += "a Unity Editor is running: close it first (the session opens the project itself)" }
+# Unity Hub's helper is not an Editor (experiments_ab.md section 15 addendum 9): <Hub folder>\resources\unity.exe, where <Hub folder> holds
+# Unity Hub.exe, started with the argument serve. Every other process named Unity blocks, also one whose path or command line cannot be read.
+function Test-HubHelper($path, $cmd) {
+    if (-not $path -or -not $cmd -or (Split-Path $path -Leaf) -ne "unity.exe") { return $false }
+    $res = Split-Path $path -Parent
+    if ((Split-Path $res -Leaf) -ne "resources" -or -not (Test-Path -LiteralPath (Join-Path (Split-Path $res -Parent) "Unity Hub.exe"))) { return $false }
+    return $cmd -match '(^|[\s"])serve([\s"]|$)'
+}
+$unityBlocking = @()
+foreach ($u in @(Get-Process -Name "Unity" -ErrorAction SilentlyContinue)) {
+    $c = Get-CimInstance Win32_Process -Filter "ProcessId=$($u.Id)" -ErrorAction SilentlyContinue
+    if ($c -and (Test-HubHelper $c.ExecutablePath $c.CommandLine)) { $notes += "ignored: Unity Hub's helper unity.exe serve, PID $($u.Id) (not an Editor)" }
+    else { $unityBlocking += $u.Id }
+}
+if ($unityBlocking.Count) { $blockers += "a Unity Editor is running (PID $($unityBlocking -join ', ')): close it first (the session opens the project itself)" }
 if ($Rehearsal) {
     if ($branch -ne "main" -or $dirty.Count) { $notes += "branch $branch, $($dirty.Count) tracked change(s) (the procedure rehearses on an up-to-date main)" }
 } else {
@@ -131,7 +151,7 @@ $serverOut = Join-Path $outputs "run_session_${label}_${stamp}_server.log"
 $serverErr = Join-Path $outputs "run_session_${label}_${stamp}_server.err.log"
 $unityLog = Join-Path $outputs "run_session_${label}_${stamp}_unity.log"
 $unityArgs = @("-projectPath", (Q $project), "-executeMethod", "WarehouseRobot.ScenarioEditor.TrialPlayV4.Run") + $unityMode + @("-trialTimeout", $trialTimeout, "-logFile", (Q $unityLog))
-Say "v4 session: $kind of setting $name (experiment $Experiment, map $map$(if ($Side) { ", $Side turn" }), lie detection $($fexp.lie_detection)), $runs runs, timeout $timeout s per run, Unity $unityVersion in the Editor window$(if ($DryRun) { ' (DRY RUN: nothing is run)' })"
+Say "v4 session: $kind of setting $name (experiment $Experiment, map $map$(if ($Side) { ", $Side turn" }), lie detection $($fexp.lie_detection)), $runs runs$(if ($StartRun -gt 1) { " (resumed: runs $StartRun..$runs)" }), timeout $timeout s per run, Unity $unityVersion in the Editor window$(if ($DryRun) { ' (DRY RUN: nothing is run)' })"
 Say "    $(if ($Rehearsal) { 'development looks and clips of data_splits.json, seed dev_seed of trials.json' } else { "test looks $(@($fexp.male_looks) + @($fexp.female_looks) -join ', '), test clips $(@($fexp.point_clips) + @($fexp.proceed_clips) -join ', '), seed final_seed $($plan.final_seed) of final_plan.json" }); control $control"
 
 # ---- checks before anything is written
@@ -239,7 +259,7 @@ if (-not $DryRun) {
     if ($found.Count -ne 1) { Stop-Session "expected one new $sessionPattern folder, found $($found.Count): run check_session_v4.ps1 yourself" }
     $session = $found[0].FullName
 }
-$checkArgs = @("-U", (Q $session), "-B", (Q $bridge), "-Runs", $runs) + $(if ($Rehearsal) { @() } else { @("-Final") }) + @("-Protocol", (Q $note))
+$checkArgs = @("-U", (Q $session), "-B", (Q $bridge), "-Runs", $runs) + $(if ($StartRun -gt 1) { @("-StartRun", $StartRun) } else { @() }) + $(if ($Rehearsal) { @() } else { @("-Final") }) + @("-Protocol", (Q $note))
 Step "B11 validity check" "$repo\finals_v4\check_session_v4.ps1 $($checkArgs -join ' ')"
 $evaluation = @("the setting's final evaluation and CSV export, Anisha's tools, run once (their final mode for the experiments is pending: outputs\for_anisha_finals_ab_*.md), e.g.",
                 "cd robot_vision; $py hri_eval_final_v4.py --setting $name --session $(Q $session) $(Q $bridge)",
@@ -248,7 +268,7 @@ if ($DryRun) {
     if (-not $Rehearsal) { Step "afterwards, by hand, once and only if the check says SESSION VALID" $evaluation }
     Say ""; Say "DRY RUN: nothing was run."; exit 0
 }
-& (Join-Path $PSScriptRoot "check_session_v4.ps1") -U $session -B $bridge -Runs $runs -Final:(-not $Rehearsal) -Protocol $note | ForEach-Object { Say "    $_" }
+& (Join-Path $PSScriptRoot "check_session_v4.ps1") -U $session -B $bridge -Runs $runs -StartRun $StartRun -Final:(-not $Rehearsal) -Protocol $note | ForEach-Object { Say "    $_" }
 $valid = ($LASTEXITCODE -eq 0)
 Say ""
 Say "Unity session: $session"

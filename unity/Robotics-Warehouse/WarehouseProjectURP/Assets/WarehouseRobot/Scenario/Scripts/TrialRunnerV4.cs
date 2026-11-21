@@ -60,6 +60,8 @@ namespace WarehouseRobot.Scenario
         public string grid_report;
         public LeakRecord leak_test = new LeakRecord();
         public string note = "goal B, the grid, the optimal path, the trail and the worker truth live only in Unity's files (this folder); Python's inference code never receives them";
+        // 2026-11-21 (experiments_ab.md section 15 addendum 10): the first run this session drives (TrialPlayV4 -startRun); 1 = a full session
+        public int start_run = 1;
     }
 
     /// <summary>
@@ -110,7 +112,11 @@ namespace WarehouseRobot.Scenario
         public const string WorkersOverrideKey = "WarehouseRobot.TrialRunnerV4.WorkersConfig";
         /// <summary>Editor session key: the final setting (TrialPlayV4 -finalSetting); "" = a development session.</summary>
         public const string FinalSettingKey = "WarehouseRobot.TrialRunnerV4.FinalSetting";
+        /// <summary>Editor session key: the first run to drive (TrialPlayV4 -startRun k; section 15 addendum 10); "" = run 1.</summary>
+        public const string StartRunKey = "WarehouseRobot.TrialRunnerV4.StartRun";
 #endif
+        /// <summary>Section 15 addendum 10: the session plans all TrialTotal runs and drives runs startRun..TrialTotal (SessionResumeV4).</summary>
+        int startRun = 1;
         // Stage F (2026-11-13, upgrade_design.md section 13): a final session of one setting, guarded by FinalGuardV4
         const string FinalConfigAsset = "Assets/WarehouseRobot/Avatar/Config/final_v4.json";
         string finalSetting = "", finalCfgText = "", finalPlanText = "", frozenText = "", fexpText = "";
@@ -362,6 +368,11 @@ namespace WarehouseRobot.Scenario
             string mode = FinalRunGuard.Mode(cfg.mode);
             if (!SetupStopSession(out error)) return false;
             TrialTotal = Final ? fplan.RunsPerSetting : StopSession ? stopItems.Count : Mathf.Max(1, cfg.trial_count);
+            string startText = "";
+#if UNITY_EDITOR
+            startText = UnityEditor.SessionState.GetString(StartRunKey, "");
+#endif
+            if (!SessionResumeV4.Parse(startText, TrialTotal, Final, out startRun, out string startError)) return Fail(out error, "refused: " + startError);
             plans.Clear();
             if (Experiment && !SetupExperiment(mode, out error)) return false;
             for (int run = 1; run <= TrialTotal && !Experiment; run++)
@@ -512,8 +523,9 @@ namespace WarehouseRobot.Scenario
                 GroundTruthFiles.WriteNew(Path.Combine(used, "frozen.json"), frozenText);
             }
 
-            // Leak test from the pose of trial 1's start (run 1's workers in place), with trial 1's ground truth drawn (A, B, path) and the blocked cells.
-            if (!ResetForTrial(order[0], 1, out error))
+            // Leak test from the pose of the first driven trial's start (its workers in place: run 1, or run k of -startRun k), with that trial's
+            // ground truth drawn (A, B, path) and the blocked cells.
+            if (!ResetForTrial(order[startRun - 1], startRun, out error))
             {
                 Status = "not started: " + error;
                 Debug.LogError("[TrialRunnerV4] " + error);
@@ -521,7 +533,7 @@ namespace WarehouseRobot.Scenario
                 yield break;
             }
             var a = nodes[meta.start].Position;
-            gt.Show(a, GoalPosition(order[0], 1));
+            gt.Show(a, GoalPosition(order[startRun - 1], startRun));
             yield return new WaitForEndOfFrame();
             var leak = new LeakRecord { max_pixel_diff_allowed = leakMaxDiff, pose = PoseText() };
             bridge.FramesPaused = true;
@@ -554,6 +566,8 @@ namespace WarehouseRobot.Scenario
             session.ground_truth_layer = robot.Config.Unity.v4.ground_truth.layer; session.final_setting = finalSetting;
             session.grid_cell_size_m = gt.Grid.CellSize; session.grid_widening_m = gt.Grid.InflationM; session.grid_report = gt.GridReport;
             session.leak_test = leak;
+            session.start_run = startRun;
+            if (startRun > 1) Debug.Log($"[TrialRunnerV4] -startRun {startRun}: runs {startRun}..{TrialTotal} of {TrialTotal}, with the plans of the full session");
             foreach (var w in allWorkers)
                 session.workers.Add($"{w.name} worker_id {w.workerId} ({w.transform.position.x.ToString("0.00", Inv)}, {w.transform.position.z.ToString("0.00", Inv)})");
             for (int i = 0; i < plans.Count && !Experiment; i++)
@@ -772,7 +786,7 @@ namespace WarehouseRobot.Scenario
             using (var results = NewWriter(Path.Combine(SessionFolder, "results_unity.csv")))
             {
                 results.WriteLine("trial,b_name,outcome,failure_reason,detail,final_distance_to_b_m,total_s,travelled_m,collisions,closest_human_m,python_final_state");
-                for (int i = 1; i <= TrialTotal; i++)
+                for (int i = startRun; i <= TrialTotal; i++)
                 {
                     TruthRun rec = null;
                     string error = null;
@@ -789,13 +803,13 @@ namespace WarehouseRobot.Scenario
                     results.WriteLine(string.Join(",", i.ToString(Inv), rec.b_name, rec.outcome, rec.failure_reason, Csv(rec.detail),
                         F(rec.final_distance_to_b_m), F(rec.total_s), F(rec.travelled_m), rec.collisions.ToString(Inv),
                         F(rec.closest_human_m), Csv(rec.python_final_state)));
-                    LastSummary = $"trial {i}: {rec.outcome} {(rec.failure_reason == "none" ? "" : rec.failure_reason)} ({rec.detail}); {Successes}/{i}";
+                    LastSummary = $"trial {i}: {rec.outcome} {(rec.failure_reason == "none" ? "" : rec.failure_reason)} ({rec.detail}); {Successes}/{i - startRun + 1}";
                     Debug.Log("[TrialRunnerV4] " + LastSummary);
                     yield return new WaitForSeconds(cfg.pause_between_trials_s);
                 }
             }
 
-            string summary = $"{{\n  \"study\": \"v4\",\n  \"trials\": {TrialTotal},\n  \"successes\": {Successes},\n  \"mode\": \"{mode}\",\n  \"task\": \"{cfg.task}\",\n  \"seed\": {seed}\n}}\n";
+            string summary = $"{{\n  \"study\": \"v4\",\n  \"trials\": {TrialTotal},\n  \"successes\": {Successes},\n  \"mode\": \"{mode}\",\n  \"task\": \"{cfg.task}\",\n  \"seed\": {seed},\n  \"start_run\": {startRun}\n}}\n";
             GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, "summary_unity.json"), summary);
             if (Final && Completed == TrialTotal)
             {
@@ -804,7 +818,7 @@ namespace WarehouseRobot.Scenario
                 GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, fcfg.done_file),
                     FinalGuardV4.DoneJson(finalSetting, TrialTotal, Successes, commit, Path.GetFileName(SessionFolder), DateTime.Now.ToString("s", Inv)));
             }
-            Status = $"done: {Successes}/{TrialTotal} SUCCESS";
+            Status = startRun > 1 ? $"done: {Successes}/{TrialTotal - startRun + 1} SUCCESS (runs {startRun}..{TrialTotal})" : $"done: {Successes}/{TrialTotal} SUCCESS";
             Debug.Log($"[TrialRunnerV4] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
         }
 
