@@ -121,7 +121,8 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertEqual((plan["success_radius_m"], plan["dev_seed"], plan["final_seed"]),
                          (v3["success_radius_m"], v3["dev_seed"], v3["final_seed"]))     # the v3 values, read from the v3 config
         # 2026-11-12 (P7): the timeout follows the declared rule for the longer v4 route (upgrade_design.md section 6), not v3's 240 s
-        self.assertEqual(plan["timeout_s"], max(240, 10 * -(-(1.5 * 65.0 / 0.3944 + 20) // 10)))
+        self.assertEqual(max(240, 10 * -(-(1.5 * 65.0 / 0.3944 + 20) // 10)), 270)          # the P7 formula of 2026-11-12 still gives 270 (kept in timeout_s_source as history)
+        self.assertEqual(plan["timeout_s"], 480)                                              # replaced 2026-11-21 by the rule applied to the step-5 runs (AUDIT.md 16.29)
         self.assertGreaterEqual(plan["timeout_s"], v3["timeout_s"])
         self.assertIn("RTX 3060", plan["machine"])
         self.assertIn("highest development accuracy", plan["threshold_rule"])
@@ -194,14 +195,23 @@ class RecordedFreezeTests(unittest.TestCase):
             self.assertEqual(e["set"], "B" if s.startswith("B") else "A", s)
             self.assertEqual(s, e["experiment"] + ("_right" if "_right" in s else "_left" if "_left" in s else "") + ("_off" if s.endswith("_off") else ""))
 
-    def test_the_timeout_stays_270_and_the_rule_is_declared(self):
-        """AUDIT.md 16.15 decision 2, corrected in 16.16 decision 4: 1.5 x the longest SUCCESSFUL development run, up to a multiple of 30 s, never
-        below 270 s; a timed-out run is no duration but is reported and explained before the freeze; 270 until applied."""
+    def test_the_timeout_is_480_by_the_rule_applied_to_the_step_5_runs(self):
+        """AUDIT.md 16.15 decision 2, corrected in 16.16 decision 4, applied by the declared edit of 16.29: 1.5 x the longest SUCCESSFUL development run (step 5:
+        301.4 s, A4 trial 3), up to a multiple of 30 s, never below 270 s; a timed-out run is no duration but is reported and explained before the freeze."""
         import final_guard_v4 as fg
         plan = json.loads((REPO / fz.PLAN_REL).read_text())
-        self.assertEqual(plan["timeout_s"], 270)
-        for word in ("1.5", "longest SUCCESSFUL development run", "30 s", "270", "cause is found before the freeze", "does not count as a duration"):
+        self.assertEqual(plan["timeout_s"], 480)
+        for word in ("1.5", "longest SUCCESSFUL development run", "30 s", "270", "cause is found before the freeze", "does not count as a duration", "APPLIED 2026-11-21", "16.29"):
             self.assertIn(word, plan["timeout_s_rule"])
+        self.assertNotIn("stays 270", plan["timeout_s_rule"])
+        ap = plan["timeout_s_applied"]
+        self.assertEqual((ap["value"], ap["date"], ap["runs"], ap["successful_runs"], ap["timeouts"], ap["longest_successful_s"]), (480, "2026-11-21", 39, 26, 0, 301.4))
+        self.assertEqual(ap["zip_sha256"], "cce687845d6b7bbe5a50614b9df404522bb12988fd76a49f06a4cec38779ef1a")
+        self.assertIn("--timeout-from", ap["source"])
+        self.assertEqual(fg.timeout_from_development(ap["longest_successful_s"]), plan["timeout_s"])            # the number in the plan is what the rule gives for the recorded longest run
+        self.assertEqual(fg.timeout_from_development(301.4), 480)
+        self.assertEqual(ap["development_timeout_s"], 900)
+        self.assertGreaterEqual(plan["timeout_s"], ap["longest_successful_s"] * 1.5)
         self.assertEqual([fg.timeout_from_development(x) for x in (50, 180, 181, 200, 280, 400)], [270, 270, 300, 300, 420, 600])
         self.assertEqual(fg.timeout_from_development(180.0), 270)
         with self.assertRaises(ValueError):
