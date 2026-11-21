@@ -11,6 +11,15 @@
     "unit": "run",
     "why": "Frames, asks and junctions within one run are not independent (the same worker, the same view), so the intervals for gesture accuracy, coverage, angle error and time resample whole RUNS with replacement (cluster bootstrap), not frames. Wilson intervals on frame counts are also given, labelled as frame-level. 2000 resamples and seed 1 are fixed here so the intervals are reproducible; they are not tuned."
   },
+  "avatar_experiment": {
+    "declared": "2026-11-21, Anisha (AUDIT.md 16.31.1, review of the same day), before any recording and before the reporting step exists. Reporting only.",
+    "unit": "take",
+    "bootstrap": "the numbers of the block 'bootstrap' above (n_resamples 2000, seed 1, percentiles 2.5 and 97.5), resampling TAKES with replacement within each look x command x distance x arm cell; a pooled cell resamples the takes of each of its looks separately (the look composition stays fixed)",
+    "frame_measures": "computed as a share per take (a single frame is 0 or 1), reported as the mean over takes with the bootstrap over takes",
+    "wilson": "only for take-level yes/no outcomes (a sequence read as recorded / as another command / not read; single-frame takes counted on their own), with wilson_z above; never over frames",
+    "floor": {"sequences_min": 2, "single_takes_min": 10, "per": "arm and distance (valid takes of a look x command cell)"},
+    "why": "The frames of one take (11 of a held pose, 21 of a swing) are one performance seen many times: they are not independent, so a frame is never a unit of an interval. Frames, asks and junctions of the navigation runs are handled the same way with the unit 'run' (block 'bootstrap')."
+  },
   "angle_percentile": 95,
   "v3_results": {
     "task2_final": "../results/summary/task2/final/runs_reported_in_audit.csv",

@@ -15,6 +15,10 @@ time, trail against the optimal corridor (gt_path), lies given / detected / corr
 stops, each with its count (export_csv_v4.summarize, the same code as the final CSV export). It writes a new folder
 <output_root>/hri_eval_final_v4_<setting>_<time>/ with eval.json, eval.md, the frozen record and every v4 config used, and
 run.json (git commit), and only then FINAL_DONE.json (also a crash leaves no marker). No threshold is changed here.
+A setting that was interrupted by an infrastructure failure and resumed once (AUDIT.md 16.30.1) is evaluated as ONE session from its two parts
+(--session U1 B1 --session U2 B2): part 1 before the resume point, part 2 from it; the interrupted run is listed (eval.json "interruption",
+eval.md), not scored. The evaluation is refused for an invalid setting, a declared interruption never resumed, or parts that differ in seed,
+goal order or frozen hash.
 It also counts Unity's watchdog stops PER RUN from each bridge run's messages.jsonl (watchdog_block; eval.json watchdog_stops,
 a table in eval.md): per B11(a) (2026-11-13) a watchdog stop is a result, never a reason to refuse or invalidate.
 
@@ -45,14 +49,20 @@ def gate(setting: str, pairs, output_root, gcfg: dict, repo: Path = fz.REPO, kin
     refuses a repetition: 'evaluation' (this tool) or 'export' (export_csv_v4.py final mode, its own marker)."""
     fz.require_frozen(repo)                                           # 1. frozen and every hash matches (models must be present)
     fg.ensure_not_done(output_root, setting, kind, repo)               # 2. not evaluated (or exported) before
+    resume = fg.resume_plan(output_root, setting, pairs, repo)         # 2b. AUDIT.md 16.30.1: invalid, interrupted, resumed (markers and session.json only)
+    if resume["problems"]:
+        raise SystemExit(f"setting {setting!r} refused: " + "; ".join(resume["problems"]))
     gt_cfg = gt_path.load_config(repo / "robot_vision/configs/v4/gt_eval.json")
     for unity in sorted({Path(u) for u, _ in pairs}, key=str):         # 3. the leak test passed (before any test data is read)
         leak = gt_path.session_leak_check(unity, gt_cfg)
         if not leak["passed"]:
             raise SystemExit(f"{unity.name}: the leak test has not passed, so no result is reported: " + "; ".join(leak["reasons"]))
     splits = ds.load(repo / "robot_vision/configs/v4/data_splits.json")
-    runs = ev.load_sessions(pairs, gcfg, splits, final_evaluation=True, settings=[setting] * len(pairs))   # 4. test split only
+    runs = ev.load_sessions(pairs, gcfg, splits, final_evaluation=True, settings=[setting] * len(pairs),
+                            include=resume["include"])                # 4. test split only (a resumed setting: part 1 before the resume point, part 2 from it)
     problems = fg.check_setting(setting, runs, repo)
+    if resume["resumed"]:
+        problems += fg.trial_problems(runs, int(fg.plan(repo)["runs_per_setting"]))
     if problems:
         raise SystemExit(f"setting {setting!r} refused: " + "; ".join(problems))
     return runs
@@ -140,6 +150,7 @@ def evaluate_final(setting: str, pairs, repo: Path = fz.REPO, output_root: Path 
     res["final_setting"] = setting
     res["splits"] = "TEST looks and clips only (data_splits_v4.guard_run, final evaluation), frozen configs verified"
     res["watchdog_stops"] = watchdog_block(runs)                     # B11(a): a result, never a refusal
+    res["interruption"] = fg.interruption_report(fg.resume_plan(output_root, setting, pairs, repo))   # AUDIT.md 16.30.1: None when there was none
     run_rows, _ = ex.build_tables(runs, ecfg)                         # the experiment's own numbers (AUDIT.md 16.15 item 6)
     res["experiment"] = {"setting": setting, "plan_entry": fg.plan(repo)["settings"][setting],
                          "summary": ex.summarize(run_rows, ex.wilson_z(repo)), "runs_table": run_rows}
@@ -154,7 +165,7 @@ def evaluate_final(setting: str, pairs, repo: Path = fz.REPO, output_root: Path 
     dio.write_json(out / "run.json", {"git": git, "setting": setting, "sessions": [[u.name, b.name] for u, b in pairs],
                                       "frozen_sha256": frozen_sha})
     (out / "eval.md").write_text(ev.markdown(res) + "\n" + ex.summary_markdown(setting, res["experiment"]["summary"]) + "\n"
-                                 + watchdog_markdown(res["watchdog_stops"]), encoding="utf-8")
+                                 + watchdog_markdown(res["watchdog_stops"]) + fg.interruption_markdown(res["interruption"]), encoding="utf-8")
     fg.write_done(out, setting, "evaluation", {"git_commit": git["commit"], "evaluation_folder": out.name, "runs": len(runs),
                                                "frozen_sha256": frozen_sha})      # last: a crash above leaves no marker
     return out, res
@@ -169,7 +180,8 @@ def main(argv=None) -> None:
     a = ap.parse_args(argv)
     pairs = [(dio.resolve(u), dio.resolve(b)) for u, b in a.session]
     out, res = evaluate_final(a.setting, pairs)
-    print(ev.markdown(res) + "\n" + ex.summary_markdown(a.setting, res["experiment"]["summary"]) + "\n" + watchdog_markdown(res["watchdog_stops"]))
+    print(ev.markdown(res) + "\n" + ex.summary_markdown(a.setting, res["experiment"]["summary"]) + "\n" + watchdog_markdown(res["watchdog_stops"])
+          + fg.interruption_markdown(res["interruption"]))
     print(f"Folder: {out}\nFINAL_DONE.json written: setting {a.setting} cannot be evaluated again.")
 
 

@@ -88,9 +88,11 @@ class Run:
 
 
 def load_sessions(pairs, gcfg: dict, splits: dict | None = None, final_evaluation: bool = False,
-                  settings: list | None = None) -> list[Run]:
+                  settings: list | None = None, include=None) -> list[Run]:
     """Read every run of every session and apply the split guard BEFORE any metric is computed: development data only
-    (final_evaluation False) or test data only (True, used by hri_eval_final_v4.py after the freeze check)."""
+    (final_evaluation False) or test data only (True, used by hri_eval_final_v4.py after the freeze check).
+    include: None (every run) or a function (unity folder, trial) -> bool; a run it refuses is not read at all (AUDIT.md 16.30.1: the
+    interrupted run of a resumed final is listed, never scored, and its folder may be incomplete)."""
     runs: list[Run] = []
     for k, (unity, bridge) in enumerate(pairs):
         unity, bridge = Path(unity), Path(bridge)
@@ -103,6 +105,8 @@ def load_sessions(pairs, gcfg: dict, splits: dict | None = None, final_evaluatio
                 log[row["trial"]].append(row)
         for run_dir in sorted(unity.glob("run_[0-9][0-9][0-9]")):
             trial = int(run_dir.name[4:])
+            if include is not None and not include(unity, trial):
+                continue
             truth = gd.load_truth(run_dir / "truth.jsonl", gcfg)
             py = bridge / f"python_trial_{trial:03d}.json"
             junctions = json.loads(py.read_text(encoding="utf-8")).get("junctions", []) if py.exists() else []
