@@ -29,7 +29,8 @@ namespace WarehouseRobot.ScenarioEditor
     /// settings are the experiments (A1, A2_right, A2_left, A3, A4, B1, B2_right, B3, B4; final_v4.json): -finalSetting A2_left runs the
     /// final of A2 with the left turn; zoom_on, zoom_off, bystanders and zoom_on_repeat are superseded and refused. Since 2026-11-15
     /// (experiments_ab.md section 13) also B1_off, B2_right_off, B3_off, B4_off: Unity runs each as its on twin; the server runs it with
-    /// the lie-detection-off control file of its final config.
+    /// the lie-detection-off control file of its final config. -startRun k (2026-11-21, development only, experiments_ab.md section 15
+    /// addendum 10): the session drives runs k..N of its N runs with exactly the plans of a full session (SessionResumeV4); refused in a final.
     /// </summary>
     [InitializeOnLoad]
     public static class TrialPlayV4
@@ -55,7 +56,7 @@ namespace WarehouseRobot.ScenarioEditor
         public static void Run()
         {
             float timeout = 1800f;
-            string checkDir = "", workers = "", finalSetting = "", experiment = "", experimentLooks = "", experimentSide = "", experimentGoals = "";
+            string checkDir = "", workers = "", finalSetting = "", experiment = "", experimentLooks = "", experimentSide = "", experimentGoals = "", startRun = "";
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
@@ -67,6 +68,7 @@ namespace WarehouseRobot.ScenarioEditor
                 if (args[i] == "-experimentLooks") experimentLooks = args[i + 1];
                 if (args[i] == "-experimentSide") experimentSide = args[i + 1];
                 if (args[i] == "-experimentGoals") experimentGoals = args[i + 1];
+                if (args[i] == "-startRun") startRun = args[i + 1];
             }
             SessionState.SetString(TrialRunnerV4.WorkersOverrideKey, workers);
             SessionState.SetString(TrialRunnerV4.FinalSettingKey, finalSetting);
@@ -74,6 +76,7 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.ExperimentLooksKey, experimentLooks);
             SessionState.SetString(TrialRunnerV4.ExperimentSideKey, experimentSide);
             SessionState.SetString(TrialRunnerV4.ExperimentGoalsKey, experimentGoals);
+            SessionState.SetString(TrialRunnerV4.StartRunKey, startRun);
             if (checkDir.Length > 0) Directory.CreateDirectory(checkDir);
             EditorSceneManager.OpenScene(Scene);
             SessionState.SetBool(ActiveKey, true);
@@ -142,6 +145,7 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.ExperimentLooksKey, "");
             SessionState.SetString(TrialRunnerV4.ExperimentSideKey, "");
             SessionState.SetString(TrialRunnerV4.ExperimentGoalsKey, "");
+            SessionState.SetString(TrialRunnerV4.StartRunKey, "");
             EditorApplication.update -= Poll;
             Debug.Log($"[TrialPlayV4] finished ({code}): {status}");
             EditorApplication.Exit(code);

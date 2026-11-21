@@ -2692,3 +2692,19 @@ same per-run plans (`TrialRunWorkers.Plan(run, ...)`, `stopItems[run - 1]`) and 
 is Anisha's interruption rule (not in the repository on 2026-11-21) and needs her guard first; Unity's guard then follows in a declared change.
 **For Anisha [A]:** a resumed session is a second Unity session folder and bridge run folder holding runs k..N; her evaluation and export tools must
 accept a session that starts at run k and pair it with the interrupted one (not checked here).
+
+**Addendum 10, as built (2026-11-21).** Implemented as declared. Files: `finals_v4/avatar_rehearsal_check.py`, `finals_v4/test_avatar_rehearsal_check.py`
+(new), `Scenario/Editor/TrialPlayV4.cs`, `Scenario/Scripts/TrialRunnerV4.cs`, `HRI/Scripts/V4/SessionResumeV4.cs` (new), `HRI/Tests/SessionResumeTests.cs`
+(new), `finals_v4/run_session_v4.ps1`, `finals_v4/check_session_v4.ps1`. One detail added while building, same rule: a part without its recording
+folder reports its folder relative to `robot_vision/` (an absolute path in a report under `outputs/` fails Anisha's `test_run_paths`).
+- *Checker tests:* 14 of 14 pass (`finals_v4`, the command above).
+- *2026-11-20's Play folder (rebuilt times):* the 122 flagged sequences pass the new rule, 0 fail; largest |offset| 0.091 s. Its 124 missing groups stay
+  in that report; the folder itself can no longer be checked (frames and headers deleted), so the verdict of a rerun is the repeated Play part.
+- *`look_check_play_ab_20261114_043454` (headers only):* 336 sequences (NONE 48, POINT 96, STOP 96, WAIT 96), 0 fail the new rule; 216 of them had
+  failed the old 0.09 s minimum step. Largest |offset| **0.096 s**: 4 ms inside the tolerance. A single hitch of 0.1 s or more in the repeated Play part
+  will fail it, as declared; that would be reported, not tuned.
+- *Launcher and check (dry runs, nothing run):* `-Experiment B3 -Rehearsal -Trials 3 -StartRun 2 -ExperimentGoals "E5,E6,E5"` passes
+  `-experimentGoals E5,E6,E5 -startRun 2` to Unity and `-Runs 3 -StartRun 2` to the check; `-StartRun 4` and `0` (of 3) refused; any `-StartRun` in a final
+  refused; without `-StartRun` the dry run is as before. `check_session_v4.ps1`: `-StartRun 4 -Runs 3` and `-Final -StartRun 2` refused (exit 2).
+- *Not run:* no Play session with `-startRun` (development check for Nusrat when wanted: e.g. B3 with `-Trials 3 -StartRun 2`, then compare
+  `session.json` `workers_plan`, `goal_order` and run 2's `truth.jsonl` liars with the full session `trials_development_Task2_B3_*` of step 5).
