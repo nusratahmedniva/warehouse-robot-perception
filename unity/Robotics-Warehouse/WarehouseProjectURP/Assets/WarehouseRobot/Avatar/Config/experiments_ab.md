@@ -2825,3 +2825,67 @@ rules), `Avatar/Scripts/LookCheckConfig.cs` (`LookEntry.RoleAvatarExperiment`, `
 - *Tests:* Unity Edit Mode 354 of 354 (348 + 6 new); `finals_v4` 14 of 14 (unchanged); Python suite as in the commit message.
 - *Not run:* no Play run. The warm-up, the synchronous render and the pixel fields are exercised only by the repeated Play part (Nusrat), whose
   `run_info.json` `shader_warm_up` and `recordings.jsonl` `cyan_pixels` show what the warm-up did; the checker judges the frames as before.
+
+### 2026-11-21, section 15 addendum 12: the shader warm-up record and compile flag (both look-check parts), the warm-up of a trial session, the data_splits role (declared before any change below)
+
+Nusrat's task of 2026-11-21 (evening), items 1 and 2, with Anisha's corrections: the rehearsal check keeps `--delete-frames` (her blind rule:
+frames are deleted even when the check fails; `cyan_pixels` in `recordings.jsonl` is the diagnosis), and her AUDIT.md 16.31.5 item 1 (the cyan /
+magenta rule decided from Unity's warm-up record and the frame's time, never from images). Branch `nusrat/v4-rehearsal-fixes` after addendum 11.
+Nothing under `robot_vision/`, `docs/` or `external/` is edited; nothing is frozen; no Play run; nothing is pushed. B9: `final_v4.json`,
+`looks_ab.json` and the configs do not change in this addendum.
+
+**Item 1. The warm-up record and the compile flag, in both parts of the avatar experiment.**
+- *Record.* Every warm-up writes one JSON line into `shader_warm_up.jsonl` in the run folder of the look check (`look_check_play_ab_<time>/`,
+  `look_check_ab_<time>/`, next to `recordings.jsonl`; not in the `looks_check*` recordings folder, which `--delete-frames` empties). Fields (class
+  `ShaderWarmUpRecord`, WarehouseAvatar): `part` (play, edit or session), `round` (Play round, 1-based; -1 otherwise), `looks` (look per stand, e.g.
+  "J1: anime_f_01 (worker 23); J2: ..."), `stands` (where the cameras stood), `cameras` (nominal distances), `clock` (`Time.time` in Play and in a
+  session, the clock of the frames' `time_s`; `EditorApplication.timeSinceStartup` in Edit, whose headers carry no `time_s`), `time_start_s`,
+  `time_end_s`, `started_local`, `ended_local`, `compiling_at_start`, `compile_seen_first_s` and `compile_seen_last_s` (the clock at the first and
+  the last render after which `ShaderUtil.anythingCompiling` was true; -1 if never), `compiling_at_end` (`ShaderUtil.anythingCompiling` when the
+  warm-up ended), `renders`, `last_clean_streak`, `error_pixels_seen`, `look_pixels` (session warm-up: pixels the look changes in the render; -1
+  otherwise), `status` (done, timed_out, not_in_view). The per-round summary in `run_info.json` `shader_warm_up` stays.
+- *Flag per recording.* `recordings.jsonl` rows of both parts get `shaders_compiling` (true when `ShaderUtil.anythingCompiling` was true just before
+  or just after the render of any frame of the recording) and `shaders_compiling_frames` (the frame indices for which it was true; `[]` if none).
+  Edit rows also get `cyan_pixels` (exact (0, 255, 255), as the checker counts it); their `magenta_pixels` (tolerance rule) is unchanged.
+- *Edit part.* `LookCheckMenu.Run` (the Edit check and the avatar experiment's edit part, `RunExperiment` / `BatchRunExperiment`) gets the same
+  warm-up before the first recorded render of each look at each distance: the check camera renders the posed look (rest pose) until the rule of
+  addendum 11 holds (at least 3 renders, the last 2 clean, nothing compiling; 120 s of real time, else the run fails); each Edit render compiles
+  synchronously (`ShaderUtil.allowAsyncCompilation` off around it). No draw from any stream (Edit has none); the recordings are unchanged.
+- *The real avatar experiment.* Edit: `RunExperiment` -> `Run` (warm-up, flags). Play: `LookCheckPlayMenu.CommandLineRunAB -avatarExperiment` ->
+  `LookCheckPlayDriver` (warm-up per round, flags). Both official parts use exactly these paths; nothing is switched off by the flag.
+- *For Anisha's rule (16.31.5 item 1).* A frame with placeholder pixels counts as INVALID when its recording has `shaders_compiling` true (Play: also
+  its `time_s` inside a warm-up's `compile_seen_first_s`..`time_end_s` on the same `Time.time` clock); otherwise it is a look defect. Unity provides
+  the data; the rule is Anisha's.
+
+**Item 2. The warm-up of a trial session (`TrialRunnerV4`, every session: development, STOP, experiments A/B, finals).**
+- After the plans are made and before the leak test (and before any run's workers are spawned), every look of the session (the commander and
+  bystander looks of every planned run; an experiment's: every planned worker's look; distinct, ordinal order) is warmed up once: a temporary
+  worker of the template with that look (not in the session's worker list, no `SetRun`, no truth logging, no id of the plan) stands 2.0 m ahead of
+  the start node A on A's heading; a temporary camera with the pan-tilt camera's settings (`PanTiltCamera.ApplyCameraSettings`, the robot's config)
+  at A, at the pan-tilt height, looking along the heading, renders only a free layer (the highest unnamed layer; the temporary worker is moved to it,
+  so no rack or robot part can hide it; every light of the v4 scene lights every layer) until the warm-up rule holds; then the worker and the
+  camera are destroyed and one frame passes before the next look. A look whose render does not differ from the empty render (`look_pixels` 0) is
+  `not_in_view` and the session does not start (nothing is recorded as warmed up that was not drawn).
+- No seeded stream is drawn (the plans, goals, placements, looks, liars and clips are made before it and are not read again), so every run is what
+  it was. The leak test and run 1 (or run k) follow as before.
+- `session.json` gets `shader_warm_up`: the list of the records of item 1 (part "session"), one per look, as a new last field (every earlier
+  field keeps its order; an experiment session's own fields follow). A timeout or `not_in_view` refuses the session ("not started: shader warm-up
+  ...", `NOT_STARTED.txt`), before the leak test.
+- The 360 camera is not warmed up separately (it renders the same materials with the same passes); disclosed.
+
+**Item 3. The `data_splits.json` role (Anisha's 16.31.2).** Her branch `anisha/v4-prefreeze-2` gives the six looks the role `avatar_experiment` in
+`data_splits.json` itself and her `guard_run` refuses it in every mode; she asked Unity to close the same hole. `DataSplitsV4.Parse` therefore also
+takes every look whose `data_splits.json` role is `avatar_experiment` into `AvatarExperimentLooks` (refused first by `GuardRun`), besides the
+`looks_ab.json` roles of addendum 11. A test requires the two sources to agree (a look has role `avatar_experiment` in `looks_ab.json` exactly when
+`data_splits.json` does not list it as development or test).
+
+**Item 4. Merge.** After this addendum is built, `origin/anisha/v4-prefreeze-2` (Anisha's branch, e49259b) is merged into this branch so that the
+resume work (addendum 13) can use her `final_guard_v4.py --resume-info`; only her files change by the merge.
+
+**Tests (Edit Mode).** The warm-up tracker (renders, clean streak, first and last compile, compiling at end, status, the record's JSON field names);
+the per-recording flag (frame indices, Play and Edit records' JSON); the differing-pixel count and the free-layer choice; the session's look list
+(distinct, ordinal, no empty name); a source check that `TrialRunnerV4`'s warm-up draws no seeded stream and runs after the plans and before the
+leak test; the data_splits role (refused with `Parse(json)` alone; the two sources agree).
+
+**Not run.** No Play run (Nusrat's rehearsal repeat and the next session exercise the Play warm-ups). The Edit warm-up is exercised once by an Edit
+engineering check of one look in batch mode (`-lookCheckLooks sunbox_m1`, no `-avatarExperiment`; its folder is kept and named in the as-built note).
