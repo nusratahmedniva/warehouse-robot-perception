@@ -13,14 +13,12 @@ row that names a clip, a value for a take at another distance than the one asked
 split_by_clip_role takes one per-take share per recording name (the look-check report's per-take shares: the join is the reporting step's) for ONE
 distance, never pooled over distances (the 2 m and the 4 m camera see the same take, so a pooled cell would count it twice), and gives, per clip
 role, the number of takes, the mean over takes and the bootstrap interval of AUDIT.md 16.31.1 D5: configs/v4/analysis.json `bootstrap`
-(2000 resamples, seed 1, percentiles 2.5 and 97.5), takes resampled with replacement within each look so the look composition stays fixed.
+(2000 resamples, seed 1, percentiles 2.5 and 97.5; numpy's default_rng), takes resampled with replacement within each look so the look composition stays fixed.
 """
 
 from __future__ import annotations
 
 import json
-import math
-import random
 from collections import defaultdict
 from pathlib import Path
 
@@ -79,33 +77,23 @@ def classify(rows: list[dict], splits: dict | None = None) -> dict[str, dict]:
     return out
 
 
-def _percentile(sorted_values: list[float], q: float) -> float:
-    """Linear interpolation between the closest ranks (q in 0..100)."""
-    if len(sorted_values) == 1:
-        return sorted_values[0]
-    pos = (len(sorted_values) - 1) * q / 100.0
-    lo, hi = math.floor(pos), math.ceil(pos)
-    return sorted_values[lo] + (sorted_values[hi] - sorted_values[lo]) * (pos - lo)
-
-
 def mean_with_bootstrap(values_by_look: dict[str, list[float]], settings: dict | None = None) -> dict:
     """The mean over takes (each take once) and its bootstrap interval; takes are resampled with replacement within each look (a look is a
-    fixed avatar, so the look composition of the cell does not change). No takes: mean None, interval None (not evaluated)."""
+    fixed avatar, so the look composition of the cell does not change). numpy's default_rng(seed), n_resamples and percentiles of
+    configs/v4/analysis.json. No takes: mean None, interval None (not evaluated)."""
+    import numpy as np
     settings = settings or bootstrap_settings()
-    looks = {k: list(v) for k, v in sorted(values_by_look.items()) if v}
+    looks = {k: np.asarray(v, dtype=float) for k, v in sorted(values_by_look.items()) if len(v)}
     n = sum(len(v) for v in looks.values())
     if n == 0:
         return {"takes": 0, "mean": None, "interval": None}
-    mean = sum(sum(v) for v in looks.values()) / n
-    rng = random.Random(settings["seed"])
-    means = []
-    for _ in range(settings["n_resamples"]):
-        total = 0.0
-        for v in looks.values():
-            total += sum(v[rng.randrange(len(v))] for _ in range(len(v)))
-        means.append(total / n)
-    means.sort()
-    lo, hi = (_percentile(means, q) for q in settings["percentiles"])
+    mean = float(sum(v.sum() for v in looks.values()) / n)
+    rng = np.random.default_rng(settings["seed"])
+    total = np.zeros(settings["n_resamples"])
+    for v in looks.values():
+        total += v[rng.integers(0, len(v), size=(settings["n_resamples"], len(v)))].sum(axis=1)
+    means = total / n
+    lo, hi = (float(np.percentile(means, q)) for q in settings["percentiles"])
     return {"takes": n, "mean": mean, "interval": [lo, hi]}
 
 

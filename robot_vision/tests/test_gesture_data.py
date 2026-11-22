@@ -246,7 +246,8 @@ class IsolationTests(unittest.TestCase):
     def test_only_evaluation_code_imports_gesture_data(self):
         allowed = {"hri_eval_dev_v4.py", "hri_analysis_v4.py", "hri_eval_final_v4.py",                 # the v4 development evaluation (evaluation code)
                    "calibrate_v4.py",                                                                    # P4 calibration (evaluation code, 2026-11-12)
-                   "export_csv_v4.py", "run_experiments_ab_v4.py"}                                       # experiments A and B: CSV export and report (evaluation code, 2026-11-13)
+                   "export_csv_v4.py", "run_experiments_ab_v4.py",
+                   "process_final_zip_v4.py"}                                                          # Phase B runbook (evaluation code, AUDIT.md 16.33)                                       # experiments A and B: CSV export and report (evaluation code, 2026-11-13)
         offenders = []
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)

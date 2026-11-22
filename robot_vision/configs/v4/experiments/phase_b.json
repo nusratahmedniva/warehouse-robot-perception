@@ -1,0 +1,33 @@
+{
+  "label": "Phase B runbooks (process_final_zip_v4.py for the A/B finals, process_avatar_zip_v4.py for the avatar experiment): where things go and the labels of the matrices. Reporting only; not part of the freeze (it sits in experiments/, like export_csv.json). Paths are relative to the robot_vision folder.",
+  "declared": "2026-11-22, Anisha (AUDIT.md 16.33, 16.33.1), before any final data exists.",
+  "final_root": "outputs",
+  "final_root_note": "A final copies the sitting's folders here (git-ignored): the store every tool uses, so that the run-once markers of the runbook and of the manual CLIs are the same markers and the archive tool finds the folders. May point outside the repository (--final-root).",
+  "development_root": "../../RobotVisionResults/phase_b_development",
+  "development_root_note": "Outside the repository (next to it, like the archive root). A development dry run makes a NEW folder here; nothing is written to outputs/ and no FINAL marker exists.",
+  "avatar_root": "../../RobotVisionResults/phase_b_avatar",
+  "manifest": "configs/v4/archive/results_manifest.json",
+  "development": {
+    "prefix": "t0_",
+    "runs_per_setting": 3
+  },
+  "gesture_labels": [
+    "POINT",
+    "WAIT",
+    "STOP",
+    "PROCEED",
+    "NONE"
+  ],
+  "branch_labels": [
+    "FORWARD",
+    "LEFT",
+    "RIGHT",
+    "BACK",
+    "NONE"
+  ],
+  "avatar": {
+    "sequence_frames": 11,
+    "proceed_sequence_frames": 21,
+    "note": "The declared frames of a sequence and of a PROCEED sequence (Avatar/Config/look_check.json recording.sequence_frames, proceed_sequence_frames; AUDIT.md 16.31.1 D3). The floor and the bootstrap are in configs/v4/analysis.json avatar_experiment."
+  }
+}
