@@ -400,9 +400,12 @@ class FinalEvaluationTests(unittest.TestCase):
     def pairs(self, **kw):
         return [session(self.root, kw.pop("name", "s"), **kw)]
 
-    def test_the_real_repository_is_not_frozen_so_a_final_is_refused(self):
+    def test_an_unfrozen_repository_refuses_a_final_evaluation(self):
+        """AUDIT.md 16.29.3: an unfrozen state of its OWN (never the real record, which may be frozen), and nothing else can refuse first: no sessions are read."""
+        unfrozen = final_repo(self.root / "unfrozen", freeze=False)
+        self.assertFalse(fz.is_frozen(unfrozen))
         with self.assertRaisesRegex(SystemExit, "not frozen"):
-            ef.evaluate_final("A3", [], REPO_REAL, self.out)
+            ef.evaluate_final("A3", [], unfrozen, self.out)
 
     def test_a_frozen_test_session_is_evaluated_once(self):
         out, res = ef.evaluate_final("A3", self.pairs(), self.repo, self.out)
@@ -549,8 +552,14 @@ class ServerFinalTests(unittest.IsolatedAsyncioTestCase):
         rp.set_active_roots({})
 
     def test_refused_while_the_configs_are_not_frozen(self):
-        with self.assertRaisesRegex(SystemExit, "not frozen"):
-            S.preflight_final(self.cfg, "guide", "A3")
+        """AUDIT.md 16.29.3: the preflight's freeze check is pointed at an unfrozen state of its own (the real record may be frozen), so the refusal tested is the
+        freeze check itself and not the control-config, run-count or seed checks that come after it."""
+        with tempfile.TemporaryDirectory() as d:
+            unfrozen = final_repo(Path(d) / "u", freeze=False)
+            real = self.real_req
+            fz.require_frozen = lambda *a, **k: real(unfrozen)
+            with self.assertRaisesRegex(SystemExit, "not frozen"):
+                S.preflight_final(self.cfg, "guide", "A3")
 
     def test_protocol_2_and_hello_mode_are_refused(self):
         fz.require_frozen = lambda *a, **k: {}
@@ -808,9 +817,12 @@ class FinalExportTests(unittest.TestCase):
     def pairs(self, **kw):
         return [session(self.root, kw.pop("name", "s"), **kw)]
 
-    def test_the_real_repository_is_not_frozen_so_an_export_is_refused(self):
+    def test_an_unfrozen_repository_refuses_a_final_export(self):
+        """AUDIT.md 16.29.3: an unfrozen state of its own, isolated from every other refusal."""
+        unfrozen = final_repo(self.root / "unfrozen", freeze=False)
+        self.assertFalse(fz.is_frozen(unfrozen))
         with self.assertRaisesRegex(SystemExit, "not frozen"):
-            ex.export_final("A3", [], REPO_REAL, self.out)
+            ex.export_final("A3", [], unfrozen, self.out)
 
     def test_a_frozen_test_session_is_exported_once_with_its_own_marker(self):
         out, rows, sm = ex.export_final("A3", self.pairs(), self.repo, self.out)
