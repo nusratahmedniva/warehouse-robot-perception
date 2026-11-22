@@ -357,6 +357,9 @@ class ControllerV4(hc.Controller):
         self.sv = {**SIDE_VIEW_DEFAULTS, **{k: v for k, v in v4_cfg.get("side_view", {}).items() if k in SIDE_VIEW_DEFAULTS}}
         if not 0.0 < float(self.sv["rotation_min_deg"]) <= float(self.sv["rotation_max_deg"]) <= 180.0 or not float(self.sv["waypoint_step_deg"]) > 0.0:
             raise ValueError(f"side_view: need 0 < rotation_min_deg <= rotation_max_deg <= 180 and waypoint_step_deg > 0 (got {self.sv})")
+        # AUDIT.md 16.29 item 3 and 16.29.2 (instrument only): bridge/guide_v4.py sets it once. It is the instrument's set-up, not a trial's state, so it is
+        # initialised here and reset() never touches it (it used to be cleared at every trial start, which switched the log off before the first control step).
+        self.stop_log_enabled = False
         super().__init__(base_cfg, roadmap)
         if self.ld["checkpoint_branches"] is not None:
             # the list belongs to the deployment, not to one map: an entry for a node this map does not have is ignored (A1 and A2 run on small maps); an entry that names a
@@ -390,7 +393,6 @@ class ControllerV4(hc.Controller):
         self.fov_cmd = -1.0
         self.commander_changes: list[dict] = []
         self.frame_log: list[dict] = []                       # one row per new pan-tilt frame read in the READ state
-        self.stop_log_enabled = False                         # AUDIT.md 16.29 item 3 (instrument only): bridge/guide_v4.py sets it; off = nothing is collected, as before
         self.stop_log: list[dict] = []                        # one row per control step: which STOP reading was used (reading or reading_stopped)
         self._row: dict | None = None
         self.abort_note = ""
