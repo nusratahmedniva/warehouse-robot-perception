@@ -115,6 +115,13 @@ namespace WarehouseRobot.AvatarCheck
             /// <summary>Stillness over the recording: the largest distance of the gesturing hand and shoulder from their
             /// positions at the first frame (-1 for NONE).</summary>
             public float hand_motion_max_m = -1f, shoulder_motion_max_m = -1f;
+            /// <summary>experiments_ab.md section 15 addendum 11: exact magenta and cyan pixels over the recording's frames (as the
+            /// rehearsal checker counts them); counted in the write tasks.</summary>
+            public int magenta_pixels, cyan_pixels;
+            /// <summary>Addendum 12: ShaderUtil.anythingCompiling was true just before or just after the render of a frame of this recording,
+            /// and the indices of those frames.</summary>
+            public bool shaders_compiling;
+            public List<int> shaders_compiling_frames = new List<int>();
             [NonSerialized] public Vector3 FirstHand, FirstShoulder;
         }
 
@@ -142,6 +149,8 @@ namespace WarehouseRobot.AvatarCheck
             public string looks_subset;
             /// <summary>experiments_ab.md section 10 item 6: "play" for the avatar experiment's official run, "" for an engineering check.</summary>
             public string avatar_experiment_part;
+            /// <summary>experiments_ab.md section 15 addendum 11: the shader warm-ups of the run (rounds, renders, longest, error pixels seen).</summary>
+            public string shader_warm_up;
         }
 
         AvatarExperimentConfig m_Official;
@@ -197,6 +206,13 @@ namespace WarehouseRobot.AvatarCheck
         readonly List<WorkerRecord> m_WorkerRecords = new List<WorkerRecord>();
         readonly List<string> m_WriteErrors = new List<string>();
         int m_Frames, m_Outside;
+        // experiments_ab.md section 15 addendum 11: the shader warm-ups (run_info.json shader_warm_up)
+        int m_WarmRounds, m_WarmRenders, m_WarmErrorPixels;
+        float m_WarmLongestS;
+        string m_WarmUpError;
+        // addendum 12: every warm-up's record, written to shader_warm_up.jsonl in the run folder
+        readonly List<ShaderWarmUpRecord> m_WarmRecords = new List<ShaderWarmUpRecord>();
+        bool m_WarmWritten;
         bool m_Quick;   // -lookCheckQuick: diagnostics only (one round, one take per command and arm, every capture logged)
         string m_Stamp;
 
@@ -363,6 +379,8 @@ namespace WarehouseRobot.AvatarCheck
                     string look = m_Quick ? QuickLook() : looks[(round + s.Index) % looks.Length];
                     if (!SpawnWorker(s, round, look)) { Finish($"failed: {look} at {s.Junction}: {s.Error}"); yield break; }
                 }
+                yield return WarmUp(sites, round + 1);
+                if (m_WarmUpError != null) { WriteWarmUps(); Finish($"failed: shader warm-up of round {round + 1}: {m_WarmUpError}"); yield break; }
                 foreach (var s in sites) StartCoroutine(RunSite(s, sites.Count));
                 while (!sites.TrueForAll(s => s.Done)) yield return null;
                 foreach (var s in sites)
@@ -382,8 +400,14 @@ namespace WarehouseRobot.AvatarCheck
             var all = Task.WhenAll(m_Writes);
             while (!all.IsCompleted) yield return null;
             var lines = new StringBuilder();
-            foreach (var r in m_Records) lines.Append(JsonUtility.ToJson(r)).Append('\n');
+            foreach (var r in m_Records)
+            {
+                if (r.magenta_pixels + r.cyan_pixels > 0)
+                    Debug.LogWarning($"[LookCheckPlay] {r.name}: error-shader pixels after the warm-up (magenta {r.magenta_pixels}, cyan {r.cyan_pixels})");
+                lines.Append(JsonUtility.ToJson(r)).Append('\n');
+            }
             WriteNew(Path.Combine(OutputFolder, "recordings.jsonl"), lines.ToString());
+            WriteWarmUps();
             var wf = new WorkersFile { workers = m_WorkerRecords };
             WriteNew(Path.Combine(OutputFolder, "workers.json"), JsonUtility.ToJson(wf, true).Replace("\r\n", "\n") + "\n");
 
@@ -406,6 +430,8 @@ namespace WarehouseRobot.AvatarCheck
             info.recordings = m_Records.Count;
             info.frames = m_Frames;
             info.frames_outside_hold = m_Outside;
+            info.shader_warm_up = $"{m_WarmRounds} rounds, {m_WarmRenders} renders of every camera, longest {m_WarmLongestS.ToString("0.00", Inv)} s, " +
+                                  $"error-shader pixels seen during the warm-ups {m_WarmErrorPixels}";
             info.status = errors.Count == 0 ? "done" : "done with problems: " + string.Join("; ", errors);
             info.note = "v4 Play-mode look check in WarehouseRobot_v4.unity at the Task 2 worker stands (Phase 2D, look_check_changes.md): an engineering check of the worker template's looks and gestures; not an evaluation.";
             WriteNew(Path.Combine(OutputFolder, "run_info.json"), JsonUtility.ToJson(info, true).Replace("\r\n", "\n") + "\n");
@@ -599,6 +625,115 @@ namespace WarehouseRobot.AvatarCheck
             s.Record.arm_to_shoulder_ratio = shoulder > 0f ? (float)Math.Round(s.Worker.ArmLength / shoulder, 3) : -1f;
         }
 
+        /// <summary>
+        /// experiments_ab.md section 15 addendum 11: before a round's first take, every camera of every site stands on the site's facing line
+        /// at its nominal distance and renders once per frame until <see cref="ShaderWarmUp.Next"/> says done (at least 3 renders, the last 2
+        /// without an error-shader pixel on any camera, nothing compiling), so no recording is the first render of a material. Draws from no
+        /// seeded stream and writes no recording; the next take's PlaceCameras sets the camera poses. Sets m_WarmUpError after 120 s.
+        /// </summary>
+        IEnumerator WarmUp(List<Site> sites, int round)
+        {
+            m_WarmUpError = null;
+            var looks = new List<string>();
+            var stands = new List<string>();
+            var cams = new List<string>();
+            foreach (var s in sites)
+            {
+                looks.Add($"{s.Junction}: {s.Look} (worker {s.Worker.workerId.ToString(Inv)})");
+                stands.Add($"{s.Junction} ({s.Stand.x.ToString("0.00", Inv)}, {s.Stand.z.ToString("0.00", Inv)})");
+                foreach (var c in s.Cams)
+                {
+                    c.Mount.SetPositionAndRotation(s.Stand + s.Facing * c.Nominal + Vector3.up * m_Pt.height_m, Quaternion.LookRotation(-s.Facing, Vector3.up));
+                    if (s.Index == 0) cams.Add(c.Nominal.ToString("0.0", Inv) + " m");
+                }
+            }
+            var rec = new ShaderWarmUpRecord
+            {
+                part = ShaderWarmUpRecord.Play, round = round, looks = string.Join("; ", looks), stands = string.Join("; ", stands),
+                cameras = string.Join(", ", cams) + " on each stand's facing line at the pan-tilt height", clock = ShaderWarmUpRecord.ClockTime,
+            };
+            var tracker = new ShaderWarmUpTracker(rec, Time.time, Time.realtimeSinceStartup, Compiling, LocalNow());
+            while (true)
+            {
+                yield return new WaitForEndOfFrame();
+                int bad = 0;
+                bool compiling = false;
+                foreach (var s in sites)
+                    foreach (var c in s.Cams)
+                    {
+                        compiling |= RenderInto(c);
+                        ShaderWarmUp.ErrorShaderPixels(c.Tex.GetRawTextureData(), out int magenta, out int cyan);
+                        bad += magenta + cyan;
+                    }
+                var state = tracker.AfterRender(bad, compiling, Time.time, Time.realtimeSinceStartup, LocalNow());
+                if (state == ShaderWarmUp.State.Continue) continue;
+                m_WarmRecords.Add(rec);
+                m_WarmRounds++;
+                m_WarmRenders += rec.renders;
+                m_WarmErrorPixels += rec.error_pixels_seen;
+                m_WarmLongestS = Mathf.Max(m_WarmLongestS, (float)(rec.time_end_s - rec.time_start_s));
+                if (state == ShaderWarmUp.State.TimedOut)
+                    m_WarmUpError = $"not done after {ShaderWarmUp.MaxSeconds.ToString("0", Inv)} s ({rec.renders} renders, last clean streak {rec.last_clean_streak}, " +
+                                    $"compiling {rec.compiling_at_end})";
+                yield break;
+            }
+        }
+
+        /// <summary>Addendum 12: the warm-up records of this run, once, into shader_warm_up.jsonl of the run folder (also after a failed warm-up).</summary>
+        void WriteWarmUps()
+        {
+            if (m_WarmWritten || string.IsNullOrEmpty(OutputFolder)) return;
+            m_WarmWritten = true;
+            var sb = new StringBuilder();
+            foreach (var r in m_WarmRecords) sb.Append(JsonUtility.ToJson(r)).Append('\n');
+            WriteNew(Path.Combine(OutputFolder, ShaderWarmUp.RecordFile), sb.ToString());
+        }
+
+        static string LocalNow() => DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss.fff", Inv);
+
+        /// <summary>The Editor is compiling a shader variant (false outside the Editor).</summary>
+        static bool Compiling
+        {
+            get
+            {
+#if UNITY_EDITOR
+                return UnityEditor.ShaderUtil.anythingCompiling;
+#else
+                return false;
+#endif
+            }
+        }
+
+        /// <summary>Render the camera into its texture and read it back. In the Editor this render compiles its shader variants
+        /// synchronously (Unity's per-call use of ShaderUtil.allowAsyncCompilation; addendum 11), and the setting is restored after it.
+        /// Addendum 12: true when a shader was compiling just before or just after the render.</summary>
+        static bool RenderInto(SiteCamera c)
+        {
+            bool compiling = Compiling;
+#if UNITY_EDITOR
+            bool async = UnityEditor.ShaderUtil.allowAsyncCompilation;
+            UnityEditor.ShaderUtil.allowAsyncCompilation = false;
+#endif
+            var prevActive = RenderTexture.active;
+            try
+            {
+                c.Cam.targetTexture = c.Rt;
+                c.Cam.Render();
+                RenderTexture.active = c.Rt;
+                c.Tex.ReadPixels(new Rect(0, 0, c.Rt.width, c.Rt.height), 0, 0, false);
+                c.Tex.Apply(false);
+            }
+            finally
+            {
+                c.Cam.targetTexture = null;
+                RenderTexture.active = prevActive;
+#if UNITY_EDITOR
+                UnityEditor.ShaderUtil.allowAsyncCompilation = async;
+#endif
+            }
+            return compiling || Compiling;
+        }
+
         IEnumerator WaitFacing(Site s)
         {
             float until = Time.time + m_Play.face_wait_max_s;
@@ -733,14 +868,7 @@ namespace WarehouseRobot.AvatarCheck
                 rec.shoulder_motion_max_m = Mathf.Max(rec.shoulder_motion_max_m, Vector3.Distance(shoulder, rec.FirstShoulder));
             }
 
-            var prevActive = RenderTexture.active;
-            c.Cam.targetTexture = c.Rt;
-            c.Cam.Render();
-            RenderTexture.active = c.Rt;
-            c.Tex.ReadPixels(new Rect(0, 0, c.Rt.width, c.Rt.height), 0, 0, false);
-            c.Tex.Apply(false);
-            c.Cam.targetTexture = null;
-            RenderTexture.active = prevActive;
+            if (RenderInto(c)) { rec.shaders_compiling = true; rec.shaders_compiling_frames.Add(frameIndex); }     // addendum 12
             byte[] raw = c.Tex.GetRawTextureData();
             var fmt = c.Tex.graphicsFormat;
             int width = c.Rt.width, height = c.Rt.height;
@@ -753,6 +881,8 @@ namespace WarehouseRobot.AvatarCheck
             {
                 try
                 {
+                    ShaderWarmUp.ErrorShaderPixels(raw, out int magenta, out int cyan);      // addendum 11
+                    lock (rec) { rec.magenta_pixels += magenta; rec.cyan_pixels += cyan; }
                     byte[] png = ImageConversion.EncodeArrayToPNG(raw, fmt, (uint)width, (uint)height);
                     WriteNew(stem + ".png", png);
                     WriteNew(stem + ".json", header);

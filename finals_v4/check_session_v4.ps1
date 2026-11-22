@@ -4,7 +4,8 @@ param(
     [int]$Runs = 0,                                # runs expected; a final: runs_per_setting of final_plan.json (another number is refused)
     [int]$StartRun = 1,                            # a development session resumed at run k (TrialPlayV4 -startRun; experiments_ab.md section 15 addendum 10): runs k..Runs expected; a final: 1 only
     [switch]$Final,                                # a final: frozen hashes, the test split and the run-once markers are required
-    [string]$Protocol = ""                         # the pre-session run-protocol note (free memory, programs running)
+    [string]$Protocol = "",                        # the pre-session run-protocol note (free memory, programs running)
+    [string]$ResumeMarker = ""                     # part 2 of a resumed final (addendum 13, AUDIT.md 16.31.3 item 6): the declared interruption (folder or FINAL_INTERRUPTION.json); required with -Final -StartRun k
 )
 # The B11 validity criteria of a v4 session (final_plan.json acceptance_criteria; adopted 2026-11-13, confirmed by Anisha and
 # updated the same day: AUDIT.md section 15). Validity only, no performance threshold. A watchdog stop is a RESULT (a stop, or the
@@ -19,13 +20,34 @@ function Full($p) { if ([System.IO.Path]::IsPathRooted($p)) { $p } else { [Syste
 $U = Full $U
 $B = Full $B
 if ($Protocol) { $Protocol = Full $Protocol }
+if ($ResumeMarker) { $ResumeMarker = Full $ResumeMarker }
 $plan = Get-Content (Join-Path $rv "configs\v4\final_plan.json") -Raw | ConvertFrom-Json
 if ($Final) {
     if ($Runs -eq 0) { $Runs = [int]$plan.runs_per_setting }
     if ($Runs -ne [int]$plan.runs_per_setting) { "REFUSED: a final has runs_per_setting = $($plan.runs_per_setting) runs (final_plan.json), not $Runs"; exit 2 }
 } elseif ($Runs -lt 1) { "REFUSED: give -Runs (the runs of this development session)"; exit 2 }
-if ($Final -and $StartRun -ne 1) { "REFUSED: a final runs all its runs (-StartRun is for a resumed development session)"; exit 2 }
+if ($ResumeMarker -and -not $Final) { "REFUSED: -ResumeMarker is for part 2 of a resumed final only (a development session resumed at run k needs no declaration)"; exit 2 }
+if ($Final -and $StartRun -ne 1 -and -not $ResumeMarker) { "REFUSED: a final runs all its runs; -Final -StartRun k is accepted only with -ResumeMarker (the declared interruption, AUDIT.md 16.30.1)"; exit 2 }
 if ($StartRun -lt 1 -or $StartRun -gt $Runs) { "REFUSED: -StartRun $StartRun is outside 1..$Runs"; exit 2 }
+if ($ResumeMarker) {
+    # addendum 13: the declaration and this session's session.json must agree (Python's evaluation then judges part 1 and part 2 as one session)
+    $declFile = if (Test-Path $ResumeMarker -PathType Container) { Join-Path $ResumeMarker "FINAL_INTERRUPTION.json" } else { $ResumeMarker }
+    if ((Split-Path $declFile -Leaf) -ne "FINAL_INTERRUPTION.json" -or -not (Test-Path $declFile)) { "REFUSED: -ResumeMarker $ResumeMarker has no FINAL_INTERRUPTION.json"; exit 2 }
+    $decl = Get-Content $declFile -Raw | ConvertFrom-Json
+    $sj = Join-Path $U "session.json"
+    $s0 = if (Test-Path $sj) { Get-Content $sj -Raw | ConvertFrom-Json } else { $null }
+    $why = @()
+    if ($null -eq $s0) { $why += "no session.json in $U" }
+    else {
+        if ($decl.setting -ne $s0.final_setting) { $why += "the declaration is for '$($decl.setting)', the session ran '$($s0.final_setting)'" }
+        if ([int]$decl.resume_from_run -ne $StartRun) { $why += "the declaration resumes from run $($decl.resume_from_run), -StartRun is $StartRun" }
+        if ($s0.resume_from_run -ne $StartRun) { $why += "session.json resume_from_run is '$($s0.resume_from_run)', not $StartRun" }
+        if ($s0.start_run -ne $StartRun) { $why += "session.json start_run is '$($s0.start_run)', not $StartRun" }
+        if ($s0.resume_of -ne $decl.unity_folder) { $why += "session.json resume_of is '$($s0.resume_of)', the declaration's part 1 is '$($decl.unity_folder)'" }
+        if ((Split-Path $U -Leaf) -eq $decl.unity_folder) { $why += "-U is part 1 itself" }
+    }
+    if ($why.Count) { "REFUSED: the declared resume does not match this session: $($why -join '; ')"; exit 2 }
+}
 $fail = 0
 # $ok: $true PASS, $false FAIL (counted), $null N/A (development only; not counted)
 function Report($n, $ok, $what) {
@@ -36,6 +58,7 @@ function Numbers($names, $pattern) { @($names | ForEach-Object { if ($_ -match $
 "session: $U"
 "bridge:  $B"
 "$(if ($Final) { 'FINAL' } else { 'development' }), $Runs runs expected$(if ($StartRun -gt 1) { " (resumed: runs $StartRun..$Runs)" })"
+if ($ResumeMarker) { "declared resume of $($decl.unity_folder) from run $StartRun ($(Split-Path (Split-Path $declFile -Parent) -Leaf)): part 1 has no outcome for run $StartRun and is judged with this part by Python's evaluation" }
 Push-Location $rv
 try {
     $s = ReadJson (Join-Path $U "session.json")

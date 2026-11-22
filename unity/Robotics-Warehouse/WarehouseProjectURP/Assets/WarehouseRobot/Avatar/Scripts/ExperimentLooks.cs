@@ -140,6 +140,12 @@ namespace WarehouseAvatar
                 if (baseIds.Contains(l.id)) e.Add($"looks: '{l.id}' is already defined in worker_v4.json (never redefine a look)");
                 if (!LookCheckConfig.IsNamePart(l.id)) e.Add($"looks '{l.id}': a-z, 0-9 and single inner '_' only");
                 if (l.kind != LookEntry.KindPrefab && l.kind != LookEntry.KindSunbox) e.Add($"looks '{l.id}': kind must be prefab or sunbox");
+                // experiments_ab.md section 15 addendum 11: the avatar-experiment role
+                if (l.role != LookEntry.RoleCandidate && l.role != LookEntry.RoleAvatarExperiment)
+                    e.Add($"looks '{l.id}': role must be {LookEntry.RoleCandidate} or {LookEntry.RoleAvatarExperiment}");
+                if (l.role == LookEntry.RoleAvatarExperiment && l.navigation) e.Add($"looks '{l.id}': a navigation look never has role avatar_experiment");
+                if (l.role == LookEntry.RoleAvatarExperiment && Array.IndexOf(f.avatar_experiment, l.id) < 0)
+                    e.Add($"looks '{l.id}': role avatar_experiment but not in the avatar_experiment list");
                 if (string.IsNullOrEmpty(l.asset) || !l.asset.StartsWith("Assets/", StringComparison.Ordinal)) e.Add($"looks '{l.id}': asset must start with Assets/");
                 if (l.kind == LookEntry.KindSunbox && (l.sunbox == null || (l.sunbox.gender != "Male" && l.sunbox.gender != "Female")))
                     e.Add($"looks '{l.id}': sunbox.gender must be Male or Female");

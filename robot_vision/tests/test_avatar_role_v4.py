@@ -230,8 +230,9 @@ class AvatarGuardTests(unittest.TestCase):
         return d
 
     def test_not_frozen_or_a_changed_config_is_refused(self):
+        unfrozen = tf.final_repo(self.root / "unfrozen", freeze=False)                           # AUDIT.md 16.29.3: an unfrozen state of its own, never the real record
         with self.assertRaisesRegex(SystemExit, "not frozen"):
-            ds.guard_avatar_experiment(["anime_f_01"], [], ds.load_avatar_session(self.run_folder()), self.splits)   # the real repository is not frozen
+            ds.guard_avatar_experiment(["anime_f_01"], [], ds.load_avatar_session(self.run_folder()), self.splits, unfrozen)
         f = self.repo / fz.V4_DIR / "gesture_reader.json"
         f.write_text(f.read_text() + " ")
         with self.assertRaises(SystemExit):

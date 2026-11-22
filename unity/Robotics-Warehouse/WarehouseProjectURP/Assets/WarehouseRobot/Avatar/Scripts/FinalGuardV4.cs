@@ -181,8 +181,12 @@ namespace WarehouseAvatar
     {
         /// <param name="sha256LfOfRepoFile">LF-normalised SHA-256 of a repository file, or null when it does not exist.</param>
         /// <param name="developmentOverride">robot_vision/configs/trials.local.json (the development trial count) exists.</param>
+        /// <param name="currentBridgeFolder">Addendum 13: the run folder of this session's server (its own FINAL_SETTING.json is not an earlier final).</param>
+        /// <param name="resume">Addendum 13: the declared interruption this session resumes (FinalResumeV4.Problems checks it in full before
+        /// anything is written); its part-1 bridge folder's markers are then not an earlier final.</param>
         public static List<string> Problems(FinalConfigV4 cfg, string setting, string finalPlanText, string frozenText,
-                                            Func<string, string> sha256LfOfRepoFile, string outputRoot, bool developmentOverride)
+                                            Func<string, string> sha256LfOfRepoFile, string outputRoot, bool developmentOverride,
+                                            string currentBridgeFolder = null, FinalInterruptionV4 resume = null)
         {
             var e = new List<string>();
             foreach (var problem in cfg.Validate()) e.Add("final_v4.json: " + problem);
@@ -195,8 +199,10 @@ namespace WarehouseAvatar
             if (!plan.Blanks.Contains("task") && plan.Task != "Task2") e.Add($"final_plan.json: task is '{plan.Task}', the v4 runner runs Task2");
             e.AddRange(FreezeProblems(cfg, frozenText, sha256LfOfRepoFile));
             if (developmentOverride) e.Add("robot_vision/configs/trials.local.json (the development trial count) exists: remove it for a final");
-            string earlier = EarlierFinal(outputRoot, setting, cfg);
-            if (earlier != null) e.Add($"setting '{setting}' was already run as a final: {earlier}. Finals are run once (declare any repetition in AUDIT.md first)");
+            string earlier = EarlierFinal(outputRoot, setting, cfg, currentBridgeFolder, resume);
+            if (earlier != null)
+                e.Add($"setting '{setting}' was already run as a final: {earlier} (a server start marker counts too). Finals are run once (declare any repetition in AUDIT.md first); " +
+                      "an infrastructure failure is declared with final_guard_v4.py --declare-interruption and resumed once with the launcher's -Resume (AUDIT.md 16.30.1)");
             return e;
         }
 
@@ -345,14 +351,24 @@ namespace WarehouseAvatar
 
         /// <summary>A marker of an earlier final of this setting in any folder directly under outputRoot: Unity's done file
         /// (key final_setting) or Python's run marker (key setting). "folder/file", or null.</summary>
-        public static string EarlierFinal(string outputRoot, string setting, FinalConfigV4 cfg)
+        public static string EarlierFinal(string outputRoot, string setting, FinalConfigV4 cfg) => EarlierFinal(outputRoot, setting, cfg, null, null);
+
+        /// <summary>
+        /// Addendum 13 (AUDIT.md 16.31.3 item 4): also Python's start marker FINAL_SETTING.json (key setting), which a hard crash leaves without
+        /// FINAL_RUN_DONE.json. <paramref name="currentBridgeFolder"/>: this session's own server folder (its start marker is written before
+        /// Unity starts) is skipped. <paramref name="resume"/>: a declared resume accepts the markers of the declaration's part-1 bridge
+        /// folder, never Unity's done file (a complete session: the setting is finished). "folder/file" of the first other marker, or null.
+        /// </summary>
+        public static string EarlierFinal(string outputRoot, string setting, FinalConfigV4 cfg, string currentBridgeFolder, FinalInterruptionV4 resume)
         {
             if (string.IsNullOrEmpty(outputRoot) || !Directory.Exists(outputRoot)) return null;
             foreach (var d in Directory.GetDirectories(outputRoot))
             {
-                foreach (var (file, key) in new[] { (cfg.done_file, "final_setting"), (cfg.python_run_marker, "setting") })
+                string name = Path.GetFileName(d);
+                foreach (var (file, key) in new[] { (cfg.done_file, "final_setting"), (cfg.python_run_marker, "setting"), (FinalResumeV4.Started, "setting") })
                 {
                     if (string.IsNullOrEmpty(file)) continue;
+                    if (key == "setting" && (name == currentBridgeFolder || (resume != null && name == resume.bridge_folder))) continue;
                     string p = Path.Combine(d, file);
                     if (!File.Exists(p)) continue;
                     string text;
@@ -366,12 +382,23 @@ namespace WarehouseAvatar
         }
 
         /// <summary>The text of Unity's done file (no key named "setting": Python's markers never match it).</summary>
-        public static string DoneJson(string setting, int runs, int successes, string commit, string folder, string written)
+        public static string DoneJson(string setting, int runs, int successes, string commit, string folder, string written) =>
+            DoneJson(setting, runs, successes, commit, folder, written, 1, 0, "");
+
+        /// <summary>Addendum 13 (AUDIT.md 16.31.3 item 5): the done file says which runs this session drove: start_run k, runs_driven
+        /// N - k + 1 (successes are counted over those), and for a declared resume resume_from_run and resume_of (part 1's Unity folder, which
+        /// holds runs 1..k-1). A full session: start_run 1, runs_driven N, resume_from_run 0, resume_of "".</summary>
+        public static string DoneJson(string setting, int runs, int successes, string commit, string folder, string written, int startRun, int resumeFromRun, string resumeOf)
         {
             string Q(string s) => "\"" + (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+            string I(int n) => n.ToString(CultureInfo.InvariantCulture);
             return "{\n" +
                    $"  \"final_setting\": {Q(setting)},\n" +
                    $"  \"runs\": {runs.ToString(CultureInfo.InvariantCulture)},\n" +
+                   $"  \"start_run\": {I(startRun)},\n" +
+                   $"  \"runs_driven\": {I(runs - startRun + 1)},\n" +
+                   $"  \"resume_from_run\": {I(resumeFromRun)},\n" +
+                   $"  \"resume_of\": {Q(resumeOf)},\n" +
                    $"  \"successes\": {successes.ToString(CultureInfo.InvariantCulture)},\n" +
                    $"  \"git_commit\": {Q(commit)},\n" +
                    $"  \"folder\": {Q(folder)},\n" +

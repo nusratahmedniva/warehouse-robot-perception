@@ -13,16 +13,27 @@ namespace WarehouseHRI.V4
     {
         /// <summary>The first run from the -startRun text: "" = 1 (a full session); otherwise a whole number within 1..<paramref name="runs"/>,
         /// and refused in a final. False with the reason otherwise.</summary>
-        public static bool Parse(string text, int runs, bool final, out int startRun, out string error)
+        public static bool Parse(string text, int runs, bool final, out int startRun, out string error) =>
+            Parse(text, runs, final, false, out startRun, out error);
+
+        /// <summary>Addendum 13 (AUDIT.md 16.31.3 item 1): in a final, -startRun k is accepted only together with a declared interruption
+        /// (<paramref name="declaredResume"/>: -resumeMarker given; FinalResumeV4.Problems checks it against k), and a declared resume needs k.</summary>
+        public static bool Parse(string text, int runs, bool final, bool declaredResume, out int startRun, out string error)
         {
             startRun = 1;
             error = null;
             text = (text ?? "").Trim();
-            if (text.Length == 0) return true;
-            if (final)
+            if (text.Length == 0)
             {
-                error = $"-startRun {text} is refused in a final: the run-once guards refuse a second session of a setting (a resumed final " +
-                        "needs Anisha's interruption rule in both guards first; experiments_ab.md section 15 addendum 10)";
+                if (!(final && declaredResume)) return true;
+                error = "a declared resume of a final needs -startRun k (the declaration's resume_from_run)";
+                return false;
+            }
+            if (final && !declaredResume)
+            {
+                error = $"-startRun {text} is refused in a final without a declared interruption: the run-once guards refuse a second session of a " +
+                        "setting; a resumed final needs final_guard_v4.py --declare-interruption first and -resumeMarker (the launcher's -Resume; " +
+                        "experiments_ab.md section 15 addenda 10 and 13)";
                 return false;
             }
             if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int k))
