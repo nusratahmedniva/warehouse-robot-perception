@@ -119,6 +119,8 @@ class CallersTests(unittest.TestCase):
         for f in sorted(ROOT.glob("*.py")) + sorted((ROOT / "bridge").glob("*.py")):
             if f.name in ("data_splits_v4.py", "data_splits.py"):
                 continue
+            if f.name in ("process_avatar_zip_v4.py",):          # AUDIT.md 16.33.1: the avatar runbook reads roles for the report by role, after guard_avatar_experiment
+                continue
             if f.name == "export_csv_v4.py":          # AUDIT.md 16.31.6: it only LABELS rows (look_role, clip_role) of runs that guard_run has already accepted
                 continue
             text = f.read_text(encoding="utf-8")

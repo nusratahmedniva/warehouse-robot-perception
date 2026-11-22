@@ -638,33 +638,12 @@ def _cell(m: dict) -> str:
     return f"{m['k']}/{m['n']} = {m['ratio']} [{m['wilson95'][0]}-{m['wilson95'][1]}]"
 
 
-def combine(folders, repo: Path | None = None, output_root: Path | None = None):
-    """The combined table over per-setting final exports. Each folder must carry its FINAL_EXPORT_DONE.json and a summary.json; no
-    setting may appear twice; the configs must still be frozen and unchanged. Returns (new folder, result dict)."""
-    import decision_io as dio
-    import final_guard_v4 as fg
-    import freeze_v4 as fz
-    repo = repo or fz.REPO
-    fz.require_frozen(repo)
-    output_root = Path(output_root) if output_root is not None else dio.resolve("outputs")
-    per: dict = {}
-    for f in map(Path, folders):
-        marker, summ = f / fg.MARKERS["export"], f / "summary.json"
-        if not (marker.is_file() and summ.is_file()):
-            raise SystemExit(f"{f.name}: not a final export folder (needs {fg.MARKERS['export']} and summary.json)")
-        m, sj = json.loads(marker.read_text(encoding="utf-8")), json.loads(summ.read_text(encoding="utf-8"))
-        if m["setting"] != sj["setting"]:
-            raise SystemExit(f"{f.name}: marker says setting {m['setting']!r}, summary.json says {sj['setting']!r}")
-        fg.check_name(m["setting"], repo)
-        if m["setting"] in per:
-            raise SystemExit(f"setting {m['setting']!r} given twice ({per[m['setting']]['folder']} and {f.name})")
-        if m.get("frozen_sha256") != fz.sha256_lf(repo / fz.FROZEN_REL):
-            raise SystemExit(f"{f.name}: exported under another frozen.json than the current one")
-        per[m["setting"]] = {"folder": f.name, **sj}
-    plan = fg.plan(repo)
+def combined_tables(per: dict, plan: dict, z: float) -> tuple[dict, list, list]:
+    """The combined table of per-setting summaries (per: setting -> {"folder", "summary", ...} as in a final export's summary.json): (result dict, one row
+    per setting, the comparison rows with Wilson per setting and Newcombe per pair, B detection on against off among them). Shared by the final
+    combine and by the development runbook (process_final_zip_v4.py --development), which labels its output as development."""
     order = [s for s in plan["settings"] if s in per]
     pairs = comparisons(order, plan)
-    z = wilson_z(repo)
     rows = []
     for s in order:
         sm, spec = per[s]["summary"], plan["settings"][s]
@@ -698,9 +677,13 @@ def combine(folders, repo: Path | None = None, output_root: Path | None = None):
            "note": "Every rate with its count and a Wilson 95 % interval; the difference is in percentage points (y minus x) with a Newcombe hybrid-score 95 % interval "
                    "(Wilson-based, Newcombe 1998 method 10). It only describes the two rates: no test, no claim of significance. Derived from the per-setting exports; "
                    "no test data is read here. 20 runs per setting is small: read the intervals."}
-    out = dio.new_run_dir({"paths": {"output_root": str(output_root)}}, f"{fg.EXPORT_PREFIX}_combined")
-    (out / "config_used").mkdir()
-    (out / "config_used" / "frozen.json").write_bytes((repo / fz.FROZEN_REL).read_bytes())
+    return res, rows, comp_rows
+
+
+def write_combined(out: Path, per: dict, plan: dict, res: dict, rows: list, comp_rows: list, title: str, folders: list) -> None:
+    """Write combined_settings.csv, combined_comparisons.csv, combined.json and combined.md into the folder `out` (created by the caller)."""
+    import decision_io as dio
+    order = res["settings"]
     for name, table in (("combined_settings.csv", rows), ("combined_comparisons.csv", comp_rows)):
         cols = list(dict.fromkeys(k for r in table for k in r))
         with (out / name).open("w", newline="", encoding="utf-8") as fh:
@@ -709,7 +692,7 @@ def combine(folders, repo: Path | None = None, output_root: Path | None = None):
             for r in table:
                 w.writerow([_fmt(r.get(k)) for k in cols])
     dio.write_json(out / "combined.json", res)
-    L = ["# Experiments A and B, final: combined table", "", f"Settings: {', '.join(order)}. Per-setting exports: " + ", ".join(per[s]["folder"] for s in order), "",
+    L = [title, "", f"Settings: {', '.join(order)}. Per-setting exports: " + ", ".join(per[s]["folder"] for s in order), "",
          "## Per setting", "", "| setting | experiment | set | detection | SUCCESS (k/n, Wilson 95 %) | failures | median time of SUCCESS (s) | trail/optimal | lies given / detected / corrected / fooled | runs with safety stop | runs with watchdog stop |",
          "|---|---|---|---|---|---|---|---|---|---|---|"]
     for s in order:
@@ -726,6 +709,37 @@ def combine(folders, repo: Path | None = None, output_root: Path | None = None):
         L.append(f"| {c['name']} | {c['metric']} | {c['x']}: {c['x_cell']} | {c['y']}: {c['y_cell']} | {c['difference_pp']} | {ci} |")
     L += ["", res["note"], ""]
     (out / "combined.md").write_text("\n".join(L), encoding="utf-8")
+
+
+def combine(folders, repo: Path | None = None, output_root: Path | None = None):
+    """The combined table over per-setting final exports. Each folder must carry its FINAL_EXPORT_DONE.json and a summary.json; no
+    setting may appear twice; the configs must still be frozen and unchanged. Returns (new folder, result dict)."""
+    import decision_io as dio
+    import final_guard_v4 as fg
+    import freeze_v4 as fz
+    repo = repo or fz.REPO
+    fz.require_frozen(repo)
+    output_root = Path(output_root) if output_root is not None else dio.resolve("outputs")
+    per: dict = {}
+    for f in map(Path, folders):
+        marker, summ = f / fg.MARKERS["export"], f / "summary.json"
+        if not (marker.is_file() and summ.is_file()):
+            raise SystemExit(f"{f.name}: not a final export folder (needs {fg.MARKERS['export']} and summary.json)")
+        m, sj = json.loads(marker.read_text(encoding="utf-8")), json.loads(summ.read_text(encoding="utf-8"))
+        if m["setting"] != sj["setting"]:
+            raise SystemExit(f"{f.name}: marker says setting {m['setting']!r}, summary.json says {sj['setting']!r}")
+        fg.check_name(m["setting"], repo)
+        if m["setting"] in per:
+            raise SystemExit(f"setting {m['setting']!r} given twice ({per[m['setting']]['folder']} and {f.name})")
+        if m.get("frozen_sha256") != fz.sha256_lf(repo / fz.FROZEN_REL):
+            raise SystemExit(f"{f.name}: exported under another frozen.json than the current one")
+        per[m["setting"]] = {"folder": f.name, **sj}
+    plan = fg.plan(repo)
+    res, rows, comp_rows = combined_tables(per, plan, wilson_z(repo))
+    out = dio.new_run_dir({"paths": {"output_root": str(output_root)}}, f"{fg.EXPORT_PREFIX}_combined")
+    (out / "config_used").mkdir()
+    (out / "config_used" / "frozen.json").write_bytes((repo / fz.FROZEN_REL).read_bytes())
+    write_combined(out, per, plan, res, rows, comp_rows, "# Experiments A and B, final: combined table", folders)
     dio.write_json(out / "run.json", {"git": dio.git_info(), "folders": [Path(f).name for f in folders],
                                       "frozen_sha256": fz.sha256_lf(repo / fz.FROZEN_REL)})
     return out, res
