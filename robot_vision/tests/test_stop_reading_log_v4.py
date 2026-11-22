@@ -152,6 +152,34 @@ class TheGuideWritesTheFile(unittest.TestCase):
             self.assertEqual(rows[0]["people"][0]["id"], 7)
             self.assertEqual(r.c.pop_stop_log(), [])                                          # the guide took them all
 
+    def test_two_trials_each_have_rows_in_stop_reading_jsonl(self):
+        """AUDIT.md 16.29.2: the guide switches the log on once, ControllerV4.reset() ran at every trial start and switched it off again, so a real session
+        wrote 0 rows. Two trials through the guide (a new trial index while running = begin() = reset()): rows for BOTH, with the fields of the log."""
+        with tempfile.TemporaryDirectory() as d:
+            r = tc.Rig()
+            worker = FakeWorkerV4()
+            g = GuideControllerV4(r.c, worker, Path(d), log_every=1, hud_cfg=V3_CFG["hud"])
+            seq = 0
+            for trial in (1, 2):
+                for k in range(1, 6):
+                    seq += 1
+                    t = round(100.0 * trial + 0.1 * k, 3)
+                    worker.t = t
+                    worker.persons = [person(7, "NONE", "STOP")]
+                    g.on_message(tel_msg(seq, t, trial=trial))
+                    self.assertTrue(r.c.stop_log_enabled, f"trial {trial} step {k}: the instrument was switched off")
+            g.close()
+            rows = [json.loads(x) for x in (Path(d) / "stop_reading.jsonl").read_text(encoding="utf-8").splitlines()]
+            for trial in (1, 2):
+                mine = [x for x in rows if x["trial"] == trial]
+                self.assertEqual(len(mine), 5, f"trial {trial}")
+                for x in mine:
+                    self.assertTrue({"t", "pt", "state", "v", "switch", "applies", "used", "people", "stop_used", "stop_other"} <= set(x))
+                    self.assertIn(x["used"], ("reading", "reading_stopped"))
+                    self.assertEqual(x["people"][0]["id"], 7)
+                self.assertGreater(mine[0]["t"], 100.0 * trial)                                  # the rows belong to the trial's own clock
+            self.assertEqual(len(rows), 10)
+
     def test_the_decisions_csv_and_the_v4_log_are_unchanged_files(self):
         with tempfile.TemporaryDirectory() as d:
             r = tc.Rig()
@@ -163,6 +191,44 @@ class TheGuideWritesTheFile(unittest.TestCase):
             self.assertIn("stop_reading.jsonl", names)
             header = (Path(d) / "decisions.csv").read_text(encoding="utf-8").splitlines()[0]
             self.assertNotIn("stop_reading", header)                                          # no column was added to the shared decisions.csv
+
+
+class TheFlagSurvivesReset(unittest.TestCase):
+    """AUDIT.md 16.29.2: stop_log_enabled belongs to the instrument set-up (the guide sets it once), not to a trial: reset() must not touch it. The log itself is per trial."""
+
+    def test_reset_keeps_the_flag_whichever_way_it_was_set(self):
+        for flag in (True, False):
+            r = rig(log=flag)
+            r.c.reset(0.0)
+            self.assertIs(r.c.stop_log_enabled, flag)
+            r.c.begin(1.0)
+            self.assertIs(r.c.stop_log_enabled, flag)
+
+    def test_the_flag_is_false_by_default_from_the_constructor(self):
+        base, v4 = hv.load_control()
+        c = hv.ControllerV4(base, v4, tc.cm.load_config(), tc.ROAD)
+        self.assertIs(c.stop_log_enabled, False)
+        self.assertEqual(c.stop_log, [])
+
+    def test_reset_may_clear_the_log_but_collection_goes_on_in_the_next_trial(self):
+        r = rig(log=True)
+        tick(r, [person(7)])
+        self.assertEqual(len(r.c.stop_log), 1)
+        r.c.reset(0.0)
+        self.assertEqual(r.c.stop_log, [])                                                   # the rows of the old trial are not carried over
+        tick(r, [person(7)])
+        self.assertEqual(len(r.c.pop_stop_log()), 1)                                         # and the new trial is logged
+
+    def test_no_other_instrument_flag_is_cleared_by_reset(self):
+        """The same pattern elsewhere (AUDIT.md 16.29.2): the only attribute the guide sets on the controller is stop_log_enabled; the frame log is collected
+        always (no flag) and popped by the guide after every message."""
+        import re
+        guide = (ROOT / "bridge/guide_v4.py").read_text(encoding="utf-8") + (ROOT / "bridge/guide.py").read_text(encoding="utf-8")
+        sets = set(re.findall(r"(?:controller|self\.c)\.([a-z_]+)\s*=[^=]", guide))
+        self.assertEqual(sets, {"stop_log_enabled"})
+        src = (ROOT / "hri_control_v4.py").read_text(encoding="utf-8")
+        reset = src[src.index("    def reset(self, t):"):src.index("    def ", src.index("    def reset(self, t):") + 10)]
+        self.assertNotIn("stop_log_enabled", reset)
 
 
 class Isolation(unittest.TestCase):
