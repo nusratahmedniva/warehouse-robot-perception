@@ -229,10 +229,12 @@ class GuardAndOutputTests(unittest.TestCase):
                 an.analyse([("A3", u, b)], CFG)
 
     def test_final_is_refused_while_not_frozen(self):
+        """AUDIT.md 16.29.3: an unfrozen state of its own passed explicitly (the real record may be frozen); the freeze check comes first, before any run count or seed check."""
         with tempfile.TemporaryDirectory() as d:
             u, b = tf.session(Path(d), "t")
+            unfrozen = tf.final_repo(Path(d) / "u", freeze=False)
             with self.assertRaisesRegex(SystemExit, "not frozen"):
-                an.analyse([("A3", u, b)], CFG, final=True)
+                an.analyse([("A3", u, b)], CFG, final=True, repo=unfrozen)
 
     def test_final_on_a_frozen_repo_with_test_data(self):
         with tempfile.TemporaryDirectory() as d:

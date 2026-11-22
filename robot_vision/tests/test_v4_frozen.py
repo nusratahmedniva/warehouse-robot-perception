@@ -28,6 +28,12 @@ def make_repo(tmp: Path, fill_plan: bool = True) -> Path:
     weights, task = repo / "robot_vision" / "models" / "yolo11s-pose.pt", repo / "external" / "media_pipe_gesture" / "gesture_recognizer.task"
     weights.write_bytes(b"weights")
     task.write_bytes(b"task")
+    # AUDIT.md 16.29.3: the copy must never carry the repository's frozen.json (it may be frozen, and refresh_list / freeze refuse a frozen record): every fixture
+    # starts from an UNFROZEN record of its own, with the file list of the copy
+    rec = repo / fz.FROZEN_REL
+    rec.write_text(json.dumps({"label": "test fixture: an unfrozen record of its own", "frozen": False, "frozen_at": None, "git_commit": None, "files": [],
+                               "sha256": {}, "v3_dependencies": {}, "models": {}}, indent=2) + "\n", encoding="utf-8")
+    fz.refresh_list(repo)
     perc = repo / "robot_vision" / "configs" / "hri_perception.json"
     d = json.loads(perc.read_text())
     d["pose_model"]["sha256"] = hashlib.sha256(b"weights").hexdigest()
@@ -95,6 +101,27 @@ class RecordedFreezeTests(unittest.TestCase):
         self.assertEqual(fz.problems(REPO), [], "a v4 file changed after freezing (disclose in AUDIT.md and re-freeze)")
         self.assertEqual(set(REC["sha256"]), set(REC["files"]))
         self.assertEqual(set(REC["v3_dependencies"]), set(fz.V3_DEPENDENCIES))
+        self.assertEqual(fz.blanks(REPO), [])
+
+    def test_each_state_of_the_real_record_holds_what_it_must(self):
+        """The ONLY test that reads the repository's own frozen.json; it passes whether the record is frozen or not (AUDIT.md 16.29.3) and pins what each state
+        must contain. Every other fixture builds an unfrozen record of its own."""
+        rec = fz.read(REPO)
+        if not rec["frozen"]:
+            self.assertEqual((rec["sha256"], rec["v3_dependencies"], rec["models"], rec["frozen_at"], rec["git_commit"]), ({}, {}, {}, None, None))
+            self.assertNotIn("unity_files", rec)
+            self.assertTrue(set(rec["files"]) <= set(fz.config_files(REPO)))                      # documentation only: it may lag, it never names an unfrozen file
+            return
+        self.assertRegex(rec["frozen_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
+        self.assertTrue(rec["git_commit"], "a frozen record names the commit it was frozen on")
+        self.assertEqual(rec["files"], fz.config_files(REPO))
+        self.assertEqual(set(rec["sha256"]), set(rec["files"]))
+        self.assertEqual(set(rec["v3_dependencies"]), set(fz.V3_DEPENDENCIES))
+        self.assertEqual(set(rec["unity_files"]), set(fz.unity_files(REPO)))
+        self.assertEqual(set(rec["models"]), {"pose_weights", "mediapipe_model"})
+        for name, st in fz.model_status(REPO).items():
+            self.assertEqual(rec["models"][name]["sha256"], st["expected_sha256"], f"{name}: the frozen hash is the one the frozen v3 config expects")
+        self.assertEqual(fz.problems(REPO), [])
         self.assertEqual(fz.blanks(REPO), [])
 
     def test_v3_dependencies_exist_and_the_v3_freeze_still_covers_them(self):
