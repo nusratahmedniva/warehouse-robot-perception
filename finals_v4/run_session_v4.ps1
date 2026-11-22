@@ -7,6 +7,8 @@ param(
     [switch]$DryRun,                                  # print every command without running it (only read-only lookups run)
     [int]$Trials = 3,                                 # rehearsal only: the number of runs (launch_prep --trials)
     [string]$ExperimentGoals = "",                    # rehearsal only, random-endpoint maps (A3, A4, B3, B4): one goal per run, e.g. "E5,E6,E5" (TrialPlayV4 -experimentGoals; experiments_ab.md section 15 addendum 1, item 3c)
+    [switch]$Resume,                                  # a FINAL only (experiments_ab.md section 15 addendum 13; AUDIT.md 16.30.1, 16.31.3): resume the setting's declared interruption once; k and the declaration come from final_guard_v4.py --resume-info
+    [string]$OutputRoot = "",                         # -DryRun only (addendum 13): read the markers under this folder instead of the outputs folder (the resume dry-run demonstration)
     [int]$StartRun = 1,                               # rehearsal only: drive runs k..N of the -Trials N runs, with the plans of the full session (TrialPlayV4 -startRun; experiments_ab.md section 15 addendum 10); -ExperimentGoals still gives all N goals
     [string]$UnityExe = ""                            # default: Unity Hub's editor of ProjectSettings/ProjectVersion.txt
 )
@@ -69,10 +71,17 @@ $label = "${kind}_$name"
 $plan = Json (Join-Path $rv "configs\v4\final_plan.json")
 $trialsCfg = Json (Join-Path $rv "configs\trials.json")
 $outputs = Join-Path $rv $trialsCfg.output_root
+if ($OutputRoot) {
+    if (-not $DryRun) { Say "REFUSED: -OutputRoot is for -DryRun only (a real session uses the outputs folder of configs/trials.json)"; exit 2 }
+    $outputs = [System.IO.Path]::GetFullPath($OutputRoot)
+}
 $unityVersion = ((Get-Content (Join-Path $project "ProjectSettings\ProjectVersion.txt")) -match '^m_EditorVersion:' -replace '^m_EditorVersion:\s*', '')[0]
 if (-not $UnityExe) { $UnityExe = Join-Path $env:ProgramFiles "Unity\Hub\Editor\$unityVersion\Editor\Unity.exe" }
 if (-not (Test-Path $UnityExe)) { Say "REFUSED: Unity editor not found at $UnityExe (give -UnityExe)"; exit 2 }
+$resumeMarker = ""
+$resumeInfo = $null
 if ($Rehearsal) {
+    if ($Resume) { Say "REFUSED: -Resume is for a final only (a rehearsal starts at run k with -StartRun, without a declaration)"; exit 2 }
     if ($Trials -lt 1) { Say "REFUSED: -Trials must be at least 1"; exit 2 }
     $timeout = (Json (Join-Path $assets "Scenario\Config\trial_plan_v4.json")).development_timeout_s
     $runs = $Trials
@@ -96,6 +105,21 @@ if ($Rehearsal) {
     $timeout = $plan.timeout_s
     $runs = [int]$plan.runs_per_setting
     $unityMode = @("-finalSetting", $name)
+    if ($Resume) {
+        # addendum 13 (AUDIT.md 16.31.3 item 1): the run and the declaration come from Python's guard, never from the command line
+        Push-Location $rv
+        try {
+            $ErrorActionPreference = "Continue"
+            $ri = @(& $py final_guard_v4.py --resume-info $name --output-root $outputs 2>&1 | ForEach-Object { "$_" })
+            $riOk = ($LASTEXITCODE -eq 0)
+            $ErrorActionPreference = "Stop"
+        } finally { Pop-Location }
+        if (-not $riOk) { Say "REFUSED: final_guard_v4.py --resume-info $name refuses: $(($ri -join ' ').Trim())"; exit 2 }
+        $resumeInfo = ($ri -join "`n") | ConvertFrom-Json
+        $StartRun = [int]$resumeInfo.resume_from_run
+        $resumeMarker = Join-Path $outputs $resumeInfo.resume_marker
+        $unityMode += @("-startRun", $StartRun, "-resumeMarker", (Q $resumeMarker))
+    }
     $sessionPattern = "trials_final_$($plan.task)_${name}_*"
 }
 
@@ -127,8 +151,12 @@ if ($Rehearsal) {
     if (Test-Path (Join-Path $rv "configs\trials.local.json")) { $blockers += "robot_vision\configs\trials.local.json exists (development override): a final is refused" }
     $unityDone = Marker $outputs "UNITY_FINAL_DONE.json" "final_setting" $name
     if ($unityDone.Count) { $blockers += "setting $name was already run in Unity: $($unityDone[0])" }
-    $pyDone = Marker $outputs "FINAL_RUN_DONE.json" "setting" $name
+    # addendum 13: a declared resume accepts the markers of its part-1 bridge folder only; the server's start marker FINAL_SETTING.json counts too
+    $part1Bridge = if ($Resume) { [string]$resumeInfo.part_1.bridge } else { "" }
+    $pyDone = @(Marker $outputs "FINAL_RUN_DONE.json" "setting" $name | Where-Object { (Split-Path (Split-Path $_ -Parent) -Leaf) -ne $part1Bridge })
     if ($pyDone.Count) { $blockers += "setting $name was already run by the server: $($pyDone[0])" }
+    $pyStarted = @(Marker $outputs "FINAL_SETTING.json" "setting" $name | Where-Object { (Split-Path (Split-Path $_ -Parent) -Leaf) -ne $part1Bridge })
+    if ($pyStarted.Count) { $blockers += "setting $name was already started as a final: $($pyStarted[0]) (if an infrastructure failure ended it: python final_guard_v4.py --declare-interruption, then this launcher with -Resume; AUDIT.md 16.30.1)" }
     if (@($plan.settings.PSObject.Properties.Name) -notcontains $name) { $blockers += "Python's configs/v4/final_plan.json has no setting '$name' (Anisha adds the final matrix)" }
     Push-Location $rv
     try {
@@ -146,7 +174,9 @@ if ($Rehearsal) {
 
 $trialTimeout = [int]($runs * $timeout + 1800)
 $serverArgs = @("-u", "-m", "bridge.server", "--mode", "guide", "--task", $plan.task, "--perception", "vision", "--config", "configs/v4/bridge.json",
-                "--control-config", $control) + $(if ($Rehearsal) { @() } else { @("--final-setting", $name) }) + @("--resource-log", "--exit-on-disconnect")
+                "--control-config", $control) + $(if ($Rehearsal) { @() } else { @("--final-setting", $name) }) +
+              $(if ($Resume) { @("--resume-marker", (Q $resumeMarker)) } else { @() }) + @("--resource-log", "--exit-on-disconnect")
+$preflight = "from bridge import server as S; S.preflight_final(S.load_config('configs/v4/bridge.json')[0], 'guide', '$name', '$control'$(if ($Resume) { ", r'$resumeMarker'" }))"
 $serverOut = Join-Path $outputs "run_session_${label}_${stamp}_server.log"
 $serverErr = Join-Path $outputs "run_session_${label}_${stamp}_server.err.log"
 $unityLog = Join-Path $outputs "run_session_${label}_${stamp}_unity.log"
@@ -157,7 +187,8 @@ Say "    $(if ($Rehearsal) { 'development looks and clips of data_splits.json, s
 # ---- checks before anything is written
 Step "checks before the session" @(
     "git branch, tracked changes; no Unity Editor running$(if (-not $Rehearsal) { '; no trials.local.json; no earlier run of the setting (UNITY_FINAL_DONE.json, FINAL_RUN_DONE.json); final_plan.json and FINAL_CONTROL know the setting; frozen' })",
-    $(if (-not $Rehearsal) { "cd robot_vision; $py -c `"from bridge import server as S; S.preflight_final(S.load_config('configs/v4/bridge.json')[0], 'guide', '$name', '$control')`"" }))
+    $(if (-not $Rehearsal) { "cd robot_vision; $py -c `"$preflight`"" }))
+if ($Resume) { Say "    declared resume: $resumeMarker (from run $StartRun; part 1: Unity $($resumeInfo.part_1.unity), bridge $($resumeInfo.part_1.bridge); seed $($resumeInfo.seed))" }
 foreach ($n in $notes) { Say "    note: $n" }
 if ($DryRun) {
     if ($blockers.Count) { Say "    a real run would be REFUSED now:"; foreach ($b in $blockers) { Say "      - $b" } } else { Say "    a real run would pass these checks now (the server's preflight is not run in a dry run)" }
@@ -167,7 +198,7 @@ if ($DryRun) {
         Push-Location $rv
         try {
             $ErrorActionPreference = "Continue"
-            $pre = & $py -c "from bridge import server as S; S.preflight_final(S.load_config('configs/v4/bridge.json')[0], 'guide', '$name', '$control')" 2>&1
+            $pre = & $py -c $preflight 2>&1
             $preOk = ($LASTEXITCODE -eq 0)
             $ErrorActionPreference = "Stop"
         } finally { Pop-Location }
@@ -221,7 +252,8 @@ try {
         Say "    listening; bridge run folder $bridge"
     }
 
-    # ---- 4. Unity in the Editor window
+    # ---- 4. Unity in the Editor window (a final: with its server's run folder, addendum 13)
+    if (-not $Rehearsal) { $unityArgs += @("-bridgeFolder", (Q ($bridge.TrimEnd('\', '/').Split(@('\', '/'))[-1]))) }
     Step "Unity in the Editor window (no -batchmode), waited for until it quits (up to $trialTimeout s)" "$(Q $UnityExe) $($unityArgs -join ' ')"
     $started = Get-Date
     if (-not $DryRun) {
@@ -259,16 +291,19 @@ if (-not $DryRun) {
     if ($found.Count -ne 1) { Stop-Session "expected one new $sessionPattern folder, found $($found.Count): run check_session_v4.ps1 yourself" }
     $session = $found[0].FullName
 }
-$checkArgs = @("-U", (Q $session), "-B", (Q $bridge), "-Runs", $runs) + $(if ($StartRun -gt 1) { @("-StartRun", $StartRun) } else { @() }) + $(if ($Rehearsal) { @() } else { @("-Final") }) + @("-Protocol", (Q $note))
+$checkArgs = @("-U", (Q $session), "-B", (Q $bridge), "-Runs", $runs) + $(if ($StartRun -gt 1 -or $Resume) { @("-StartRun", $StartRun) } else { @() }) +
+             $(if ($Resume) { @("-ResumeMarker", (Q $resumeMarker)) } else { @() }) + $(if ($Rehearsal) { @() } else { @("-Final") }) + @("-Protocol", (Q $note))
 Step "B11 validity check" "$repo\finals_v4\check_session_v4.ps1 $($checkArgs -join ' ')"
+# a resumed final is evaluated as ONE session of two parts (AUDIT.md 16.30.1): part 1 (the declaration's folders) and part 2
+$parts = $(if ($Resume) { "--session $(Q (Join-Path $outputs $resumeInfo.part_1.unity)) $(Q (Join-Path $outputs $resumeInfo.part_1.bridge)) " } else { "" }) + "--session $(Q $session) $(Q $bridge)"
 $evaluation = @("the setting's final evaluation and CSV export, Anisha's tools, run once (their final mode for the experiments is pending: outputs\for_anisha_finals_ab_*.md), e.g.",
-                "cd robot_vision; $py hri_eval_final_v4.py --setting $name --session $(Q $session) $(Q $bridge)",
-                "cd robot_vision; $py export_csv_v4.py --session $(Q $session) $(Q $bridge)")
+                "cd robot_vision; $py hri_eval_final_v4.py --setting $name $parts",
+                "cd robot_vision; $py export_csv_v4.py $parts")
 if ($DryRun) {
     if (-not $Rehearsal) { Step "afterwards, by hand, once and only if the check says SESSION VALID" $evaluation }
     Say ""; Say "DRY RUN: nothing was run."; exit 0
 }
-& (Join-Path $PSScriptRoot "check_session_v4.ps1") -U $session -B $bridge -Runs $runs -StartRun $StartRun -Final:(-not $Rehearsal) -Protocol $note | ForEach-Object { Say "    $_" }
+& (Join-Path $PSScriptRoot "check_session_v4.ps1") -U $session -B $bridge -Runs $runs -StartRun $StartRun -Final:(-not $Rehearsal) -Protocol $note -ResumeMarker $resumeMarker | ForEach-Object { Say "    $_" }
 $valid = ($LASTEXITCODE -eq 0)
 Say ""
 Say "Unity session: $session"

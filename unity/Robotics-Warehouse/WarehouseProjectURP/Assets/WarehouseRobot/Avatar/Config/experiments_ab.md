@@ -403,32 +403,46 @@ CSV export commands (Anisha's tools; their final mode for the experiments is pen
 
 ## 2026-11-14, section 8: the avatar experiment, protocol (declared only; nothing run)
 
+*Corrected 2026-11-21 (section 15 addendum 11):* the look list (15 looks), the role of the looks in no split, PROCEED (recorded),
+`cartoon_boxo_01` (Play too), the counts and step 6 (the run-once guard exists) are brought up to what sections 10 and 11 and the section 15
+addenda built. The question, the unchanged tool, the order (after the last navigation final) and run-once are unchanged. The text as declared
+on 2026-11-14 is in this file's git history.
+
 Question: how does the kind of avatar change what the robot's perception finds and reads (person, arm, hand, the gesture), with the frozen
 reader? An engineering measurement with Anisha's `look_check_v4.py` **unchanged** (its rules: `docs/look_check_v4.md`, `configs/v4/look_check.json`);
 no value of any tool, reader or config is tuned on it, and its results never feed back into the navigation finals.
 
-**Looks per kind** (the `avatar_experiment` list of `looks_ab.json`, unchanged; 13 looks):
+**Looks per kind** (the `avatar_experiment` list of `looks_ab.json`; 15 looks). The six looks in no split of `data_splits.json` have role
+`avatar_experiment` in `looks_ab.json` (addendum 11): only these look checks record them, and every trial session refuses them
+(`DataSplitsV4.GuardRun`). The other nine are the study's Sunbox looks with their splits (role `candidate`).
 
 | kind | looks | recorded in |
 |---|---|---|
-| realistic human | `mixamo_worker` | Edit mode and Play mode |
-| stylised human (Sunbox body family) | development: `sunbox_m1`, `sunbox_f1`, `sunbox_m2`, `sunbox_m_shirt_white`, `sunbox_m_tshirt_black`, `sunbox_f_shirt_white`, `sunbox_f_dress_red`; test: `sunbox_f2`, `sunbox_m_shirt_plaid`, `sunbox_f_shirt_plaid` | Edit mode and Play mode |
-| anime | `anime_f_01` (the re-export of section 5) | Edit mode and Play mode |
-| cartoon non-human | `cartoon_boxo_01` | Edit mode only: the worker template cannot spawn it (one finger chain per hand; `look_check_play_ab.json` `looks_excluded`, section 2 rule) |
+| realistic human | `mixamo_worker` (role `avatar_experiment`) | Edit mode and Play mode |
+| stylised human (Sunbox body family) | split development: `sunbox_m1`, `sunbox_f1`, `sunbox_m_shirt_white`, `sunbox_m_tshirt_black`, `sunbox_f_shirt_white`, `sunbox_f_dress_red`; split test: `sunbox_f2`, `sunbox_m_shirt_plaid`, `sunbox_f_shirt_plaid`; no split: `sunbox_m2` (role `avatar_experiment`) | Edit mode and Play mode |
+| anime | `anime_f_01` (the re-export of section 5) and its controlled variants `anime_f_02_outfit_short` (outfit with short sleeves) and `anime_f_03_bangs_parted` (bangs only), added in section 10; all role `avatar_experiment` | Edit mode and Play mode |
+| cartoon non-human | `cartoon_boxo_01` (version 3; role `avatar_experiment`) | Edit mode and Play mode: separate finger chains and island-bound hands (section 10, addenda 6 to 13) let the worker template spawn it; it is in `look_check_play_ab.json` `looks` |
 
 No look is added, dropped or replaced because of a result; a look that fails is reported as failed (as anime_f_01 and cartoon_boxo_01 in section 6).
+The two anime variants were added in section 10 as controlled variants, before any run of the experiment.
 
 **Commands, distances, repeats** (the existing configs, unchanged):
-- *Commands:* POINT, WAIT, STOP and the negative control NONE (the worker idle, facing the robot). PROCEED is **not evaluated**: the Unity look checks
-  record `WorkerV4Config.Commands` (POINT, WAIT, STOP) only, and Anisha's tool grades PROCEED only when PROCEED recordings exist (AUDIT.md 16.12
-  item 5). Recording PROCEED would be a Unity change, to be declared before the freeze if wanted **[N]**.
+- *Commands:* POINT, WAIT, STOP, PROCEED and the negative control NONE (the worker idle, facing the robot). PROCEED is recorded since section 10
+  item 5 (Play: `look_check_play_ab.json` `proceed.record` true, sequences of 21 frames taken while the forearm swings; Edit: a posed swing,
+  section 10 addendum 1); Anisha's tool grades PROCEED when PROCEED recordings exist (`graded_when_present`, AUDIT.md 16.12 item 5).
 - *Edit mode* (`Avatar/Config/look_check.json` with the looks of `looks_ab.json`, `LookCheckMenu.BatchRunExperiment`, every look of the list): the declared held
-  poses on the neutral stage at 2.0 m (verdict distance) and 4.0 m, both arms, 11-frame sequences and singles as `look_check.json` `recording`.
+  poses on the neutral stage at 2.0 m (verdict distance) and 4.0 m, both arms, 11-frame sequences (PROCEED 21) and singles as `look_check.json`
+  `recording`: 2 sequences + 5 singles per group, 18 groups, 126 recordings and 566 frames per look; 15 looks = 270 groups, 1 890 recordings,
+  8 490 frames (the rehearsal of 2026-11-20, `look_check_ab_20261120_231306`). Edit takes are held poses, not clips: their rows carry `clip` ""
+  and `pose` "posed" (addendum 11).
 - *Play mode* (`Avatar/Config/look_check_play_ab.json`, unchanged: venue `WarehouseRobot_v4.unity`, the J1 and J2 worker stands, asking bearings
   15 to 50 deg, real motion with the worker template, seed 1): per look, command, distance (2.0 and 4.0 m +- 0.15 m) and arm (left, right; NONE
-  has none): **2 sequences of 11 frames + 16 single frames = 38 frames** per group, so 12 POINT/WAIT/STOP groups (456 frames) and 2 NONE groups
-  (76 frames) = **532 frames per look**, 12 looks = 6 384 frames. The seed is the one of the step 2 check (the same poses are drawn again, so the
-  numbers are comparable with that engineering check, which is not part of the experiment).
+  has none): **2 sequences + 16 single frames** per group, sequences of 11 frames (PROCEED 21), so 38 frames per group (PROCEED 58): 12
+  POINT/WAIT/STOP groups (456 frames), 4 PROCEED groups (232) and 2 NONE groups (76) = 18 groups, 324 recordings and **764 frames per look**;
+  15 looks = 270 groups, 4 860 recordings, **11 460 frames** (the rehearsal of 2026-11-21, `look_check_play_ab_20261121_151205`, 131 min). Each
+  row names its clip (`recordings.jsonl` `clip`, and `clip` in every truth row). Since addendum 11 each round of looks starts with a shader
+  warm-up (no recording). The seed is the one of the step 2 check (the same poses are drawn again, so the numbers are comparable with that
+  engineering check, which is not part of the experiment).
 - *Measures, per look and summed per kind:* the fields of Anisha's report (person found, arm valid, hand linked, own cue, wrong class, sequence
   read, arm-to-shoulder ratio p95, facing, verdict) at 2.0 m and at 4.0 m, each with its count (coverage); plus the Unity-side checks of section 2
   (bone arm-to-shoulder ratio against 1.683, hand reach to the IK target, the mirror-rest correction, material problems, magenta pixels).
@@ -439,16 +453,18 @@ No look is added, dropped or replaced because of a result; a look that fails is 
    `WorkerV4.prefab`, the v4 scene) are on the B9 list (section 7 step 4) and therefore frozen.
 2. On main at the frozen commit, clean tree, Nusrat's PC, the run protocol (other apps closed, Best performance; `run_protocol_v4.ps1 -Label avatar_experiment`).
 3. Edit mode (batch mode works for it), from the repository root:
-   `& "C:\Program Files\Unity\Hub\Editor\2022.3.62f3\Editor\Unity.exe" -batchmode -quit -projectPath unity\Robotics-Warehouse\WarehouseProjectURP -executeMethod WarehouseAvatar.EditorTools.LookCheckMenu.BatchRunExperiment -logFile robot_vision\outputs\avatar_experiment_edit_<time>.log`
+   `& "C:\Program Files\Unity\Hub\Editor\2022.3.62f3\Editor\Unity.exe" -batchmode -quit -projectPath unity\Robotics-Warehouse\WarehouseProjectURP -executeMethod WarehouseAvatar.EditorTools.LookCheckMenu.BatchRunExperiment -avatarExperiment -logFile robot_vision\outputs\avatar_experiment_edit_<time>.log`
    -> `robot_vision/outputs/look_check_ab_<time>/`.
 4. Play mode in the Editor WINDOW (no `-batchmode`, as the finals):
-   `& "C:\Program Files\Unity\Hub\Editor\2022.3.62f3\Editor\Unity.exe" -projectPath unity\Robotics-Warehouse\WarehouseProjectURP -executeMethod WarehouseAvatar.EditorTools.LookCheckPlayMenu.CommandLineRunAB -lookCheckTimeout 10800 -logFile robot_vision\outputs\avatar_experiment_play_<time>.log`
+   `& "C:\Program Files\Unity\Hub\Editor\2022.3.62f3\Editor\Unity.exe" -projectPath unity\Robotics-Warehouse\WarehouseProjectURP -executeMethod WarehouseAvatar.EditorTools.LookCheckPlayMenu.CommandLineRunAB -avatarExperiment -lookCheckTimeout 10800 -logFile robot_vision\outputs\avatar_experiment_play_<time>.log`
    -> `robot_vision/outputs/look_check_play_ab_<time>/` (recordings in its `looks_check_<time>/`).
 5. From `robot_vision\`: `.\.venv\Scripts\python.exe look_check_v4.py --input <the recordings folder of the Edit-mode run>` and the same for the
    Play folder; nothing else is run on them. A cyan-placeholder frame (section 5, addendum 2) or a crash is reported as it is; the run is **not
    repeated** (as for a final). The step 2 and 2b look checks stay engineering checks and are not results of the experiment.
-6. Run once: the two output folders (identified by their `run_info.json` commit = the frozen commit) are the avatar experiment. No code guard is
-   built for it (declared; a guard like `FinalGuardV4` would be a later, declared change **[N]**).
+6. Run once: the two output folders (identified by their `run_info.json` commit = the frozen commit and `avatar_experiment_part` "edit" /
+   "play") are the avatar experiment. Enforced since section 10 item 6 by the run-once guard (`avatar_experiment.json`, `AvatarExperimentGuard`):
+   only with the `-avatarExperiment` flag, frozen B9 files unchanged, every navigation final done, no look subset, and no earlier
+   `AVATAR_EXPERIMENT_STARTED.json` / `AVATAR_EXPERIMENT_DONE.json` of the same part.
 7. Reported per kind and per look with every rate's count; the test looks are reported like the others (the finals are over by then).
 
 ## 2026-11-14, section 9: what the Python side needs for these finals (step 7)
@@ -2708,3 +2724,285 @@ folder reports its folder relative to `robot_vision/` (an absolute path in a rep
   refused; without `-StartRun` the dry run is as before. `check_session_v4.ps1`: `-StartRun 4 -Runs 3` and `-Final -StartRun 2` refused (exit 2).
 - *Not run:* no Play session with `-startRun` (development check for Nusrat when wanted: e.g. B3 with `-Trials 3 -StartRun 2`, then compare
   `session.json` `workers_plan`, `goal_order` and run 2's `truth.jsonl` liars with the full session `trials_development_Task2_B3_*` of step 5).
+
+### 2026-11-21, section 15 addendum 11: the avatar rehearsal's cyan frames, the avatar-experiment look role, the clip of Edit takes, section 8 corrected (declared before any change below)
+
+Nusrat's task of 2026-11-21, after the avatar rehearsal's Play part failed its format check. Branch `nusrat/v4-rehearsal-fixes` from origin/main
+`21a4eaf`. Nothing under `robot_vision/`, `docs/` or `external/` changes; nothing is frozen; no session, final, look check or avatar run is made;
+nothing is pushed. One file of the B9 freeze list changes: `looks_ab.json` (item 2), so its hash moves before the freeze (nothing is frozen yet).
+`look_check_play_ab.json`, `look_check.json`, `worker_v4.json`, the scene and the prefab do not change. The checker
+(`finals_v4/avatar_rehearsal_check.py`) does not change: its rules, the 0 error-shader-pixel rule included, stay as in addendum 10.
+
+**Diagnosis (read only, before this entry).** The Play part (launcher 15:10 to 17:20, commit `21a4eaf`, run folder
+`look_check_play_ab_20261121_151205`) finished: 15 looks, 270 of 270 groups (2 sequences + 16 singles each), 4 860 recordings, 11 460 frames, Unity
+exit 0 after 131 min, no timeout. The play-only check `avatar_rehearsal_check_20261121_172439` failed on one rule only: **38 frames with exact cyan
+(0, 255, 255) pixels** (527 520 pixels in all; 0 magenta). All 38 are `anime_f_01`, command NONE, at J2: 8 singles and 1 sequence of 11 frames at
+2.0 m (20 089 to 25 042 cyan pixels per frame) and the same takes at 4.0 m (5 284 to 6 080), recorded between Time.time 5124.86 and 5128.80 s.
+That window is the first render of any anime material in the session (the looks run in rounds of one look per junction, and each look is at J2 one
+round before J1; `anime_f_01` at J2 is worker 22 of round 11 of 15). Its next take (POINT at 5130.98 s), its J1 round, `anime_f_02_outfit_short`, `anime_f_03_bangs_parted` and `cartoon_boxo_01` have
+none. The anime materials are URP Lit with `_ALPHATEST_ON` and `_EMISSION`, keywords no earlier look uses (Sunbox: specular set-up, no alpha test,
+no emission), so their variants were compiled at that moment: the Unity log shows two shader compilers launched during Play. Everything else passed:
+no missing group, every sequence frame count, 540 sequences timed with the largest |offset| 0.0887 s (< 0.100 s), every header, 30 of 30 truth files.
+The frames were deleted by `--delete-frames` after the report (22 920 files, 4.85 GB), as the blind rule says (`docs/handoff_freeze_v4.md` section 3).
+Classification: **a real recording problem** (the Editor's still-compiling placeholder in recorded frames), not a checker problem and not a
+run-condition hitch. It is the failure of section 5 addendum 2 (2026-11-14: 56 of 76 `anime_f_01` NONE frames, first renders of new materials):
+the menu's session switch `ShaderUtil.allowAsyncCompilation = false`, set when the scene loads (`LookCheckPlayMenu.OnSceneLoaded`), does not stop
+it, and the earlier remedy was a second run once the variants were cached. No tolerance changes.
+
+**Item 1. Shader warm-up and a synchronous capture render (`LookCheckPlayDriver`).**
+- After a round's workers are spawned and before their first take, a warm-up: every camera of every site is put on the site's facing line at its
+  nominal distance (2.0 and 4.0 m, pan-tilt height, looking at the stand) and rendered once per frame until (a) at least 3 renders, (b) the last 2
+  renders of every camera have no exact cyan or magenta pixel, and (c) the Editor reports no shader compiling (`ShaderUtil.anythingCompiling`); at
+  most 120 s, else the run fails (`failed: shader warm-up ...`). The warm-up draws from no seeded stream (pose, variation, clip and STOP streams are
+  untouched), so every take's camera pose, variation and clip is the same as without it; it writes no recording. The next take's `PlaceCameras`
+  sets the camera poses as before.
+- Every capture render (warm-up and recording) turns `ShaderUtil.allowAsyncCompilation` off around `Camera.Render()` and restores it (Unity's
+  per-call use; Editor only). The menu's session switch stays.
+- `recordings.jsonl` Play rows get `magenta_pixels` and `cyan_pixels`: exact colours as the checker counts them, summed over the recording's frames,
+  counted in the write task (off the main thread, so capture timing is unchanged). `run_info.json` gets `shader_warm_up` (rounds, renders, the
+  longest warm-up, error-shader pixels seen during warm-ups). A recording with such pixels is logged as a warning; the checker judges it.
+- The pure parts go into WarehouseAvatar (new `Avatar/Scripts/ShaderWarmUp.cs` with its `.meta`): the pixel count on an RGBA32 buffer and the stop
+  rule, with the constants 3 renders, 2 clean renders, 120 s. They are operating limits of the capture, not evaluation thresholds; set before any run.
+- Not changed: `TrialRunnerV4` (sessions and finals keep the same session switch; see the limitation below), the Edit look check (0 cyan pixels in
+  every Edit run so far; it renders in the Editor, not in Play).
+- Tests (Edit Mode, WarehouseAvatar): exact cyan and magenta counted, near colours not counted, an odd buffer length refused; the stop rule (too few
+  renders, a dirty render, still compiling, the 120 s limit).
+- Limitation, not changed here: `TrialRunnerV4` relies on the same session switch, so the first frames of a look whose shader variants are not yet
+  compiled could reach Python cyan. The finals use the Sunbox looks (variants compiled in every earlier session); a check of the finals' first
+  frames is for Nusrat's decision.
+
+**Item 2 (task item 0). The avatar-experiment look role and `GuardRun`.**
+- Anisha's finding: `DataSplitsV4.GuardRun` would accept a lone avatar-experiment look. Today it refuses those looks only because
+  `data_splits.json` does not list them; once it lists them (her hand-off note, section 5 (b)) a trial session could use one.
+- `looks_ab.json`: role `avatar_experiment` (today `candidate`) for the six looks of its `avatar_experiment` list that are in no split of
+  `data_splits.json`: `mixamo_worker`, `sunbox_m2`, `anime_f_01`, `anime_f_02_outfit_short`, `anime_f_03_bangs_parted`, `cartoon_boxo_01`. The
+  navigation looks keep `candidate`; `worker_v4.json` and `look_check.json` do not change.
+- `LookEntry.RoleAvatarExperiment`. `ExperimentLooks.Validate`: a role is `candidate` or `avatar_experiment`; a navigation look never has
+  `avatar_experiment`; a look with that role is in the `avatar_experiment` list.
+- `DataSplitsV4.Parse(splits, looksAb)` keeps the ids of the looks with that role; `GuardRun` refuses any of them first, in development and final
+  mode, alone or with other looks, whatever split `data_splits.json` gives it ("... is an avatar-experiment look (looks_ab.json role
+  avatar_experiment): refused in every trial session; only the avatar experiment's look checks record it"). `TrialRunnerV4`, the one runtime reader
+  of `data_splits.json` (Task 2, STOP, experiments A/B and the finals all go through it), passes `looks_ab.json`.
+- The avatar experiment (Edit `LookCheckMenu.RunExperiment` / `BatchRunExperiment`, Play `LookCheckPlayMenu` / `LookCheckPlayDriver`) never calls
+  `GuardRun` and records these looks as before; the Edit rows' `role` column now says `avatar_experiment` for them.
+- Tests: (a) refused: each of the six alone, in development and final mode, beside a development look, and after adding it as development to a copy
+  of `data_splits.json`; (b) the avatar experiment keeps them: `looks_ab.json` validates, every look with the role is in its `avatar_experiment` list,
+  every look of that list missing from `data_splits.json` has the role and no listed look has it, and the navigation looks pass `GuardRun` as before.
+
+**Item 3 (task item 1). The clip of each take.**
+- Play: `recordings.jsonl` `clip` (the `worker_v4.json` clip name; "" for NONE) beside `look`, `command`, `distance_m`, `arm`, `junction`, `take`,
+  e.g. `{"name":"anime_f_01__POINT__2.0__left_s2_j2_point_mixamo_02", ..., "command":"POINT","arm":"left","clip":"point_mixamo_02","junction":"J2",
+  ..., "take":2, ..., "distance_m":2.0, ...}`; and every truth row (`truth/*.jsonl` `clip`). No change.
+- Edit: none. Edit takes are held poses from `look_check.json` variants (`PoseSpec`), not animation clips. The Edit row gets `clip` "" and `pose`
+  "posed" (appended after the earlier fields, which keep their order). The record class moves from `LookCheckMenu` (Editor) to WarehouseAvatar
+  (`LookCheckEditRecord`, same fields) so that a test can pin it. Test: a record's JSON has `look`, `command`, `distance_m`, `arm`, `take`, `clip` ""
+  and `pose` "posed".
+
+**Item 4 (task item 2). The avatar-session marker.** It exists; no new key: `avatar_experiment_part` ("edit" or "play" in the official run, "" in an
+engineering check) in `run_info.json` of each part, and the run-once markers `AVATAR_EXPERIMENT_STARTED.json` / `AVATAR_EXPERIMENT_DONE.json` with
+the same key (`AvatarExperimentGuard.MarkerJson`).
+
+**Item 5 (task item 3). Resume names: not changed.** `resume_from_run`, `resume_of` and `--resume-marker` appear on no branch of origin (all refs,
+2026-11-21, `anisha/v4-prefreeze` included, which main already contains) and nowhere in the working tree. Unity's names stay `start_run`
+(`session.json`, `summary_unity.json`), `-startRun` and `-StartRun` until Anisha names hers **[A]**.
+
+**Item 6 (task item 4). Section 8 corrected in place**, with a dated note at its top: 15 looks (`anime_f_02_outfit_short`,
+`anime_f_03_bangs_parted` added in section 10); PROCEED recorded (section 10 item 5); `cartoon_boxo_01` in Play too (addenda 9 to 13); `sunbox_m2`
+in no split, role `avatar_experiment` (item 2); counts of the Play and Edit parts as run on 2026-11-20/21; the run-once guard exists (section 10 item 6).
+
+**Item 7 (task item 5). `SOURCES.txt`: nothing to fix.** Its line 12 reads `anime_f_03_bangs_parted.fbx`, the file name and the `looks_ab.json` id;
+the earlier `anime_f_03_hairback.fbx` was corrected by Nusrat (section 11).
+
+**Order.** This declaration is committed alone; then items 1, 2, 3 and 6 with their tests in one commit after Unity Edit Mode and the Python suite
+pass. Then Nusrat repeats the Play part and the play-only check (about 2 h 15 min); a repeat is a new run folder, the failed one is kept.
+
+**Addendum 11, as built (2026-11-21).** Implemented as declared. Files: `Avatar/PlayCheck/LookCheckPlayDriver.cs` (warm-up `WarmUp`, `RenderInto`,
+`Compiling`; `magenta_pixels` / `cyan_pixels` per recording; `run_info.json` `shader_warm_up`), `Avatar/Scripts/ShaderWarmUp.cs` (new, with its `.meta`),
+`Avatar/Scripts/TrialWorkersV4.cs` (`DataSplitsV4.AvatarExperimentLooks`, `Parse(splits, looksAb)`, `GuardRun`), `Avatar/Scripts/ExperimentLooks.cs` (role
+rules), `Avatar/Scripts/LookCheckConfig.cs` (`LookEntry.RoleAvatarExperiment`, `LookCheckEditRecord`), `Avatar/Editor/LookCheckMenu.cs` (uses it),
+`Scenario/Scripts/TrialRunnerV4.cs` (reads `looks_ab.json` with `data_splits.json`), `Avatar/Config/looks_ab.json` (six roles), section 8 above,
+`Avatar/Tests/RehearsalFixesTests.cs` (new, with its `.meta`; 6 tests).
+- *Tests:* Unity Edit Mode 354 of 354 (348 + 6 new); `finals_v4` 14 of 14 (unchanged); Python suite as in the commit message.
+- *Not run:* no Play run. The warm-up, the synchronous render and the pixel fields are exercised only by the repeated Play part (Nusrat), whose
+  `run_info.json` `shader_warm_up` and `recordings.jsonl` `cyan_pixels` show what the warm-up did; the checker judges the frames as before.
+
+### 2026-11-21, section 15 addendum 12: the shader warm-up record and compile flag (both look-check parts), the warm-up of a trial session, the data_splits role (declared before any change below)
+
+Nusrat's task of 2026-11-21 (evening), items 1 and 2, with Anisha's corrections: the rehearsal check keeps `--delete-frames` (her blind rule:
+frames are deleted even when the check fails; `cyan_pixels` in `recordings.jsonl` is the diagnosis), and her AUDIT.md 16.31.5 item 1 (the cyan /
+magenta rule decided from Unity's warm-up record and the frame's time, never from images). Branch `nusrat/v4-rehearsal-fixes` after addendum 11.
+Nothing under `robot_vision/`, `docs/` or `external/` is edited; nothing is frozen; no Play run; nothing is pushed. B9: `final_v4.json`,
+`looks_ab.json` and the configs do not change in this addendum.
+
+**Item 1. The warm-up record and the compile flag, in both parts of the avatar experiment.**
+- *Record.* Every warm-up writes one JSON line into `shader_warm_up.jsonl` in the run folder of the look check (`look_check_play_ab_<time>/`,
+  `look_check_ab_<time>/`, next to `recordings.jsonl`; not in the `looks_check*` recordings folder, which `--delete-frames` empties). Fields (class
+  `ShaderWarmUpRecord`, WarehouseAvatar): `part` (play, edit or session), `round` (Play round, 1-based; -1 otherwise), `looks` (look per stand, e.g.
+  "J1: anime_f_01 (worker 23); J2: ..."), `stands` (where the cameras stood), `cameras` (nominal distances), `clock` (`Time.time` in Play and in a
+  session, the clock of the frames' `time_s`; `EditorApplication.timeSinceStartup` in Edit, whose headers carry no `time_s`), `time_start_s`,
+  `time_end_s`, `started_local`, `ended_local`, `compiling_at_start`, `compile_seen_first_s` and `compile_seen_last_s` (the clock at the first and
+  the last render after which `ShaderUtil.anythingCompiling` was true; -1 if never), `compiling_at_end` (`ShaderUtil.anythingCompiling` when the
+  warm-up ended), `renders`, `last_clean_streak`, `error_pixels_seen`, `look_pixels` (session warm-up: pixels the look changes in the render; -1
+  otherwise), `status` (done, timed_out, not_in_view). The per-round summary in `run_info.json` `shader_warm_up` stays.
+- *Flag per recording.* `recordings.jsonl` rows of both parts get `shaders_compiling` (true when `ShaderUtil.anythingCompiling` was true just before
+  or just after the render of any frame of the recording) and `shaders_compiling_frames` (the frame indices for which it was true; `[]` if none).
+  Edit rows also get `cyan_pixels` (exact (0, 255, 255), as the checker counts it); their `magenta_pixels` (tolerance rule) is unchanged.
+- *Edit part.* `LookCheckMenu.Run` (the Edit check and the avatar experiment's edit part, `RunExperiment` / `BatchRunExperiment`) gets the same
+  warm-up before the first recorded render of each look at each distance: the check camera renders the posed look (rest pose) until the rule of
+  addendum 11 holds (at least 3 renders, the last 2 clean, nothing compiling; 120 s of real time, else the run fails); each Edit render compiles
+  synchronously (`ShaderUtil.allowAsyncCompilation` off around it). No draw from any stream (Edit has none); the recordings are unchanged.
+- *The real avatar experiment.* Edit: `RunExperiment` -> `Run` (warm-up, flags). Play: `LookCheckPlayMenu.CommandLineRunAB -avatarExperiment` ->
+  `LookCheckPlayDriver` (warm-up per round, flags). Both official parts use exactly these paths; nothing is switched off by the flag.
+- *For Anisha's rule (16.31.5 item 1).* A frame with placeholder pixels counts as INVALID when its recording has `shaders_compiling` true (Play: also
+  its `time_s` inside a warm-up's `compile_seen_first_s`..`time_end_s` on the same `Time.time` clock); otherwise it is a look defect. Unity provides
+  the data; the rule is Anisha's.
+
+**Item 2. The warm-up of a trial session (`TrialRunnerV4`, every session: development, STOP, experiments A/B, finals).**
+- After the plans are made and before the leak test (and before any run's workers are spawned), every look of the session (the commander and
+  bystander looks of every planned run; an experiment's: every planned worker's look; distinct, ordinal order) is warmed up once: a temporary
+  worker of the template with that look (not in the session's worker list, no `SetRun`, no truth logging, no id of the plan) stands 2.0 m ahead of
+  the start node A on A's heading; a temporary camera with the pan-tilt camera's settings (`PanTiltCamera.ApplyCameraSettings`, the robot's config)
+  at A, at the pan-tilt height, looking along the heading, renders only a free layer (the highest unnamed layer; the temporary worker is moved to it,
+  so no rack or robot part can hide it; every light of the v4 scene lights every layer) until the warm-up rule holds; then the worker and the
+  camera are destroyed and one frame passes before the next look. A look whose render does not differ from the empty render (`look_pixels` 0) is
+  `not_in_view` and the session does not start (nothing is recorded as warmed up that was not drawn).
+- No seeded stream is drawn (the plans, goals, placements, looks, liars and clips are made before it and are not read again), so every run is what
+  it was. The leak test and run 1 (or run k) follow as before.
+- `session.json` gets `shader_warm_up`: the list of the records of item 1 (part "session"), one per look, as a new last field (every earlier
+  field keeps its order; an experiment session's own fields follow). A timeout or `not_in_view` refuses the session ("not started: shader warm-up
+  ...", `NOT_STARTED.txt`), before the leak test.
+- The 360 camera is not warmed up separately (it renders the same materials with the same passes); disclosed.
+
+**Item 3. The `data_splits.json` role (Anisha's 16.31.2).** Her branch `anisha/v4-prefreeze-2` gives the six looks the role `avatar_experiment` in
+`data_splits.json` itself and her `guard_run` refuses it in every mode; she asked Unity to close the same hole. `DataSplitsV4.Parse` therefore also
+takes every look whose `data_splits.json` role is `avatar_experiment` into `AvatarExperimentLooks` (refused first by `GuardRun`), besides the
+`looks_ab.json` roles of addendum 11. A test requires the two sources to agree (a look has role `avatar_experiment` in `looks_ab.json` exactly when
+`data_splits.json` does not list it as development or test).
+
+**Item 4. Merge.** After this addendum is built, `origin/anisha/v4-prefreeze-2` (Anisha's branch, e49259b) is merged into this branch so that the
+resume work (addendum 13) can use her `final_guard_v4.py --resume-info`; only her files change by the merge.
+
+**Tests (Edit Mode).** The warm-up tracker (renders, clean streak, first and last compile, compiling at end, status, the record's JSON field names);
+the per-recording flag (frame indices, Play and Edit records' JSON); the differing-pixel count and the free-layer choice; the session's look list
+(distinct, ordinal, no empty name); a source check that `TrialRunnerV4`'s warm-up draws no seeded stream and runs after the plans and before the
+leak test; the data_splits role (refused with `Parse(json)` alone; the two sources agree).
+
+**Not run.** No Play run (Nusrat's rehearsal repeat and the next session exercise the Play warm-ups). The Edit warm-up is exercised once by an Edit
+engineering check of one look in batch mode (`-lookCheckLooks sunbox_m1`, no `-avatarExperiment`; its folder is kept and named in the as-built note).
+
+**Addendum 12, as built (2026-11-21).** Items 1 to 3 implemented as declared; item 4 (the merge) follows in its own commit. Files:
+`Avatar/Scripts/ShaderWarmUp.cs` (`ShaderWarmUpRecord`, `ShaderWarmUpTracker`, `DifferingPixels`, `FreeLayer`, `SessionLooks`, the Color32 count,
+`RecordFile`), `Avatar/PlayCheck/LookCheckPlayDriver.cs` (record per round, `shader_warm_up.jsonl`, `RenderInto` returns the compile flag,
+`shaders_compiling` / `shaders_compiling_frames` per recording), `Avatar/Editor/LookCheckMenu.cs` (`WarmUpEdit` per look and distance, synchronous
+render with the flag, `cyan_pixels` and the flags per Edit row, `shader_warm_up.jsonl`), `Avatar/Scripts/LookCheckConfig.cs` (the Edit record's
+three fields), `Avatar/Scripts/TrialWorkersV4.cs` (`DataSplitsV4.AvatarExperimentRole`, read from data_splits.json), `Scenario/Scripts/TrialRunnerV4.cs`
+(the call before the leak test, `NOT_STARTED.txt` on a refusal, `session.json` `shader_warm_up`), `Scenario/Scripts/TrialRunnerV4WarmUp.cs` (new, with
+its `.meta`), `Avatar/Tests/WarmUpRecordTests.cs` (new, with its `.meta`; 7 tests), `Avatar/Tests/RehearsalFixesTests.cs` (follows the data_splits
+role in both forms of the file; the Edit record's new keys).
+- *A test of mine corrected while building:* the tracker test first expected "continue" after three renders with two clean ones; the rule says
+  done, so the test was wrong (its second render made dirty, the expected counts adjusted). One compile error (an ambiguous `null` argument after
+  the Color32 overload) fixed in the test.
+- *Tests:* Unity Edit Mode 361 of 361 (354 + 7). Python suite as in the commit message.
+- *Edit smoke check (declared; an engineering check, not the avatar experiment):* `-executeMethod WarehouseAvatar.EditorTools.LookCheckMenu.BatchRunExperiment
+  -lookCheckLooks sunbox_m1` in batch mode, `robot_vision/outputs/look_check_ab_20261121_202302/` (log `warmup_edit_smoke_20261121_202126.log`):
+  126 recordings, 566 frames; `shader_warm_up.jsonl` has 2 records (2.0 m: 3 renders in 3.47 s; 4.0 m: 3 renders in 0.12 s; no compile seen, 0
+  error pixels, status done); every row has `clip` "", `pose` "posed", `cyan_pixels` 0, `shaders_compiling` false. The variants of `sunbox_m1` were
+  compiled already, so this shows the record and the flags, not a compile caught.
+- *Not run:* no Play run: the Play warm-up records and the session warm-up are first exercised by the repeated rehearsal Play part and the next
+  session (a rehearsal session before any final is advised: a session that cannot draw a look stops before its leak test).
+
+### 2026-11-21, section 15 addendum 13: the resume of an interrupted final, Unity's and the launcher's part of Anisha's rule (declared before any change below)
+
+Nusrat's task of 2026-11-21 (evening): implement every Unity and launcher item of Anisha's AUDIT.md 16.31.3 (branch `anisha/v4-prefreeze-2`, merged into
+this branch by addendum 12 item 4), on her rule 16.30.1 and her cross-check 16.31.4, with tests and a dry run; no Play, no freeze, no push; if
+not every item is built and tested by 01:00 the branch is left uncommitted and the finals use the no-resume rule. Her names, read in her code and
+used exactly: `resume_from_run` (the run k where the session resumes), `resume_of` (the folder name of the interrupted part-1 Unity session),
+`--resume-marker` (the declaration folder that `final_guard_v4.py --resume-info SETTING` names: `resume_marker`); `start_run` stays and equals
+`resume_from_run` in a resumed final. Her markers (`final_guard_v4.MARKERS`, each keyed `setting`): `FINAL_SETTING.json` (a final was started),
+`FINAL_RUN_DONE.json`, `FINAL_INTERRUPTION.json` (the declaration), `FINAL_RESUME.json`, `FINAL_INVALID.json`, `FINAL_DONE.json`,
+`FINAL_EXPORT_DONE.json`. Nothing under `robot_vision/`, `docs/` or `external/` is edited.
+
+**16.31.3 item 1: `-startRun k` in a final only with the declared interruption; the launcher asks Python.**
+- Launcher `run_session_v4.ps1 -Resume` (a final only; refused with `-Rehearsal`): runs `final_guard_v4.py --resume-info <setting>` (with
+  `--output-root`); a refusal stops the launcher (exit 2) with Python's reason. From its JSON: `resume_from_run` becomes Unity's `-startRun k`, the
+  declaration folder (`resume_marker`, under the output root) becomes Unity's new `-resumeMarker <folder>` and the server's
+  `--resume-marker <folder>`; the server's preflight is called with it. `-StartRun` by hand in a final stays refused (k comes only from Python).
+- `SessionResumeV4.Parse(text, runs, final, declaredResume, ...)`: in a final, `-startRun k` only with a declaration (`-resumeMarker`), and a
+  declaration needs `-startRun k`; development unchanged. The old message for a final without a declaration stays ("refused in a final") and now
+  names `--declare-interruption` and `-resumeMarker`.
+- New `-OutputRoot <folder>` of the launcher, `-DryRun` only (refused otherwise): the marker lookups and `--resume-info` read that folder (the dry run
+  below). A real session always uses the configured outputs folder.
+
+**16.31.3 item 2: Unity reads the declaration and refuses unless it matches.** New `Avatar/Scripts/FinalResumeV4.cs` (with its `.meta`):
+`Read(folder or file)` and `Problems(...)`: refused unless the declaration is a `FINAL_INTERRUPTION.json` in a folder directly under the output root
+and the only one for the setting; its `setting` is the final setting; `resume_from_run` equals `-startRun` and lies in 1..N; its `seed` equals the
+session's seed; its `goal_order` equals the full order Unity planned for all N runs; its `frozen_sha256` equals the SHA-256 (LF) of `frozen.json` now
+and `FinalGuardV4.FreezeProblems` is empty; it names part 1's Unity and bridge folders; and no `FINAL_INVALID.json`, `FINAL_DONE.json` or
+`FINAL_EXPORT_DONE.json` exists for the setting. `TrialRunnerV4.Run` checks it after the goal order is made and BEFORE the session folder is
+created, so a refusal writes nothing (status "not started: refused: resume of ...", TrialPlayV4 exits 1). A second resume is refused by Python's
+server at its start (it writes `FINAL_RESUME.json` before Unity starts), as 16.31.3 item 2 says; Unity does not repeat it.
+
+**16.31.3 item 3: `session.json`.** New last fields `resume_from_run` (k in a declared resume, 0 otherwise) and `resume_of` (the declaration's
+`unity_folder`, "" otherwise), after `shader_warm_up`; `start_run` stays (k). `summary_unity.json` gets the same two keys.
+
+**16.31.3 item 4: the start guard.** `FinalGuardV4.EarlierFinal(outputRoot, setting, cfg, currentBridgeFolder, resume)` (the 3-argument form
+stays): Unity's done file of the setting always refuses (a complete session is never resumed); Python's `FINAL_RUN_DONE.json` AND now its start
+marker `FINAL_SETTING.json` refuse unless they lie in this session's own server folder (the server writes its start marker before Unity starts)
+or, in a declared resume, in the declaration's part-1 bridge folder. So a fresh start after a hard crash (only `FINAL_SETTING.json` left) is
+refused. To know its own server folder a final now needs `-bridgeFolder <name>` (TrialPlayV4; the launcher passes the server's run folder);
+without it a final is refused. The launcher's own pre-checks follow the same rule (`FINAL_SETTING.json` is a blocker too; `-Resume` exempts the
+part-1 bridge folder only). The refusal text keeps "already run as a final" (pinned by tests) and adds how to declare and resume.
+
+**16.31.3 item 5: the done file covers runs k..N.** `FinalGuardV4.DoneJson(..., startRun, resumeFromRun, resumeOf)` adds `start_run`,
+`runs_driven` (N - k + 1; `successes` counts those), `resume_from_run` and `resume_of`; a full session writes 1, N, 0, "". Still no key `setting`.
+
+**16.31.3 item 6: the B11 check.** `check_session_v4.ps1 -ResumeMarker <declaration>`: `-Final -StartRun k` is accepted only with it (refused,
+exit 2, without), and only when the declaration and part 2's `session.json` agree (`setting` = `final_setting`, `resume_from_run` = k in both,
+`start_run` = k, `resume_of` = the declaration's `unity_folder`, `-U` is not part 1); `-ResumeMarker` without `-Final` is refused. The seven
+`Report` criteria, their numbers and labels do not change (pinned by Anisha's `test_v4_frozen.py`). The launcher passes it. Part 1 is not checked
+alone (16.31.3 item 6); the evaluation's command printed by the launcher lists both parts (`--session U1 B1 --session U2 B2`).
+
+**16.31.3 item 7: part 1 kept.** Nothing deletes or renames anything; the launcher makes the run-protocol note for part 2 as for any session.
+
+**16.31.3 item 8: a second interruption.** Python's `--declare-interruption` with part 2's folders writes `FINAL_INVALID.json`; then
+`--resume-info` refuses, so the launcher's `-Resume` refuses (exit 2), and Unity's check refuses a part 3 (the invalid marker).
+
+**Tests.** Edit Mode `Avatar/Tests/FinalResumeTests.cs` (new, with its `.meta`), refusal and acceptance per item: Python's marker names equal those
+of `final_guard_v4.py`; the declaration read as folder or file; the matching declaration accepted; each mismatch refused (setting, k, seed, goal
+order changed or shorter, frozen hash changed or unreadable, freeze problems, k out of range); invalid, evaluated, exported or a second declaration
+refused, another setting's markers ignored; a declaration outside the output root refused; `-startRun` in a final only with a declaration; the start
+guard (own server folder skipped, a silent restart refused, the declared part 1 accepted with its start and run markers, any other start marker
+refused, a complete session never resumed); the done file of runs k..N; source checks that the runner checks before creating its folder, writes
+the keys and needs `-bridgeFolder`, and that TrialPlayV4 passes and clears the two new keys. `finals_v4/test_resume_dryrun_v4.py` (new; Windows)
+runs the dry run below in a temporary folder and asserts each step.
+
+**Dry run (no Play, no server, no real final): `finals_v4/resume_dryrun_v4.py`** writes `robot_vision/outputs/resume_dryrun_<time>/` (its
+synthetic output root is one level further down, so no real guard sees its markers): part 1 of B3 interrupted at run 4; the launcher without
+`-Resume` refused ("already started"); Anisha's `--declare-interruption`; `--resume-info`; the launcher with `-Resume` (`-startRun 4
+-resumeMarker`, `-bridgeFolder`, `--resume-marker`, the check with `-StartRun 4 -ResumeMarker`, the evaluation with both parts); the server's start
+(her `check_start` and `write_resume`, as `bridge.server` does); part 2 with Unity's keys; the check refused without the marker and with a wrong
+`session.json`, accepted with it; her `resume_plan`: resumed, no problem; a second interruption: `FINAL_INVALID.json`, `--resume-info` and the
+launcher refuse. The report (`report.json`, `report.md`) lists each step.
+
+**Not changed / limits.** Python's files; the development `-startRun` (no declaration, as before); a resumed final has never run in Play (its first
+real use would be a final); the C# checks run in Edit Mode on synthetic folders only.
+
+**Addendum 13, as built (2026-11-21).** Implemented as declared, every item of 16.31.3. Files: `Avatar/Scripts/FinalResumeV4.cs` (new, with its
+`.meta`), `Avatar/Scripts/FinalGuardV4.cs` (`EarlierFinal` with the start marker, own server folder and declared part 1; `Problems` passes them;
+`DoneJson` with `start_run`, `runs_driven`, `resume_from_run`, `resume_of`), `HRI/Scripts/V4/SessionResumeV4.cs` (`declaredResume`),
+`Scenario/Scripts/TrialRunnerV4.cs` (`-resumeMarker`, `-bridgeFolder` required in a final, the declaration checked before the session folder,
+`session.json` / `summary_unity.json` / done file keys), `Scenario/Editor/TrialPlayV4.cs` (`-resumeMarker`, `-bridgeFolder`), `finals_v4/run_session_v4.ps1`
+(`-Resume`, `-OutputRoot`, `FINAL_SETTING.json` blocker, `--resume-info`, `--resume-marker`, `-bridgeFolder`, both parts in the evaluation command),
+`finals_v4/check_session_v4.ps1` (`-ResumeMarker`), `Avatar/Tests/FinalResumeTests.cs` (new, with its `.meta`; 10 tests), `finals_v4/resume_dryrun_v4.py`
+and `finals_v4/test_resume_dryrun_v4.py` (new).
+- *Order:* this declaration was written into this file before any code change of it; it is committed together with the code, after both suites
+  passed, because the task allowed a commit only if every item was built and tested by 01:00 (otherwise nothing of it is committed).
+- *Tests:* Unity Edit Mode 371 of 371 (361 + 10); `finals_v4` 15 of 15 (14 + the dry-run test); Python suite as in the commit message.
+- *Dry run:* `robot_vision/outputs/resume_dryrun_20261121_212605/` (`report.md`; a first run at 21:16 was deleted by me because its report kept absolute paths, which `test_run_paths` refuses under outputs/; the report now names the run folder and the repository instead): all 16 steps shown, among them the launcher without `-Resume`
+  refused ("already started"), Anisha's declaration and `--resume-info` (run 4), the launcher with `-Resume` (`-startRun 4 -resumeMarker`,
+  `-bridgeFolder`, `--resume-marker`, the check with `-StartRun 4 -ResumeMarker`, the evaluation with both parts), the check refused without the
+  marker and with a `session.json` that says `resume_from_run` 0, accepted with the matching one, her `resume_plan` with no problem, and after a
+  second interruption `FINAL_INVALID.json` with `--resume-info` and `-Resume` refused. The launcher's other paths, dry run: a rehearsal and a fresh
+  final as before (a final's Unity command now ends with `-bridgeFolder`), `-Resume` with `-Rehearsal` refused, `-OutputRoot` without `-DryRun`
+  refused.
+- *Not run:* a resumed final in Play (none can be made before the freeze; its first real use would be a final).

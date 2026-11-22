@@ -13,10 +13,25 @@ namespace WarehouseAvatar
     public sealed class DataSplitsV4
     {
         public const string Development = "development";
+        /// <summary>Addendum 12 (Anisha's AUDIT.md 16.31.2): the data_splits.json role of a look recorded only by the avatar experiment.</summary>
+        public const string AvatarExperimentRole = "avatar_experiment";
         public readonly Dictionary<string, string> Looks = new Dictionary<string, string>(StringComparer.Ordinal);
         public readonly Dictionary<string, string> Clips = new Dictionary<string, string>(StringComparer.Ordinal);
         public readonly List<string> FinalEvaluationSplits = new List<string>();
         public bool Placeholder { get; private set; }
+        /// <summary>experiments_ab.md section 15 addendum 11: the looks_ab.json looks with role avatar_experiment (recorded only by the avatar
+        /// experiment's look checks). <see cref="GuardRun"/> refuses them in every trial session, whatever split this file gives them.</summary>
+        public readonly HashSet<string> AvatarExperimentLooks = new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>data_splits.json with the roles of looks_ab.json (addendum 11): the trial runner's reader. Since addendum 12 a look whose
+        /// data_splits.json role is avatar_experiment is refused also when looks_ab.json is not given (<see cref="Parse(string)"/>).</summary>
+        public static DataSplitsV4 Parse(string json, string looksAbJson)
+        {
+            var s = Parse(json);
+            foreach (var l in ExperimentLooks.Parse(looksAbJson).looks)
+                if (l != null && l.role == LookEntry.RoleAvatarExperiment) s.AvatarExperimentLooks.Add(l.id);
+            return s;
+        }
 
         public static DataSplitsV4 Parse(string json)
         {
@@ -25,6 +40,7 @@ namespace WarehouseAvatar
             s.Placeholder = Regex.IsMatch(json, "\"placeholder\"\\s*:\\s*true");
             ReadObject(json, "looks", s.Looks);
             ReadObject(json, "clips", s.Clips);
+            foreach (var kv in s.Looks) if (kv.Value == AvatarExperimentRole) s.AvatarExperimentLooks.Add(kv.Key);    // addendum 12
             var m = Regex.Match(json, "\"final_evaluation_splits\"\\s*:\\s*\\[([^\\]]*)\\]");
             if (m.Success)
                 foreach (Match v in Regex.Matches(m.Groups[1].Value, "\"([^\"]+)\"")) s.FinalEvaluationSplits.Add(v.Groups[1].Value);
@@ -50,7 +66,7 @@ namespace WarehouseAvatar
         /// <summary>
         /// The split of a run with these looks and clips, or null with the reason (Python's guard_run): nothing listed, an
         /// empty or unlisted name, a mix of splits, test data outside a final evaluation, a final evaluation on development
-        /// data or on placeholder names are refused.
+        /// data or on placeholder names are refused; so is an avatar-experiment look (addendum 11), first and in every mode.
         /// </summary>
         public string GuardRun(IEnumerable<string> looks, IEnumerable<string> clips, bool finalEvaluation, out string error)
         {
@@ -58,6 +74,13 @@ namespace WarehouseAvatar
             var lk = Sorted(looks);
             var cl = Sorted(clips);
             if (lk.Count == 0) { error = "no avatar look given: the split of a run cannot be checked without it"; return null; }
+            foreach (var name in lk)
+                if (AvatarExperimentLooks.Contains(name))
+                {
+                    error = $"look '{name}' is an avatar-experiment look (looks_ab.json role avatar_experiment): refused in every trial session; " +
+                            "only the avatar experiment's look checks record it";
+                    return null;
+                }
             var found = new SortedDictionary<string, List<string>>(StringComparer.Ordinal);
             foreach (var (kind, names, table) in new[] { ("look", lk, Looks), ("clip", cl, Clips) })
                 foreach (var name in names)
