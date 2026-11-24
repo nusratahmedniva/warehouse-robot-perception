@@ -45,7 +45,9 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 PLAN = "robot_vision/configs/v4/final_plan.json"
 MARKERS = {"run": "FINAL_RUN_DONE.json", "evaluation": "FINAL_DONE.json", "export": "FINAL_EXPORT_DONE.json",
-           "started": "FINAL_SETTING.json", "interruption": "FINAL_INTERRUPTION.json", "resume": "FINAL_RESUME.json", "invalid": "FINAL_INVALID.json"}
+           "started": "FINAL_SETTING.json", "interruption": "FINAL_INTERRUPTION.json", "resume": "FINAL_RESUME.json", "invalid": "FINAL_INVALID.json",
+           "superseded": "FINAL_EVAL_SUPERSEDED.json"}
+SUPERSEDED_PREFIX = "final_eval_superseded"
 INTERRUPTION_PREFIX = "final_interruption"
 INVALID_PREFIX = "final_invalid"
 SCENARIOS = "robot_vision/configs/v4/experiments/scenarios_ab.json"
@@ -86,7 +88,40 @@ def markers(output_root: str | Path, setting: str, kind: str) -> list[Path]:
                 continue
             if rec.get("setting") == setting:
                 found.append(m)
+    if kind == "evaluation" and found:           # AUDIT.md 16.35.1: an evaluation that a declaration supersedes (wrong map, crashed) no longer blocks; nothing else is unlocked
+        gone = set()
+        for d in root.iterdir():
+            m = d / MARKERS["superseded"]
+            if d.is_dir() and m.is_file():
+                try:
+                    rec = json.loads(m.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if rec.get("setting") == setting:
+                    gone.add(rec.get("superseded_folder"))
+        found = [m for m in found if m.parent.name not in gone]
     return found
+
+
+def declare_evaluation_superseded(setting: str, folder_name: str, reason: str, output_root, repo: Path = REPO) -> Path:
+    """AUDIT.md 16.35.1: declare that the evaluation in folder_name (a folder directly under the output root with a FINAL_DONE.json of this setting) is
+    superseded (it used the wrong map, or crashed). It stays untouched; markers() no longer counts it, so the setting can be evaluated once more. Never
+    for an export, never twice for one folder, never without a reason. Writes <root>/final_eval_superseded_<setting>_<time>/FINAL_EVAL_SUPERSEDED.json."""
+    check_name(setting, repo)
+    root = Path(output_root)
+    if not (reason or "").strip():
+        raise SystemExit("--reason is required")
+    old = root / folder_name
+    done = old / MARKERS["evaluation"]
+    if not done.is_file() or json.loads(done.read_text(encoding="utf-8")).get("setting") != setting:
+        raise SystemExit(f"{folder_name}: not an evaluation folder of {setting!r} (no {MARKERS['evaluation']} for it)")
+    for m in root.glob(f"*/{MARKERS['superseded']}"):
+        rec = json.loads(m.read_text(encoding="utf-8"))
+        if rec.get("setting") == setting and rec.get("superseded_folder") == folder_name:
+            raise SystemExit(f"{folder_name} is already superseded ({m.parent.name})")
+    out = root / f"{SUPERSEDED_PREFIX}_{setting}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    out.mkdir()
+    return write_done(out, setting, "superseded", {"superseded_folder": folder_name, "reason": reason.strip()})
 
 
 def ensure_not_done(output_root: str | Path, setting: str, kind: str, repo: Path = REPO) -> None:
@@ -720,6 +755,9 @@ def main(argv=None) -> int:
     ap.add_argument("--resume-info", metavar="SETTING", default=None,
                     help="print, as JSON, what the launcher needs to resume the declared interruption of SETTING (run to resume from = Unity's -StartRun k, "
                          "the --resume-marker folder, seed and goal order of the declaration), or refuse with the reason (AUDIT.md 16.31.2)")
+    ap.add_argument("--supersede-evaluation", metavar="SETTING", default=None,
+                    help="declare the evaluation in --folder superseded (wrong map or crashed; AUDIT.md 16.35.1) so that SETTING can be evaluated once more; needs --reason")
+    ap.add_argument("--folder", default=None, help="--supersede-evaluation: the evaluation folder (a name under the output root)")
     ap.add_argument("--run", type=int, default=None, help="the run that was interrupted (it has no outcome; runs before it have)")
     ap.add_argument("--reason", default=None, help="what failed, one line")
     ap.add_argument("--evidence", nargs="+", default=None, help="files or folders: the Event Viewer export, the crash log, the server and Unity logs")
@@ -732,11 +770,17 @@ def main(argv=None) -> int:
     ap.add_argument("--runs-per-setting", type=int, default=STEP5_RUNS_PER_SETTING)
     ap.add_argument("--out", default=None, help="also write the report to this new file (an existing file is refused)")
     a = ap.parse_args(argv)
-    if sum(bool(x) for x in (a.status, a.declare_interruption, a.resume_info, a.timeout_from)) != 1:
-        ap.error("give exactly one of --status, --declare-interruption SETTING, --resume-info SETTING, --timeout-from SOURCE")
-    if a.status or a.declare_interruption or a.resume_info:
+    if sum(bool(x) for x in (a.status, a.declare_interruption, a.resume_info, a.supersede_evaluation, a.timeout_from)) != 1:
+        ap.error("give exactly one of --status, --declare-interruption SETTING, --resume-info SETTING, --supersede-evaluation SETTING, --timeout-from SOURCE")
+    if a.status or a.declare_interruption or a.resume_info or a.supersede_evaluation:
         import decision_io as dio
         root = dio.resolve(a.output_root or "outputs")
+        if a.supersede_evaluation:
+            if not (a.folder and a.reason):
+                ap.error("--supersede-evaluation needs --folder and --reason")
+            m = declare_evaluation_superseded(a.supersede_evaluation, a.folder, a.reason, root)
+            print(f"{m.name} written: {m.parent}")
+            return 0
         if a.status:
             print(status_text(status(root)))
             return 0
