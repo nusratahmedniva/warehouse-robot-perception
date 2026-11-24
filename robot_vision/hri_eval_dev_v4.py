@@ -88,16 +88,22 @@ class Run:
 
 
 def load_sessions(pairs, gcfg: dict, splits: dict | None = None, final_evaluation: bool = False,
-                  settings: list | None = None, include=None) -> list[Run]:
+                  settings: list | None = None, include=None, supplementary: str | None = None) -> list[Run]:
     """Read every run of every session and apply the split guard BEFORE any metric is computed: development data only
     (final_evaluation False) or test data only (True, used by hri_eval_final_v4.py after the freeze check).
     include: None (every run) or a function (unity folder, trial) -> bool; a run it refuses is not read at all (AUDIT.md 16.30.1: the
-    interrupted run of a resumed final is listed, never scored, and its folder may be incomplete)."""
+    interrupted run of a resumed final is listed, never scored, and its folder may be incomplete).
+    supplementary (AUDIT.md 16.36): None = an ordinary evaluation, which REFUSES every session whose session.json has "supplementary"; "S1" = the supplementary mode, which
+    loads only sessions that say "S1" and applies the S1 guard (data_splits_v4.guard_run(supplementary=...)) instead of the development / test split."""
     runs: list[Run] = []
     for k, (unity, bridge) in enumerate(pairs):
         unity, bridge = Path(unity), Path(bridge)
         control = json.loads((bridge / "config_used" / "control.json").read_text(encoding="utf-8"))
         zoom_on = bool(control["zoom"]["enabled"])
+        sup = (json.loads((unity / "session.json").read_text(encoding="utf-8")).get("supplementary") if (unity / "session.json").is_file() else None) or None
+        if sup != supplementary:
+            raise SystemExit(f"{unity.name}: session.json says supplementary {sup!r} but this evaluation is " +
+                             ("an ordinary one, which never loads a supplementary session (AUDIT.md 16.36)" if supplementary is None else f"the supplementary mode {supplementary!r}"))
         log: dict[int, list] = defaultdict(list)
         for line in (bridge / "v4_log.jsonl").read_text(encoding="utf-8").splitlines():
             if line.strip():
@@ -115,7 +121,7 @@ def load_sessions(pairs, gcfg: dict, splits: dict | None = None, final_evaluatio
             run.looks = {r.look for r in truth}
             run.clips = {c.clip for c in gd.build_clips(truth)}
             try:
-                ds.guard_run(run.looks, run.clips, final_evaluation=final_evaluation, splits=splits)
+                ds.guard_run(run.looks, run.clips, final_evaluation=final_evaluation, splits=splits, supplementary=supplementary)
             except SystemExit as e:
                 raise SystemExit(f"{run.name}: {e}") from None
             runs.append(run)
