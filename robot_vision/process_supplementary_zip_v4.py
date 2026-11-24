@@ -1,13 +1,13 @@
-"""Supplementary experiment S1 (AUDIT.md 16.36): navigation with all workers in ONE avatar look per session; post-freeze and EXPLORATORY. REPORTING / EVALUATION CODE.
+"""Supplementary experiment S1 (AUDIT.md 16.37, replacing 16.36): navigation with all workers in ONE character per session; post-freeze and EXPLORATORY. REPORTING / EVALUATION CODE.
 
   python process_supplementary_zip_v4.py <zip> --sha256 <hash> [--finals-root <folder>] [--out-root <folder>]
 
 The zip is made by final_zip_v4.py avatar (a manifest with `folders`): the Unity session folders and their bridge run folders of S1. It is read in place; the folders are copied
 out (member by member, hash checked, no code) into a temporary folder outside the repository, used and removed.
 Steps (it stops at the first failure with the reason): 1 verify; 2 sessions: pair each Unity session with its bridge folder (the bridge started last before the Unity session; each
-used once; the runs must agree), check each (session.json 'supplementary' "S1", seed 2, a setting of A1 / A2_right, one look, timeout 480 s, 10 runs, leak test) and record its commit
+used once; the runs must agree), check each (session.json 'supplementary' "S1", seed 2, a setting of A1 / A3 / B3, one look, timeout 480 s, 5 runs, plan_runs, leak test) and record its commit
 and the hashes of its config_used files (S1 does NOT require frozen.json to match); 3 evaluate: the S1 guard (data_splits_v4.guard_run(supplementary="S1")), the run tables; 4 tables.
-It writes NO final run-once marker, never writes into the finals' root (read only: the Sunbox finals A1 and A2_right for the paired comparison) and never edits frozen.json.
+It writes NO final run-once marker, never writes into the finals' root (read only: the Sunbox finals A1, A3 and B3 for the paired comparison) and never edits frozen.json.
 Output: a NEW folder <out_root>/process_supplementary_zip_v4_<time>/ with the tables as CSV and Markdown and report.json / report.md.
 """
 
@@ -36,12 +36,34 @@ import process_final_zip_v4 as pf
 
 HERE = Path(__file__).resolve().parent
 NAME = "S1"
-SETTINGS = ("A1", "A2_right")
+SETTINGS = ("A1", "A3", "B3")
 LOOKS = ds.SUPPLEMENTARY[NAME]
-RUNS, SEED, TIMEOUT_S = 10, 2, 480.0
+# AUDIT.md 16.37: the plan runs of the final plans (seed 2) that S1 runs, in order, as run_001..run_005 of a session. B3: the 5 lowest plan runs with a liar at a junction ON the planned
+# route, read from the final B3 session's workers_plan (see b3_plan_runs); A1 and A3: runs 1-5.
+PLAN_RUNS = {"A1": [1, 2, 3, 4, 5], "A3": [1, 2, 3, 4, 5], "B3": [5, 7, 8, 10, 11]}
+RUNS, SEED, TIMEOUT_S = 5, 2, 480.0
 FINAL_MARKERS = ("FINAL_DONE.json", "FINAL_EXPORT_DONE.json", "FINAL_RUN_DONE.json", "FINAL_SETTING.json", "FINAL_INTERRUPTION.json", "FINAL_RESUME.json",
                  "FINAL_INVALID.json", "FINAL_EVAL_SUPERSEDED.json")
 _STAMP = re.compile(r"(\d{8}_\d{6})$")
+
+
+def b3_plan_runs(workers_plan: list, goal_order: list, road, n: int = RUNS) -> list[int]:
+    """The B3 rule of AUDIT.md 16.37, from the PLAN only (a final B3 session's workers_plan and goal_order, the map): the n lowest run numbers in which at least one worker standing at
+    a node of kind 'junction' on the planned route (A to the goal along command_toward) is a liar. A, the start node, is not a junction: nobody is asked there."""
+    liars: dict[int, set] = defaultdict(set)
+    for line in workers_plan:
+        m = re.match(r"run (\d+) worker \d+: (\w+) slot \d+.*?(LIAR|truthful)", line)
+        if m and m.group(3) == "LIAR":
+            liars[int(m.group(1))].add(m.group(2))
+    out = []
+    for i, goal in enumerate(goal_order, 1):
+        node, route = "A", {"A"}
+        while node != goal and len(route) < 40:
+            node = road.next(node, road.command_toward(node, goal))
+            route.add(node)
+        if any(road.kind(j) == "junction" for j in liars[i] & route):
+            out.append(i)
+    return out[:n]
 
 
 def stamp_of(path: Path) -> str | None:
@@ -136,6 +158,8 @@ def check_session(u: Path, b: Path, repo: Path) -> tuple[str, str, list[str]]:
         problems.append(f"timeout {sj.get('timeout_s')} s (S1: {TIMEOUT_S:g} s)")
     if runs_of_unity(u) != list(range(1, RUNS + 1)):
         problems.append(f"runs {runs_of_unity(u)}, expected 1..{RUNS}")
+    if setting in PLAN_RUNS and sj.get("plan_runs") != PLAN_RUNS[setting]:
+        problems.append(f"session.json plan_runs {sj.get('plan_runs')!r}, declared for {setting}: {PLAN_RUNS[setting]} (AUDIT.md 16.37)")
     gcfg = gd.load_config(repo / "robot_vision/configs/v4/gesture_data.json")
     looks = set()
     for r in sorted(u.glob("run_[0-9][0-9][0-9]")):
@@ -158,54 +182,91 @@ def evaluate_session(u: Path, b: Path, setting: str, repo: Path) -> dict:
     splits = ds.load(repo / "robot_vision/configs/v4/data_splits.json")
     runs = ev.load_sessions([(u, b)], gcfg, splits, settings=[setting], supplementary=NAME)      # the S1 guard; no frozen.json needed
     rows, dialogs = ex.build_tables(runs, ecfg, splits)
-    return {"setting": setting, "runs": rows, "dialogs": dialogs}
+    plan_runs = json.loads((u / "session.json").read_text(encoding="utf-8")).get("plan_runs") or []
+    for r in rows:
+        r["plan_run"] = plan_runs[int(r["trial"]) - 1] if 0 < int(r["trial"]) <= len(plan_runs) else None
+    return {"setting": setting, "runs": rows, "dialogs": [{k: ex._fmt(v) for k, v in d.items()} for d in dialogs]}
 
 
 def cell_rows(sessions: dict, z: float) -> list[dict]:
     out = []
-    for (setting, look), d in sorted(sessions.items()):
+    for (setting, look), d in sorted(sessions.items(), key=lambda kv: (kv[0][1], kv[0][0])):
         r, dl = d["runs"], d["dialogs"]
         k = sum(x["outcome"] == "SUCCESS" for x in r)
         t_ok = fr.floats([x for x in r if x["outcome"] == "SUCCESS"], "time_s")
-        asks = [x for x in dl if x.get("correct") is not None]
-        ka = sum(x["correct"] is True for x in asks)
+        asks = [x for x in dl if x.get("command_read") not in ("", None) or x.get("command_shown") not in ("", None)]
+        ka = sum(x.get("command_read") == x.get("command_shown") for x in asks)
         ts, fs = [x.get("stop_gestures_true") for x in r], [x.get("stop_gestures_false") for x in r]
         have = [x for x in ts if x is not None]
-        out.append({"look": look, "setting": setting, "n": len(r), "successes": k, **fr.wilson_cell(k, len(r), z),
+        out.append({"character": look, "scene": setting, "n": len(r), "successes": k, **fr.wilson_cell(k, len(r), z),
                     **{f"failed_{f}": sum(x["failure_reason"] == f for x in r if x["outcome"] != "SUCCESS") for f in ("wrong_goal", "aborted", "timeout", "collision")},
                     "aborts": sum(x["failure_reason"] == "aborted" for x in r), "median_time_s_success": fr.pct(t_ok, 50),
-                    "asks": len(dl), "asks_with_a_reading_to_score": len(asks), "asks_read_as_shown": ka,
-                    "asks_read_as_shown_rate": round(ka / len(asks), 4) if asks else fr.ND, **{"asks_wilson_" + k_: v for k_, v in fr.wilson_cell(ka, len(asks), z).items() if k_ != "rate"},
+                    "asks": len(asks), "asks_read_as_shown": ka, "asks_read_as_shown_rate": round(ka / len(asks), 4) if asks else fr.ND,
+                    **{"asks_wilson_" + k_: v for k_, v in fr.wilson_cell(ka, len(asks), z).items() if k_ != "rate"},
                     "stop_episodes_true": int(sum(x for x in ts if x is not None)) if have else fr.ND,
                     "stop_episodes_false": int(sum(x for x in fs if x is not None)) if have else fr.ND})
     return out
 
 
-def finals_outcomes(finals_root: Path, setting: str) -> dict[int, bool]:
+def lie_rows(sessions: dict) -> list[dict]:
+    """B3 only: lies given / detected / corrected / fooled per character, the first person asked at a visit and later ones apart (final_results_v4.lie_split)."""
+    out = []
+    for (setting, look), d in sorted(sessions.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        if setting != "B3":
+            continue
+        sp = fr.lie_split(d["dialogs"])
+        for g in ("first", "later"):
+            out.append({"character": look, "scene": setting, "asked": g, **sp[g]})
+        out.append({"character": look, "scene": setting, "asked": "all", **{k: sp["first"][k] + sp["later"][k] for k in sp["first"]}})
+    return out
+
+
+def baseline_outcomes(finals_root: Path, setting: str) -> dict[int, tuple[bool, str]]:
+    """plan run -> (success, goal) of the Sunbox final of the setting (the export's runs.csv: its trial is the plan run). Read only."""
     m = fg.markers(finals_root, setting, "export")
     if len(m) != 1:
         raise pf.StepFailed(f"{setting}: {len(m)} final export folders in {finals_root}: the comparison needs exactly one")
-    return {int(r["trial"]): r["outcome"] == "SUCCESS" for r in fr.read_csv(m[0].parent / "runs.csv")}
+    return {int(r["trial"]): (r["outcome"] == "SUCCESS", r.get("goal", "")) for r in fr.read_csv(m[0].parent / "runs.csv")}
 
 
 def comparison_rows(sessions: dict, finals_root: Path, z: float) -> tuple[list[dict], list[dict]]:
-    """S1 (look) against the Sunbox final of the same setting, paired by run index (same seed 2, so the same goal): the rates with Newcombe 95 % for the difference, and the
-    four combinations per pair (both succeed / only S1 / only the final / neither)."""
+    """Each S1 cell against the Sunbox final of the same scene on the SAME plan runs (same seed, same goals, same worker and lie schedule): paired by plan run; the rates with Newcombe
+    95 % for the difference (S1 minus final), and the four combinations per cell. A run whose goal differs from the final's goal for its plan run is refused."""
     rates, pairs = [], []
-    for (setting, look), d in sorted(sessions.items()):
-        fin = finals_outcomes(finals_root, setting)
-        s1 = {int(x["trial"]): x["outcome"] == "SUCCESS" for x in d["runs"]}
-        idx = sorted(set(s1) & set(fin))
-        ks, kf = sum(s1[i] for i in idx), sum(fin[i] for i in idx)
+    for (setting, look), d in sorted(sessions.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        fin = baseline_outcomes(finals_root, setting)
+        s1 = {}
+        for x in d["runs"]:
+            pr = x.get("plan_run")
+            if pr not in fin:
+                raise pf.StepFailed(f"{setting} {look} run {x['trial']}: plan run {pr} is not in the Sunbox final of {setting}")
+            if fin[pr][1] and x.get("goal") and fin[pr][1] != x["goal"]:
+                raise pf.StepFailed(f"{setting} {look} run {x['trial']}: goal {x['goal']} but the final plan's goal for plan run {pr} is {fin[pr][1]}")
+            s1[pr] = x["outcome"] == "SUCCESS"
+        idx = sorted(s1)
+        ks, kf = sum(s1[i] for i in idx), sum(fin[i][0] for i in idx)
         nc = ex.newcombe(kf, len(idx), ks, len(idx), z)
         ws, wf = ex._wilson(ks, len(idx), z), ex._wilson(kf, len(idx), z)
-        rates.append({"setting": setting, "look": look, "runs_paired": len(idx), "S1 successes": ks, "S1 rate": ws["ratio"], "S1 wilson95": ws["wilson95"],
-                      "Sunbox final successes (same run indices)": kf, "final rate": wf["ratio"], "final wilson95": wf["wilson95"],
-                      "difference_pp (S1 - final)": nc["difference_pp"], "newcombe_lo_pp": nc["lo_pp"], "newcombe_hi_pp": nc["hi_pp"]})
-        pairs.append({"setting": setting, "look": look, "both_succeed": sum(s1[i] and fin[i] for i in idx), "only_S1_succeeds": sum(s1[i] and not fin[i] for i in idx),
-                      "only_final_succeeds": sum(fin[i] and not s1[i] for i in idx), "neither": sum(not s1[i] and not fin[i] for i in idx),
-                      "run_indices_failed_in_S1": ", ".join(str(i) for i in idx if not s1[i]) or "none"})
+        rates.append({"character": look, "scene": setting, "plan_runs": " ".join(map(str, idx)), "S1 successes": ks, "S1 rate": ws["ratio"], "S1 wilson95": ws["wilson95"],
+                      "Sunbox final successes (same plan runs)": kf, "Sunbox rate": wf["ratio"], "Sunbox wilson95": wf["wilson95"],
+                      "difference_pp (S1 - Sunbox)": nc["difference_pp"], "newcombe_lo_pp": nc["lo_pp"], "newcombe_hi_pp": nc["hi_pp"]})
+        pairs.append({"character": look, "scene": setting, "both_succeed": sum(s1[i] and fin[i][0] for i in idx), "only_S1_succeeds": sum(s1[i] and not fin[i][0] for i in idx),
+                      "only_Sunbox_succeeds": sum(fin[i][0] and not s1[i] for i in idx), "neither": sum(not s1[i] and not fin[i][0] for i in idx),
+                      "plan_runs_failed_in_S1": ", ".join(str(i) for i in idx if not s1[i]) or "none"})
     return rates, pairs
+
+
+def confusion_tables(sessions: dict, out: Path, cfg: dict) -> None:
+    """Gesture (command shown vs read) and branch (true vs read) confusion per character x scene, and pooled per scene (a pooled matrix mixes characters)."""
+    for stem, title, shown, read, labels in (("s1_e_gesture_confusion", "S1 gesture confusion: command shown vs read", "command_shown", "command_read", cfg["gesture_labels"]),
+                                            ("s1_f_branch_confusion", "S1 branch confusion: true branch vs branch read", "true_branch", "branch_read", cfg["branch_labels"])):
+        mats = {}
+        for scene in sorted({s for s, _ in sessions}):
+            mats[f"{scene}: all characters (pooled)"] = pf.confusion([x for (s, _), d in sessions.items() if s == scene for x in d["dialogs"]], shown, read, labels)
+            for (s, look), d in sorted(sessions.items(), key=lambda kv: kv[0][1]):
+                if s == scene:
+                    mats[f"{scene}: {look}"] = pf.confusion(d["dialogs"], shown, read, labels)
+        pf.write_matrix(out, stem, title, mats, shown, read)
 
 
 # ---------------------------------------------------------------- the tool
@@ -245,7 +306,7 @@ def run(zip_path, sha256: str, repo: Path | None = None, finals_root: str | Path
         sessions, prov, z = {}, [], ex.wilson_z(repo)
         for u, b in pairs:
             setting, look, problems = check_session(u, b, repo)
-            report.add(2, f"session {u.name}", pf.FAIL if problems else pf.OK, "; ".join(problems) or f"{setting}, look {look}, 10 runs, seed {SEED}; bridge {b.name}")
+            report.add(2, f"session {u.name}", pf.FAIL if problems else pf.OK, "; ".join(problems) or f"{setting}, look {look}, {RUNS} runs, seed {SEED}; bridge {b.name}")
             if problems:
                 raise pf.StepFailed(f"{u.name}: " + "; ".join(problems))
             if (setting, look) in sessions:
@@ -253,20 +314,25 @@ def run(zip_path, sha256: str, repo: Path | None = None, finals_root: str | Path
             sessions[(setting, look)] = {**evaluate_session(u, b, setting, repo)}
             prov.append({"setting": setting, "look": look, **provenance(u, b, setting, repo)})
         report.add(3, "evaluate", pf.OK, f"{len(sessions)} sessions evaluated with the S1 guard (frozen.json not required, no final marker written)")
-        fr.write_table(out, "s1_a_per_look_and_setting", "S1 (supplementary, exploratory; NOT pooled with the finals): success, failure reasons, asks read as shown, aborts, STOP episodes",
-                       cell_rows(sessions, z), "Success with Wilson 95 %; asks read as shown = the command read equals the command shown (ask level: asks within a run are not independent). "
-                       "Post-freeze and exploratory: reported in its own section, never pooled with the A/B finals.")
+        fr.write_table(out, "s1_a_per_character_and_scene", "S1 (supplementary, exploratory; NOT pooled with the finals): success, failure reasons, asks read as shown, aborts, STOP episodes",
+                       cell_rows(sessions, z), "Success with Wilson 95 % (n = 5 runs per cell: very wide); asks read as shown = the command read equals the command shown (ask level: asks within a run are "
+                       "not independent). Post-freeze and exploratory: reported in its own section, never pooled with the A/B finals. Cells present: " + ", ".join(f"{l}/{s}" for (s, l) in sorted(sessions, key=lambda k: (k[1], k[0]))) +
+                       ("; missing: " + ", ".join(f"{l}/{s}" for l in LOOKS for s in SETTINGS if (s, l) not in sessions) if len(sessions) < len(LOOKS) * len(SETTINGS) else "."))
+        fr.write_table(out, "s1_b_lies_B3", "S1 B3: lies given / detected / corrected / fooled per character", lie_rows(sessions),
+                       "Definitions of export_csv_v4 (detected = rejected, outvoted or withdrawn; corrected = detected and the branch finally taken is the true one; fooled = accepted, taken, not true). "
+                       "first = the first person asked at a visit; later = a later one.")
+        confusion_tables(sessions, out, cfg)
         rates, pr = comparison_rows(sessions, finals, z)
-        fr.write_table(out, "s1_b_vs_sunbox_finals", "S1 against the Sunbox finals A1 and A2_right: paired by run index (same seed, same goal), Newcombe 95 %", rates,
-                       "Difference = S1 minus the final, percentage points. Description only: no test, no claim of significance.")
-        fr.write_table(out, "s1_c_paired_outcomes", "S1 against the Sunbox finals: the four combinations per run index", pr)
+        fr.write_table(out, "s1_c_vs_sunbox_finals", "S1 against the Sunbox finals of the same scene on the same plan runs: paired by plan run (same seed, goals, worker and lie schedule), Newcombe 95 %", rates,
+                       "Difference = S1 minus the Sunbox final, percentage points. Description only: no test, no claim of significance.")
+        fr.write_table(out, "s1_c2_paired_outcomes", "S1 against the Sunbox finals: the four combinations per plan run", pr)
         fr.write_table(out, "s1_d_provenance", "Session provenance (commit and config_used hashes; S1 does not require frozen.json to match)",
-                       [{"setting": p["setting"], "look": p["look"], "unity_session": p["unity_session"], "bridge": p["bridge"], "git_commit": p["git_commit"], "git_branch": p["git_branch"],
+                       [{"scene": p["setting"], "character": p["look"], "unity_session": p["unity_session"], "bridge": p["bridge"], "git_commit": p["git_commit"], "git_branch": p["git_branch"],
                          "config_files": len(p["config_used"]), "equal_to_frozen_record": p["config_files_equal_to_the_frozen_record"],
                          "differ_from_frozen_record": ", ".join(p["config_files_that_differ_from_the_frozen_record"]) or "none",
                          "not_in_frozen_record": ", ".join(p["config_files_not_in_the_frozen_record"]) or "none"} for p in prov])
         (out / "provenance.json").write_text(json.dumps(prov, indent=2) + "\n", encoding="utf-8")
-        report.add(4, "tables", pf.OK, "s1_a_per_look_and_setting, s1_b_vs_sunbox_finals, s1_c_paired_outcomes, s1_d_provenance (CSV and Markdown)")
+        report.add(4, "tables", pf.OK, "s1_a, s1_b (lies), s1_e / s1_f (confusion), s1_c / s1_c2 (paired Sunbox baseline), s1_d (provenance) as CSV and Markdown")
         bad = [str(p) for name in FINAL_MARKERS for p in out.rglob(name)]
         if bad:
             raise pf.StepFailed(f"a final marker exists in the S1 output: {bad}")

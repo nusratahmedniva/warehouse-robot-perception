@@ -2,6 +2,7 @@
 run; load_sessions refuses S1 sessions in an ordinary evaluation (and ordinary sessions in S1 mode); the S1 tool pairs sessions by start time, never writes a FINAL marker,
 refuses the finals' root, and compares with the finals by run index (Newcombe)."""
 
+import json
 import sys
 import tempfile
 import unittest
@@ -21,6 +22,14 @@ A, C = "anime_f_01", "cartoon_boxo_01"
 
 
 class GuardS1(unittest.TestCase):
+    def test_the_four_looks(self):
+        self.assertEqual(set(ds.SUPPLEMENTARY["S1"]), {"mixamo_worker", "anime_f_01", "anime_f_02_outfit_short", "cartoon_boxo_01"})
+        for look in ds.SUPPLEMENTARY["S1"]:
+            self.assertEqual(ds.guard_run([look], [], False, SPLITS, supplementary="S1"), "supplementary_S1")
+            with self.assertRaises(SystemExit):
+                ds.guard_run([look], [], False, SPLITS)
+
+
     def test_accepted_only_with_s1_and_one_look(self):
         for look in (A, C):
             self.assertEqual(ds.guard_run([look], [], False, SPLITS, supplementary="S1"), "supplementary_S1")
@@ -93,34 +102,89 @@ class Pairing(unittest.TestCase):
 
 
 class Comparison(unittest.TestCase):
-    def test_paired_by_run_index_with_newcombe_and_four_way_table(self):
+    def test_paired_by_plan_run_with_newcombe_and_four_way_table(self):
         import csv
         with tempfile.TemporaryDirectory() as t:
             root = Path(t)
-            fin = {}
-            for s, outcomes in (("A1", "SSSSSSSSSF"), ("A2_right", "SSSSSSSSFF")):
-                d = root / f"export_{s}"
-                d.mkdir()
-                (d / "FINAL_EXPORT_DONE.json").write_text('{"setting": "%s"}' % s, encoding="utf-8")
-                with (d / "runs.csv").open("w", newline="", encoding="utf-8") as f:
-                    w = csv.writer(f)
-                    w.writerow(["trial", "outcome"])
-                    for i, o in enumerate(outcomes, 1):
-                        w.writerow([i, "SUCCESS" if o == "S" else "FAILURE"])
-                fin[s] = d
+            d = root / "export_B3"
+            d.mkdir()
+            (d / "FINAL_EXPORT_DONE.json").write_text('{"setting": "B3"}', encoding="utf-8")
+            with (d / "runs.csv").open("w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["trial", "outcome", "goal"])
+                for i in range(1, 21):
+                    w.writerow([i, "FAILURE" if i == 7 else "SUCCESS", "E5"])
             real = ps.fg.markers
-            ps.fg.markers = lambda r, s, k: [fin[s] / "FINAL_EXPORT_DONE.json"]
+            ps.fg.markers = lambda r, s, k: [d / "FINAL_EXPORT_DONE.json"]
             try:
-                sess = {("A1", A): {"runs": [{"trial": i, "outcome": "SUCCESS" if i != 3 else "FAILURE"} for i in range(1, 11)], "dialogs": []}}
-                rates, pairs = ps.comparison_rows(sess, root, 1.96)
+                runs = [{"trial": k, "plan_run": pr, "goal": "E5", "outcome": "FAILURE" if pr == 10 else "SUCCESS"} for k, pr in enumerate(ps.PLAN_RUNS["B3"], 1)]
+                rates, pairs = ps.comparison_rows({("B3", A): {"runs": runs, "dialogs": []}}, root, 1.96)
+                self.assertEqual(rates[0]["plan_runs"], "5 7 8 10 11")
+                self.assertEqual((rates[0]["S1 successes"], rates[0]["Sunbox final successes (same plan runs)"]), (4, 4))
+                p = pairs[0]
+                self.assertEqual((p["both_succeed"], p["only_S1_succeeds"], p["only_Sunbox_succeeds"], p["neither"]), (3, 1, 1, 0))
+                self.assertEqual(p["plan_runs_failed_in_S1"], "10")
+                self.assertEqual(rates[0]["difference_pp (S1 - Sunbox)"], ex.newcombe(4, 5, 4, 5, 1.96)["difference_pp"])
+                runs[0]["goal"] = "E1"                                                            # a goal that is not the final plan's goal for that plan run
+                with self.assertRaisesRegex(pf.StepFailed, "final plan's goal"):
+                    ps.comparison_rows({("B3", A): {"runs": runs, "dialogs": []}}, root, 1.96)
             finally:
                 ps.fg.markers = real
-        self.assertEqual(rates[0]["S1 successes"], 9)
-        self.assertEqual(rates[0]["Sunbox final successes (same run indices)"], 9)
-        p = pairs[0]
-        self.assertEqual((p["both_succeed"], p["only_S1_succeeds"], p["only_final_succeeds"], p["neither"]), (8, 1, 1, 0))
-        self.assertEqual(p["run_indices_failed_in_S1"], "3")
-        self.assertEqual(rates[0]["difference_pp (S1 - final)"], ex.newcombe(9, 10, 9, 10, 1.96)["difference_pp"])
+
+
+class B3Rule(unittest.TestCase):
+    """The B3 run choice of AUDIT.md 16.37: from the plan only; A is the start, not a junction."""
+
+    def road(self):
+        import hri_control as hc
+        return hc.Roadmap(json.loads((ROOT / "configs/v4/roadmap.json").read_text(encoding="utf-8")))
+
+    def test_synthetic_plan(self):
+        goals = ["E5", "E3", "E1", "E2"]
+        plan = ["run 1 worker 1: A slot 1, x, (0.00, 0.00), LIAR shows LEFT (true FORWARD)",          # liar at A only: not a junction
+                "run 2 worker 1: J4 slot 1, x, (0.00, 0.00), LIAR shows LEFT (true FORWARD)",          # J4 is not on A->J1->J3->E3
+                "run 3 worker 1: J1 slot 1, x, (0.00, 0.00), LIAR shows LEFT (true FORWARD)",          # J1 is on A->J1->E1
+                "run 4 worker 1: J2 slot 1, x, (0.00, 0.00), truthful FORWARD"]
+        self.assertEqual(ps.b3_plan_runs(plan, goals, self.road(), n=5), [3])
+
+    def test_the_declared_list_equals_the_rule_on_the_final_b3_plan_when_it_is_present(self):
+        import glob
+        import os
+        found = sorted(glob.glob(os.path.expanduser("~/RobotVisionResults/phase_b_final/trials_final_Task2_B3_2*/session.json")))
+        if not found:
+            self.skipTest("the final B3 session is not on this machine")
+        s = json.loads(Path(found[0]).read_text(encoding="utf-8"))
+        self.assertEqual(ps.b3_plan_runs(s["workers_plan"], s["goal_order"], self.road()), ps.PLAN_RUNS["B3"])
+
+    def test_declared_runs(self):
+        self.assertEqual(ps.PLAN_RUNS, {"A1": [1, 2, 3, 4, 5], "A3": [1, 2, 3, 4, 5], "B3": [5, 7, 8, 10, 11]})
+        self.assertEqual(len(ps.LOOKS) * len(ps.SETTINGS) * ps.RUNS, 60)
+
+
+class Tables(unittest.TestCase):
+    def sessions(self):
+        run = lambda i, ok: {"trial": i, "plan_run": i, "goal": "E1", "outcome": "SUCCESS" if ok else "FAILURE", "failure_reason": "" if ok else "wrong_goal", "time_s": 100.0 + i,
+                             "stop_gestures_true": 0, "stop_gestures_false": 1 if i == 2 else 0}
+        dl = [{"dialog": "1", "truthful": "false", "decision": "rejected_impossible", "outvoted": "false", "withdrawn": "false", "final_branch": "LEFT", "true_branch": "LEFT",
+               "branch_read": "RIGHT", "command_shown": "RIGHT", "command_read": "RIGHT"},
+              {"dialog": "1", "truthful": "false", "decision": "accepted", "outvoted": "false", "withdrawn": "false", "final_branch": "RIGHT", "true_branch": "LEFT",
+               "branch_read": "RIGHT", "command_shown": "RIGHT", "command_read": "RIGHT"},
+              {"dialog": "2", "truthful": "true", "decision": "accepted", "outvoted": "false", "withdrawn": "false", "final_branch": "LEFT", "true_branch": "LEFT",
+               "branch_read": "FORWARD", "command_shown": "LEFT", "command_read": "FORWARD"}]
+        return {("B3", A): {"runs": [run(1, True), run(2, False)], "dialogs": dl}, ("A1", A): {"runs": [run(1, True)], "dialogs": dl[2:]}}
+
+    def test_cells_lies_and_confusions(self):
+        sess = self.sessions()
+        cells = ps.cell_rows(sess, 1.96)
+        b3 = [c for c in cells if c["scene"] == "B3"][0]
+        self.assertEqual((b3["character"], b3["n"], b3["successes"], b3["failed_wrong_goal"], b3["stop_episodes_false"], b3["asks"], b3["asks_read_as_shown"]), (A, 2, 1, 1, 1, 3, 2))
+        lies = {r["asked"]: r for r in ps.lie_rows(sess)}
+        self.assertEqual((lies["all"]["given"], lies["all"]["detected"], lies["all"]["corrected"], lies["all"]["fooled"]), (2, 1, 1, 1))
+        self.assertEqual({r["scene"] for r in ps.lie_rows(sess)}, {"B3"})                           # lies are a B3 table only
+        with tempfile.TemporaryDirectory() as t:
+            ps.confusion_tables(sess, Path(t), {"gesture_labels": ["LEFT", "RIGHT", "FORWARD"], "branch_labels": ["LEFT", "RIGHT", "FORWARD"]})
+            names = sorted(p.name for p in Path(t).iterdir())
+        self.assertEqual(names, ["s1_e_gesture_confusion.csv", "s1_e_gesture_confusion.md", "s1_f_branch_confusion.csv", "s1_f_branch_confusion.md"])
 
 
 class LoadSessionsS1(unittest.TestCase):

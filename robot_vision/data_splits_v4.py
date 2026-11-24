@@ -22,7 +22,7 @@ DEFAULT = Path(__file__).resolve().parent / "configs" / "v4" / "data_splits.json
 SPLITS = ("development", "test")
 AVATAR_ROLE = "avatar_experiment"
 LOOK_ROLES = SPLITS + (AVATAR_ROLE,)
-SUPPLEMENTARY = {"S1": ("anime_f_01", "cartoon_boxo_01")}      # AUDIT.md 16.36: supplementary experiment S1 (post-freeze, exploratory): the only looks it may use
+SUPPLEMENTARY = {"S1": ("mixamo_worker", "anime_f_01", "anime_f_02_outfit_short", "cartoon_boxo_01")}      # AUDIT.md 16.37 (replaces 16.36): supplementary experiment S1 (post-freeze, exploratory): the only looks it may use
 KIND_GROUPS = ("stylised_human", "realistic_human", "anime", "cartoon_non_human")
 
 
