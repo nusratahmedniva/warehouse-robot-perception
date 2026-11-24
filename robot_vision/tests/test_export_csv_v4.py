@@ -420,7 +420,7 @@ class Isolation(unittest.TestCase):
         for p in ROOT.rglob("*.py"):
             rel = p.relative_to(ROOT)
             if ".venv" in rel.parts or rel.parts[0] == "tests" or rel.name in ("export_csv_v4.py", "run_experiments_ab_v4.py", "hri_eval_final_v4.py",
-                                                                                                 "process_final_zip_v4.py", "process_avatar_zip_v4.py"):   # the Phase B runbooks (AUDIT.md 16.33) are evaluation code
+                                                                                                 "process_final_zip_v4.py", "process_avatar_zip_v4.py", "final_results_v4.py"):   # the Phase B runbooks (AUDIT.md 16.33) are evaluation code
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8"))
             mods = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
