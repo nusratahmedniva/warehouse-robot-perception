@@ -88,16 +88,22 @@ class Run:
 
 
 def load_sessions(pairs, gcfg: dict, splits: dict | None = None, final_evaluation: bool = False,
-                  settings: list | None = None, include=None) -> list[Run]:
+                  settings: list | None = None, include=None, supplementary: str | None = None) -> list[Run]:
     """Read every run of every session and apply the split guard BEFORE any metric is computed: development data only
     (final_evaluation False) or test data only (True, used by hri_eval_final_v4.py after the freeze check).
     include: None (every run) or a function (unity folder, trial) -> bool; a run it refuses is not read at all (AUDIT.md 16.30.1: the
-    interrupted run of a resumed final is listed, never scored, and its folder may be incomplete)."""
+    interrupted run of a resumed final is listed, never scored, and its folder may be incomplete).
+    supplementary (AUDIT.md 16.36): None = an ordinary evaluation, which REFUSES every session whose session.json has "supplementary"; "S1" = the supplementary mode, which
+    loads only sessions that say "S1" and applies the S1 guard (data_splits_v4.guard_run(supplementary=...)) instead of the development / test split."""
     runs: list[Run] = []
     for k, (unity, bridge) in enumerate(pairs):
         unity, bridge = Path(unity), Path(bridge)
         control = json.loads((bridge / "config_used" / "control.json").read_text(encoding="utf-8"))
         zoom_on = bool(control["zoom"]["enabled"])
+        sup = (json.loads((unity / "session.json").read_text(encoding="utf-8")).get("supplementary") if (unity / "session.json").is_file() else None) or None
+        if sup != supplementary:
+            raise SystemExit(f"{unity.name}: session.json says supplementary {sup!r} but this evaluation is " +
+                             ("an ordinary one, which never loads a supplementary session (AUDIT.md 16.36)" if supplementary is None else f"the supplementary mode {supplementary!r}"))
         log: dict[int, list] = defaultdict(list)
         for line in (bridge / "v4_log.jsonl").read_text(encoding="utf-8").splitlines():
             if line.strip():
@@ -115,7 +121,7 @@ def load_sessions(pairs, gcfg: dict, splits: dict | None = None, final_evaluatio
             run.looks = {r.look for r in truth}
             run.clips = {c.clip for c in gd.build_clips(truth)}
             try:
-                ds.guard_run(run.looks, run.clips, final_evaluation=final_evaluation, splits=splits)
+                ds.guard_run(run.looks, run.clips, final_evaluation=final_evaluation, splits=splits, supplementary=supplementary)
             except SystemExit as e:
                 raise SystemExit(f"{run.name}: {e}") from None
             runs.append(run)
@@ -278,7 +284,31 @@ def _circular_mean(a: list) -> float:
     return gm.circular_mean(a)
 
 
-def branch_block(runs: list, rows_by_run: dict, road: hc.Roadmap) -> dict:
+def road_of_run(run, cache: dict | None = None) -> hc.Roadmap:
+    """The map a run was driven on (AUDIT.md 16.35.1): its bridge folder's config_used/map_used.json (the experiments A/B run on their own maps), else the roadmap of
+    config_used/control.json, else the default v4 map. The same rule as export_csv_v4._road_for. cache: one Roadmap per bridge folder."""
+    cache = cache if cache is not None else {}
+    key = str(run.bridge_dir)
+    if key not in cache:
+        cache[key] = None
+        b = Path(run.bridge_dir) if run.bridge_dir is not None else None
+        mp = (b / "config_used" / "map_used.json") if b is not None else None
+        ctl = (b / "config_used" / "control.json") if b is not None else None
+        if mp is not None and mp.is_file():
+            cache[key] = hc.Roadmap(json.loads(mp.read_text(encoding="utf-8")))
+        elif ctl is not None and ctl.is_file():
+            cache[key] = hv.load_roadmap(hv.roadmap_path(json.loads(ctl.read_text(encoding="utf-8"))))
+        else:
+            cache[key] = hv.load_roadmap(hv.roadmap_path(hv.load_control()[1]))
+    return cache[key]
+
+
+def _road(road, run) -> hc.Roadmap:
+    """road is one Roadmap (used for every run) or a function run -> Roadmap (road_of_run)."""
+    return road(run) if callable(road) else road
+
+
+def branch_block(runs: list, rows_by_run: dict, road) -> dict:
     """Accepted branch against the branch nearest the true pointed direction (world), per junction record."""
     asked = accepted = correct = wrong = unknown = 0
     detail = []
@@ -299,7 +329,7 @@ def branch_block(runs: list, rows_by_run: dict, road: hc.Roadmap) -> dict:
                                "asks": rec.get("asks")})
                 continue
             w = _circular_mean(worlds)
-            dirs, arrival = hv.branch_directions(road, rec["junction"])
+            dirs, arrival = hv.branch_directions(_road(road, run), rec["junction"])
             options = [(abs(hc.wrap(w - y)), c) for c, y in dirs.items()] + ([(abs(hc.wrap(w - arrival)), "ARRIVAL")] if arrival is not None else [])
             true_branch = min(options)[1]
             ok = rec.get("read") == true_branch
@@ -391,7 +421,7 @@ def _true_distance(run: Run, t: float, robot: dict) -> tuple[float | None, str |
     return math.hypot(w.x - robot["x"], w.z - robot["z"]), w.look
 
 
-def junction_block(runs: list, ecfg: dict, road: hc.Roadmap, approach_m: float) -> dict:
+def junction_block(runs: list, ecfg: dict, road, approach_m: float) -> dict:
     """P3: per ask and per dialog (one node visit) against goal B; per (look, node, shown) pair; and the standoff."""
     phases = ecfg["accuracy_phases"]
     asks, dialogs, standoff = [], [], []
@@ -400,7 +430,7 @@ def junction_block(runs: list, ecfg: dict, road: hc.Roadmap, approach_m: float) 
         for rec in run.junctions:
             node = rec["junction"]
             t_start, t_end = rec.get("t_start", 0.0), rec.get("t_end", math.inf)
-            true_branch = road.command_toward(node, goal) if goal else None
+            true_branch = _road(road, run).command_toward(node, goal) if goal else None
             chosen = rec.get("read") if rec.get("result") == "accepted" else None
             outcome = "abort" if chosen is None else (NOT_EVALUATED if true_branch in (None, "NONE")
                                                       else "correct" if chosen == true_branch else "wrong")
@@ -451,7 +481,7 @@ def junction_block(runs: list, ecfg: dict, road: hc.Roadmap, approach_m: float) 
                                  "distance of the approached person the controller logged at the ask (asks_log)."}}
 
 
-def evaluate_block(runs: list, ecfg: dict, gcfg: dict, road: hc.Roadmap) -> dict:
+def evaluate_block(runs: list, ecfg: dict, gcfg: dict, road) -> dict:
     entries, rows, rows_by_run = [], [], {}
     for run in runs:
         e, r = frame_table(run, ecfg, gcfg)
@@ -471,7 +501,9 @@ def evaluate_block(runs: list, ecfg: dict, gcfg: dict, road: hc.Roadmap) -> dict
 def evaluate(runs: list, ecfg: dict | None = None, gcfg: dict | None = None, road: hc.Roadmap | None = None) -> dict:
     ecfg = ecfg if ecfg is not None else load_config()
     gcfg = gcfg if gcfg is not None else gd.load_config()
-    road = road if road is not None else hv.load_roadmap(hv.roadmap_path(hv.load_control()[1]))   # P7: the v4 map
+    if road is None:                      # AUDIT.md 16.35.1: each run is scored on the map it was driven on (it used to be the default v4 map for every session)
+        cache: dict = {}
+        road = lambda run: road_of_run(run, cache)  # noqa: E731
     res = evaluate_block(runs, ecfg, gcfg, road)
     res["sessions"] = sorted({r.session for r in runs})
     gt_cfg = gt_path.load_config()

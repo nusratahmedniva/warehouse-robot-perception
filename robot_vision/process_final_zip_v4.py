@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import re
@@ -162,7 +163,7 @@ def step_verify(zpath: Path, expected_sha: str, development: bool, prefix: str, 
 
 # ---------------------------------------------------------------- run-once preflight and the copy out of the zip
 
-def preflight_final(entries: list[dict], roots: list[Path], repo: Path) -> None:
+def preflight_final(entries: list[dict], roots: list[Path], repo: Path, check_destination: bool = True) -> None:
     """Nothing is written before every setting is known not to have been evaluated, exported or declared invalid (in the final root and in the
     default outputs, where the manual tools write), and no destination folder exists."""
     for e in entries:
@@ -174,7 +175,7 @@ def preflight_final(entries: list[dict], roots: list[Path], repo: Path) -> None:
                 found = fg.markers(root, s, kind)
                 if found:
                     raise StepFailed(f"{s}: already {what} ({found[0].parent.name} in {root}): finals are run once, nothing is repeated")
-    for e in entries:
+    for e in entries if check_destination else []:
         for folder in e["unity"] + e["bridge"] + e["markers"]:
             if (roots[0] / folder).exists():
                 raise StepFailed(f"{e['setting']}: {roots[0] / folder} exists already: nothing is overwritten (a second zip of the same sitting is refused)")
@@ -185,11 +186,10 @@ def _safe_rel(rel: str) -> bool:
     return bool(rel) and not p.is_absolute() and ".." not in p.parts and ":" not in rel and "\\" not in rel and not rel.startswith("/")
 
 
-def copy_out(zpath: Path, meta: dict, entries: list[dict], dest: Path) -> list[str]:
+def copy_out(zpath: Path, meta: dict, entries: list[dict], dest: Path, reuse: bool = False) -> list[str]:
     """Copy the folders of every setting out of the zip into dest, member by member: only members listed in MANIFEST.json, each file's SHA-256
     checked as it is written, never a name that leaves dest, never code (.py, .ps1, .sh, .exe, .dll). A folder is built under a temporary name
     and renamed only when complete (a failure removes the temporary one and leaves dest as it was). Returns the folder names."""
-    import hashlib
     import shutil
     listed = {f["name"]: f for f in meta["files"]}
     done, dest = [], Path(dest)
@@ -203,6 +203,17 @@ def copy_out(zpath: Path, meta: dict, entries: list[dict], dest: Path) -> list[s
                 members = [n for n in listed if n.startswith(prefix)]
                 if not members:
                     raise StepFailed(f"{e['setting']}: the zip lists no file of {folder}")
+                if reuse and (dest / folder).is_dir():       # an earlier copy of THIS zip (a run that stopped part-way): every file must be the zip's, byte for byte
+                    for name in members:
+                        f = dest / folder / name[len(prefix):]
+                        if Path(name[len(prefix):]).suffix.lower() in (".py", ".ps1", ".sh", ".exe", ".dll", ".bat", ".cmd"):
+                            continue
+                        if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != listed[name]["sha256"]:
+                            raise StepFailed(f"{e['setting']}: {dest / folder} exists but {name[len(prefix):]} differs from the zip: not reused")
+                    done.append(folder)
+                    continue
+                if (dest / folder).exists():
+                    raise StepFailed(f"{e['setting']}: {dest / folder} exists already: nothing is overwritten")
                 tmp = dest / f".ingest_{folder}"
                 if tmp.exists():
                     raise StepFailed(f"{tmp} exists: a previous copy was interrupted; remove it by hand")
@@ -409,10 +420,10 @@ def acceptance(setting: str, parts: list[tuple[Path, Path]], root: Path, repo: P
     return out
 
 
-def step_accept(zpath: Path, meta: dict, entries: list[dict], root: Path, repo: Path, development: bool, dev_runs: int, report: Report) -> dict:
+def step_accept(zpath: Path, meta: dict, entries: list[dict], root: Path, repo: Path, development: bool, dev_runs: int, report: Report, reuse: bool = False) -> dict:
     with zipfile.ZipFile(zpath) as z:
         extra_names = [n for n in z.namelist() if n.startswith("extra/")]
-    copied = copy_out(zpath, meta, entries, root)
+    copied = copy_out(zpath, meta, entries, root, reuse)
     report.add(2, "copy out", OK, f"{len(copied)} folders copied to {root} (hash checked; no code, nothing run)", folders=copied)
     pairs_by_setting, failed = {}, []
     for e in entries:
@@ -710,7 +721,7 @@ def new_report_dir(root: Path, prefix: str = "process_final_zip_v4") -> Path:
 
 def run(zip_path, sha256: str, development: bool = False, config: str | Path | None = None, repo: Path | None = None, only: list[str] | None = None,
         final_root: str | Path | None = None, work_root: str | Path | None = None, manifest_append: bool = True, manifest_path: str | Path | None = None,
-        dev_runs: int | None = None, no_figures: bool = False) -> tuple[int, Path, Report]:
+        dev_runs: int | None = None, no_figures: bool = False, reuse_ingested: bool = False) -> tuple[int, Path, Report]:
     """The whole runbook. Returns (exit code, report folder, report). A failed step stops it: the report says which and why."""
     cfg = load_config(config)
     repo = Path(repo) if repo else fz.REPO
@@ -735,9 +746,9 @@ def run(zip_path, sha256: str, development: bool = False, config: str | Path | N
             report.settings = [e["setting"] for e in entries]
         root.mkdir(parents=True, exist_ok=True)
         if not development:
-            preflight_final(entries, [root, _root("outputs")] if root != _root("outputs") else [root], repo)
+            preflight_final(entries, [root, _root("outputs")] if root != _root("outputs") else [root], repo, check_destination=not reuse_ingested)
             report.add(2, "run-once preflight", OK, "no evaluation, export or invalid marker for any setting in the zip; no destination folder exists")
-        pairs = step_accept(zpath, meta, entries, root, repo, development, int(dev_runs or cfg["development"]["runs_per_setting"]), report)
+        pairs = step_accept(zpath, meta, entries, root, repo, development, int(dev_runs or cfg["development"]["runs_per_setting"]), report, reuse_ingested)
         if development:
             report.add(3, "evaluate", SKIPPED, "--development: no final evaluation, no FINAL_DONE.json")
             export_folders = step_export_development(pairs, root, repo, report)
@@ -785,10 +796,11 @@ def main(argv=None) -> int:
     ap.add_argument("--config", default=None)
     ap.add_argument("--final-root", default=None, help="a final: where the sitting's folders and the results go (default: configs/v4/phase_b.json final_root)")
     ap.add_argument("--work-root", default=None, help="--development: where the dry run's folder is made (default: development_root of the config)")
+    ap.add_argument("--reuse-ingested", action="store_true", help="a final: a folder of THIS zip already in the final root (a run that stopped part-way) is reused if every file equals the zip's; never overwritten")
     ap.add_argument("--no-figures", action="store_true", help="skip the paper figures (paper_v4/figures_v4.py)")
     ap.add_argument("--no-manifest-append", action="store_true", help="a final: do not append the entries to results_manifest.json (they stay in the report)")
     a = ap.parse_args(argv)
-    code, _, _ = run(a.zip, a.sha256, a.development, a.config, only=a.only, final_root=a.final_root, work_root=a.work_root, manifest_append=not a.no_manifest_append, no_figures=a.no_figures)
+    code, _, _ = run(a.zip, a.sha256, a.development, a.config, only=a.only, final_root=a.final_root, work_root=a.work_root, manifest_append=not a.no_manifest_append, no_figures=a.no_figures, reuse_ingested=a.reuse_ingested)
     return code
 
 

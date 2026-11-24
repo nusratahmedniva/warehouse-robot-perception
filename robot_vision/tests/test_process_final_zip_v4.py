@@ -244,6 +244,33 @@ class CopyOutTests(Base):
         self.assertIn("exists already: nothing is overwritten", rep.steps[-1]["detail"])
 
 
+class ReuseIngestedTests(Base):
+    """AUDIT.md 16.35.1: a sitting whose run stopped part-way is continued without copying again: a folder of THIS zip already in the root is reused if every file
+    equals the zip's, never overwritten, and never reused when anything differs."""
+
+    def test_an_identical_earlier_copy_is_reused_and_a_changed_one_is_not(self):
+        self.final_session("A3")
+        zp, h = self.make_zip(["A3"])
+        with zipfile.ZipFile(zp) as z:
+            meta = json.loads(z.read("MANIFEST.json"))
+        entry = {"setting": "A3", "label": "A3", "unity": meta["settings"][0]["unity"], "bridge": meta["settings"][0]["bridge"], "markers": []}
+        first = pf.copy_out(zp, meta, [entry], self.dest)
+        self.assertEqual(pf.copy_out(zp, meta, [entry], self.dest, reuse=True), first)          # identical: reused
+        with self.assertRaisesRegex(pf.StepFailed, "exists already|nothing is overwritten|differs|exists"):
+            pf.copy_out(zp, meta, [entry], self.dest)                                            # without reuse an existing folder is a failure (tmp name clash is not)
+        victim = next((self.dest / entry["unity"][0]).glob("session.json"))
+        victim.write_text(victim.read_text() + " ")
+        with self.assertRaisesRegex(pf.StepFailed, "differs from the zip: not reused"):
+            pf.copy_out(zp, meta, [entry], self.dest, reuse=True)
+
+    def test_the_preflight_skips_the_destination_check_only_when_asked(self):
+        entries = [{"setting": "A3", "unity": ["u"], "bridge": ["b"], "markers": [], "invalid": []}]
+        (self.dest / "u").mkdir(parents=True)
+        with self.assertRaisesRegex(pf.StepFailed, "exists already"):
+            pf.preflight_final(entries, [self.dest], self.repo)
+        pf.preflight_final(entries, [self.dest], self.repo, check_destination=False)            # the evaluation markers are still checked
+
+
 class AcceptanceFailureTests(Base):
     def stops_with(self, zp, h, pattern):
         code, _, rep = self.run_it(zp, h)

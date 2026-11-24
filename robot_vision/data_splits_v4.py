@@ -22,6 +22,7 @@ DEFAULT = Path(__file__).resolve().parent / "configs" / "v4" / "data_splits.json
 SPLITS = ("development", "test")
 AVATAR_ROLE = "avatar_experiment"
 LOOK_ROLES = SPLITS + (AVATAR_ROLE,)
+SUPPLEMENTARY = {"S1": ("mixamo_worker", "anime_f_01", "anime_f_02_outfit_short", "cartoon_boxo_01")}      # AUDIT.md 16.37 (replaces 16.36): supplementary experiment S1 (post-freeze, exploratory): the only looks it may use
 KIND_GROUPS = ("stylised_human", "realistic_human", "anime", "cartoon_non_human")
 
 
@@ -76,7 +77,7 @@ def split_of_clip(clip: str, splits: dict) -> str | None:
 
 
 def guard_run(looks: Iterable[str], clips: Iterable[str], final_evaluation: bool = False,
-              splits: dict | None = None) -> str:
+              splits: dict | None = None, supplementary: str | None = None) -> str:
     """The split ('development' or 'test') of a run with these avatar looks and gesture animation clips, or SystemExit.
 
     looks: the looks of the workers in the run. clips: the animation clip names of its gestures (a gesture with no
@@ -88,6 +89,8 @@ def guard_run(looks: Iterable[str], clips: Iterable[str], final_evaluation: bool
     looks, clips = sorted(set(looks)), sorted(set(clips))
     if not looks:
         raise SystemExit("no avatar look given: the split of a run cannot be checked without it.")
+    if supplementary is not None:                                  # AUDIT.md 16.36: only for a session whose session.json says "supplementary": "S1"
+        return _guard_supplementary(looks, clips, supplementary, final_evaluation, splits)
     avatar = [n for n in looks if splits["looks"].get(n) == AVATAR_ROLE]
     if avatar:
         raise SystemExit(f"look {', '.join(avatar)} has the role avatar_experiment: it is for the avatar experiment only and is refused in "
@@ -117,6 +120,30 @@ def guard_run(looks: Iterable[str], clips: Iterable[str], final_evaluation: bool
         raise SystemExit("--final-evaluation refused: the look and clip names in configs/v4/data_splits.json are still "
                          "placeholders.")
     return split
+
+
+def _guard_supplementary(looks: list, clips: list, supplementary: str, final_evaluation: bool, splits: dict) -> str:
+    """The run of a supplementary session (AUDIT.md 16.36): exactly one look, and it is one of the experiment's looks; the clips are listed and of ONE role. Never in a final
+    evaluation (S1 is not a final). Returns 'supplementary_<name>'."""
+    if supplementary not in SUPPLEMENTARY:
+        raise SystemExit(f"unknown supplementary experiment {supplementary!r} (known: {sorted(SUPPLEMENTARY)}): refused")
+    if final_evaluation:
+        raise SystemExit(f"supplementary experiment {supplementary} is not a final: it is never evaluated with --final-evaluation")
+    allowed = SUPPLEMENTARY[supplementary]
+    if len(looks) != 1:
+        raise SystemExit(f"supplementary experiment {supplementary}: a run has exactly ONE look (all its workers), got {looks}")
+    if looks[0] not in allowed:
+        raise SystemExit(f"supplementary experiment {supplementary} uses only {list(allowed)}, not {looks[0]!r}: refused")
+    roles = set()
+    for name in clips:
+        if name == "":
+            raise SystemExit("a gesture has no animation clip name (clip is empty): its role is unknown, so the run is refused.")
+        if name not in splits["clips"]:
+            raise SystemExit(f"clip {name!r} is not listed in the v4 data splits (unknown is never assumed).")
+        roles.add(splits["clips"][name])
+    if len(roles) > 1:
+        raise SystemExit(f"supplementary experiment {supplementary}: the clips mix roles {sorted(roles)}: refused")
+    return f"supplementary_{supplementary}"
 
 
 AVATAR_PARTS = ("edit", "play")

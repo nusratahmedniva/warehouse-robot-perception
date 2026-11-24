@@ -6,6 +6,8 @@
   "development_root": "../../RobotVisionResults/phase_b_development",
   "development_root_note": "Outside the repository (next to it, like the archive root). A development dry run makes a NEW folder here; nothing is written to outputs/ and no FINAL marker exists.",
   "avatar_root": "../../RobotVisionResults/phase_b_avatar",
+  "supplementary_root": "../../RobotVisionResults/phase_b_supplementary",
+  "supplementary_root_note": "AUDIT.md 16.36: where process_supplementary_zip_v4.py (S1, post-freeze, exploratory) writes its results; never the finals root; no FINAL marker is written there.",
   "manifest": "configs/v4/archive/results_manifest.json",
   "development": {
     "prefix": "t0_",
