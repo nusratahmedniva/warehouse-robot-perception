@@ -43,6 +43,12 @@ namespace WarehouseRobot.Scenario
         int[] s1PlanRuns = new int[0];
         int s1StartRun = 1, s1Part = 1;
 
+        /// <summary>The cell's look source(s), resolved once in <see cref="UseS1Character"/>.</summary>
+        readonly List<LookSource> s1Sources = new List<LookSource>();
+
+        /// <summary>S1: add the cell's look source to THIS worker instance (never to the prefab asset).</summary>
+        void AddS1Sources(WorkerV4 w) { if (S1 && w != null) w.lookSources = S1Sources.Merge(w.lookSources, s1Sources); }
+
         bool S1 => s1Character.Length > 0 || s1Setting.Length > 0;
 
         /// <summary>The plan run of the final plan that session run <paramref name="run"/> drives (S1: the setting's declared list; otherwise the run itself).</summary>
@@ -119,6 +125,21 @@ namespace WarehouseRobot.Scenario
             error = null;
             if (ExperimentLooks.Find(workerTemplate, elooks.looks, s1Character) == null)
                 return Fail(out error, $"S1: character '{s1Character}' is neither a look of worker_v4.json nor of looks_ab.json");
+            // the look's prefab (and material override) is resolved here, as LookCheckPlayMenu.AddExperimentLooks does for the avatar experiment: WorkerV4.prefab lists Sunbox only
+            var entry = ExperimentLooks.Find(workerTemplate, elooks.looks, s1Character);
+            s1Sources.Clear();
+            if (entry.kind == LookEntry.KindPrefab)
+            {
+#if UNITY_EDITOR
+                var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(entry.asset);
+                if (prefab == null)
+                    return Fail(out error, $"S1: the prefab of {s1Character} ({entry.asset}) cannot be loaded: it is third-party and git-ignored. Put the file at unity/Robotics-Warehouse/WarehouseProjectURP/{entry.asset}, " +
+                                           "open the project in the Unity Editor once so that it is imported (its .meta file is in git), then start the cell again. Nothing is rebuilt: the worker template is not changed");
+                var mat = string.IsNullOrEmpty(entry.material_override) ? null : UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(entry.material_override);
+                if (!string.IsNullOrEmpty(entry.material_override) && mat == null) return Fail(out error, $"S1: the material override {entry.material_override} of {s1Character} cannot be loaded");
+                s1Sources.Add(new LookSource { asset = entry.asset, prefab = prefab, materialOverride = mat });
+#endif
+            }
             eMales.Clear(); eMales.Add(s1Character);
             eFemales.Clear(); eFemales.Add(s1Character);
             return true;

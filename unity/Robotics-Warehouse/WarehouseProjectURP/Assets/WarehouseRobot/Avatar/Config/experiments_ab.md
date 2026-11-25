@@ -3098,3 +3098,17 @@ so also for S1: after the plans, before the leak test and run 1, drawing every l
 session folder (one JSON line per record, also after a failed warm-up) and refuses to start the cell unless the warm-up made exactly one record, of the cell's character, part `session`, status `done`
 (`S1Guard.WarmUpJsonl`, `S1Guard.WarmUpProblems`). Finals and development sessions are unchanged. Tests (4, Edit Mode): the look list the runner warms up is exactly the character for every cell;
 the jsonl text; the record checks; the call order in `Run()`. Unity Edit Mode 393 of 394 passed (1 skipped, as before); the 8 Python test modules that read Unity files (347 tests) OK, 1 skipped. No cell was run.
+
+**Addendum 14, amendment 2 (2026-11-25, before any S1 run): the worker's look source, and a refused start is not a start.** *Event:* the first attempt of cell mixamo_worker/A1 was refused before run 1
+(`s1_mixamo_worker_A1_20261125_205027`): "shader warm-up: look mixamo_worker: Assets/WarehouseRobot/Characters/worker.fbx is not installed or not assigned". *Cause:* the file exists and is imported
+(`Characters/worker.fbx`, 41 547 488 bytes, with its `.meta`); what was missing is its ASSIGNMENT. The frozen worker template `WorkerV4.prefab` lists the Sunbox prefab only in `lookSources`. The avatar
+experiment (`look_check_play_ab_20261124_180704`) resolves each prefab look of `looks_ab.json` with the AssetDatabase when it starts (`LookCheckPlayMenu.AddExperimentLooks`) and adds the sources to every worker
+it spawns (`extraSources`); the navigation runner did the same for `extraLooks` (the look entries) but not for the sources, and the finals only ever used Sunbox. Nothing changed by switching branch: `main` has the same
+template and the same runner. *Fix (S1 path only):* `UseS1Character` resolves the character's prefab (and material override) with the AssetDatabase and keeps it in `s1Sources`; `AddS1Sources` adds it to the
+`lookSources` of each worker INSTANCE (the shader warm-up worker and every spawned worker), `S1Sources.Merge` never changes the input array and `WorkerV4.prefab` is not edited (a test compares its LF hash with
+`frozen.json`). If a file is truly missing the cell is refused with the path it must be at (`unity/Robotics-Warehouse/WarehouseProjectURP/<asset>`), the instruction to open the Editor once so it is imported, and
+nothing is rebuilt. *The refused attempt left a marker:* the session folder has `S1_CELL_STARTED.json`, `NOT_STARTED.txt`, `shader_warm_up.jsonl` (the refusal is recorded) and `config_used/`; no run began and no bridge
+result belongs to it. Under the run-once rule a refusal before run 1 must not count as a start, so `S1Guard.Scan` and `run_s1.ps1` now skip every session folder that has `NOT_STARTED.txt` (leak-test, warm-up and
+Python-map refusals included); the folder is KEPT as evidence and nothing was deleted; a folder in which a run began (no `NOT_STARTED.txt`) still blocks a second start. *Tests (5 new, Edit Mode):* the template lists Sunbox
+only and is unchanged; each of the four characters is a prefab look whose FBX prefab loads (it did here, mixamo_worker included); `Merge`; the runner adds the source before the warm-up worker is initialised and to every
+spawn and never writes the prefab; a refused start is not a start (and a began folder still is). Unity Edit Mode 398 of 399 passed (1 skipped, as before); the 8 Python modules that read Unity files (347 tests) OK. No cell was run.

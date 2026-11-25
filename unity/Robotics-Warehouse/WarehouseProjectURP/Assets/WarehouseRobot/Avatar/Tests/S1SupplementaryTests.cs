@@ -419,6 +419,95 @@ namespace WarehouseAvatar.Tests
             // the finals' path is untouched: no other session kind writes the file
             StringAssert.DoesNotContain("WriteS1Warm", Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4Experiment.cs"));
         }
+        // ---------------------------------------------------------------- the look sources (the template lists Sunbox only) and a refused start
+
+        [Test]
+        public void TheWorkerTemplate_ListsSunboxOnly_SoS1AddsEachCharactersSourceToItsOwnWorker()
+        {
+            var template = Project("Assets/WarehouseRobot/Avatar/Prefabs/WorkerV4.prefab");
+            StringAssert.Contains("Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab", template);
+            foreach (var character in Characters) StringAssert.DoesNotContain(character, template);
+            StringAssert.DoesNotContain("Characters/worker.fbx", template, "the frozen template has no source for mixamo_worker: the avatar experiment adds it at spawn, S1 does the same");
+            // the frozen template is not edited: its LF hash is the one frozen.json records
+            string frozen = Repo("robot_vision/configs/v4/frozen.json");
+            string hash = FinalGuardV4.Sha256Lf(File.ReadAllBytes(Path.Combine(ProjectDir, "Assets/WarehouseRobot/Avatar/Prefabs/WorkerV4.prefab")));
+            StringAssert.Contains(hash, frozen, "WorkerV4.prefab is unchanged");
+        }
+
+        [Test]
+        public void EveryCharacter_IsAPrefabLookOfLooksAb_WithItsFbxPrefabResolvableWhenInstalled()
+        {
+            var looks = ExperimentLooks.Parse(Project(ExperimentLooks.AssetPath));
+            var template = WorkerV4Config.Parse(Project("Assets/WarehouseRobot/Avatar/Config/worker_v4.json"));
+            foreach (var character in Characters)
+            {
+                var entry = ExperimentLooks.Find(template, looks.looks, character);
+                Assert.IsNotNull(entry, character);
+                Assert.AreEqual(LookEntry.KindPrefab, entry.kind, character);
+                StringAssert.EndsWith(".fbx", entry.asset, character);
+                if (!File.Exists(Path.Combine(ProjectDir, entry.asset))) { Debug.LogWarning($"{character}: {entry.asset} is not installed here (third-party, git-ignored)"); continue; }
+                Assert.IsNotNull(UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(entry.asset), $"{character}: {entry.asset} is imported and loads as a prefab");
+                if (!string.IsNullOrEmpty(entry.material_override))
+                    Assert.IsNotNull(UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(entry.material_override), $"{character}: {entry.material_override}");
+            }
+        }
+
+        [Test]
+        public void S1Sources_Merge_AddsOncePerAsset_AndNeverChangesTheInput()
+        {
+            var sunbox = new LookSource { asset = "Assets/SunboxGames/Avatars/Prefabs/Avatar.prefab" };
+            var existing = new[] { sunbox };
+            var add = new[] { new LookSource { asset = "Assets/WarehouseRobot/Characters/worker.fbx" }, new LookSource { asset = "Assets/WarehouseRobot/Characters/worker.fbx" }, sunbox };
+            var merged = S1Sources.Merge(existing, add);
+            CollectionAssert.AreEqual(new[] { sunbox.asset, "Assets/WarehouseRobot/Characters/worker.fbx" }, merged.Select(s => s.asset).ToArray());
+            Assert.AreEqual(1, existing.Length, "the template's array is not changed");
+            Assert.AreEqual(1, S1Sources.Merge(null, new[] { sunbox }).Length);
+            Assert.AreEqual(1, S1Sources.Merge(existing, null).Length);
+        }
+
+        [Test]
+        public void TheRunner_AddsTheSourceToTheWarmUpWorker_AndToEverySpawnedWorker_NeverToThePrefab()
+        {
+            string warm = Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4WarmUp.cs");
+            string exp = Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4Experiment.cs");
+            string s1 = Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4S1.cs");
+            int init = warm.IndexOf("w.Initialize()", StringComparison.Ordinal);
+            Assert.Greater(init, warm.IndexOf("AddS1Sources(w);", StringComparison.Ordinal), "before the warm-up worker is initialised");
+            Assert.GreaterOrEqual(warm.IndexOf("AddS1Sources(w);", StringComparison.Ordinal), 0);
+            StringAssert.Contains("AddS1Sources(x);", exp, "the spawn of an experiment worker (prepare runs before Initialize)");
+            StringAssert.Contains("w.lookSources = S1Sources.Merge(w.lookSources", s1, "the instance's array");
+            StringAssert.DoesNotContain("workerPrefab.lookSources", s1, "the prefab's list is never written");
+            StringAssert.DoesNotContain("SaveAssets", s1);
+            StringAssert.DoesNotContain("PrefabUtility", s1);
+        }
+
+        [Test]
+        public void ARefusedStart_NoRunBegan_IsNotAStartedCell()
+        {
+            var cfg = Cfg();
+            string root = Path.Combine(Path.GetTempPath(), "s1_refused_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string refused = Path.Combine(root, "s1_mixamo_worker_A1_20261125_205027");
+                Directory.CreateDirectory(refused);
+                File.WriteAllText(Path.Combine(refused, cfg.marker_started), S1Guard.StartedJson(cfg, "mixamo_worker", "A1", new[] { 1, 2, 3, 4, 5 }, 1, 0, "", "abc", Path.GetFileName(refused), "t"));
+                File.WriteAllText(Path.Combine(refused, "shader_warm_up.jsonl"), "{}\n");
+                File.WriteAllText(Path.Combine(refused, S1Guard.NotStartedFile), "shader warm-up: look mixamo_worker: not installed");
+                Assert.AreEqual("NOT_STARTED.txt", S1Guard.NotStartedFile);
+                Assert.AreEqual(0, S1Guard.Scan(root, cfg).Count, "the folder is kept, but it does not count as a start");
+                CollectionAssert.IsEmpty(S1Guard.Problems(cfg, "mixamo_worker", "A1", false, S1Guard.Scan(root, cfg), out int k, out _, out _));
+                Assert.AreEqual(1, k);
+                StringAssert.Contains("no earlier session", string.Join(";", S1Guard.Problems(cfg, "mixamo_worker", "A1", true, S1Guard.Scan(root, cfg), out _, out _, out _)));
+                // a folder where a run began (no NOT_STARTED.txt) still blocks a second start
+                string began = Path.Combine(root, "s1_mixamo_worker_A1_20261125_210000");
+                Directory.CreateDirectory(began);
+                File.WriteAllText(Path.Combine(began, cfg.marker_started), S1Guard.StartedJson(cfg, "mixamo_worker", "A1", new[] { 1, 2, 3, 4, 5 }, 1, 0, "", "abc", Path.GetFileName(began), "t"));
+                Assert.AreEqual(1, S1Guard.Scan(root, cfg).Count);
+                StringAssert.Contains("already started", string.Join(";", S1Guard.Problems(cfg, "mixamo_worker", "A1", false, S1Guard.Scan(root, cfg), out _, out _, out _)));
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+            StringAssert.Contains("NOT_STARTED.txt", File.ReadAllText(Path.Combine(RepoRoot, "finals_v4/run_s1.ps1")), "the launcher reads the same rule");
+        }
         // ---------------------------------------------------------------- nothing frozen is touched
 
         [Test]

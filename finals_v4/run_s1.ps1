@@ -91,6 +91,7 @@ function CellState($character, $setting) {
     foreach ($d in @(Get-ChildItem $outputs -Directory -Filter ($s1.folder_prefix + "*") -ErrorAction SilentlyContinue)) {
         $m = Join-Path $d.FullName $s1.marker_started
         if (-not (Test-Path $m)) { continue }
+        if (Test-Path (Join-Path $d.FullName "NOT_STARTED.txt")) { continue }     # refused before run 1: no run began, not a start
         $j = Json $m
         if ($j.character -eq $character -and $j.s1_setting -eq $setting) {
             $parts += [pscustomobject]@{ Folder = $d.Name; Part = [int]$j.part; Done = (Test-Path (Join-Path $d.FullName $s1.marker_done)); Invalid = (Test-Path (Join-Path $d.FullName $s1.marker_invalid)) }

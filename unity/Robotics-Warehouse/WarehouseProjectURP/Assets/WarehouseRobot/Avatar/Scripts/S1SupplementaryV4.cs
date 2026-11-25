@@ -102,6 +102,18 @@ namespace WarehouseAvatar
         }
     }
 
+    /// <summary>The look sources of an S1 session: the avatar-experiment looks are not in the worker template (WorkerV4.prefab, frozen: only Sunbox), so each spawned worker gets its look's
+    /// prefab added to ITS OWN lookSources, as the avatar experiment's look checks do (extraSources). Never touches the prefab asset.</summary>
+    public static class S1Sources
+    {
+        public static LookSource[] Merge(LookSource[] existing, IEnumerable<LookSource> add)
+        {
+            var list = new List<LookSource>(existing ?? new LookSource[0]);
+            foreach (var s in add ?? new LookSource[0]) if (s != null && !list.Exists(x => x != null && x.asset == s.asset)) list.Add(s);
+            return list.ToArray();
+        }
+    }
+
     /// <summary>One part (session folder) of an S1 cell found under the output root: what its markers and its truth files say.</summary>
     public class S1CellPart
     {
@@ -116,6 +128,9 @@ namespace WarehouseAvatar
     /// without an outcome, a second interruption makes the cell INVALID. Pure: the caller reads the folders.</summary>
     public static class S1Guard
     {
+        /// <summary>The file TrialRunnerV4 writes into a session folder it refused to start (warm-up, leak test, Python map): no run began, so the folder never counts as a started cell.</summary>
+        public const string NotStartedFile = "NOT_STARTED.txt";
+
         public static List<string> Problems(S1Config cfg, string character, string setting, bool resume, IList<S1CellPart> existing,
                                             out int startRun, out string resumeOf, out bool markInvalid)
         {
@@ -217,6 +232,7 @@ namespace WarehouseAvatar
                 if (!name.StartsWith(cfg.folder_prefix, StringComparison.Ordinal)) continue;
                 string started = Path.Combine(d, cfg.marker_started);
                 if (!File.Exists(started)) continue;
+                if (File.Exists(Path.Combine(d, NotStartedFile))) continue;     // refused before run 1 (warm-up, leak test, Python map): no run began, so it is not a start
                 string text = File.ReadAllText(started);
                 var p = new S1CellPart
                 {

@@ -116,6 +116,7 @@ namespace WarehouseRobot.Scenario
                     w.robot = robot.transform;
                     w.robotEye = robot.PanTilt != null ? robot.PanTilt.transform : null;
                     if (Experiment && elooks != null) w.extraLooks = new List<LookEntry>(elooks.looks);
+                    AddS1Sources(w);
                     if (!w.Initialize())
                     {
                         warmUpError = $"look {look}: {w.Problem}";

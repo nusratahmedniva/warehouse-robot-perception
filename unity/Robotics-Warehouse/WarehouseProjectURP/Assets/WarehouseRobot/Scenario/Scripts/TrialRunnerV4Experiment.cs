@@ -224,7 +224,7 @@ namespace WarehouseRobot.Scenario
                 var node = ExperimentPlanAB.Pos(eMap.Node(pw.Node));
                 var face = new Vector3(node.x - p.x, 0f, node.z - p.z);
                 var w = Spawn($"WorkerV4_{pw.Node}_{pw.Slot + 1}", pw.Look, pw.Id, p, Quaternion.LookRotation(face.sqrMagnitude > 1e-6f ? face : Vector3.forward, Vector3.up),
-                              run, out error, x => { x.extraLooks = extra; x.ReportTruthful = true; x.ReportActive = true; });
+                              run, out error, x => { x.extraLooks = extra; AddS1Sources(x); x.ReportTruthful = true; x.ReportActive = true; });
                 if (w == null) return false;
                 eWorkers[w] = pw;
                 eRings.Add(Ring(p, pw.Liar ? eLiarMat : eTruthfulMat, $"Stand {pw.Id} {pw.Node} {(pw.Liar ? "LIAR shows " + pw.ShownCommand : "truthful")}"));
