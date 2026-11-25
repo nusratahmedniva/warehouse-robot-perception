@@ -21,7 +21,8 @@ $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $zipPath = Join-Path $OutDir "s1_supplementary_$stamp.zip"
 $problems = @()
 if (-not (Test-Path $manifestFile)) { Write-Host "REFUSED: $manifestFile does not exist: no S1 cell was recorded by run_s1.ps1"; exit 2 }
-$entries = @(Get-Content $manifestFile -Raw | ConvertFrom-Json)
+# Windows PowerShell 5.1 hands a JSON array on as ONE object, so @() alone nests it; ForEach-Object flattens it (PowerShell 7 too)
+$entries = @(Get-Content $manifestFile -Raw | ConvertFrom-Json | ForEach-Object { $_ })
 $repoFull = [System.IO.Path]::GetFullPath($repo).TrimEnd('\') + '\'
 $outFull = [System.IO.Path]::GetFullPath($OutDir).TrimEnd('\') + '\'
 if ($outFull.StartsWith($repoFull, [System.StringComparison]::OrdinalIgnoreCase)) { Write-Host "REFUSED: -OutDir is inside the repository ($OutDir)"; exit 2 }
@@ -41,6 +42,24 @@ foreach ($e in $entries) {
     AddTree (Join-Path $outputs $e.unity_session) "$dir/$($e.unity_session)"
     AddTree (Join-Path $outputs $e.bridge_run) "$dir/$($e.bridge_run)"
     foreach ($n in $e.protocol_note, $e.transcript, $e.crashwatch, $e.server_log, $e.server_err_log, $e.unity_log) { if ($n) { AddTree (Join-Path $outputs $n) "$dir/logs" } }
+}
+# every other S1 session folder, bridge run and launcher log of the sitting that s1_runs.json does not name (a refused NOT_STARTED attempt, an earlier
+# launch of the same cell): packed as evidence next to the recorded ones, never skipped
+$named = @{}
+foreach ($e in $entries) { foreach ($n in $e.unity_session, $e.bridge_run, $e.protocol_note, $e.transcript, $e.crashwatch, $e.server_log, $e.server_err_log, $e.unity_log) { if ($n) { $named[$n] = $true } } }
+$sittingDay = (($entries | ForEach-Object { $_.bridge_run } | Where-Object { $_ } | Select-Object -First 1) -replace '^bridge_guide_(\d{8})_.*$', '$1')
+foreach ($d in Get-ChildItem $outputs -Directory -Filter "s1_*" -ErrorAction SilentlyContinue) {
+    if (-not $named.ContainsKey($d.Name)) { AddTree $d.FullName "s1/unlisted_sessions/$($d.Name)"; Write-Host "    also packed (not in s1_runs.json): $($d.Name)" }
+}
+if ($sittingDay) {
+    foreach ($d in Get-ChildItem $outputs -Directory -Filter "bridge_guide_${sittingDay}_*" -ErrorAction SilentlyContinue) {
+        if (-not $named.ContainsKey($d.Name)) { AddTree $d.FullName "s1/unlisted_bridge_runs/$($d.Name)"; Write-Host "    also packed (not in s1_runs.json): $($d.Name)" }
+    }
+}
+foreach ($pat in "run_s1_s1_*", "run_protocol_s1_*", "run_s1_plan_*") {
+    foreach ($f in Get-ChildItem $outputs -File -Filter $pat -ErrorAction SilentlyContinue) {
+        if (-not $named.ContainsKey($f.Name)) { AddTree $f.FullName "s1/unlisted_logs"; Write-Host "    also packed (not in s1_runs.json): $($f.Name)" }
+    }
 }
 AddTree $manifestFile "s1"
 foreach ($f in Get-ChildItem $outputs -File -Filter "s1_plan_*.txt" -ErrorAction SilentlyContinue) { AddTree $f.FullName "s1/plan" }
