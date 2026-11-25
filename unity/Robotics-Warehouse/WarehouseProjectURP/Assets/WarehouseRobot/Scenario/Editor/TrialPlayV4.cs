@@ -33,6 +33,10 @@ namespace WarehouseRobot.ScenarioEditor
     /// addendum 10): the session drives runs k..N of its N runs with exactly the plans of a full session (SessionResumeV4); refused in a final
     /// unless -resumeMarker DECLARATION (addendum 13, AUDIT.md 16.30.1 and 16.31.3) names the declared interruption it resumes, which must match.
     /// -bridgeFolder NAME (addendum 13, required in a final): the run folder of this final's server, whose start marker is not an earlier final.
+    /// -s1Character NAME -s1Setting A1|A3|B3 [-s1Resume] (addendum 14, 2026-11-25): one cell of the post-freeze supplementary experiment S1 (Anisha's
+    /// AUDIT.md 16.36 and 16.37; Avatar/Config/s1_supplementary.json): the finals' setting with all workers in one of four characters, five plan runs, seed 2,
+    /// timeout 480 s; a session folder s1_&lt;character&gt;_&lt;setting&gt;_&lt;time&gt;; no frozen match, no FINAL marker; refused together with every final and
+    /// development option above. -s1Resume resumes an interrupted cell once.
     /// </summary>
     [InitializeOnLoad]
     public static class TrialPlayV4
@@ -60,9 +64,13 @@ namespace WarehouseRobot.ScenarioEditor
             float timeout = 1800f;
             string checkDir = "", workers = "", finalSetting = "", experiment = "", experimentLooks = "", experimentSide = "", experimentGoals = "", startRun = "";
             string resumeMarker = "", bridgeFolder = "";            // addendum 13
+            string s1Character = "", s1Setting = "";                // addendum 14 (post-freeze supplementary experiment S1)
             var args = System.Environment.GetCommandLineArgs();
+            bool s1Resume = System.Array.IndexOf(args, "-s1Resume") >= 0;
             for (int i = 0; i < args.Length - 1; i++)
             {
+                if (args[i] == "-s1Character") s1Character = args[i + 1];
+                if (args[i] == "-s1Setting") s1Setting = args[i + 1];
                 if (args[i] == "-trialTimeout") float.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out timeout);
                 if (args[i] == "-checkDir") checkDir = Path.GetFullPath(Path.Combine(RepoRoot, args[i + 1]));   // relative = to the repo root
                 if (args[i] == "-workersConfig") workers = args[i + 1];
@@ -84,6 +92,9 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.StartRunKey, startRun);
             SessionState.SetString(TrialRunnerV4.ResumeMarkerKey, resumeMarker);
             SessionState.SetString(TrialRunnerV4.BridgeFolderKey, bridgeFolder);
+            SessionState.SetString(TrialRunnerV4.S1CharacterKey, s1Character);
+            SessionState.SetString(TrialRunnerV4.S1SettingKey, s1Setting);
+            SessionState.SetBool(TrialRunnerV4.S1ResumeKey, s1Resume);
             if (checkDir.Length > 0) Directory.CreateDirectory(checkDir);
             EditorSceneManager.OpenScene(Scene);
             SessionState.SetBool(ActiveKey, true);
@@ -155,6 +166,9 @@ namespace WarehouseRobot.ScenarioEditor
             SessionState.SetString(TrialRunnerV4.StartRunKey, "");
             SessionState.SetString(TrialRunnerV4.ResumeMarkerKey, "");
             SessionState.SetString(TrialRunnerV4.BridgeFolderKey, "");
+            SessionState.SetString(TrialRunnerV4.S1CharacterKey, "");
+            SessionState.SetString(TrialRunnerV4.S1SettingKey, "");
+            SessionState.SetBool(TrialRunnerV4.S1ResumeKey, false);
             EditorApplication.update -= Poll;
             Debug.Log($"[TrialPlayV4] finished ({code}): {status}");
             EditorApplication.Exit(code);

@@ -244,8 +244,12 @@ namespace WarehouseRobot.Scenario
 #if UNITY_EDITOR
             finalSetting = UnityEditor.SessionState.GetString(FinalSettingKey, "");
             experimentName = UnityEditor.SessionState.GetString(ExperimentKey, "");      // experiments A/B (TrialRunnerV4Experiment.cs)
+            s1Character = UnityEditor.SessionState.GetString(S1CharacterKey, "");        // post-freeze supplementary experiment S1 (TrialRunnerV4S1.cs)
+            s1Setting = UnityEditor.SessionState.GetString(S1SettingKey, "");
+            s1Resume = UnityEditor.SessionState.GetBool(S1ResumeKey, false);
 #endif
             if (Final && !SetupFinal(out error)) return false;
+            if (S1 && !SetupS1(out error)) return false;
 
             robot = FindFirstObjectByType<RobotRig>();
             bridge = FindFirstObjectByType<RobotBridgeClient>();
@@ -368,14 +372,15 @@ namespace WarehouseRobot.Scenario
             if (templateErrors.Count > 0) return Fail(out error, "worker_v4.json: " + string.Join("; ", templateErrors));
             workersText = workersConfig.text;
             workersSource = TrialWorkersAsset;
-            if (Final)
+            if (Final || S1)
             {
-                // the setting's declared final workers config (final_v4.json, Avatar/Config/sessions/final_<setting>.json)
+                // the setting's declared final workers config (final_v4.json, Avatar/Config/sessions/final_<setting>.json); S1 uses the finals' config of its setting
+                // (TrialRunnerV4S1.cs)
                 try { workersText = File.ReadAllText(Path.Combine(Application.dataPath, "..", fset.workers_config)); workersSource = fset.workers_config; }
                 catch (Exception e) { return Fail(out error, "cannot read the final workers config " + fset.workers_config + ": " + e.Message); }
             }
 #if UNITY_EDITOR
-            string over = Final ? "" : UnityEditor.SessionState.GetString(WorkersOverrideKey, "");
+            string over = Final || S1 ? "" : UnityEditor.SessionState.GetString(WorkersOverrideKey, "");
             if (over.Length > 0)
             {
                 // a declared session config (Avatar/Config/sessions/), given by TrialPlayV4 -workersConfig
@@ -396,7 +401,7 @@ namespace WarehouseRobot.Scenario
 
             string mode = FinalRunGuard.Mode(cfg.mode);
             if (!SetupStopSession(out error)) return false;
-            TrialTotal = Final ? fplan.RunsPerSetting : StopSession ? stopItems.Count : Mathf.Max(1, cfg.trial_count);
+            TrialTotal = Final ? fplan.RunsPerSetting : S1 ? s1Cfg.runs_per_cell : StopSession ? stopItems.Count : Mathf.Max(1, cfg.trial_count);
             string startText = "";
 #if UNITY_EDITOR
             startText = UnityEditor.SessionState.GetString(StartRunKey, "");
@@ -405,7 +410,9 @@ namespace WarehouseRobot.Scenario
             if (!Final && UnityEditor.SessionState.GetString(ResumeMarkerKey, "").Length > 0)
                 return Fail(out error, "refused: -resumeMarker is for a declared resume of a final only (a development session starts at run k without one)");
 #endif
+            if (S1 && startText.Length > 0) return Fail(out error, "refused: -startRun is not an S1 option (an interrupted cell is resumed once with -s1Resume: the first run without an outcome)");
             if (!SessionResumeV4.Parse(startText, TrialTotal, Final, resumeDecl != null, out startRun, out string startError)) return Fail(out error, "refused: " + startError);
+            if (S1) startRun = s1StartRun;
             plans.Clear();
             if (Experiment && !SetupExperiment(mode, out error)) return false;
             for (int run = 1; run <= TrialTotal && !Experiment; run++)
@@ -527,7 +534,7 @@ namespace WarehouseRobot.Scenario
             }
 
             string mode = Final ? FinalRunGuard.Final : FinalRunGuard.Mode(cfg.mode);
-            int seed = Final ? fplan.FinalSeed : StopSession ? stopSeed : cfg.dev_seed;    // a STOP session's own seed (experiments_ab.md section 14)
+            int seed = Final || S1 ? fplan.FinalSeed : StopSession ? stopSeed : cfg.dev_seed;    // a STOP session's own seed (experiments_ab.md section 14); S1: the final seed 2
             sessionSeed = seed;
             var endpoints = Endpoints();
             var order = new List<string>();
@@ -551,7 +558,9 @@ namespace WarehouseRobot.Scenario
                 Debug.Log($"[TrialRunnerV4] declared resume of {finalSetting} from run {startRun} ({Path.GetFileName(Path.GetDirectoryName(resumeFile))}; part 1 {resumeDecl.unity_folder})");
             }
 
-            SessionFolder = NewFolder(Final ? $"trials_final_{cfg.task}_{finalSetting}" : Experiment ? $"trials_{mode}_{cfg.task}_{experimentName}" : $"trials_{mode}_{cfg.task}");
+            SessionFolder = NewFolder(Final ? $"trials_final_{cfg.task}_{finalSetting}" : S1 ? $"{s1Cfg.folder_prefix}{s1Character}_{s1Setting}" :
+                                      Experiment ? $"trials_{mode}_{cfg.task}_{experimentName}" : $"trials_{mode}_{cfg.task}");
+            if (S1) WriteS1Started();                                  // the cell's run-once marker, before the first render (a crash leaves it)
             string used = Path.Combine(SessionFolder, "config_used");
             Directory.CreateDirectory(used);
             GroundTruthFiles.WriteNew(Path.Combine(used, cfgName), cfgText);
@@ -571,6 +580,7 @@ namespace WarehouseRobot.Scenario
                 GroundTruthFiles.WriteNew(Path.Combine(used, "final_plan.json"), finalPlanText);
                 GroundTruthFiles.WriteNew(Path.Combine(used, "frozen.json"), frozenText);
             }
+            if (S1) WriteS1Configs(used);
 
             // experiments_ab.md section 15 addendum 12: every look of the session is drawn once (no seeded draw) before the leak test and run 1
             yield return WarmUpSessionLooks();
@@ -623,7 +633,8 @@ namespace WarehouseRobot.Scenario
             session.worker_layout = Experiment ? $"experiment {experimentName}: {eplan.LayoutKind} layout, workers at every asking node, anyone asked answers (experiments_ab.md section 3) while the robot is in that worker's node zone (section 15 addendum 1, item 3a)" : Layout;
             session.bystanders = Experiment ? 0 : wcfg.bystanders.count; session.max_active_avatars = Experiment ? ecfg.max_active_avatars : wcfg.max_active_avatars;
             session.v3_workers_hidden = new List<string>(hiddenV3);
-            session.ground_truth_layer = robot.Config.Unity.v4.ground_truth.layer; session.final_setting = finalSetting;
+            session.ground_truth_layer = robot.Config.Unity.v4.ground_truth.layer; session.final_setting = S1 ? s1Setting : finalSetting;
+            if (S1) FillS1Session(session);
             session.grid_cell_size_m = gt.Grid.CellSize; session.grid_widening_m = gt.Grid.InflationM; session.grid_report = gt.GridReport;
             session.leak_test = leak;
             session.start_run = startRun;
@@ -882,6 +893,7 @@ namespace WarehouseRobot.Scenario
                     FinalGuardV4.DoneJson(finalSetting, TrialTotal, Successes, commit, Path.GetFileName(SessionFolder), DateTime.Now.ToString("s", Inv),
                                           startRun, resumeDecl != null ? startRun : 0, resumeDecl != null ? resumeDecl.unity_folder : ""));
             }
+            if (S1 && Completed == TrialTotal) WriteS1Done();           // S1's own end marker (never a FINAL_* marker)
             Status = startRun > 1 ? $"done: {Successes}/{TrialTotal - startRun + 1} SUCCESS (runs {startRun}..{TrialTotal})" : $"done: {Successes}/{TrialTotal} SUCCESS";
             Debug.Log($"[TrialRunnerV4] {Status}. Folder: {Path.GetFileName(SessionFolder)}");
         }

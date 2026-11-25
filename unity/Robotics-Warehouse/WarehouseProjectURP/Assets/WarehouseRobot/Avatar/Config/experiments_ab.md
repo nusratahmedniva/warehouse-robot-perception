@@ -3006,3 +3006,86 @@ and `finals_v4/test_resume_dryrun_v4.py` (new).
   final as before (a final's Unity command now ends with `-bridgeFolder`), `-Resume` with `-Rehearsal` refused, `-OutputRoot` without `-DryRun`
   refused.
 - *Not run:* a resumed final in Play (none can be made before the freeze; its first real use would be a final).
+
+### 2026-11-25, section 15 addendum 14: the post-freeze supplementary experiment S1, Unity's side (Anisha's AUDIT.md 16.36 and 16.37; declared before any S1 run and before any code of it)
+
+**Basis.** Branch `s1-supplementary` from `main` 29c536e (PR #58), not from the tag `v4-finals-frozen` (73fbcc4): `git diff --stat v4-finals-frozen main` shows
+10 files, all Anisha's S1 work (`AUDIT.md` 16.36/16.37, `robot_vision/data_splits_v4.py` (the S1 guard), `hri_eval_dev_v4.py`, `process_supplementary_zip_v4.py`,
+`configs/v4/experiments/phase_b.json` (`supplementary_root`, not a frozen file), and four test files); nothing else differs, and `frozen.json` is unchanged. S1 is
+**post-freeze and exploratory**: never pooled with the finals, nothing is tuned or set from it, reported in its own section. The finals' 20 Sunbox runs per
+setting are recorded and are never rerun; their same five plan runs per setting are the comparison baseline.
+
+**Design (declared exactly, Nusrat's and Anisha's).**
+1. **Characters (4):** `mixamo_worker`, `anime_f_01`, `anime_f_02_outfit_short`, `cartoon_boxo_01` (the `avatar_experiment` role). **All workers of a run, commanders
+   and bystanders, wear the same character** (one look per run, one look per session).
+2. **Settings per character:** **A1** (lies off), **A3** (lies off), **B3** (lies on, lie handling T0 on = the final B3 setting and its control file);
+   **5 runs each: 4 x 3 x 5 = 60 runs.** A cell = one character x one setting = one Unity session of 5 runs with its own bridge server run.
+3. **Runs (plan runs of the final plans, seed 2):** A1: plan runs **1-5**; A3: plan runs **1-5**; B3: plan runs **5, 7, 8, 10, 11**. Rule (declared, from AUDIT.md
+   16.37): "the 5 lowest B3 run numbers whose plan has at least one liar at a junction on the planned route, read from the plan only, never from outcomes"
+   (numbers computed by Anisha's side; a liar standing at the start node A does not count, the robot does not ask there). The session drives these plan runs in
+   this order as `run_001`..`run_005` (the number of `python_trial_###.json` is the same) and records them in `session.json` as `plan_runs`. A test recomputes the B3
+   list from the plan (Edit Mode, no outcome) and fails if it differs from the declared one. The goals, the worker positions, the lie schedule and the test gesture
+   clips (`point_mixamo_02`, `proceed_ik_03`) are the finals' for those plan runs: Unity plans each run with `PlanRun(seed 2, plan run, ...)`, which does not depend on
+   the look (a test compares the plan with the finals' look and with each of the four characters: node, slot, position, lie, shown command and goal identical).
+4. **Timeout 480 s** (= `final_plan.json` `timeout_s`; refused if the two differ), success radius and seed from `final_plan.json`; the same run protocol as the finals
+   (Best performance, Claude, VS Code and browsers closed, never from the VS Code terminal; the launcher refuses a VS Code terminal and the listed programs).
+
+**Rules.** No `git push`; `freeze_v4.py --freeze` is never run, `frozen.json`, the frozen configs, models and every finals output are never written; nothing under
+`robot_vision/`, `docs/` or `external/` is edited; no third-party FBX or weights are committed; no perception is run on any frame (so no Play session is run in this
+task); v3 is not touched. S1 files are new files or additions to Unity code; no file of the B9 freeze list changes (`TrialRunnerV4.cs`, `TrialRunnerV4Experiment.cs`,
+`TrialWorkersV4.cs` and `TrialPlayV4.cs` are scripts, not in `final_v4.json` `freeze_files`).
+
+**What Unity does (declared).**
+1. **GuardRun exception.** `DataSplitsV4.GuardRun(looks, clips, finalEvaluation, supplementary, setting, out error)` (Python's `guard_run(supplementary=...)`): with
+   `supplementary` "S1" it accepts **only the four looks**, **one look per run**, **only for A1, A3 and B3**, never a final evaluation, listed clips of one role, and
+   returns `supplementary_S1`; every other mode (the old three-argument call: trial, final, development) still refuses the four looks first, as before. Edit Mode tests:
+   allowed in S1 for each look and setting; refused for another setting, two looks, a Sunbox look, `S2`, a final evaluation, unlisted, empty or mixed clips; refused in
+   development, final and the plain call.
+2. **S1 sessions** (`TrialPlayV4 -s1Character NAME -s1Setting A1|A3|B3 [-s1Resume]`, new `TrialRunnerV4S1.cs`, `Avatar/Config/s1_supplementary.json`): folder prefix
+   **`s1_`** (`s1_<character>_<setting>_<time>`); mode `development` (never `final`); `session.json` records `supplementary` "S1", `amendment` "AUDIT 16.36 + 16.37 + Unity
+   addendum 14", `s1_character`, `s1_setting`, `final_setting` (= the setting: Anisha's `setting_of` needs it, B3 is otherwise ambiguous with B3_off), `plan_runs`,
+   `s1_part`, `git_commit`/`git_branch`, `timeout_s` 480, `seed` 2 and the hashes of the S1 config, `final_v4.json`, `final_plan.json` and the setting's final
+   experiment config (`s1_config_hashes`), next to the finals' fields; `config_used/` holds copies of these. S1 **never writes a `FINAL_*` marker, never writes into a
+   `trials_final_*` folder, never requires the frozen match** (it does not read `frozen.json`). It refuses `-finalSetting`, `-experiment`, `-workersConfig`,
+   `-experimentLooks/-Side/-Goals`, `-startRun`, `-resumeMarker` and `-bridgeFolder`.
+3. **Run-once per (character, setting, run) and the interruption rule as the finals'** (AUDIT.md 16.30.1): `S1_CELL_STARTED.json` is written into the session folder
+   before the first render; a cell with a started marker is not started again (a crashed run counts); an infrastructure interruption (Unity, the server or the machine
+   dies before a run finishes) may be **resumed once** with `-s1Resume`, from the first run without `truth_run###.json`, same seed, same plan runs, numbering continues
+   (`run_004`..), `s1_part` 2; the interrupted run's folder stays in part 1, listed and not scored; **a second interruption makes the cell INVALID** (`S1_CELL_INVALID.json`,
+   no third part); `S1_CELL_DONE.json` ends a cell; a finished cell is never repeated. (`S1Guard`, pure, tested.)
+4. **Runner `finals_v4/run_s1.ps1`** `-Character -Setting` (one cell) or `-All` (the 12 cells in the fixed order of `cell_order`: character by character, A1, A3, B3; finished
+   cells are skipped, a started cell without an end stops the run), `-Resume`, `-DryRun`, `-Plan`. `finals_v4/run_finals_sitting.ps1` **does not exist** in the repository, so
+   the crash watch, transcript and app check named in the task are made in `run_s1.ps1`: a transcript of every cell, a crash watch (the server or Unity dying, Event
+   Viewer application errors of Unity or python, an unfinished Unity log), the app and terminal check, `run_protocol_v4.ps1` before every cell, `launch_prep.py`, the server
+   with the setting's final control file but **without `--final-setting`** (no final guard), `check_s1_session.ps1` after it (validity only; it replaces `check_session_v4.ps1`,
+   whose split guard refuses the four looks by design), and an entry per cell in `robot_vision/outputs/s1_runs.json`.
+5. **Output** exactly like the finals' session folders (`truth.jsonl` per run, `decisions.csv` from the bridge run, `v4_log.jsonl`, `stop_reading.jsonl`, `session.json`,
+   `config_used/`, `leak_test/`, results and truth files). `finals_v4/zip_s1.ps1` packs every S1 session of `s1_runs.json` with its bridge run, logs and notes into
+   `E:\final_sittings_for_anisha\s1_supplementary_<timestamp>.zip` (`-OutDir` changes it; the folder is the one the task names) with a `MANIFEST.json`, re-reads every entry and
+   prints the zip's SHA-256 (also in `<zip>.sha256`). `finals_v4/supplementary_summary.ps1` prints success per character x setting from Unity's result files only.
+6. **Plan-only dry check** (`run_s1.ps1 -Plan`, Unity batch mode `S1PlanCheck.PrintBatch`: no Play, no robot, no server, no perception, no session folder): prints the 60
+   runs (character, setting, run, plan run, goal, map, workers, liars with their node and whether the node is on the route) and applies the S1 guard to each; it writes a
+   new `robot_vision/outputs/s1_plan_<time>.txt`.
+
+**Not decided / for Anisha (not touched).** (a) `process_supplementary_zip_v4.py` refuses "a cell twice"; a resumed cell has two Unity session folders (part 1 with the
+interrupted run, part 2 from run k) and two bridge run folders: it needs the two-part merge the finals have (not built for S1). (b) The S1 bridge server runs without
+`--final-setting`, so the finals' server guard is not involved. (c) `session.json` carries `final_setting` for S1 (see 2); if she prefers another key, only that line changes.
+
+**Limits stated before the run.** No S1 cell has been played: this task runs no Play session (it would run perception). So the first S1 Play of each look (the four
+avatar-experiment looks as navigation workers with the finals' clips) is unverified in the scene; the avatar experiment's look checks and the rehearsal show the looks
+render and pose, not that a whole navigation run reads. The plan table lists no positions (they depend on Unity's free-cell check in Play); goals, lies, nodes and routes do not.
+
+**Addendum 14, as built (2026-11-25).** Implemented as declared; no Play session was run (no perception was run on any frame). Files: `Avatar/Scripts/S1SupplementaryV4.cs`
+(`S1Config`, `S1CellPart`, `S1Guard`: the declared design, the run-once guard, the interruption rule, the marker texts; new, with its `.meta`),
+`Avatar/Scripts/TrialWorkersV4.cs` (`DataSplitsV4.GuardRun(..., supplementary, setting, out error)`, `S1Looks`, `S1Settings`; the old call unchanged),
+`Avatar/Config/s1_supplementary.json` (new, with its `.meta`; not a B9 file), `Scenario/Scripts/TrialRunnerV4S1.cs` (new, with its `.meta`: `SessionV4S1`, `SetupS1`, the
+plan-run mapping, the S1 markers), hooks in `Scenario/Scripts/TrialRunnerV4.cs` and `TrialRunnerV4Experiment.cs` (`S1` next to `Final`; `PlanRunOf`), `Scenario/Editor/TrialPlayV4.cs`
+(`-s1Character`, `-s1Setting`, `-s1Resume`), `Avatar/Editor/S1PlanCheck.cs` (new, with its `.meta`: the plan-only dry check), `Avatar/Tests/S1SupplementaryTests.cs` (new, with its
+`.meta`; 19 tests), `finals_v4/run_s1.ps1`, `finals_v4/check_s1_session.ps1`, `finals_v4/zip_s1.ps1`, `finals_v4/supplementary_summary.ps1` (new).
+- *Order:* this addendum was written into this file (committed with the code) before any S1 session exists; the branch is `s1-supplementary` from `main` 29c536e.
+- *Tests:* Unity Edit Mode 389 of 390 passed, 0 failed, 1 skipped (the skip is `FinalGuardV4Tests.Guard_TheRealRepositoryRefusesEveryFinalToday`, which documents the state before
+  the freeze and was already skipped); the 19 new tests passed, among them the declared B3 plan runs recomputed from the plan (5, 7, 8, 10, 11), the finals' plan reproduced
+  with each of the four characters (node, slot, position, lie, shown command, goal identical) and the guard refusals in every other mode. Python suite (`robot_vision`, unchanged): 1681 tests, OK, 10 skipped (56 min on this machine; `test_run_paths` reads all of `outputs/` and takes about 20 min). The launcher's transcript and crash watch are `.log` files because `test_run_paths` refuses absolute paths in `.txt`, `.json` and `.csv` files under `outputs/`.
+- *Plan-only dry check:* `finals_v4\run_s1.ps1 -Plan` (Unity batch, `robot_vision/outputs/s1_plan_20261125_184221.txt`): 60 rows, every run accepted by the S1 guard, 20 runs with a liar (all
+  B3), A1 and A3 without a liar; B3 plan runs 5, 7, 8, 10, 11 each with a liar on the route (run 10 also has one off the route at J4).
+- *Not run:* any S1 cell, any Play session, the zip (`zip_s1.ps1 -DryRun` only reports that no cell was recorded).

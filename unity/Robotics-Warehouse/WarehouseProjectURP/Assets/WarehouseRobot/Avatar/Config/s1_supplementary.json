@@ -1,0 +1,34 @@
+{
+  "note": "Post-freeze supplementary experiment S1 (Anisha's AUDIT.md 16.36 and 16.37; Unity addendum 14 of Avatar/Config/experiments_ab.md, declared 2026-11-25 before any S1 run). EXPLORATORY and descriptive only: never pooled with the finals, nothing is set from it. Four characters (the avatar_experiment looks) x settings A1, A3 and B3 x 5 runs = 60 runs. ALL workers of a run (commander and bystanders) wear the cell's one character. The seed (2), the goals, the worker positions, the lie schedule and the test gesture clips are the finals' (final_plan.json and the setting's Avatar/Config/sessions/final_ab_<setting>.json, read, never copied or changed); the cell's runs are plan runs of the final plan, driven in this order as run_001..run_005. A1 and A3: lies off (truthful workers, the setting as in the finals); B3: lies on with lie handling on (the final B3 setting). Timeout 480 s (final_plan.json timeout_s). Read by TrialRunnerV4 only with TrialPlayV4 -s1Character NAME -s1Setting A1|A3|B3, by finals_v4/run_s1.ps1 and by the Edit Mode tests. Not a B9 file, not in frozen.json.",
+  "supplementary": "S1",
+  "amendment": "AUDIT 16.36 + 16.37 + Unity addendum 14",
+  "folder_prefix": "s1_",
+  "characters": [ "mixamo_worker", "anime_f_01", "anime_f_02_outfit_short", "cartoon_boxo_01" ],
+  "settings": [
+    { "name": "A1", "plan_runs": [1, 2, 3, 4, 5] },
+    { "name": "A3", "plan_runs": [1, 2, 3, 4, 5] },
+    { "name": "B3", "plan_runs": [5, 7, 8, 10, 11] }
+  ],
+  "plan_runs_note": "A1 and A3: plan runs 1-5. B3: the 5 lowest B3 plan runs of the final plan (seed 2) that have at least one liar at a junction on the planned route, read from the plan only (the final B3 session's workers_plan), never from an outcome; computed by Anisha's side (AUDIT.md 16.37: 5, 7, 8, 10, 11). A liar at the start node A does not count (the robot does not ask there).",
+  "runs_per_cell": 5,
+  "timeout_s": 480,
+  "cell_order": [
+    { "character": "mixamo_worker", "setting": "A1" },
+    { "character": "mixamo_worker", "setting": "A3" },
+    { "character": "mixamo_worker", "setting": "B3" },
+    { "character": "anime_f_01", "setting": "A1" },
+    { "character": "anime_f_01", "setting": "A3" },
+    { "character": "anime_f_01", "setting": "B3" },
+    { "character": "anime_f_02_outfit_short", "setting": "A1" },
+    { "character": "anime_f_02_outfit_short", "setting": "A3" },
+    { "character": "anime_f_02_outfit_short", "setting": "B3" },
+    { "character": "cartoon_boxo_01", "setting": "A1" },
+    { "character": "cartoon_boxo_01", "setting": "A3" },
+    { "character": "cartoon_boxo_01", "setting": "B3" }
+  ],
+  "cell_order_note": "The fixed order of the 12 cells of finals_v4/run_s1.ps1 -All: character by character (mixamo_worker, anime_f_01, anime_f_02_outfit_short, cartoon_boxo_01), within a character A1, A3, B3. Each cell is its own session (and its own server run) and runs once.",
+  "marker_started": "S1_CELL_STARTED.json",
+  "marker_done": "S1_CELL_DONE.json",
+  "marker_invalid": "S1_CELL_INVALID.json",
+  "marker_note": "S1's own run-once markers, written into the cell's session folder (never into a finals folder, never with a FINAL name). A cell that has a started marker is not started again; an interruption (the Editor, the server or the machine died before a run finished) may be resumed ONCE with -s1Resume from the first run without an outcome (AUDIT.md 16.30.1); a second interruption makes the cell INVALID."
+}

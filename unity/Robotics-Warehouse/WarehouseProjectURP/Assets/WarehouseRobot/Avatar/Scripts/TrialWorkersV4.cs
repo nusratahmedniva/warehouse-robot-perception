@@ -68,9 +68,17 @@ namespace WarehouseAvatar
         /// empty or unlisted name, a mix of splits, test data outside a final evaluation, a final evaluation on development
         /// data or on placeholder names are refused; so is an avatar-experiment look (addendum 11), first and in every mode.
         /// </summary>
-        public string GuardRun(IEnumerable<string> looks, IEnumerable<string> clips, bool finalEvaluation, out string error)
+        public string GuardRun(IEnumerable<string> looks, IEnumerable<string> clips, bool finalEvaluation, out string error) =>
+            GuardRun(looks, clips, finalEvaluation, null, null, out error);
+
+        /// <summary>Post-freeze supplementary experiment S1 (Anisha's AUDIT.md 16.36 and 16.37, Unity addendum 14; Python's data_splits_v4.guard_run(supplementary=...)).
+        /// <paramref name="supplementary"/> null = every other mode, unchanged: the avatar-experiment role is refused first. "S1" = the supplementary session: only the four
+        /// S1 looks (<see cref="S1Looks"/>), ONE look for all workers of the run, only for the settings A1, A3 and B3, never a final evaluation; the clips are listed and of
+        /// one role. Returns "supplementary_S1" or null with the reason.</summary>
+        public string GuardRun(IEnumerable<string> looks, IEnumerable<string> clips, bool finalEvaluation, string supplementary, string setting, out string error)
         {
             error = null;
+            if (supplementary != null) return GuardSupplementary(Sorted(looks), Sorted(clips), finalEvaluation, supplementary, setting, out error);
             var lk = Sorted(looks);
             var cl = Sorted(clips);
             if (lk.Count == 0) { error = "no avatar look given: the split of a run cannot be checked without it"; return null; }
@@ -104,6 +112,30 @@ namespace WarehouseAvatar
             if (finalEvaluation && !test) { error = $"a final run must use test data, but the run uses {only} data ({string.Join(", ", found[only])})"; return null; }
             if (finalEvaluation && Placeholder) { error = "the look and clip names in configs/v4/data_splits.json are still placeholders"; return null; }
             return only;
+        }
+
+        /// <summary>The only looks of the supplementary experiment S1 (data_splits_v4.SUPPLEMENTARY["S1"]).</summary>
+        public static readonly string[] S1Looks = { "mixamo_worker", "anime_f_01", "anime_f_02_outfit_short", "cartoon_boxo_01" };
+        public static readonly string[] S1Settings = { "A1", "A3", "B3" };
+
+        string GuardSupplementary(List<string> lk, List<string> cl, bool finalEvaluation, string supplementary, string setting, out string error)
+        {
+            error = null;
+            if (supplementary != "S1") { error = $"unknown supplementary experiment '{supplementary}' (known: S1): refused"; return null; }
+            if (finalEvaluation) { error = "supplementary experiment S1 is not a final: it is never run or evaluated as a final"; return null; }
+            if (Array.IndexOf(S1Settings, setting ?? "") < 0) { error = $"supplementary experiment S1 runs the settings A1, A3 and B3 only, not '{setting}': refused"; return null; }
+            if (lk.Count != 1) { error = $"supplementary experiment S1: a run has exactly ONE look (all its workers), got [{string.Join(", ", lk)}]"; return null; }
+            if (Array.IndexOf(S1Looks, lk[0]) < 0) { error = $"supplementary experiment S1 uses only {string.Join(", ", S1Looks)}, not '{lk[0]}': refused"; return null; }
+            if (cl.Count == 0) { error = "supplementary experiment S1: no gesture clip given"; return null; }
+            var roles = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var name in cl)
+            {
+                if (name == "") { error = "a gesture has no animation clip name (clip is empty): its role is unknown, so the run is refused"; return null; }
+                if (!Clips.TryGetValue(name, out var role)) { error = $"clip '{name}' is not listed in configs/v4/data_splits.json (unknown is never assumed)"; return null; }
+                roles.Add(role);
+            }
+            if (roles.Count > 1) { error = $"supplementary experiment S1: the clips mix roles [{string.Join(", ", roles)}]: refused"; return null; }
+            return "supplementary_S1";
         }
 
         static List<string> Sorted(IEnumerable<string> names)

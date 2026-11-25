@@ -93,9 +93,9 @@ namespace WarehouseRobot.Scenario
             catch (Exception e) { return Fail(out error, $"cannot read {ExperimentsAsset}, scenarios_ab.json or looks_ab.json: {e.Message}"); }
             // the A2 / B2 side (experiments_ab.md section 7): a final's from its final config, in development -experimentSide; it
             // replaces experiments_ab_unity.json a2_sides for this session only (the file is not changed)
-            eSide = Final ? fexp.a2_side ?? "" : "";
+            eSide = Final || S1 ? fexp.a2_side ?? "" : "";
 #if UNITY_EDITOR
-            if (!Final) eSide = UnityEditor.SessionState.GetString(ExperimentSideKey, "");
+            if (!Final && !S1) eSide = UnityEditor.SessionState.GetString(ExperimentSideKey, "");
 #endif
             if (eSide.Length > 0)
             {
@@ -117,11 +117,12 @@ namespace WarehouseRobot.Scenario
 
             // navigation looks and clips: development = the development split (data_splits.json decides; looks_ab.json's proposed_split
             // is never read here), a final = exactly its final config's test looks and clips
-            if (!FinalGuardV4.ExperimentData(Final ? fset : null, fexp, mode, splits, elooks, workerTemplate,
+            if (!FinalGuardV4.ExperimentData(Final || S1 ? fset : null, fexp, mode, splits, elooks, workerTemplate,
                                              new[] { wcfg.commander_command, wcfg.forward_command }, eMales, eFemales, eClips, out error))
                 return Fail(out error, $"experiment {experimentName}: {error}");
+            if (S1 && !UseS1Character(out error)) return false;      // S1: the finals' test clips, but every worker wears the cell's one character
 #if UNITY_EDITOR
-            looksOverride = Final ? "" : UnityEditor.SessionState.GetString(ExperimentLooksKey, "");
+            looksOverride = Final || S1 ? "" : UnityEditor.SessionState.GetString(ExperimentLooksKey, "");
 #endif
             if (looksOverride.Length > 0)
             {
@@ -132,13 +133,13 @@ namespace WarehouseRobot.Scenario
                 eMales.Clear(); eMales.Add(two[0]);
                 eFemales.Clear(); eFemales.Add(two[1]);
             }
-            eSeed = Final ? fplan.FinalSeed : cfg.dev_seed;
+            eSeed = Final || S1 ? fplan.FinalSeed : cfg.dev_seed;
             eGoals.Clear();
-            eGoals.AddRange(eplan.Goals(eSeed, TrialTotal));
+            eGoals.AddRange(S1 ? S1Goals() : eplan.Goals(eSeed, TrialTotal));       // S1: the final plan's goals of its plan runs
 #if UNITY_EDITOR
             goalsOverride = UnityEditor.SessionState.GetString(ExperimentGoalsKey, "");
 #endif
-            var given = eplan.GoalsOverride(goalsOverride, Final, TrialTotal, out error);
+            var given = eplan.GoalsOverride(goalsOverride, Final || S1, TrialTotal, out error);
             if (error != null) return Fail(out error, $"experiment {experimentName}: {error}");
             if (given != null)
             {
@@ -162,14 +163,16 @@ namespace WarehouseRobot.Scenario
             };
             for (int run = 1; run <= TrialTotal; run++)
             {
-                var plan = eplan.PlanRun(eSeed, run, eGoals[run - 1], eMales, eFemales, free, out error);
+                // S1: session run i is the final plan's run PlanRunOf(i), so its positions, lies and map are the finals' (they do not depend on the look)
+                var plan = eplan.PlanRun(eSeed, PlanRunOf(run), eGoals[run - 1], eMales, eFemales, free, out error);
                 if (plan == null) return false;
-                var map = eplan.RunMap(eSeed, run, out _);
+                var map = eplan.RunMap(eSeed, PlanRunOf(run), out _);
                 var looks = new List<string>();
                 foreach (var w in plan.Workers) looks.Add(w.Look);
                 var clips = new List<string>();
                 foreach (var kv in eClips) clips.AddRange(kv.Value);
-                string split = splits.GuardRun(looks, clips, Final, out error);       // a final: wholly test; development: never test
+                string split = S1 ? splits.GuardRun(looks, clips, false, S1Config.Name, s1Setting, out error)       // S1: one of the four looks, only A1/A3/B3 (addendum 14)
+                                  : splits.GuardRun(looks, clips, Final, out error);       // a final: wholly test; development: never test
                 if (split == null) { error = $"run {run}: {error}"; return false; }
                 eSplit = split;
                 var a = ExperimentPlanAB.Pos(map.Node(map.Start));
@@ -188,7 +191,7 @@ namespace WarehouseRobot.Scenario
         Vector3 GoalPosition(string goal, int run)
         {
             if (!Experiment) return nodes[goal].Position;
-            var map = eplan.RunMap(eSeed, run, out _);
+            var map = eplan.RunMap(eSeed, PlanRunOf(run), out _);
             var n = map.Node(ExperimentPlanAB.GoalOn(map, goal));
             return new Vector3(n.X, nodes[meta.start].Position.y, n.Z);
         }
@@ -203,7 +206,7 @@ namespace WarehouseRobot.Scenario
             if (spawnedRun == run) return true;
             DestroyWorkers();
             eRun = eRuns[run - 1];
-            eMap = eplan.RunMap(eSeed, run, out _);
+            eMap = eplan.RunMap(eSeed, PlanRunOf(run), out _);
             eAsked = null;
             eSilent = false;
             eLimit = "";
@@ -341,7 +344,7 @@ namespace WarehouseRobot.Scenario
         SessionV4 NewSessionRecord()
         {
             if (!Experiment) return new SessionV4();
-            var s = new SessionV4AB
+            var ab = new SessionV4AB
             {
                 experiment = experimentName, set = eplan.Def.set, lie_probability = eplan.LieProbability, map = eplan.MapName, layout = eplan.LayoutKind,
                 lie_rule = "per worker per run (seeded by session seed, run, worker id), consistent when asked again; a wrong valid branch, else (no other branch) " +
@@ -356,6 +359,7 @@ namespace WarehouseRobot.Scenario
                     ? $"active: no worker within {eplan.Rule.PathClearanceM.ToString("0.0#", Inv)} m of a drivable segment; ask positions within {eplan.Rule.AskZoneM.ToString("0.0#", Inv)} m of their node (clearance_layout slots)"
                     : "pending (clearance_layout inactive): section 3 slots, no clearance or ask-zone check (experiments_ab.md section 15 addendum 1, item 3b)",
             };
+            SessionV4AB s = S1 ? CopyToS1Record(ab) : ab;               // S1: the same fields plus the supplementary ones (TrialRunnerV4S1.cs)
             foreach (var r in eRuns)
             {
                 var parts = new List<string>();
@@ -374,7 +378,7 @@ namespace WarehouseRobot.Scenario
             GroundTruthFiles.WriteNew(Path.Combine(used, "experiments_ab_unity.json"), expText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "scenarios_ab.json"), scenariosText);
             GroundTruthFiles.WriteNew(Path.Combine(used, "looks_ab.json"), looksAbText);
-            if (Final) GroundTruthFiles.WriteNew(Path.Combine(used, Path.GetFileName(fset.experiment_config)), fexpText);
+            if (Final || S1) GroundTruthFiles.WriteNew(Path.Combine(used, Path.GetFileName(fset.experiment_config)), fexpText);
         }
     }
 }
