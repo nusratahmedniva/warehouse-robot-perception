@@ -584,6 +584,7 @@ namespace WarehouseRobot.Scenario
 
             // experiments_ab.md section 15 addendum 12: every look of the session is drawn once (no seeded draw) before the leak test and run 1
             yield return WarmUpSessionLooks();
+            if (S1) WriteS1Warm();                                      // S1: shader_warm_up.jsonl and the one-look check (addendum 14)
             if (warmUpError != null)
             {
                 string why = "shader warm-up: " + warmUpError;

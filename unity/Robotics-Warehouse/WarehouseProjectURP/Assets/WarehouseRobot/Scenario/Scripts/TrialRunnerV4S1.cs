@@ -149,6 +149,16 @@ namespace WarehouseRobot.Scenario
             GroundTruthFiles.WriteNew(Path.Combine(used, "final_plan.json"), finalPlanText);
         }
 
+        /// <summary>S1 (addendum 14, after addendum 12): the cell's shader warm-up record into shader_warm_up.jsonl of the session folder (as the look checks write it; also after a
+        /// failed warm-up) and the check that the cell's one look was drawn and compiled; a problem becomes warmUpError, so no run starts.</summary>
+        void WriteS1Warm()
+        {
+            GroundTruthFiles.WriteNew(Path.Combine(SessionFolder, ShaderWarmUp.RecordFile), S1Guard.WarmUpJsonl(sessionWarmUps));
+            if (warmUpError != null) return;
+            var problems = S1Guard.WarmUpProblems(sessionWarmUps, s1Character);
+            if (problems.Count > 0) warmUpError = string.Join("; ", problems);
+        }
+
         void WriteS1Started()
         {
             ReadGit(out var commit, out _);

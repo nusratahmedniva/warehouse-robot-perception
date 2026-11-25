@@ -184,6 +184,26 @@ namespace WarehouseAvatar
             $"  \"supplementary\": {Q(cfg.supplementary)},\n  \"status\": \"invalid\",\n  \"character\": {Q(character)},\n  \"s1_setting\": {Q(setting)},\n" +
             $"  \"reason\": {Q(reason)},\n  \"time\": {Q(time)}\n}}\n";
 
+        /// <summary>The text of an S1 session's shader_warm_up.jsonl (Unity addendum 14, after addendum 12): one JSON line per warm-up record, as the look checks write it.</summary>
+        public static string WarmUpJsonl(IEnumerable<ShaderWarmUpRecord> records)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var r in records ?? new List<ShaderWarmUpRecord>()) sb.Append(JsonUtility.ToJson(r)).Append('\n');
+            return sb.ToString();
+        }
+
+        /// <summary>What is wrong with an S1 session's warm-up: a cell has ONE look, so exactly one record, of the cell's character, part session, status done. Empty = fine.</summary>
+        public static List<string> WarmUpProblems(IList<ShaderWarmUpRecord> records, string character)
+        {
+            var e = new List<string>();
+            if (records == null || records.Count != 1) { e.Add($"the shader warm-up made {(records == null ? 0 : records.Count)} record(s), a cell has exactly one look ({character})"); return e; }
+            var r = records[0];
+            if (r.looks != character) e.Add($"the warm-up drew look '{r.looks}', the cell's character is '{character}'");
+            if (r.part != ShaderWarmUpRecord.Session) e.Add($"the warm-up record has part '{r.part}', not '{ShaderWarmUpRecord.Session}'");
+            if (r.status != ShaderWarmUpRecord.StatusDone) e.Add($"the warm-up of {character} ended '{r.status}', not '{ShaderWarmUpRecord.StatusDone}'");
+            return e;
+        }
+
         static string Q(string s) => "\"" + (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ") + "\"";
 
         /// <summary>The cells under <paramref name="outputRoot"/>: every folder directly under it whose name starts with the S1 prefix and that holds a started marker.</summary>

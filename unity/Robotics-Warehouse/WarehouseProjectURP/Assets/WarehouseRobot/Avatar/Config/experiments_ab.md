@@ -3089,3 +3089,12 @@ plan-run mapping, the S1 markers), hooks in `Scenario/Scripts/TrialRunnerV4.cs` 
 - *Plan-only dry check:* `finals_v4\run_s1.ps1 -Plan` (Unity batch, `robot_vision/outputs/s1_plan_20261125_184221.txt`): 60 rows, every run accepted by the S1 guard, 20 runs with a liar (all
   B3), A1 and A3 without a liar; B3 plan runs 5, 7, 8, 10, 11 each with a liar on the route (run 10 also has one off the route at J4).
 - *Not run:* any S1 cell, any Play session, the zip (`zip_s1.ps1 -DryRun` only reports that no cell was recorded).
+
+**Addendum 14, amendment 1 (2026-11-25, before any S1 run): the shader warm-up of an S1 session.** Question: do S1 sessions run the avatar experiment's shader warm-up? *Found:* the session warm-up of
+addendum 12 (`WarmUpSessionLooks`, the same `ShaderWarmUp` rule: at least 3 renders, 2 clean in a row, no shader compiling, 120 s limit, `not_in_view` refused) already runs for every experiment session,
+so also for S1: after the plans, before the leak test and run 1, drawing every look of the session once. A cell is its own Unity launch and has ONE look, so each session warms up its cell's character
+(not all four in one session; every cell starts a fresh Editor, so each look is compiled in the session that uses it). Its records were only in `session.json` `shader_warm_up`, not in a
+`shader_warm_up.jsonl` as the look checks write. *Added (S1 path only):* `WriteS1Warm()` (`TrialRunnerV4S1.cs`, called right after `WarmUpSessionLooks()` in `Run()`) writes `shader_warm_up.jsonl` into the
+session folder (one JSON line per record, also after a failed warm-up) and refuses to start the cell unless the warm-up made exactly one record, of the cell's character, part `session`, status `done`
+(`S1Guard.WarmUpJsonl`, `S1Guard.WarmUpProblems`). Finals and development sessions are unchanged. Tests (4, Edit Mode): the look list the runner warms up is exactly the character for every cell;
+the jsonl text; the record checks; the call order in `Run()`. Unity Edit Mode 393 of 394 passed (1 skipped, as before); the 8 Python test modules that read Unity files (347 tests) OK, 1 skipped. No cell was run.

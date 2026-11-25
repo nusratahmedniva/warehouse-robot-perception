@@ -354,6 +354,71 @@ namespace WarehouseAvatar.Tests
         [Serializable]
         class S1Marker { public string supplementary, status, character, s1_setting; }
 
+        // ---------------------------------------------------------------- the shader warm-up of an S1 session
+
+        static ShaderWarmUpRecord Rec(string look, string status = "done", string part = "session") => new ShaderWarmUpRecord { part = part, looks = look, clock = "Time.time", status = status, renders = 5 };
+
+        [Test]
+        public void WarmUp_EveryWorkerOfEveryPlannedRun_IsTheCellsOneCharacter_SoTheSessionDrawsExactlyThatLookBeforeRunOne()
+        {
+            foreach (var setting in Settings)
+            {
+                var x = Exp(setting);
+                var p = Plan(x.experiment, out string error);
+                var goals = p.Goals(2, FinalPlan().RunsPerSetting);
+                foreach (var character in Characters)
+                {
+                    var looks = new List<string>();
+                    foreach (int run in Cfg().Setting(setting).plan_runs)
+                        looks.AddRange(p.PlanRun(2, run, goals[run - 1], new[] { character }, new[] { character }, null, out error).Workers.Select(w => w.Look));
+                    CollectionAssert.AreEqual(new[] { character }, ShaderWarmUp.SessionLooks(looks), $"{setting} {character}: the look list the runner warms up (WarmUpLooks)");
+                }
+            }
+        }
+
+        [Test]
+        public void WarmUpJsonl_IsOneJsonLinePerRecord_LikeTheLookChecks()
+        {
+            var a = Rec("anime_f_01");
+            string text = S1Guard.WarmUpJsonl(new[] { a });
+            Assert.AreEqual(JsonUtility.ToJson(a) + "\n", text);
+            Assert.AreEqual("shader_warm_up.jsonl", ShaderWarmUp.RecordFile);
+            Assert.AreEqual("", S1Guard.WarmUpJsonl(new ShaderWarmUpRecord[0]));
+            Assert.AreEqual("anime_f_01", JsonUtility.FromJson<ShaderWarmUpRecord>(text.TrimEnd('\n')).looks);
+        }
+
+        [Test]
+        public void WarmUpProblems_ACellNeedsExactlyOneDoneSessionRecordOfItsCharacter()
+        {
+            CollectionAssert.IsEmpty(S1Guard.WarmUpProblems(new[] { Rec("cartoon_boxo_01") }, "cartoon_boxo_01"));
+            StringAssert.Contains("0 record", string.Join(";", S1Guard.WarmUpProblems(new ShaderWarmUpRecord[0], "anime_f_01")));
+            StringAssert.Contains("2 record", string.Join(";", S1Guard.WarmUpProblems(new[] { Rec("anime_f_01"), Rec("anime_f_01") }, "anime_f_01")));
+            StringAssert.Contains("drew look", string.Join(";", S1Guard.WarmUpProblems(new[] { Rec("sunbox_m_shirt_plaid") }, "anime_f_01")));
+            StringAssert.Contains("part", string.Join(";", S1Guard.WarmUpProblems(new[] { Rec("anime_f_01", part: "play") }, "anime_f_01")));
+            foreach (var status in new[] { "timed_out", "not_in_view", "" })
+                StringAssert.Contains("not 'done'", string.Join(";", S1Guard.WarmUpProblems(new[] { Rec("anime_f_01", status) }, "anime_f_01")), status);
+        }
+
+        [Test]
+        public void TheRunner_WritesTheS1WarmUpRecord_AfterTheWarmUp_BeforeTheErrorCheck_TheLeakTestAndRunOne()
+        {
+            string runner = Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4.cs");
+            int run = runner.IndexOf("IEnumerator Run()", StringComparison.Ordinal);
+            int warm = runner.IndexOf("yield return WarmUpSessionLooks();", run, StringComparison.Ordinal);
+            int write = runner.IndexOf("if (S1) WriteS1Warm();", run, StringComparison.Ordinal);
+            int check = runner.IndexOf("if (warmUpError != null)", run, StringComparison.Ordinal);
+            int reset = runner.IndexOf("if (!ResetForTrial(order[startRun - 1], startRun, out error))", run, StringComparison.Ordinal);
+            int leak = runner.IndexOf("gt.LeakTest(", run, StringComparison.Ordinal);
+            Assert.Greater(write, warm, "after the warm-up");
+            Assert.Greater(check, write, "before the error check, so a refused or failed warm-up is still logged and stops the session");
+            Assert.Greater(reset, check);
+            Assert.Greater(leak, reset);
+            string s1 = Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4S1.cs");
+            StringAssert.Contains("ShaderWarmUp.RecordFile", s1);
+            StringAssert.Contains("warmUpError = string.Join", s1, "a problem stops the cell before any run");
+            // the finals' path is untouched: no other session kind writes the file
+            StringAssert.DoesNotContain("WriteS1Warm", Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4Experiment.cs"));
+        }
         // ---------------------------------------------------------------- nothing frozen is touched
 
         [Test]
