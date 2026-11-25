@@ -44,6 +44,8 @@ foreach ($e in $entries) {
 }
 AddTree $manifestFile "s1"
 foreach ($f in Get-ChildItem $outputs -File -Filter "s1_plan_*.txt" -ErrorAction SilentlyContinue) { AddTree $f.FullName "s1/plan" }
+# addendum 14 amendment 3: the read-only re-checks of a cell (the original verdict stays in s1_runs.json and in the cell's transcript)
+foreach ($f in Get-ChildItem $outputs -File -Filter "run_s1_recheck_*.log" -ErrorAction SilentlyContinue) { AddTree $f.FullName "s1/rechecks" }
 AddTree (Join-Path $repo "unity\Robotics-Warehouse\WarehouseProjectURP\Assets\WarehouseRobot\Avatar\Config\s1_supplementary.json") "s1/config"
 foreach ($x in $Extra) { AddTree $x "extra" }
 $gitCommit = (git -C $repo rev-parse HEAD).Trim()

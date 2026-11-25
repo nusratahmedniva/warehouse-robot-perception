@@ -3112,3 +3112,20 @@ result belongs to it. Under the run-once rule a refusal before run 1 must not co
 Python-map refusals included); the folder is KEPT as evidence and nothing was deleted; a folder in which a run began (no `NOT_STARTED.txt`) still blocks a second start. *Tests (5 new, Edit Mode):* the template lists Sunbox
 only and is unchanged; each of the four characters is a prefab look whose FBX prefab loads (it did here, mixamo_worker included); `Merge`; the runner adds the source before the warm-up worker is initialised and to every
 spawn and never writes the prefab; a refused start is not a start (and a began folder still is). Unity Edit Mode 398 of 399 passed (1 skipped, as before); the 8 Python modules that read Unity files (347 tests) OK. No cell was run.
+
+**Addendum 14, amendment 3 (2026-11-25): the checker counted three config copies as final markers. Made AFTER cell 1 (mixamo_worker / A1) had run and its outcome, 5 of 5 SUCCESS, was known; cells 2 to 12 not yet run.**
+*Event:* `check_s1_session.ps1` marked cell 1 (`s1_mixamo_worker_A1_20261125_210836` + `bridge_guide_20261125_210749`) INVALID on criterion 5 only: "FINAL_* files: 3"; criteria 1 to 4, 6 and 7 passed.
+*The three files:* `config_used/final_ab_A1.json` (1 964 B), `config_used/final_plan.json` (18 381 B), `config_used/final_v4.json` (12 603 B) in the Unity session folder; none in the bridge folder. They are
+byte copies (SHA-256 equal) of `Avatar/Config/sessions/final_ab_A1.json`, `robot_vision/configs/v4/final_plan.json` and `Avatar/Config/final_v4.json`, written by `TrialRunnerV4S1.WriteS1Configs` (the last two)
+and `TrialRunnerV4Experiment.WriteExperimentConfigs` (the first), as every final session keeps them: the inputs the session ran with, as declared in this addendum, item 2. *Verdict: (b), a naming overlap in the
+checker, not (a).* The checker used `Get-ChildItem -Recurse -Filter "FINAL*"`, which is case-insensitive on Windows and so matched `final_*.json`. No file with a final run-once marker name
+(`FINAL_DONE`, `FINAL_EXPORT_DONE`, `FINAL_RUN_DONE`, `FINAL_SETTING`, `FINAL_INTERRUPTION`, `FINAL_RESUME`, `FINAL_INVALID`, `FINAL_EVAL_SUPERSEDED`, `UNITY_FINAL_DONE`, each `.json`) exists in either folder,
+none was written in any top-level output folder since 2026-11-25, the 14 `trials_final_*` folders were not modified since 2026-11-25, the newest file of the finals' results archive is from 2026-11-24, and
+`frozen.json` is unchanged; the S1 code contains no marker name and Unity's final done file is written only inside `if (Final && ...)`, which an S1 session (no `-finalSetting`) never enters. The finals'
+run-once gates, which look for those exact names, are therefore unaffected. *Fix (checker only):* criterion 5 counts the markers by their exact, case-sensitive names: Python's `FINAL_MARKERS` of
+`process_supplementary_zip_v4.py` plus Unity's `done_file` read from `final_v4.json`; it also lists the `config_used` copies as inputs. Nothing in Unity's S1 runtime changed. `zip_s1.ps1` also packs every
+`run_s1_recheck_*.log`. *Tests (4 new, Edit Mode):* the checker's list equals Python's `FINAL_MARKERS` (plus `UNITY_FINAL_DONE.json`) and matches case-sensitively, no wildcard; the config copies of every S1
+setting are not markers although the old wildcard matched them; the S1 path writes no final marker; the launcher skips a finished cell. Unity Edit Mode 402 of 403 passed (1 skipped, as before).
+*Cell 1 is never rerun.* Its original verdict, INVALID (criterion 5), stays as recorded in `s1_runs.json` and in its transcript. The fixed checker was run once more, read-only, on its existing folders
+(`run_s1_recheck_s1_mixamo_worker_A1_20261125_213327.log`): all 7 criteria PASS, VALID; all 444 files of the two folders had the same size, time and SHA-256 before and after. Both verdicts are reported.
+`run_s1.ps1 -All` skips cell 1 (it has `S1_CELL_DONE.json`) and continues from cell 2 (mixamo_worker / A3).

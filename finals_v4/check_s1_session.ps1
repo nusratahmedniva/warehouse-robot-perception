@@ -11,7 +11,7 @@ param(
 # check_session_v4.ps1 (B11), which cannot be used as it is: its split guard (criterion 3) refuses the four avatar-experiment looks by design, and S1
 # needs no frozen match. Here: the leak test; the S1 split guard (data_splits_v4.guard_run(supplementary="S1"): ONE look, one of the four, listed
 # test clips); session.json (supplementary, seed 2, timeout 480, setting, character, plan_runs as declared); the runs present; every truth and run file
-# accepted by Anisha's checkers; no FINAL_* marker anywhere; the run protocol recorded. Read-only (gt_path.py session writes leak_test/leak_test.json
+# accepted by Anisha's checkers; no final run-once marker anywhere (by exact name, addendum 14 amendment 3); the run protocol recorded. Read-only (gt_path.py session writes leak_test/leak_test.json
 # by design, as for the finals). Exit 0 = every criterion PASS.
 $ErrorActionPreference = "Continue"
 $repo = Split-Path $PSScriptRoot -Parent
@@ -87,9 +87,16 @@ sys.exit(1 if bad else 0)
     $same = { param($a) ($a -join ",") -eq ($want -join ",") }
     Report 4 ((& $same $rowNums) -and (& $same $dirNums) -and (& $same $pyNums)) "all runs present: results_unity.csv trials [$($rowNums -join ',')], run_### [$($dirNums -join ',')], python_trial_### [$($pyNums -join ',')]; expected $StartRun..$runs"
 
-    $markerFiles = @(Get-ChildItem $U, $B -Recurse -File -Filter "FINAL*" -ErrorAction SilentlyContinue)
+    # addendum 14 amendment 3: the final run-once markers by their EXACT names (case-sensitive): Python's FINAL_MARKERS (process_supplementary_zip_v4.py)
+    # and Unity's done file (final_v4.json done_file). Until then a FINAL* wildcard filter (case-insensitive on Windows) also counted config_used\final_ab_<setting>.json,
+    # final_plan.json and final_v4.json, the byte copies of the finals' configs that every S1 (and final) session keeps as its inputs: not markers.
+    $finalMarkers = @("FINAL_DONE.json", "FINAL_EXPORT_DONE.json", "FINAL_RUN_DONE.json", "FINAL_SETTING.json", "FINAL_INTERRUPTION.json", "FINAL_RESUME.json",
+                      "FINAL_INVALID.json", "FINAL_EVAL_SUPERSEDED.json")
+    $finalMarkers += [string](Get-Content (Join-Path $repo "unity\Robotics-Warehouse\WarehouseProjectURP\Assets\WarehouseRobot\Avatar\Config\final_v4.json") -Raw | ConvertFrom-Json).done_file
+    $markerFiles = @(Get-ChildItem $U, $B -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $finalMarkers -ccontains $_.Name })
+    $configCopies = @(Get-ChildItem (Join-Path $U "config_used"), (Join-Path $B "config_used") -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "final*" })
     $have = (Test-Path (Join-Path $U "summary_unity.json")) -and ($null -ne $sum) -and (Test-Path (Join-Path $U $cfg.marker_done))
-    Report 5 ($have -and $markerFiles.Count -eq 0) "every outcome recorded (summary_unity.json, summary.json, $($cfg.marker_done)): $have; FINAL_* files: $($markerFiles.Count)"
+    Report 5 ($have -and $markerFiles.Count -eq 0) "every outcome recorded (summary_unity.json, summary.json, $($cfg.marker_done)): $have; final run-once markers ($($finalMarkers -join ', ')): $($markerFiles.Count)$(if ($markerFiles.Count) { ' (' + (($markerFiles | ForEach-Object FullName) -join ', ') + ')' }); config_used copies of the finals' configs (inputs, not markers): $(@($configCopies | ForEach-Object Name) -join ', ')"
 
     $bad = @()
     foreach ($r in $runDirs) {

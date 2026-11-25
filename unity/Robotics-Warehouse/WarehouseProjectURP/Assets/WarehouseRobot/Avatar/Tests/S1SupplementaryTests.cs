@@ -508,6 +508,77 @@ namespace WarehouseAvatar.Tests
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             StringAssert.Contains("NOT_STARTED.txt", File.ReadAllText(Path.Combine(RepoRoot, "finals_v4/run_s1.ps1")), "the launcher reads the same rule");
         }
+        // ---------------------------------------------------------------- amendment 3: final markers are counted by exact name, config copies are not markers
+
+        static List<string> CheckerMarkerNames()
+        {
+            string ps = File.ReadAllText(Path.Combine(RepoRoot, "finals_v4/check_s1_session.ps1"));
+            var m = System.Text.RegularExpressions.Regex.Match(ps, @"\$finalMarkers = @\(([^)]*)\)");
+            Assert.IsTrue(m.Success, "check_s1_session.ps1 names its markers in $finalMarkers = @(...)");
+            return System.Text.RegularExpressions.Regex.Matches(m.Groups[1].Value, "\"([^\"]+)\"").Cast<System.Text.RegularExpressions.Match>().Select(x => x.Groups[1].Value).ToList();
+        }
+
+        static List<string> PythonFinalMarkers()
+        {
+            string py = Repo("robot_vision/process_supplementary_zip_v4.py");
+            var m = System.Text.RegularExpressions.Regex.Match(py, @"FINAL_MARKERS = \(([^)]*)\)");
+            Assert.IsTrue(m.Success, "process_supplementary_zip_v4.FINAL_MARKERS");
+            return System.Text.RegularExpressions.Regex.Matches(m.Groups[1].Value, "\"([^\"]+)\"").Cast<System.Text.RegularExpressions.Match>().Select(x => x.Groups[1].Value).ToList();
+        }
+
+        [Test]
+        public void TheChecker_CountsFinalMarkersByExactName_PythonsListPlusUnitysDoneFile_CaseSensitive()
+        {
+            string ps = File.ReadAllText(Path.Combine(RepoRoot, "finals_v4/check_s1_session.ps1"));
+            CollectionAssert.AreEquivalent(PythonFinalMarkers(), CheckerMarkerNames(), "the same list as Anisha's S1 tool");
+            StringAssert.Contains(".done_file", ps, "Unity's done file is read from final_v4.json");
+            Assert.AreEqual("UNITY_FINAL_DONE.json", Final().done_file);
+            StringAssert.Contains("$finalMarkers -ccontains $_.Name", ps, "exact and case-sensitive");
+            StringAssert.DoesNotContain("-Filter \"FINAL*\"", ps, "the wildcard (case-insensitive on Windows) is gone");
+        }
+
+        [Test]
+        public void TheConfigCopiesOfEveryS1Session_AreNotFinalMarkers_ThoughTheOldWildcardMatchedThem()
+        {
+            var markers = new HashSet<string>(CheckerMarkerNames(), StringComparer.Ordinal) { Final().done_file };
+            foreach (var setting in Settings)
+            {
+                // the files an S1 session copies into config_used (WriteS1Configs, WriteExperimentConfigs)
+                var copies = new[] { "final_v4.json", "final_plan.json", Path.GetFileName(Final().Setting(setting).experiment_config) };
+                foreach (var name in copies)
+                {
+                    Assert.IsFalse(markers.Contains(name), $"{setting}: {name} is an input copy, not a marker");
+                    Assert.IsTrue(name.StartsWith("FINAL", StringComparison.OrdinalIgnoreCase), $"{name}: what the old -Filter \"FINAL*\" matched (the cause of cell 1's INVALID)");
+                }
+            }
+            foreach (var marker in markers) Assert.IsTrue(marker.StartsWith("FINAL_", StringComparison.Ordinal) || marker == "UNITY_FINAL_DONE.json", marker);
+        }
+
+        [Test]
+        public void TheS1Path_WritesNoFinalMarker()
+        {
+            string s1 = Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4S1.cs");
+            foreach (var marker in CheckerMarkerNames().Append(Final().done_file)) StringAssert.DoesNotContain(marker, s1);
+            StringAssert.DoesNotContain("fcfg.done_file", s1);
+            StringAssert.DoesNotContain("FinalGuardV4.DoneJson", s1);
+            string runner = Project("Assets/WarehouseRobot/Scenario/Scripts/TrialRunnerV4.cs");
+            int guard = runner.IndexOf("if (Final && Completed == TrialTotal)", StringComparison.Ordinal);
+            int write = runner.IndexOf("Path.Combine(SessionFolder, fcfg.done_file)", StringComparison.Ordinal);
+            Assert.That(guard > 0 && write > guard && write - guard < 400, "Unity's final done file is written only inside if (Final && ...)");
+            StringAssert.Contains("finalSetting + experimentName", s1, "S1 refuses -finalSetting, so Final is false in an S1 session");
+            StringAssert.Contains("if (S1 && Completed == TrialTotal) WriteS1Done();", runner, "S1 ends with its own marker");
+        }
+
+        [Test]
+        public void TheLauncher_SkipsAFinishedCell_SoAllContinuesAfterCellOne()
+        {
+            string ps = File.ReadAllText(Path.Combine(RepoRoot, "finals_v4/run_s1.ps1"));
+            StringAssert.Contains("Done = (Test-Path (Join-Path $d.FullName $s1.marker_done))", ps);
+            StringAssert.Contains("already finished", ps);
+            Assert.AreEqual("mixamo_worker", Cfg().cell_order[0].character);
+            Assert.AreEqual("A1", Cfg().cell_order[0].setting);
+        }
+
         // ---------------------------------------------------------------- nothing frozen is touched
 
         [Test]
