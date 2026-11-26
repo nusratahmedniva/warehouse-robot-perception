@@ -60,7 +60,7 @@ Source: AUDIT.md section 16.19.5 item 1 (line 2816) for the definition, 16.19.7 
 6. Every interruption and resume is reported in the results.
 7. No resume after the setting was evaluated, exported or declared invalid.
 
-Applied to the avatar experiment (AUDIT.md 16.31, line 4027): a part (Edit or Play) may be resumed once from the interrupted group; a second interruption makes the part INVALID. **The Edit part of the avatar experiment stopped after about one minute with no recordings; the look checks have no resume mechanism, so the rule cannot apply and the Edit control is reported as NOT COMPLETED (a limitation); Play stays the declared headline** (AUDIT.md 16.38).
+Applied to the avatar experiment (AUDIT.md 16.31, line 4027): a part (Edit or Play) may be resumed once from the interrupted group; a second interruption makes the part INVALID. **The Edit part of the avatar experiment stopped after about one minute (STARTED marker, no DONE marker, partial recordings for 10 of the 15 looks); the look checks have no resume mechanism, so the rule cannot apply, the partial data is not evaluated, and the Edit control is reported as NOT COMPLETED (a limitation); Play stays the declared headline** (AUDIT.md 16.38 and its correction 16.38.1).
 
 ## 7. How recordings map to takes in the avatar experiment
 

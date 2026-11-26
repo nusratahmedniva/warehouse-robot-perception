@@ -140,29 +140,36 @@ def fig_d(plt, rows: list[dict], out: Path) -> list[str]:
     cmds = ["POINT", "WAIT", "STOP", "PROCEED", "NONE"]
     mk = dict(zip(cmds, ["o", "s", "^", "D", "v"]))
     dists = sorted({r["distance_m"] for r in rows}, key=float)
-    fig, axes = plt.subplots(len(dists), 2, figsize=(8.4, 3.0 * len(dists)), sharey=True, squeeze=False)
-    for i, dist in enumerate(dists):
-        for j, (meas, name) in enumerate((("person", "Person detected"), ("hand_linked", "Gesturing hand found and linked"))):
-            ax = axes[i][j]
-            for c_i, cmd in enumerate(cmds):
-                for l_i, look in enumerate(looks):
-                    cell = [r for r in rows if r["look"] == look and r["command"] == cmd and r["distance_m"] == dist]
-                    if not cell:
-                        continue
-                    r = cell[0]
-                    mean, lo, hi = num(r.get(f"{meas}_mean")), num(r.get(f"{meas}_lo")), num(r.get(f"{meas}_hi"))
-                    if mean is None:
-                        continue
-                    x = l_i + (c_i - 2) * 0.12
-                    err = [[mean - lo], [hi - mean]] if lo is not None and hi is not None else None
-                    ax.errorbar(x, mean, yerr=err, fmt=mk[cmd], color=list(OKABE.values())[c_i], ecolor="black", capsize=1.5, markersize=4, linewidth=0.7)
-            ax.set_xticks(range(len(looks)))
-            ax.set_xticklabels([f"{l}\n[{k}]" for l, k in zip(looks, kinds)], fontsize=6, rotation=0)
-            ax.set_ylim(-0.03, 1.05)
-            ax.set_ylabel(f"{name}\n(share of takes, {dist} m)")
+    # horizontal layout: a row per look (grouped by kind), one column per measure x distance, y labels on the left panel only
+    panels = [(m, n, d) for d in dists for m, n in (("person", "Person detected"), ("hand_linked", "Gesturing hand found and linked"))]
+    fig, axes = plt.subplots(1, len(panels), figsize=(11.0, 6.2), sharey=True, squeeze=False)
+    axes = axes[0]
+    ypos = {l: len(looks) - 1 - i for i, l in enumerate(looks)}
+    for ax, (meas, name, dist) in zip(axes, panels):
+        for c_i, cmd in enumerate(cmds):
+            for look in looks:
+                cell = [r for r in rows if r["look"] == look and r["command"] == cmd and r["distance_m"] == dist]
+                if not cell:
+                    continue
+                r = cell[0]
+                mean, lo, hi = num(r.get(f"{meas}_mean")), num(r.get(f"{meas}_lo")), num(r.get(f"{meas}_hi"))
+                if mean is None:
+                    continue
+                y = ypos[look] + (2 - c_i) * 0.13
+                xerr = [[mean - lo], [hi - mean]] if lo is not None and hi is not None else None
+                ax.errorbar(mean, y, xerr=xerr, fmt=mk[cmd], color=list(OKABE.values())[c_i], ecolor="black", capsize=1.5, markersize=4, linewidth=0.6)
+        for i in range(1, len(looks)):
+            if kinds[i] != kinds[i - 1]:
+                ax.axhline(len(looks) - i - 0.5, color="0.6", linewidth=0.6)
+        ax.set_xlim(-0.03, 1.05)
+        ax.set_xlabel(f"{name}\n(share of takes, {dist} m)", fontsize=9)
+        ax.grid(axis="x", color="0.9", linewidth=0.5)
+    axes[0].set_yticks([ypos[l] for l in looks])
+    axes[0].set_yticklabels([f"{l} [{k}]" for l, k in zip(looks, kinds)], fontsize=8)
+    axes[0].set_ylim(-0.6, len(looks) - 0.4)
     handles = [plt.Line2D([], [], marker=mk[c], linestyle="", color=list(OKABE.values())[i], label=c) for i, c in enumerate(cmds)]
     fig.legend(handles=handles, loc="lower center", ncol=5, frameon=False)
-    fig.tight_layout(rect=(0, 0.05, 1, 1))
+    fig.tight_layout(rect=(0, 0.06, 1, 1))
     return save(fig, out, "fig_d_avatar_detection_per_look")
 
 
@@ -182,13 +189,13 @@ def fig_e(plt, rows: list[dict], out: Path) -> list[str]:
             x = s_i + (c_i - (len(chars) - 1) / 2) * w
             ax.bar(x, rate, width=w * 0.95, color=cols[c_i % 4], edgecolor="black", linewidth=0.5, label=ch if s_i == 0 else None)
             ax.errorbar(x, rate, yerr=[[rate - lo], [hi - rate]], fmt="none", ecolor="black", capsize=2.5, linewidth=1)
-            ax.text(x, 0.02, f"{r['successes']}/{r['n']}", ha="center", va="bottom", fontsize=6.5, color="white" if rate > 0.15 else "black", rotation=90)
+            ax.text(x, hi + 0.02, f"{r['successes']}/{r['n']}", ha="center", va="bottom", fontsize=7)
     ax.set_xticks(range(len(scenes)))
     ax.set_xticklabels(scenes)
-    ax.set_ylim(0, 1.05)
+    ax.set_ylim(0, 1.12)
     ax.set_ylabel("Success rate (Wilson 95 % interval, 5 runs per bar)")
     ax.set_xlabel("Scene")
-    ax.legend(frameon=False, fontsize=8, loc="lower left", ncol=2)
+    ax.legend(frameon=False, fontsize=8, loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=4)
     return save(fig, out, "fig_e_set_c_success")
 
 
