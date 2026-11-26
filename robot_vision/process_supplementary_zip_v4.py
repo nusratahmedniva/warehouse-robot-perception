@@ -185,7 +185,58 @@ def evaluate_session(u: Path, b: Path, setting: str, repo: Path) -> dict:
     plan_runs = json.loads((u / "session.json").read_text(encoding="utf-8")).get("plan_runs") or []
     for r in rows:
         r["plan_run"] = plan_runs[int(r["trial"]) - 1] if 0 < int(r["trial"]) <= len(plan_runs) else None
-    return {"setting": setting, "runs": rows, "dialogs": [{k: ex._fmt(v) for k, v in d.items()} for d in dialogs]}
+    dl = [{k: ex._fmt(v) for k, v in d.items()} for d in dialogs]
+    look = sorted({lk for r in runs for lk in r.looks})[0] if runs else "?"
+    return {"setting": setting, "runs": rows, "dialogs": dl, "abort_asks": abort_ask_rows(rows, dl, b, setting, look)}
+
+
+ASK_WINDOW_CAP_S = 20.0          # dialog.wait_timeout_s of configs/v4/control.json: an ask lasts at most this long
+
+
+def ask_reason(ask: dict, frames: list[dict]) -> str:
+    """The reason an ask did not give a usable answer, from the bridge log frames of the ask window (AUDIT.md 16.39: by this fixed rule, not guessed). The first that applies:
+    person_never_detected (no frame of the window has a person), arm_not_raised (people seen, no person with a raised arm in any frame), <SHOWN>_not_read (the command shown was
+    not read: the reading is NONE or empty), read_as_<X> (another command was read), rejected_<reason> (the answer was read as shown but rejected), else unknown. 'shown' is the
+    command of the truth (evaluation only: the robot never sees it)."""
+    if not any(f.get("persons") for f in frames):
+        return "person_never_detected"
+    shown, read = (ask.get("command_shown") or ""), (ask.get("command_read") or "")
+    raised = any(a.get("raised") for f in frames for p in f.get("persons", []) for a in ((p.get("reading") or {}).get("arms") or {}).values())
+    if not raised and shown not in ("", "NONE"):
+        return "arm_not_raised"
+    if shown not in ("", "NONE") and read in ("", "NONE"):
+        return f"{shown}_not_read"
+    if shown and read and read != shown:
+        return f"read_as_{read}"
+    dec = ask.get("decision") or ""
+    if dec.startswith("rejected"):
+        return dec.replace(":", "_")
+    return "unknown"
+
+
+def abort_ask_rows(runs: list[dict], dialogs: list[dict], bridge: Path, setting: str, look: str) -> list[dict]:
+    """One row per ask of every ABORTED run, with the reason of ask_reason and the run's own abort_reason (python_trial_###.json)."""
+    frames: dict[int, list] = defaultdict(list)
+    log = bridge / "v4_log.jsonl"
+    aborted = {int(r["trial"]): r for r in runs if r["failure_reason"] == "aborted"}
+    if log.is_file() and aborted:
+        for line in log.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = json.loads(line)
+                if row.get("trial") in aborted:
+                    frames[row["trial"]].append(row)
+    out = []
+    for t, r in sorted(aborted.items()):
+        asks = sorted((d for d in dialogs if str(d.get("trial")) == str(t)), key=lambda d: float(d.get("t_s") or 0))
+        py = bridge / f"python_trial_{t:03d}.json"
+        why = json.loads(py.read_text(encoding="utf-8")).get("abort_reason", "") if py.is_file() else ""
+        for i, a in enumerate(asks):
+            t0 = float(a.get("t_s") or 0)
+            t1 = float(asks[i + 1]["t_s"]) if i + 1 < len(asks) and asks[i + 1].get("t_s") else t0 + ASK_WINDOW_CAP_S
+            win = [f for f in frames[t] if t0 - 1e-6 <= f.get("t", -1) < min(t1, t0 + ASK_WINDOW_CAP_S) and f.get("junction") == a.get("junction")]
+            out.append({"character": look, "scene": setting, "trial": t, "plan_run": r.get("plan_run"), "junction": a.get("junction"), "ask": a.get("serial"), "command_shown": a.get("command_shown"),
+                        "command_read": a.get("command_read"), "decision": a.get("decision"), "frames_in_window": len(win), "reason": ask_reason(a, win), "run_abort_reason": why})
+    return out
 
 
 def cell_rows(sessions: dict, z: float) -> list[dict]:
@@ -322,6 +373,10 @@ def run(zip_path, sha256: str, repo: Path | None = None, finals_root: str | Path
                        "Definitions of export_csv_v4 (detected = rejected, outvoted or withdrawn; corrected = detected and the branch finally taken is the true one; fooled = accepted, taken, not true). "
                        "first = the first person asked at a visit; later = a later one.")
         confusion_tables(sessions, out, cfg)
+        fr.write_table(out, "s1_g_abort_reasons_per_ask", "S1 aborted runs: the reason of every ask (from the bridge logs by a fixed rule; descriptive, 5 runs per cell)",
+                       [r for d in sessions.values() for r in d["abort_asks"]],
+                       "reason: person_never_detected (no person in any logged frame of the ask window) > arm_not_raised > <shown>_not_read > read_as_<X> > rejected_<reason> > unknown; "
+                       "run_abort_reason is the controller's own text. An empty table means no aborted run.")
         rates, pr = comparison_rows(sessions, finals, z)
         fr.write_table(out, "s1_c_vs_sunbox_finals", "S1 against the Sunbox finals of the same scene on the same plan runs: paired by plan run (same seed, goals, worker and lie schedule), Newcombe 95 %", rates,
                        "Difference = S1 minus the Sunbox final, percentage points. Description only: no test, no claim of significance.")

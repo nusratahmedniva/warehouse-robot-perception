@@ -187,6 +187,34 @@ class Tables(unittest.TestCase):
         self.assertEqual(names, ["s1_e_gesture_confusion.csv", "s1_e_gesture_confusion.md", "s1_f_branch_confusion.csv", "s1_f_branch_confusion.md"])
 
 
+class AbortReasons(unittest.TestCase):
+    def test_rule_order(self):
+        frame = lambda persons, raised=False: {"persons": persons, "t": 1.0, "junction": "J1",
+                                               "persons_x": None} | ({"persons": [{"reading": {"arms": {"left": {"raised": raised}}}}]} if persons else {})
+        ask = lambda shown, read, dec="unclear": {"command_shown": shown, "command_read": read, "decision": dec}
+        self.assertEqual(ps.ask_reason(ask("POINT", ""), [frame(False)]), "person_never_detected")
+        self.assertEqual(ps.ask_reason(ask("POINT", ""), [frame(True, False)]), "arm_not_raised")
+        self.assertEqual(ps.ask_reason(ask("POINT", "NONE"), [frame(True, True)]), "POINT_not_read")
+        self.assertEqual(ps.ask_reason(ask("PROCEED", "NONE"), [frame(True, True)]), "PROCEED_not_read")
+        self.assertEqual(ps.ask_reason(ask("POINT", "WAIT"), [frame(True, True)]), "read_as_WAIT")
+        self.assertEqual(ps.ask_reason(ask("POINT", "POINT", "rejected:arrival"), [frame(True, True)]), "rejected_arrival")
+        self.assertEqual(ps.ask_reason(ask("POINT", "POINT", "accepted"), [frame(True, True)]), "unknown")
+
+    def test_rows_only_for_aborted_runs_and_window_by_time_and_junction(self):
+        with tempfile.TemporaryDirectory() as t:
+            b = Path(t)
+            (b / "python_trial_002.json").write_text(json.dumps({"abort_reason": "gesture unclear after 2 asks at J1"}), encoding="utf-8")
+            rows = [json.dumps({"trial": 2, "t": 10.5, "junction": "J1", "persons": []}), json.dumps({"trial": 2, "t": 50.0, "junction": "J1", "persons": []}),
+                    json.dumps({"trial": 1, "t": 10.5, "junction": "J1", "persons": []})]
+            (b / "v4_log.jsonl").write_text("\n".join(rows), encoding="utf-8")
+            runs = [{"trial": 1, "failure_reason": "", "plan_run": 1}, {"trial": 2, "failure_reason": "aborted", "plan_run": 2}]
+            dl = [{"trial": "2", "t_s": "10", "serial": "1", "junction": "J1", "command_shown": "POINT", "command_read": "", "decision": "unclear"},
+                  {"trial": "1", "t_s": "10", "serial": "1", "junction": "J1", "command_shown": "POINT", "command_read": "", "decision": "unclear"}]
+            out = ps.abort_ask_rows(runs, dl, b, "A1", A)
+        self.assertEqual(len(out), 1)
+        self.assertEqual((out[0]["trial"], out[0]["frames_in_window"], out[0]["reason"], out[0]["run_abort_reason"]), (2, 1, "person_never_detected", "gesture unclear after 2 asks at J1"))
+
+
 class LoadSessionsS1(unittest.TestCase):
     def setUp(self):
         import gesture_data as gd
