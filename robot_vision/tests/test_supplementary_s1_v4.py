@@ -187,6 +187,42 @@ class Tables(unittest.TestCase):
         self.assertEqual(names, ["s1_e_gesture_confusion.csv", "s1_e_gesture_confusion.md", "s1_f_branch_confusion.csv", "s1_f_branch_confusion.md"])
 
 
+class AbortReasons(unittest.TestCase):
+    def test_rule_order(self):
+        frame = lambda persons, raised=False: {"persons": persons, "t": 1.0, "junction": "J1",
+                                               "persons_x": None} | ({"persons": [{"reading": {"arms": {"left": {"raised": raised}}}}]} if persons else {})
+        ask = lambda shown, read, dec="unclear": {"command_shown": shown, "command_read": read, "decision": dec}
+        self.assertEqual(ps.ask_reason(ask("POINT", ""), [frame(False)]), "person_never_detected")
+        self.assertEqual(ps.ask_reason(ask("POINT", ""), [frame(True, False)]), "arm_not_raised")
+        self.assertEqual(ps.ask_reason(ask("POINT", "NONE"), [frame(True, True)]), "POINT_not_read")
+        self.assertEqual(ps.ask_reason(ask("PROCEED", "NONE"), [frame(True, True)]), "PROCEED_not_read")
+        self.assertEqual(ps.ask_reason(ask("POINT", "WAIT"), [frame(True, True)]), "read_as_WAIT")
+        self.assertEqual(ps.ask_reason(ask("POINT", "POINT", "rejected:arrival"), [frame(True, True)]), "rejected_arrival")
+        self.assertEqual(ps.ask_reason(ask("POINT", "POINT", "accepted"), [frame(True, True)]), "accepted")
+        self.assertEqual(ps.ask_reason(ask("POINT", "POINT", "unclear"), [frame(True, True)]), "unknown")
+        self.assertEqual(ps.ask_reason(ask("POINT", "NONE"), []), "no_frames_logged")         # no logged frame is NOT "no person" (AUDIT 16.39.2)
+
+    def test_rows_only_for_aborted_runs_and_window_on_the_bridge_clock(self):
+        """The dialog's t_s is seconds since the run start; the log's t is the bridge clock (here ~300 s later): the window is placed with python_trial asks_log, by serial (AUDIT 16.39.2)."""
+        with tempfile.TemporaryDirectory() as t:
+            b = Path(t)
+            asks_log = [{"junction": "J1", "asks_log": [{"t": 310.0, "serial": 1, "ask": 1}, {"t": 330.0, "serial": 2, "ask": 2}]}]
+            (b / "python_trial_002.json").write_text(json.dumps({"abort_reason": "gesture unclear after 2 asks at J1", "junctions": asks_log}), encoding="utf-8")
+            person = {"reading": {"arms": {"left": {"raised": True}}}}
+            rows = [json.dumps({"trial": 2, "t": 311.0, "junction": "J1", "persons": []}), json.dumps({"trial": 2, "t": 335.0, "junction": "J1", "persons": [person]}),
+                    json.dumps({"trial": 1, "t": 311.0, "junction": "J1", "persons": []})]
+            (b / "v4_log.jsonl").write_text("\n".join(rows), encoding="utf-8")
+            runs = [{"trial": 1, "failure_reason": "", "plan_run": 1}, {"trial": 2, "failure_reason": "aborted", "plan_run": 2}]
+            dl = [{"trial": "2", "t_s": "10", "serial": "1", "junction": "J1", "command_shown": "POINT", "command_read": "", "decision": "unclear"},
+                  {"trial": "2", "t_s": "30", "serial": "2", "junction": "J1", "command_shown": "POINT", "command_read": "POINT", "decision": "accepted"},
+                  {"trial": "2", "t_s": "50", "serial": "3", "junction": "J1", "command_shown": "POINT", "command_read": "", "decision": "unclear"},
+                  {"trial": "1", "t_s": "10", "serial": "1", "junction": "J1", "command_shown": "POINT", "command_read": "", "decision": "unclear"}]
+            out = ps.abort_ask_rows(runs, dl, b, "A1", A)
+        self.assertEqual([o["trial"] for o in out], [2, 2, 2])
+        self.assertEqual([(o["frames_in_window"], o["reason"]) for o in out], [(1, "person_never_detected"), (1, "accepted"), (0, "unknown")])
+        self.assertEqual(out[0]["run_abort_reason"], "gesture unclear after 2 asks at J1")
+
+
 class LoadSessionsS1(unittest.TestCase):
     def setUp(self):
         import gesture_data as gd

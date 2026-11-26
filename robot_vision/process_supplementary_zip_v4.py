@@ -2,7 +2,7 @@
 
   python process_supplementary_zip_v4.py <zip> --sha256 <hash> [--finals-root <folder>] [--out-root <folder>]
 
-The zip is made by final_zip_v4.py avatar (a manifest with `folders`): the Unity session folders and their bridge run folders of S1. It is read in place; the folders are copied
+The zip is made by finals_v4/zip_s1.ps1 (a manifest with `cells`, AUDIT.md 16.39.1): per cell the Unity session folder and its bridge run folder of S1. It is read in place; the folders are copied
 out (member by member, hash checked, no code) into a temporary folder outside the repository, used and removed.
 Steps (it stops at the first failure with the reason): 1 verify; 2 sessions: pair each Unity session with its bridge folder (the bridge started last before the Unity session; each
 used once; the runs must agree), check each (session.json 'supplementary' "S1", seed 2, a setting of A1 / A3 / B3, one look, timeout 480 s, 5 runs, plan_runs, leak test) and record its commit
@@ -185,7 +185,74 @@ def evaluate_session(u: Path, b: Path, setting: str, repo: Path) -> dict:
     plan_runs = json.loads((u / "session.json").read_text(encoding="utf-8")).get("plan_runs") or []
     for r in rows:
         r["plan_run"] = plan_runs[int(r["trial"]) - 1] if 0 < int(r["trial"]) <= len(plan_runs) else None
-    return {"setting": setting, "runs": rows, "dialogs": [{k: ex._fmt(v) for k, v in d.items()} for d in dialogs]}
+    dl = [{k: ex._fmt(v) for k, v in d.items()} for d in dialogs]
+    look = sorted({lk for r in runs for lk in r.looks})[0] if runs else "?"
+    return {"setting": setting, "runs": rows, "dialogs": dl, "abort_asks": abort_ask_rows(rows, dl, b, setting, look)}
+
+
+ASK_WINDOW_CAP_S = 20.0          # dialog.wait_timeout_s of configs/v4/control.json: an ask lasts at most this long
+
+
+def ask_reason(ask: dict, frames: list[dict]) -> str:
+    """The reason an ask did not give a usable answer, from the bridge log frames of the ask window (AUDIT.md 16.39: by this fixed rule, not guessed). The first that applies:
+    accepted (not a cause) > no_frames_logged > person_never_detected (frames logged, none has a person), arm_not_raised (people seen, no person with a raised arm in any frame), <SHOWN>_not_read (the command shown was
+    not read: the reading is NONE or empty), read_as_<X> (another command was read), rejected_<reason> (the answer was read as shown but rejected), else unknown. 'shown' is the
+    command of the truth (evaluation only: the robot never sees it)."""
+    if (ask.get("decision") or "") == "accepted":
+        return "accepted"                                         # the controller accepted this answer: not a cause of the abort (AUDIT.md 16.39.2)
+    if not frames:
+        return "no_frames_logged"                                 # nothing logged in the window: the rule cannot say (never 'person never detected', AUDIT.md 16.39.2)
+    if not any(f.get("persons") for f in frames):
+        return "person_never_detected"
+    shown, read = (ask.get("command_shown") or ""), (ask.get("command_read") or "")
+    raised = any(a.get("raised") for f in frames for p in f.get("persons", []) for a in ((p.get("reading") or {}).get("arms") or {}).values())
+    if not raised and shown not in ("", "NONE"):
+        return "arm_not_raised"
+    if shown not in ("", "NONE") and read in ("", "NONE"):
+        return f"{shown}_not_read"
+    if shown and read and read != shown:
+        return f"read_as_{read}"
+    dec = ask.get("decision") or ""
+    if dec.startswith("rejected"):
+        return dec.replace(":", "_")
+    return "unknown"
+
+
+def abort_ask_rows(runs: list[dict], dialogs: list[dict], bridge: Path, setting: str, look: str) -> list[dict]:
+    """One row per ask of every ABORTED run, with the reason of ask_reason and the run's own abort_reason (python_trial_###.json)."""
+    frames: dict[int, list] = defaultdict(list)
+    log = bridge / "v4_log.jsonl"
+    aborted = {int(r["trial"]): r for r in runs if r["failure_reason"] == "aborted"}
+    if log.is_file() and aborted:
+        for line in log.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = json.loads(line)
+                if row.get("trial") in aborted:
+                    frames[row["trial"]].append(row)
+    out = []
+    for t, r in sorted(aborted.items()):
+        asks = sorted((d for d in dialogs if str(d.get("trial")) == str(t)), key=lambda d: float(d.get("t_s") or 0))
+        py = bridge / f"python_trial_{t:03d}.json"
+        pj = json.loads(py.read_text(encoding="utf-8")) if py.is_file() else {}
+        why = pj.get("abort_reason", "")
+        # the ask's time on the BRIDGE clock (the dialog's t_s is seconds since the run start: a different clock, AUDIT.md 16.39.2): junctions[].asks_log[] of python_trial_###.json, by serial
+        t_bridge = {int(x["serial"]): float(x["t"]) for j in pj.get("junctions", []) for x in (j.get("asks_log") or []) if x.get("serial") is not None and x.get("t") is not None}
+        order = sorted(t_bridge.values())
+        for a in asks:
+            sid = int(a["serial"]) if str(a.get("serial") or "").strip() else None
+            t0 = t_bridge.get(sid) if sid is not None else None
+            if t0 is None:
+                win, reason = [], "unknown"                            # no asks_log entry for this serial: the window cannot be placed
+                if (a.get("decision") or "") == "accepted":
+                    reason = "accepted"
+            else:
+                later = [x for x in order if x > t0 + 1e-9]
+                t1 = min(later[0] if later else t0 + ASK_WINDOW_CAP_S, t0 + ASK_WINDOW_CAP_S)
+                win = [f for f in frames[t] if t0 - 1e-6 <= f.get("t", -1) < t1 and f.get("junction") == a.get("junction")]
+                reason = ask_reason(a, win)
+            out.append({"character": look, "scene": setting, "trial": t, "plan_run": r.get("plan_run"), "junction": a.get("junction"), "ask": a.get("serial"), "command_shown": a.get("command_shown"),
+                        "command_read": a.get("command_read"), "decision": a.get("decision"), "frames_in_window": len(win), "reason": reason, "run_abort_reason": why})
+    return out
 
 
 def cell_rows(sessions: dict, z: float) -> list[dict]:
@@ -294,15 +361,27 @@ def run(zip_path, sha256: str, repo: Path | None = None, finals_root: str | Path
     out = pf.new_report_dir(root, "process_supplementary_zip_v4")
     try:
         got, warnings, meta = pf.verify_zip_hash(zpath, sha256)
-        folders = list(meta.get("folders") or [])
-        if not folders:
-            raise pf.StepFailed("MANIFEST.json has no 'folders': not a zip made by final_zip_v4.py avatar")
-        report.settings = folders
-        report.add(1, "verify", pf.OK, f"SHA-256 {got[:12]}... matches; testzip and MANIFEST.json agree; folders {', '.join(folders)}" + (f"; warning: {'; '.join(warnings)}" if warnings else ""), sha256=got)
+        cells = list(meta.get("cells") or [])
+        if not cells:
+            raise pf.StepFailed("MANIFEST.json has no 'cells': not a zip made by finals_v4/zip_s1.ps1 (AUDIT.md 16.39.1)")
+        entries, folders, expected_pairs = [], [], {}
+        for c in cells:
+            label = f"cells/{c['character']}_{c['setting']}_part{c['part']}"
+            entries.append({"setting": NAME, "label": label, "unity": [c["unity_session"]], "bridge": [c["bridge_run"]], "markers": []})
+            folders += [c["unity_session"], c["bridge_run"]]
+            expected_pairs[c["unity_session"]] = c["bridge_run"]
+        if len(set(folders)) != len(folders):
+            raise pf.StepFailed("a session or bridge folder name appears twice in the manifest cells")
+        report.settings = [f"{c['character']}/{c['setting']}" for c in cells]
+        report.add(1, "verify", pf.OK, f"SHA-256 {got[:12]}... matches; testzip and MANIFEST.json agree; {len(cells)} cells ({meta.get('cells_found')} found of {meta.get('cells_expected')} expected)" + (f"; warning: {'; '.join(warnings)}" if warnings else ""), sha256=got)
         work = Path(tempfile.mkdtemp(prefix="s1_zip_", dir=str(work_root) if work_root else None))
-        pf.copy_out(zpath, meta, [{"setting": NAME, "label": "avatar", "unity": folders, "bridge": [], "markers": []}], work)
+        pf.copy_out(zpath, meta, entries, work)
         unity, bridge = classify_folders(work, folders)
         pairs = pair_sessions(unity, bridge)
+        wrong = [f"{u.name}: tool pairs {b.name}, manifest says {expected_pairs.get(u.name)}" for u, b in pairs if expected_pairs.get(u.name) != b.name]
+        if wrong:
+            raise pf.StepFailed("pairing by time disagrees with the manifest: " + "; ".join(wrong))
+        cellmeta = {c["unity_session"]: c for c in cells}
         sessions, prov, z = {}, [], ex.wilson_z(repo)
         for u, b in pairs:
             setting, look, problems = check_session(u, b, repo)
@@ -322,6 +401,10 @@ def run(zip_path, sha256: str, repo: Path | None = None, finals_root: str | Path
                        "Definitions of export_csv_v4 (detected = rejected, outvoted or withdrawn; corrected = detected and the branch finally taken is the true one; fooled = accepted, taken, not true). "
                        "first = the first person asked at a visit; later = a later one.")
         confusion_tables(sessions, out, cfg)
+        fr.write_table(out, "s1_g_abort_reasons_per_ask", "S1 aborted runs: the reason of every ask (from the bridge logs by a fixed rule; descriptive, 5 runs per cell)",
+                       [r for d in sessions.values() for r in d["abort_asks"]],
+                       "reason (AUDIT 16.39 and the join fix of 16.39.2; the window is on the bridge clock from asks_log): accepted (not a cause of the abort) > no_frames_logged > person_never_detected (frames logged, no person in any) > arm_not_raised > <shown>_not_read > read_as_<X> > rejected_<reason> > unknown; "
+                       "run_abort_reason is the controller's own text. An empty table means no aborted run.")
         rates, pr = comparison_rows(sessions, finals, z)
         fr.write_table(out, "s1_c_vs_sunbox_finals", "S1 against the Sunbox finals of the same scene on the same plan runs: paired by plan run (same seed, goals, worker and lie schedule), Newcombe 95 %", rates,
                        "Difference = S1 minus the Sunbox final, percentage points. Description only: no test, no claim of significance.")
@@ -330,7 +413,9 @@ def run(zip_path, sha256: str, repo: Path | None = None, finals_root: str | Path
                        [{"scene": p["setting"], "character": p["look"], "unity_session": p["unity_session"], "bridge": p["bridge"], "git_commit": p["git_commit"], "git_branch": p["git_branch"],
                          "config_files": len(p["config_used"]), "equal_to_frozen_record": p["config_files_equal_to_the_frozen_record"],
                          "differ_from_frozen_record": ", ".join(p["config_files_that_differ_from_the_frozen_record"]) or "none",
-                         "not_in_frozen_record": ", ".join(p["config_files_not_in_the_frozen_record"]) or "none"} for p in prov])
+                         "not_in_frozen_record": ", ".join(p["config_files_not_in_the_frozen_record"]) or "none",
+                         "packer_valid": cellmeta[p["unity_session"]].get("valid"),
+                         "recheck": "read-only re-check with the fixed checker: every criterion passed (AUDIT 16.39.1)" if cellmeta[p["unity_session"]].get("valid") is False else ""} for p in prov])
         (out / "provenance.json").write_text(json.dumps(prov, indent=2) + "\n", encoding="utf-8")
         report.add(4, "tables", pf.OK, "s1_a, s1_b (lies), s1_e / s1_f (confusion), s1_c / s1_c2 (paired Sunbox baseline), s1_d (provenance) as CSV and Markdown")
         bad = [str(p) for name in FINAL_MARKERS for p in out.rglob(name)]
