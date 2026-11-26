@@ -45,7 +45,9 @@ def main(argv=None) -> int:
           "**Edit part (control): NOT COMPLETED, a limitation (AUDIT.md 16.38 and 16.38.1).** The Edit part started 2026-11-24 17:55:15 (STARTED marker) and stopped after about one minute with no DONE marker; "
           "the zip holds partial recordings for 10 of the 15 looks. The look checks have no resume mechanism, so the interruption rule of 16.30.1 cannot apply; the part is not evaluated (a subset chosen "
           "after the fact would be post hoc) and nothing is claimed from it. Play is the declared headline and is complete (4860 takes, 0 invalid). The unchanged look-check tool's own verdict is "
-          "'fails' for all 15 looks, Sunbox looks included; it is reported as the tool gives it. Take is the unit; intervals are bootstrap over takes (Wilson only for take-level yes/no).", ""]
+          "'fails' for all 15 looks, Sunbox looks included; it is reported as the tool gives it. Take is the unit; intervals are bootstrap over takes (Wilson only for take-level yes/no).", "",
+          "**Note (a), what the hand measure means.** POINT is read from the arm direction of the body pose, so 'gesturing hand found and linked' does not measure POINT reading; the hand matters for STOP, WAIT and PROCEED. "
+          "**Note (b), the look-check verdict.** The look-check tool's own 'fails' verdict uses engineering thresholds and is not a declared outcome; the declared outcomes are the rates in the tables (AUDIT.md 16.40.1).", ""]
     if a.avatar:
         order = ["per_kind_group", "per_look", "per_look_role", "per_clip_role"]
         for name in sorted((q.stem for q in Path(a.avatar).glob("*.md")), key=lambda n: order.index(n) if n in order else 99):

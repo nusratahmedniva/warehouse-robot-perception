@@ -173,6 +173,9 @@ def fig_d(plt, rows: list[dict], out: Path) -> list[str]:
     return save(fig, out, "fig_d_avatar_detection_per_look")
 
 
+SHORT = {"anime_f_01": "anime\n01", "anime_f_02_outfit_short": "anime\n02", "cartoon_boxo_01": "cartoon\nboxo", "mixamo_worker": "mixamo\nworker"}
+
+
 def fig_e(plt, rows: list[dict], out: Path) -> list[str]:
     scenes = ["A1", "A3", "B3"]
     chars = sorted({r["character"] for r in rows})
@@ -189,9 +192,12 @@ def fig_e(plt, rows: list[dict], out: Path) -> list[str]:
             x = s_i + (c_i - (len(chars) - 1) / 2) * w
             ax.bar(x, rate, width=w * 0.95, color=cols[c_i % 4], edgecolor="black", linewidth=0.5, label=ch if s_i == 0 else None)
             ax.errorbar(x, rate, yerr=[[rate - lo], [hi - rate]], fmt="none", ecolor="black", capsize=2.5, linewidth=1)
+            ax.plot([x], [rate], marker="o", markersize=6, color=cols[c_i % 4], markeredgecolor="black", markeredgewidth=0.8, zorder=5, clip_on=False)   # visible even at 0/5
             ax.text(x, hi + 0.02, f"{r['successes']}/{r['n']}", ha="center", va="bottom", fontsize=7)
+            ax.text(x, -0.025, SHORT.get(ch, ch), ha="center", va="top", fontsize=6.5, transform=ax.get_xaxis_transform() if False else ax.transData)
     ax.set_xticks(range(len(scenes)))
     ax.set_xticklabels(scenes)
+    ax.tick_params(axis="x", pad=26)
     ax.set_ylim(0, 1.12)
     ax.set_ylabel("Success rate (Wilson 95 % interval, 5 runs per bar)")
     ax.set_xlabel("Scene")
@@ -204,6 +210,7 @@ def main(argv=None) -> int:
     ap.add_argument("--finals", required=True, help="final_results_<time> folder (a_per_setting.csv, b_on_vs_off.csv, f_gesture_confusion.csv)")
     ap.add_argument("--avatar", default=None, help="folder with the avatar Play per-look table (per_look.csv)")
     ap.add_argument("--s1", default=None, help="process_supplementary_zip_v4_<time> folder (s1_a_per_character_and_scene.csv)")
+    ap.add_argument("--only", default=None, help="letters of the figures to render, e.g. e (default: all)")
     ap.add_argument("--out", default=None, help="a NEW folder (default ~/RobotVisionResults/paper_results/figures_<time>)")
     a = ap.parse_args(argv)
     plt = setup()
@@ -211,12 +218,16 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=False)
     fin = Path(a.finals)
     made = {}
-    made["a"] = fig_a(plt, read(fin / "a_per_setting.csv"), out)
-    made["b"] = fig_b(plt, read(fin / "b_on_vs_off.csv"), out)
-    made["c"] = fig_c(plt, read(fin / "f_gesture_confusion.csv"), out)
-    if a.avatar:
+    want = set(a.only.lower()) if a.only else set("abcde")
+    if "a" in want:
+        made["a"] = fig_a(plt, read(fin / "a_per_setting.csv"), out)
+    if "b" in want:
+        made["b"] = fig_b(plt, read(fin / "b_on_vs_off.csv"), out)
+    if "c" in want:
+        made["c"] = fig_c(plt, read(fin / "f_gesture_confusion.csv"), out)
+    if a.avatar and "d" in want:
         made["d"] = fig_d(plt, read(Path(a.avatar) / "per_look.csv"), out)
-    if a.s1:
+    if a.s1 and "e" in want:
         made["e"] = fig_e(plt, read(Path(a.s1) / "s1_a_per_character_and_scene.csv"), out)
     (out / "sources.txt").write_text("".join(f"{k}: {v}\n" for k, v in made.items()) + f"finals: {fin}\navatar: {a.avatar}\ns1: {a.s1}\n", encoding="utf-8")
     print(f"figures: {out}")
